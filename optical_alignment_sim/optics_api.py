@@ -188,6 +188,6 @@ def build_example(kind='mach_zehnder'):
     from . import examples_builtin as ex
     if kind not in ex.EXAMPLES:
         return {"error": "unknown example '%s'; choose from %s" % (kind, list(ex.EXAMPLES))}
-    name = ex.EXAMPLES[kind][1](bpy.context)
+    name = ex.build(kind, bpy.context)
     res = trace_beam()
     return {"built": kind, "collection": name, "segments": res["segments"]}

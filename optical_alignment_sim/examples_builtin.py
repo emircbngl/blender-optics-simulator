@@ -97,24 +97,66 @@ EXAMPLES = {
 }
 
 
-def _show(context, _coll_name):
-    """Trace, enable the live overlay, frame a camera, set material shading."""
+def _reset_examples():
+    """Remove previously-built example collections + baked beams so each example
+    is built in isolation (otherwise multiple setups share the trace)."""
+    from . import tracer, bake
+    for c in list(bpy.data.collections):
+        if c.name.startswith("OpticsExample_"):
+            for o in list(c.objects):
+                bpy.data.objects.remove(o, do_unlink=True)
+            bpy.data.collections.remove(c)
+    try:
+        bake.clear_baked(bpy.context.scene)
+    except Exception:
+        pass
+    tracer.cached_segments = []
+
+
+def build(kind, context):
+    """Reset prior examples, then build the requested one. Returns collection name."""
+    if kind not in EXAMPLES:
+        raise ValueError("unknown example: %s" % kind)
+    _reset_examples()
+    return EXAMPLES[kind][1](context)
+
+
+def _show(context, coll_name):
+    """Trace, enable the live overlay, frame the viewport on the new setup, and
+    set a render camera (without forcing the viewport into camera view)."""
     from . import tracer, render
     sc = context.scene
+    sc.unit_settings.system = 'METRIC'
+    sc.unit_settings.scale_length = 0.001          # 1 unit = 1 mm (add-on convention)
+    sc.unit_settings.length_unit = 'MILLIMETERS'
     sc.optics.line_width = 4.0
     tracer.cached_segments = tracer.trace_scene(
         sc, mode=sc.optics.trace_mode,
         max_segments=sc.optics.max_segments, max_depth=sc.optics.max_depth)
     sc.optics.live_enabled = True
     render.set_camera(sc, 'HERO')
+
+    coll = bpy.data.collections.get(coll_name)
+    if coll:
+        for o in context.view_layer.objects:
+            o.select_set(False)
+        objs = list(coll.objects)
+        for o in objs:
+            o.select_set(True)
+        if objs:
+            context.view_layer.objects.active = objs[0]
     try:
         for w in context.window_manager.windows:
             for ar in w.screen.areas:
-                if ar.type == 'VIEW_3D':
-                    sp = ar.spaces.active
-                    sp.shading.type = 'MATERIAL'
-                    sp.region_3d.view_perspective = 'CAMERA'
-                    ar.tag_redraw()
+                if ar.type != 'VIEW_3D':
+                    continue
+                ar.spaces.active.shading.type = 'MATERIAL'
+                ar.spaces.active.clip_end = max(ar.spaces.active.clip_end, 1.0e5)
+                reg = next((r for r in ar.regions if r.type == 'WINDOW'), None)
+                if reg and coll and len(coll.objects):
+                    with context.temp_override(window=w, area=ar, region=reg):
+                        bpy.ops.view3d.view_selected()
+                ar.tag_redraw()
     except Exception:
         pass
 
@@ -132,7 +174,7 @@ class OPTICS_OT_build_example(Operator):
     )
 
     def execute(self, context):
-        name = EXAMPLES[self.kind][1](context)
+        name = build(self.kind, context)
         _show(context, name)
         from . import tracer
         self.report({'INFO'}, "Built %s (%d beam segments)"

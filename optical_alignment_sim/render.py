@@ -4,6 +4,8 @@ settings, plus camera presets. Resolves the EEVEE engine id at runtime
 """
 from __future__ import annotations
 
+import math
+
 import bpy
 from bpy.types import Operator
 from bpy.props import EnumProperty
@@ -24,10 +26,31 @@ def resolve_eevee_id():
     return 'BLENDER_EEVEE'
 
 
+def ensure_lighting(scene):
+    """Add a default sun + soft world background if the scene has none, so a
+    one-click render is not black."""
+    if not any(o.type == 'LIGHT' for o in scene.objects):
+        ld = bpy.data.lights.new("OPTICS_Sun", 'SUN')
+        ld.energy = 3.0
+        sun = bpy.data.objects.new("OPTICS_Sun", ld)
+        scene.collection.objects.link(sun)
+        sun.rotation_euler = (math.radians(52), math.radians(8), math.radians(40))
+    w = scene.world
+    if w is None:
+        w = bpy.data.worlds.new("OPTICS_World")
+        scene.world = w
+    w.use_nodes = True
+    bg = w.node_tree.nodes.get("Background")
+    if bg and bg.inputs[1].default_value < 0.05:
+        bg.inputs[0].default_value = (0.02, 0.02, 0.03, 1.0)
+        bg.inputs[1].default_value = 0.4
+
+
 def setup_preview(scene):
     scene.render.engine = resolve_eevee_id()
     scene.render.resolution_x = 1280
     scene.render.resolution_y = 720
+    ensure_lighting(scene)
     return scene.render.engine
 
 
@@ -41,6 +64,7 @@ def setup_final(scene):
         scene.view_settings.view_transform = 'Filmic'
     except Exception:
         pass
+    ensure_lighting(scene)
     return scene.render.engine
 
 
@@ -78,8 +102,14 @@ def set_camera(scene, preset='HERO'):
         scene.collection.objects.link(cam)
         scene.camera = cam
     center, size = _optical_bounds(scene)
+    cam.data.type = 'PERSP'
+    cam.data.lens = 35.0
+    radius = max(size * 0.5, 1.0)
+    dist = radius / math.tan(cam.data.angle * 0.5) * 1.3 + radius   # fit bounding sphere
+    cam.data.clip_start = max(0.01, radius * 0.001)
+    cam.data.clip_end = (dist + size) * 4.0                          # don't clip the setup
     d = _CAM_DIRS.get(preset, _CAM_DIRS['HERO']).normalized()
-    cam.location = center + d * size * 1.6
+    cam.location = center + d * dist
     cam.rotation_euler = (center - cam.location).to_track_quat('-Z', 'Y').to_euler()
     return cam
 

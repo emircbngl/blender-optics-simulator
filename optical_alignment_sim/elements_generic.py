@@ -43,16 +43,18 @@ def _mat(name, color, metal=0.0, rough=0.3, emit=None, alpha=1.0):
     return m
 
 
+# Opaque, distinctly-colored materials so every component is clearly visible in
+# both the viewport and renders (glass-style transparency hid parts in Cycles).
 MATS = {
-    "mirror": lambda: _mat("OG_mirror", (0.85, 0.88, 0.92), metal=1.0, rough=0.04),
-    "bs":     lambda: _mat("OG_bs", (0.55, 0.8, 1.0), metal=0.0, rough=0.0, alpha=0.5),
-    "pbs":    lambda: _mat("OG_pbs", (0.7, 0.7, 0.95), metal=0.0, rough=0.0, alpha=0.55),
-    "lens":   lambda: _mat("OG_lens", (0.75, 0.92, 1.0), metal=0.0, rough=0.02, alpha=0.45),
-    "wp":     lambda: _mat("OG_waveplate", (0.95, 0.85, 0.4), metal=0.1, rough=0.2, alpha=0.6),
-    "bbo":    lambda: _mat("OG_bbo", (0.6, 0.3, 0.8), metal=0.2, rough=0.25),
+    "mirror": lambda: _mat("OG_mirror", (0.85, 0.88, 0.92), metal=1.0, rough=0.05),
+    "bs":     lambda: _mat("OG_bs", (0.35, 0.60, 0.95), metal=0.0, rough=0.15),
+    "pbs":    lambda: _mat("OG_pbs", (0.55, 0.50, 0.90), metal=0.0, rough=0.15),
+    "lens":   lambda: _mat("OG_lens", (0.45, 0.80, 0.95), metal=0.0, rough=0.10),
+    "wp":     lambda: _mat("OG_waveplate", (0.95, 0.80, 0.30), metal=0.2, rough=0.30),
+    "bbo":    lambda: _mat("OG_bbo", (0.65, 0.30, 0.85), metal=0.2, rough=0.25),
     "laser":  lambda: _mat("OG_laser", (0.7, 0.05, 0.03), emit=(1.0, 0.1, 0.05)),
-    "det":    lambda: _mat("OG_detector", (0.03, 0.03, 0.035), metal=0.3, rough=0.8),
-    "ap":     lambda: _mat("OG_aperture", (0.05, 0.05, 0.05), metal=0.5, rough=0.6),
+    "det":    lambda: _mat("OG_detector", (0.04, 0.04, 0.05), metal=0.3, rough=0.8),
+    "ap":     lambda: _mat("OG_aperture", (0.06, 0.06, 0.06), metal=0.5, rough=0.6),
 }
 
 
