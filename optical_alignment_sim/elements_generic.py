@@ -171,7 +171,7 @@ def beamsplitter(name, loc, in_dir, reflect_dir, coll=None, split=0.5, pbs=False
     """50/50 (or PBS) cube: transmits along in_dir, reflects toward reflect_dir."""
     o = _cube(name, (size, size, size), coll)
     o.data.materials.clear(); o.data.materials.append(MATS["pbs" if pbs else "bs"]())
-    _tag(o, 'BEAMSPLITTER', split_ratio=split, clear_aperture=size * 0.55)
+    _tag(o, 'BEAMSPLITTER', split_ratio=split, clear_aperture=size * 0.55, is_pbs=pbs)
     o.optics.mount_preset = "PBS" if pbs else ""
     h = size * 0.5
     _add_port(o, "IN", 'IN', (-h, 0, 0), (-1, 0, 0), size * 0.55)
@@ -207,7 +207,8 @@ def lens(name, loc, axis, coll=None, focal=100.0, radius=14.0):
 
 
 def waveplate(name, loc, axis, coll=None, kind='HWP'):
-    o = _inline(name, loc, axis, coll, 'WAVEPLATE', "wp", radius=12.0, depth=3.0)
+    ret = 90.0 if str(kind).upper() == 'QWP' else 180.0      # QWP=90deg, HWP=180deg retardance
+    o = _inline(name, loc, axis, coll, 'WAVEPLATE', "wp", radius=12.0, depth=3.0, retardance_deg=ret)
     o.optics.mount_preset = kind
     return o
 

@@ -189,7 +189,7 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
     while stack and len(segments) < max_segments and guard < max_segments * 8:
         guard += 1
         ray = stack.pop()
-        if ray.depth > max_depth or ray.power < 1e-3:
+        if ray.depth > max_depth or ray.power < 1e-4:    # keep weak beams (e.g. polarizer extinction floor)
             continue
 
         hit = _find_next(elems, ray, mode, order)
@@ -204,17 +204,37 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
 
         if et in TERMINAL:
             continue
+        op = E.optics
+        J = ray.jones
         if et == 'APERTURE':
             stack.append(_child(ray, E, H, ray.dir, ray.power, 'TRANSMIT', idx, t))
             continue
         if et in ('MIRROR', 'PRISM_MIRROR', 'GRATING', 'RETROREFLECTOR'):
             nd = geometry.reflect(ray.dir, sn)
-            stack.append(_child(ray, E, H, nd, ray.power * E.optics.reflectivity, 'REFLECT', idx, t))
+            a = math.sqrt(max(op.reflectivity, 0.0))      # ideal: preserve polarization, scale amplitude
+            stack.append(_child(ray, E, H, nd, ray.power * op.reflectivity, 'REFLECT', idx, t,
+                                jones=physics.scale(J, a) if J else None))
         elif et in ('BEAMSPLITTER', 'DICHROIC'):
-            r = E.optics.split_ratio
-            stack.append(_child(ray, E, H, geometry.reflect(ray.dir, sn), ray.power * r, 'SPLIT_R', idx, t))
-            stack.append(_child(ray, E, H, ray.dir, ray.power * (1.0 - r), 'SPLIT_T', idx, t))
-        else:  # LENS / WAVEPLATE / POLARIZER / FILTER / ATTENUATOR / ISOLATOR / PINHOLE / PASSTHROUGH
+            if op.is_pbs and J:                            # polarizing: reflect s (y), transmit p (x)
+                Jr = physics.apply(physics.PBS_REFLECT, J)
+                Jt = physics.apply(physics.PBS_TRANSMIT, J)
+                stack.append(_child(ray, E, H, geometry.reflect(ray.dir, sn),
+                                    physics.intensity(Jr), 'SPLIT_R', idx, t, jones=Jr))
+                stack.append(_child(ray, E, H, ray.dir,
+                                    physics.intensity(Jt), 'SPLIT_T', idx, t, jones=Jt))
+            else:
+                r = op.split_ratio
+                stack.append(_child(ray, E, H, geometry.reflect(ray.dir, sn), ray.power * r, 'SPLIT_R', idx, t,
+                                    jones=physics.scale(J, math.sqrt(r)) if J else None))
+                stack.append(_child(ray, E, H, ray.dir, ray.power * (1.0 - r), 'SPLIT_T', idx, t,
+                                    jones=physics.scale(J, math.sqrt(max(1.0 - r, 0.0))) if J else None))
+        elif et == 'POLARIZER' and J:
+            Jp = physics.apply(physics.M_polarizer(op.pol_axis_deg, op.extinction), J)
+            stack.append(_child(ray, E, H, ray.dir, physics.intensity(Jp), 'TRANSMIT', idx, t, jones=Jp))
+        elif et == 'WAVEPLATE' and J:
+            Jw = physics.apply(physics.M_waveplate(op.retardance_deg, op.fast_axis_deg), J)
+            stack.append(_child(ray, E, H, ray.dir, physics.intensity(Jw), 'TRANSMIT', idx, t, jones=Jw))
+        else:  # LENS / FILTER / ATTENUATOR / ISOLATOR / PINHOLE / PASSTHROUGH
             stack.append(_child(ray, E, H, ray.dir, ray.power, 'TRANSMIT', idx, t))
 
     return segments

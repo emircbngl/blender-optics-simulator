@@ -21,7 +21,7 @@ from bpy.types import Operator
 from bpy.props import StringProperty
 from mathutils import Vector
 
-from . import geometry, tracer, mounts
+from . import geometry, tracer, mounts, physics
 
 COLOR = {
     'OK':      (0.05, 0.80, 0.12, 1.0),
@@ -96,6 +96,35 @@ def _state_for(scene, props, pos_err, ang_err):
     return 'BAD'
 
 
+def _measure_detector(props, segs, name):
+    """Write a detector's measured power + polarization from the beams reaching it.
+    Power sums incoherently here; C4 (interference) replaces this with a coherent
+    sum at recombining detectors. An analyzer (if set) projects the field first."""
+    incoming = [s for s in segs if s["to"] == name]
+    M = physics.analyzer_matrix(props.analyzer)
+    if not incoming:
+        props.meas_power, props.meas_pol = -1.0, ""
+        return
+    power, strongest, best = 0.0, None, -1.0
+    for s in incoming:
+        j = s.get("jones")
+        if j:
+            J = (complex(j[0], j[1]), complex(j[2], j[3]))
+            p = physics.intensity(physics.apply(M, J) if M is not None else J)
+        else:
+            p = s.get("power", 0.0)
+        power += p
+        if p > best:
+            best, strongest = p, s
+    props.meas_power = power
+    j = strongest.get("jones") if strongest else None
+    if j:
+        ps = physics.polarization_state((complex(j[0], j[1]), complex(j[2], j[3])))
+        props.meas_pol = "%s, az %.0f deg, DOP %.2f" % (ps["kind"], ps["azimuth_deg"], ps["dop"])
+    else:
+        props.meas_pol = ""
+
+
 def refresh_report(scene):
     segs = tracer.cached_segments if tracer.cached_segments else _trace(scene)
     report = []
@@ -113,6 +142,8 @@ def refresh_report(scene):
         props.align_state = state
         if scene.optics.auto_color:
             obj.color = COLOR.get(state, COLOR['UNKNOWN'])
+        if props.element_type in tracer.TERMINAL:
+            _measure_detector(props, segs, obj.name)
         report.append({"name": obj.name, "type": props.element_type,
                        "pos_err_mm": round(pos_err, 4), "ang_err_deg": round(ang_err, 4),
                        "state": state, "next": nxt, "mech": props.mech_state})
