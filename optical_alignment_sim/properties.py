@@ -73,7 +73,7 @@ def _dof_update(self, context):
     Deferred import keeps this safe before mounts.py exists (milestone 2)."""
     try:
         from . import mounts
-        obj = context.object
+        obj = self.id_data                  # the Object owning this knob (not necessarily active)
         if obj is not None and getattr(obj, "optics", None) and obj.optics.is_optical:
             mounts.compose_pose(obj)
     except Exception:

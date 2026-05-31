@@ -23,8 +23,7 @@ def _signature(scene):
         op = getattr(o, "optics", None)
         if op and op.is_optical:
             m = o.matrix_world
-            vals += [round(m[0][3], 4), round(m[1][3], 4), round(m[2][3], 4),
-                     round(m[0][0], 4), round(m[1][0], 4), round(m[2][1], 4), round(m[2][2], 4)]
+            vals += [round(m[r][c], 4) for r in range(3) for c in range(4)]   # full rotation + position
             vals += [round(d.current, 4) for d in op.dofs]
     return hash(tuple(vals))
 
@@ -102,9 +101,12 @@ def set_live(enabled):
 
 @persistent
 def on_load_post(*args):
-    scene = bpy.context.scene
-    if getattr(scene, "optics", None) and scene.optics.live_enabled:
-        set_live(True)
+    # bpy.context is unreliable inside load_post; inspect the loaded scenes directly.
+    global _last_sig
+    _last_sig = None
+    want_live = any(getattr(s, "optics", None) and s.optics.live_enabled
+                    for s in bpy.data.scenes)
+    set_live(want_live)
 
 
 def register():

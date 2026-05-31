@@ -50,7 +50,7 @@ def _seg_in(segs, name):
 
 def _seg_out(segs, name):
     return next((s for s in segs if s["from"] == name
-                 and s["kind"] in ('REFLECT', 'TRANSMIT', 'SPLIT_R', 'SOURCE')), None)
+                 and s["kind"] in ('REFLECT', 'TRANSMIT', 'SPLIT_R', 'SPLIT_T', 'SOURCE')), None)
 
 
 # --- residuals --------------------------------------------------------------
@@ -175,18 +175,24 @@ def align_element(scene, obj, iters=8, h=0.5):
         cols = []
         for d in rdofs:
             old = d.current
-            d.current = geometry.clamp(old + h, d.min_val, d.max_val)
+            probe = geometry.clamp(old + h, d.min_val, d.max_val)
+            if abs(probe - old) < 1e-6:                 # pinned at upper limit -> probe downward
+                probe = geometry.clamp(old - h, d.min_val, d.max_val)
+            step = probe - old
+            if abs(step) < 1e-6:                        # DOF fully pinned (min == max)
+                cols.append((0.0, 0.0))
+                continue
+            d.current = probe
             mounts.compose_pose(obj)
             bpy.context.view_layer.update()
             ep, _t = _miss_vec(scene, obj)
             d.current = old
             mounts.compose_pose(obj)
             bpy.context.view_layer.update()
-            step = (d.current - old) if (d.current - old) != 0 else h
             if ep is None:
                 cols.append((0.0, 0.0))
             else:
-                cols.append(((ep[0] - e[0]) / h, (ep[1] - e[1]) / h))
+                cols.append(((ep[0] - e[0]) / step, (ep[1] - e[1]) / step))
         if len(rdofs) == 2:
             J = [[cols[0][0], cols[1][0]], [cols[0][1], cols[1][1]]]
             delta = _solve2(J, (e[0], e[1]))

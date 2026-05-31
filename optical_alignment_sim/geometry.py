@@ -71,9 +71,10 @@ def refract_dir(d: Vector, n: Vector, n1: float, n2: float):
     d = d.normalized()
     n = n.normalized()
     cosi = -d.dot(n)
-    if cosi < 0.0:                 # ray hits the back face: flip the normal
+    if cosi < 0.0:                 # ray exits the medium: flip normal AND swap indices
         n = -n
         cosi = -d.dot(n)
+        n1, n2 = n2, n1
     eta = n1 / n2 if n2 != 0.0 else 1.0
     k = 1.0 - eta * eta * (1.0 - cosi * cosi)
     if k < 0.0:

@@ -38,7 +38,8 @@ def _mat(name, color, metal=0.0, rough=0.3, emit=None, alpha=1.0):
         b.inputs["Roughness"].default_value = rough
         if alpha < 1.0 and "Alpha" in b.inputs:
             b.inputs["Alpha"].default_value = alpha
-            m.blend_method = 'BLEND' if hasattr(m, "blend_method") else m.blend_method
+            if hasattr(m, "blend_method"):           # removed in Blender 4.3+ (EEVEE Next)
+                m.blend_method = 'BLEND'
         nt.links.new(b.outputs[0], out.inputs[0])
     return m
 

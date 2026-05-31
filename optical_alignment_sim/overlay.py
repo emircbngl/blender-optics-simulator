@@ -58,35 +58,36 @@ def _draw():
 
         gpu.state.blend_set('ALPHA')
         gpu.state.depth_test_set('LESS_EQUAL')
-        line_sh.bind()
-        line_sh.uniform_float("viewportSize", (region.width, region.height))
-        for kind, coords in groups.items():
-            line_sh.uniform_float("lineWidth", width if kind != 'SPLIT_T' else max(1.0, width * 0.6))
-            line_sh.uniform_float("color", _color_for(kind))
-            batch_for_shader(line_sh, 'LINES', {"pos": coords}).draw(line_sh)
+        try:
+            line_sh.bind()
+            line_sh.uniform_float("viewportSize", (region.width, region.height))
+            for kind, coords in groups.items():
+                line_sh.uniform_float("lineWidth", width if kind != 'SPLIT_T' else max(1.0, width * 0.6))
+                line_sh.uniform_float("color", _color_for(kind))
+                batch_for_shader(line_sh, 'LINES', {"pos": coords}).draw(line_sh)
 
-        if show_ports and point_sh is not None:
-            try:
-                pts = []
-                for ob in scn.objects:
-                    op = getattr(ob, "optics", None)
-                    if op and op.is_optical:
-                        for p in op.ports:
-                            pts.append(geometry.world_port(ob, p.local_position))
-                if pts:
-                    point_sh.bind()
-                    try:
-                        point_sh.uniform_float("size", 9.0)
-                    except Exception:
-                        pass
-                    gpu.state.point_size_set(9.0)
-                    point_sh.uniform_float("color", (0.15, 0.8, 1.0, 0.9))
-                    batch_for_shader(point_sh, 'POINTS', {"pos": pts}).draw(point_sh)
-            except Exception:
-                pass
-
-        gpu.state.blend_set('NONE')
-        gpu.state.depth_test_set('NONE')
+            if show_ports and point_sh is not None:
+                try:
+                    pts = []
+                    for ob in scn.objects:
+                        op = getattr(ob, "optics", None)
+                        if op and op.is_optical:
+                            for p in op.ports:
+                                pts.append(geometry.world_port(ob, p.local_position))
+                    if pts:
+                        point_sh.bind()
+                        try:
+                            point_sh.uniform_float("size", 9.0)
+                        except Exception:
+                            pass
+                        gpu.state.point_size_set(9.0)
+                        point_sh.uniform_float("color", (0.15, 0.8, 1.0, 0.9))
+                        batch_for_shader(point_sh, 'POINTS', {"pos": pts}).draw(point_sh)
+                except Exception:
+                    pass
+        finally:                                  # always restore GPU state, even on error
+            gpu.state.blend_set('NONE')
+            gpu.state.depth_test_set('NONE')
     except Exception as e:        # never raise inside a draw handler
         print("[optics overlay] draw error:", e)
 

@@ -55,7 +55,12 @@ def compose_pose(obj):
         return
     B = base_matrix(props)
     pose = B.copy()
-    for dof in props.dofs:
+    # Apply rotations first (about the base pivot), then translations, so the two
+    # act as independent base-frame knobs - a later rotation must not rotate an
+    # earlier translation vector.
+    ordered = ([d for d in props.dofs if d.kind in ('TIP', 'TILT', 'ROT')] +
+               [d for d in props.dofs if d.kind not in ('TIP', 'TILT', 'ROT')])
+    for dof in ordered:
         pivot_w, axis_w = dof_world(B, dof)
         if dof.kind in ('TIP', 'TILT', 'ROT'):
             R = Matrix.Rotation(math.radians(dof.current), 4, axis_w)
@@ -180,8 +185,10 @@ def check_object_mech(obj):
         if link.kind == 'POST_INSERT':
             a_mn, a_mx = _world_bounds(obj)
             b_mn, b_mx = _world_bounds(tgt)
-            overlap = min(a_mx.z, b_mx.z) - max(a_mn.z, b_mn.z)   # insertion proxy along Z
-            link.detail = "insertion ~%.1fmm" % overlap
+            # insertion axis = the post's longest world dimension (not assumed +Z)
+            ax = max(range(3), key=lambda i: (a_mx - a_mn)[i])
+            overlap = min(a_mx[ax], b_mx[ax]) - max(a_mn[ax], b_mn[ax])
+            link.detail = "insertion ~%.1fmm (%s)" % (overlap, "XYZ"[ax])
             if overlap < link.insert_min:
                 link.state = 'BAD'
                 link.detail += " < min (rod pulling out of holder)"

@@ -96,7 +96,12 @@ def get_components():
         if path and os.path.exists(path):
             try:
                 with open(path, "r") as f:
-                    comps.update(json.load(f))
+                    loaded = json.load(f)
+                for k, v in loaded.items():
+                    if isinstance(v, dict) and isinstance(comps.get(k), dict):
+                        comps[k].update(v)            # merge per key (keep mesh/type if omitted)
+                    else:
+                        comps[k] = v
             except Exception:
                 pass
     return comps
@@ -146,15 +151,27 @@ def convert_step(path, tol=None):
     tol = tol if tol is not None else (p.convert_tolerance_mm if p else 0.5)
     cache = _cache_dir()
     out = os.path.join(cache, os.path.splitext(os.path.basename(path))[0] + ".stl")
-    if os.path.exists(out) and os.path.getmtime(out) >= os.path.getmtime(path):
-        return out
+    meta = out + ".src"
+    sig = "%d:%d" % (int(os.path.getmtime(path)), os.path.getsize(path))
+    if os.path.exists(out) and os.path.exists(meta):
+        try:
+            with open(meta, "r") as f:
+                if f.read().strip() == sig:           # source unchanged since last convert
+                    return out
+        except Exception:
+            pass
     script = os.path.join(cache, "_fc_convert.py")
     with open(script, "w") as f:
         f.write(_FREECAD_SCRIPT_TEMPLATE.format(src=repr(path), dst=repr(out), tol=float(tol)))
-    r = subprocess.run([fc, script], capture_output=True, timeout=300)
+    try:
+        r = subprocess.run([fc, script], capture_output=True, timeout=300)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("FreeCAD conversion timed out (>300s): %s" % os.path.basename(path))
     if r.returncode != 0 or not os.path.exists(out):
         raise RuntimeError("FreeCAD conversion failed (%s): %s"
                            % (r.returncode, r.stderr.decode(errors='ignore')[-300:]))
+    with open(meta, "w") as f:
+        f.write(sig)
     return out
 
 

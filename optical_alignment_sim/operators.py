@@ -209,6 +209,8 @@ class OPTICS_OT_normalize_import(Operator):
         obj.select_set(True)
         context.view_layer.objects.active = obj
 
+        if obj.data and obj.data.users > 1:          # transform_apply rejects multi-user data
+            obj.data = obj.data.copy()
         bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
         if self.set_origin_center:
             bpy.ops.object.origin_set(type='ORIGIN_CENTER_OF_VOLUME')

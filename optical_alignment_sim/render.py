@@ -36,14 +36,23 @@ def ensure_lighting(scene):
         scene.collection.objects.link(sun)
         sun.rotation_euler = (math.radians(52), math.radians(8), math.radians(40))
     w = scene.world
+    new_world = False
     if w is None:
         w = bpy.data.worlds.new("OPTICS_World")
         scene.world = w
+        new_world = True
     w.use_nodes = True
     bg = w.node_tree.nodes.get("Background")
-    if bg and bg.inputs[1].default_value < 0.05:
-        bg.inputs[0].default_value = (0.02, 0.02, 0.03, 1.0)
-        bg.inputs[1].default_value = 0.4
+    if bg is None:                                   # robust to renamed/custom node trees
+        out = next((n for n in w.node_tree.nodes if n.type == 'OUTPUT_WORLD'), None)
+        if out and out.inputs[0].is_linked:
+            bg = out.inputs[0].links[0].from_node
+    if bg and "Strength" in bg.inputs:
+        # dim a world we created or the stock default "World"; respect a user's custom world
+        if new_world or w.name == "World" or bg.inputs["Strength"].default_value < 0.05:
+            if "Color" in bg.inputs:
+                bg.inputs["Color"].default_value = (0.02, 0.02, 0.03, 1.0)
+            bg.inputs["Strength"].default_value = 0.4
 
 
 def setup_preview(scene):
