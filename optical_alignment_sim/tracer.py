@@ -144,18 +144,35 @@ def _seg(ray, p2, to_obj):
         "power": round(ray.power, 4), "wavelength": ray.wl, "parent": ray.parent,
         "jones": [j[0].real, j[0].imag, j[1].real, j[1].imag] if j else None,
         "opl": opl, "phase": phase, "src_id": ray.src_id, "coh": ray.coh,
-        "w_mm": physics.beam_radius(ray.q, ray.wl) if ray.q else 0.0,
+        "w_mm": physics.beam_radius(physics.q_propagate(ray.q, physics.abcd_free(seg_len)), ray.wl) if ray.q else 0.0,
     }
 
 
 def _child(ray, E, H, d, power, kind, idx, t, jones=None, q=None):
-    """Construct a continuation ray, inheriting polarization/coherence state and
-    advancing the optical path length by the segment length ``t``."""
+    """Construct a continuation ray: inherit polarization/coherence, advance the
+    optical path length, and propagate the Gaussian beam q through the free space to
+    E (and through E's focal power when it is a lens)."""
+    if q is None:
+        q = ray.q
+        if q is not None:
+            q = physics.q_propagate(q, physics.abcd_free(t))            # free space to the hit point
+            if E.optics.element_type == 'LENS' and E.optics.focal_length:
+                q = physics.q_propagate(q, physics.abcd_lens(E.optics.focal_length))
     return _Ray(H, d, power, ray.depth + 1, E, ray.wl, kind, idx,
                 jones=ray.jones if jones is None else jones,
-                opl=ray.opl + t,
-                q=ray.q if q is None else q,
+                opl=ray.opl + t, q=q,
                 src_id=ray.src_id, coh=ray.coh)
+
+
+def _clip_T(ray, E, t):
+    """Gaussian power transmission through the element's circular clear aperture."""
+    if ray.q is None:
+        return 1.0
+    w = physics.beam_radius(physics.q_propagate(ray.q, physics.abcd_free(t)), ray.wl)
+    a = E.optics.clear_aperture
+    if w <= 1e-9 or a <= 0.0:
+        return 1.0
+    return 1.0 - math.exp(-2.0 * a * a / (w * w))
 
 
 def _transmission(op, wl):
@@ -242,7 +259,9 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
         op = E.optics
         J = ray.jones
         if et == 'APERTURE':
-            stack.append(_child(ray, E, H, ray.dir, ray.power, 'TRANSMIT', idx, t))
+            Tc = _clip_T(ray, E, t)
+            stack.append(_child(ray, E, H, ray.dir, ray.power * Tc, 'TRANSMIT', idx, t,
+                                jones=physics.scale(J, math.sqrt(Tc)) if J else None))
             continue
         if et in ('MIRROR', 'PRISM_MIRROR', 'RETROREFLECTOR'):
             nd = geometry.reflect(ray.dir, sn)
@@ -286,7 +305,11 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             T = _transmission(op, ray.wl)
             stack.append(_child(ray, E, H, ray.dir, ray.power * T, 'TRANSMIT', idx, t,
                                 jones=physics.scale(J, math.sqrt(max(T, 0.0))) if J else None))
-        else:  # LENS / ISOLATOR / PINHOLE / PASSTHROUGH
+        elif et == 'PINHOLE':
+            Tc = _clip_T(ray, E, t)
+            stack.append(_child(ray, E, H, ray.dir, ray.power * Tc, 'TRANSMIT', idx, t,
+                                jones=physics.scale(J, math.sqrt(Tc)) if J else None))
+        else:  # LENS / ISOLATOR / PASSTHROUGH
             stack.append(_child(ray, E, H, ray.dir, ray.power, 'TRANSMIT', idx, t))
 
     return segments

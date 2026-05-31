@@ -205,6 +205,8 @@ class OPTICS_PT_report(Panel):
                     box.label(text="pol: %s" % op.meas_pol)
                 if op.meas_visibility >= 0.0:
                     box.label(text="visibility %.3f" % op.meas_visibility)
+                if op.meas_text:
+                    box.label(text=op.meas_text)
             if op.mech_state not in ('UNKNOWN', 'OK'):
                 box.label(text="mech: %s" % op.mech_state, icon='CONSTRAINT')
             if op.align_detail:

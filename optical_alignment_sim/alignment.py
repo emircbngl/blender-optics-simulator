@@ -136,6 +136,7 @@ def _measure_detector(props, segs, name):
         props.meas_pol = "%s, az %.0f deg, DOP %.2f" % (ps["kind"], ps["azimuth_deg"], ps["dop"])
     else:
         props.meas_pol = ""
+    props.meas_text = ("spot w=%.3f mm" % strongest.get("w_mm", 0.0)) if strongest else ""
 
 
 def refresh_report(scene):
