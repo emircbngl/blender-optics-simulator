@@ -12,11 +12,13 @@ automation then measures.
 """
 from __future__ import annotations
 
+import math
+
 import bpy
 from bpy.types import Operator
 from mathutils import Vector
 
-from . import geometry
+from . import geometry, physics
 
 EPS = 1e-4
 EXTEND_MM = 150.0          # how far an escaping ray is drawn
@@ -31,9 +33,11 @@ TERMINAL = ('DETECTOR', 'PHOTODIODE', 'POWER_METER')
 
 
 class _Ray:
-    __slots__ = ('p1', 'dir', 'power', 'depth', 'from_obj', 'wl', 'kind', 'parent')
+    __slots__ = ('p1', 'dir', 'power', 'depth', 'from_obj', 'wl', 'kind', 'parent',
+                 'jones', 'opl', 'q', 'src_id')
 
-    def __init__(self, p1, d, power, depth, from_obj, wl, kind, parent):
+    def __init__(self, p1, d, power, depth, from_obj, wl, kind, parent,
+                 jones=None, opl=0.0, q=None, src_id=-1):
         self.p1 = p1
         self.dir = d.normalized()
         self.power = power
@@ -42,6 +46,10 @@ class _Ray:
         self.wl = wl
         self.kind = kind
         self.parent = parent
+        self.jones = jones          # (Ex, Ey) complex Jones vector (polarization)
+        self.opl = opl              # optical path length accumulated up to p1 (mm)
+        self.q = q                  # Gaussian complex beam parameter
+        self.src_id = src_id        # coherence group (which source this ray came from)
 
 
 def _find_port(props, role):
@@ -123,12 +131,30 @@ def _find_next(elems, ray, mode, order):
 
 
 def _seg(ray, p2, to_obj):
+    seg_len = (p2 - ray.p1).length
+    opl = ray.opl + seg_len                      # free-space (air, n~=1) optical path
+    lam_mm = ray.wl * 1.0e-6
+    phase = (2.0 * math.pi * opl / lam_mm) if lam_mm > 0.0 else 0.0
+    j = ray.jones
     return {
         "p1": ray.p1.copy(), "p2": p2.copy(), "kind": ray.kind,
         "from": ray.from_obj.name if ray.from_obj else None,
         "to": to_obj.name if to_obj else None,
         "power": round(ray.power, 4), "wavelength": ray.wl, "parent": ray.parent,
+        "jones": [j[0].real, j[0].imag, j[1].real, j[1].imag] if j else None,
+        "opl": opl, "phase": phase, "src_id": ray.src_id,
+        "w_mm": physics.beam_radius(ray.q, ray.wl) if ray.q else 0.0,
     }
+
+
+def _child(ray, E, H, d, power, kind, idx, t, jones=None, q=None):
+    """Construct a continuation ray, inheriting polarization/coherence state and
+    advancing the optical path length by the segment length ``t``."""
+    return _Ray(H, d, power, ray.depth + 1, E, ray.wl, kind, idx,
+                jones=ray.jones if jones is None else jones,
+                opl=ray.opl + t,
+                q=ray.q if q is None else q,
+                src_id=ray.src_id)
 
 
 def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
@@ -137,15 +163,26 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
     order = _order_list(scene)
 
     stack = []
+    sid = 0
     for src in elems:
-        if src.optics.element_type == 'SOURCE' or src.optics.is_source:
+        if src.optics.element_type in ('SOURCE', 'FIBER_COLLIMATOR') or src.optics.is_source:
             op = _first_out(src.optics)
             if op is None:
                 continue
+            sp = src.optics
+            if sp.pol_type == 'CIRCULAR':
+                j = physics.jones_circular(sp.handedness)
+            elif sp.pol_type == 'UNPOL':
+                j = physics.jones_unpolarized()
+            else:
+                j = physics.jones_linear(sp.pol_angle)
+            q0 = physics.q_from_waist(max(sp.waist_um, 1.0) * 1.0e-3, sp.wavelength)
             stack.append(_Ray(
                 geometry.world_port(src, op.local_position),
                 geometry.world_normal(src, op.local_normal),
-                1.0, 0, src, src.optics.wavelength, 'SOURCE', -1))
+                1.0, 0, src, sp.wavelength, 'SOURCE', -1,
+                jones=j, opl=0.0, q=q0, src_id=sid))
+            sid += 1
 
     segments = []
     guard = 0
@@ -168,20 +205,17 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
         if et in TERMINAL:
             continue
         if et == 'APERTURE':
-            stack.append(_Ray(H, ray.dir, ray.power, ray.depth + 1, E, ray.wl, 'TRANSMIT', idx))
+            stack.append(_child(ray, E, H, ray.dir, ray.power, 'TRANSMIT', idx, t))
             continue
         if et in ('MIRROR', 'PRISM_MIRROR', 'GRATING', 'RETROREFLECTOR'):
             nd = geometry.reflect(ray.dir, sn)
-            stack.append(_Ray(H, nd, ray.power * E.optics.reflectivity,
-                              ray.depth + 1, E, ray.wl, 'REFLECT', idx))
+            stack.append(_child(ray, E, H, nd, ray.power * E.optics.reflectivity, 'REFLECT', idx, t))
         elif et in ('BEAMSPLITTER', 'DICHROIC'):
             r = E.optics.split_ratio
-            stack.append(_Ray(H, geometry.reflect(ray.dir, sn), ray.power * r,
-                              ray.depth + 1, E, ray.wl, 'SPLIT_R', idx))
-            stack.append(_Ray(H, ray.dir, ray.power * (1.0 - r),
-                              ray.depth + 1, E, ray.wl, 'SPLIT_T', idx))
+            stack.append(_child(ray, E, H, geometry.reflect(ray.dir, sn), ray.power * r, 'SPLIT_R', idx, t))
+            stack.append(_child(ray, E, H, ray.dir, ray.power * (1.0 - r), 'SPLIT_T', idx, t))
         else:  # LENS / WAVEPLATE / POLARIZER / FILTER / ATTENUATOR / ISOLATOR / PINHOLE / PASSTHROUGH
-            stack.append(_Ray(H, ray.dir, ray.power, ray.depth + 1, E, ray.wl, 'TRANSMIT', idx))
+            stack.append(_child(ray, E, H, ray.dir, ray.power, 'TRANSMIT', idx, t))
 
     return segments
 

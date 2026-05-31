@@ -165,6 +165,38 @@ class OpticalElementProps(PropertyGroup):
     reflectivity: FloatProperty(name="Reflectivity", default=1.0, min=0.0, max=1.0)
     wavelength: FloatProperty(name="Wavelength (nm)", default=632.8)
     refractive_index: FloatProperty(name="Refractive index", default=1.5168)
+
+    # --- physics-layer parameters (read by the polarization / wavelength engine) ---
+    pol_type: EnumProperty(name="Source polarization",
+        items=[('LINEAR', "Linear", ""), ('CIRCULAR', "Circular", ""), ('UNPOL', "Unpolarized", "")],
+        default='LINEAR')
+    pol_angle: FloatProperty(name="Polarization angle (deg)", default=0.0)
+    handedness: EnumProperty(name="Handedness",
+        items=[('RIGHT', "Right", ""), ('LEFT', "Left", "")], default='RIGHT')
+    linewidth_nm: FloatProperty(name="Linewidth (nm)", default=0.0, min=0.0)   # 0 -> ideal coherence
+    waist_um: FloatProperty(name="Beam waist (um)", default=500.0, min=0.0)
+    retardance_deg: FloatProperty(name="Retardance (deg)", default=180.0)       # HWP=180, QWP=90
+    fast_axis_deg: FloatProperty(name="Fast-axis angle (deg)", default=0.0)
+    pol_axis_deg: FloatProperty(name="Transmission axis (deg)", default=0.0)
+    extinction: FloatProperty(name="Extinction ratio", default=1000.0, min=1.0)
+    is_pbs: BoolProperty(name="Polarizing (PBS)", default=False)
+    pass_type: EnumProperty(name="Pass band",
+        items=[('LP', "Longpass", ""), ('SP', "Shortpass", "")], default='LP')
+    cut_nm: FloatProperty(name="Cut wavelength (nm)", default=650.0)
+    filt_type: EnumProperty(name="Filter type",
+        items=[('LP', "Longpass", ""), ('SP', "Shortpass", ""), ('BP', "Bandpass", ""), ('ND', "Neutral density", "")],
+        default='BP')
+    cut_lo_nm: FloatProperty(name="Cut low (nm)", default=600.0)
+    cut_hi_nm: FloatProperty(name="Cut high (nm)", default=700.0)
+    od: FloatProperty(name="Optical density", default=1.0, min=0.0)
+    lines_per_mm: FloatProperty(name="Grating lines/mm", default=1200.0, min=0.0)
+    grating_order: IntProperty(name="Diffraction order", default=1)
+    analyzer: EnumProperty(name="Analyzer",
+        items=[('NONE', "None", ""), ('H', "H linear", ""), ('V', "V linear", ""),
+               ('D', "Diagonal", ""), ('A', "Anti-diagonal", ""),
+               ('RCP', "Right circular", ""), ('LCP', "Left circular", "")],
+        default='NONE')
+
     is_source: BoolProperty(default=False)
     is_detector: BoolProperty(default=False)
 
@@ -174,6 +206,12 @@ class OpticalElementProps(PropertyGroup):
     align_state: EnumProperty(items=ALIGN_STATES, default='UNKNOWN')
     mech_state: StringProperty(default="UNKNOWN")
     align_detail: StringProperty(default="")
+
+    # measured results (written by the physics engine: C2 polarization / C4 interference / C8 budget)
+    meas_power: FloatProperty(default=-1.0)        # power reaching a detector (-1 = N/A)
+    meas_pol: StringProperty(default="")           # e.g. "linear 45deg, DOP 1.00"
+    meas_visibility: FloatProperty(default=-1.0)   # fringe visibility (-1 = N/A)
+    meas_text: StringProperty(default="")          # freeform extra (spot size, budget, ...)
 
 
 class OpticalSceneProps(PropertyGroup):
