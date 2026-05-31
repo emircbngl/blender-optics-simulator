@@ -97,26 +97,39 @@ def _state_for(scene, props, pos_err, ang_err):
 
 
 def _measure_detector(props, segs, name):
-    """Write a detector's measured power + polarization from the beams reaching it.
-    Power sums incoherently here; C4 (interference) replaces this with a coherent
-    sum at recombining detectors. An analyzer (if set) projects the field first."""
+    """Write a detector's measured power, polarization, and fringe visibility.
+    Beams from the same source combine coherently (so Michelson/MZ arms interfere
+    and the OPD sets the fringe intensity); different sources add incoherently. An
+    analyzer (if set) projects each field first."""
     incoming = [s for s in segs if s["to"] == name]
     M = physics.analyzer_matrix(props.analyzer)
     if not incoming:
-        props.meas_power, props.meas_pol = -1.0, ""
+        props.meas_power, props.meas_pol, props.meas_visibility = -1.0, "", -1.0
         return
-    power, strongest, best = 0.0, None, -1.0
+    groups = {}
     for s in incoming:
-        j = s.get("jones")
-        if j:
-            J = (complex(j[0], j[1]), complex(j[2], j[3]))
-            p = physics.intensity(physics.apply(M, J) if M is not None else J)
-        else:
-            p = s.get("power", 0.0)
-        power += p
-        if p > best:
-            best, strongest = p, s
-    props.meas_power = power
+        groups.setdefault(s.get("src_id", -1), []).append(s)
+    total, vis, strongest, best = 0.0, -1.0, None, -1.0
+    for group in groups.values():
+        beams = []
+        for s in group:
+            j = s.get("jones")
+            if j:
+                J = (complex(j[0], j[1]), complex(j[2], j[3]))
+                if M is not None:
+                    J = physics.apply(M, J)
+            else:
+                J = (complex(math.sqrt(max(s.get("power", 0.0), 0.0))), 0j)
+            beams.append((J, s.get("opl", 0.0), s.get("wavelength", 632.8)))
+            p = physics.intensity(J)
+            if p > best:
+                best, strongest = p, s
+        gI, gV = physics.interfere(beams, group[0].get("coh", float('inf')))
+        total += gI
+        if gV > vis:
+            vis = gV
+    props.meas_power = total
+    props.meas_visibility = vis
     j = strongest.get("jones") if strongest else None
     if j:
         ps = physics.polarization_state((complex(j[0], j[1]), complex(j[2], j[3])))

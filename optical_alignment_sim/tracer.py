@@ -34,10 +34,10 @@ TERMINAL = ('DETECTOR', 'PHOTODIODE', 'POWER_METER')
 
 class _Ray:
     __slots__ = ('p1', 'dir', 'power', 'depth', 'from_obj', 'wl', 'kind', 'parent',
-                 'jones', 'opl', 'q', 'src_id')
+                 'jones', 'opl', 'q', 'src_id', 'coh')
 
     def __init__(self, p1, d, power, depth, from_obj, wl, kind, parent,
-                 jones=None, opl=0.0, q=None, src_id=-1):
+                 jones=None, opl=0.0, q=None, src_id=-1, coh=1.0e12):
         self.p1 = p1
         self.dir = d.normalized()
         self.power = power
@@ -50,6 +50,7 @@ class _Ray:
         self.opl = opl              # optical path length accumulated up to p1 (mm)
         self.q = q                  # Gaussian complex beam parameter
         self.src_id = src_id        # coherence group (which source this ray came from)
+        self.coh = coh              # coherence length (mm) from the source linewidth
 
 
 def _find_port(props, role):
@@ -142,7 +143,7 @@ def _seg(ray, p2, to_obj):
         "to": to_obj.name if to_obj else None,
         "power": round(ray.power, 4), "wavelength": ray.wl, "parent": ray.parent,
         "jones": [j[0].real, j[0].imag, j[1].real, j[1].imag] if j else None,
-        "opl": opl, "phase": phase, "src_id": ray.src_id,
+        "opl": opl, "phase": phase, "src_id": ray.src_id, "coh": ray.coh,
         "w_mm": physics.beam_radius(ray.q, ray.wl) if ray.q else 0.0,
     }
 
@@ -154,7 +155,7 @@ def _child(ray, E, H, d, power, kind, idx, t, jones=None, q=None):
                 jones=ray.jones if jones is None else jones,
                 opl=ray.opl + t,
                 q=ray.q if q is None else q,
-                src_id=ray.src_id)
+                src_id=ray.src_id, coh=ray.coh)
 
 
 def _transmission(op, wl):
@@ -210,11 +211,12 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             else:
                 j = physics.jones_linear(sp.pol_angle)
             q0 = physics.q_from_waist(max(sp.waist_um, 1.0) * 1.0e-3, sp.wavelength)
+            coh0 = min(physics.coherence_length_mm(sp.wavelength, sp.linewidth_nm), 1.0e12)
             stack.append(_Ray(
                 geometry.world_port(src, op.local_position),
                 geometry.world_normal(src, op.local_normal),
                 1.0, 0, src, sp.wavelength, 'SOURCE', -1,
-                jones=j, opl=0.0, q=q0, src_id=sid))
+                jones=j, opl=0.0, q=q0, src_id=sid, coh=coh0))
             sid += 1
 
     segments = []

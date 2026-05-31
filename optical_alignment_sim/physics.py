@@ -222,12 +222,46 @@ def coherence_length_mm(wavelength_nm, linewidth_nm):
 
 def fringe_envelope(opd_mm, Lc_mm):
     """Visibility envelope vs optical path difference (Gaussian coherence decay)."""
-    if Lc_mm == float('inf'):
+    if Lc_mm == float('inf') or Lc_mm >= 1.0e12:
         return 1.0
     if Lc_mm <= 0.0:
         return 0.0
     x = opd_mm / Lc_mm
     return math.exp(-(math.pi * x) ** 2 / 2.0)
+
+
+def interfere(beams, coherence_mm=float('inf')):
+    """Coherently combine beams reaching a detector from one source.
+
+    ``beams`` is a list of (J, opl_mm, wl_nm). Returns (intensity, visibility).
+    The field of each beam carries a phase 2*pi*opl/lambda; cross terms are weighted
+    by the coherence envelope (OPD vs coherence length) and the polarization overlap,
+    so orthogonal polarizations do not interfere and large OPDs wash fringes out.
+    Visibility is the fringe contrast of the two strongest beams (-1 if < 2 beams)."""
+    n = len(beams)
+    if n == 0:
+        return 0.0, -1.0
+    fields = []
+    for (J, opl, wl) in beams:
+        lam_mm = wl * NM_TO_MM
+        phi = (2.0 * math.pi * opl / lam_mm) if lam_mm > 0.0 else 0.0
+        fields.append(with_phase(J, phi))
+    total = sum(intensity(F) for F in fields)
+    for i in range(n):
+        for j in range(i + 1, n):
+            g = fringe_envelope(abs(beams[i][1] - beams[j][1]), coherence_mm)
+            dot = fields[i][0] * fields[j][0].conjugate() + fields[i][1] * fields[j][1].conjugate()
+            total += 2.0 * g * dot.real
+    vis = -1.0
+    if n >= 2:
+        order = sorted(range(n), key=lambda k: intensity(fields[k]), reverse=True)
+        a, b = order[0], order[1]
+        denom = intensity(fields[a]) + intensity(fields[b])
+        g = fringe_envelope(abs(beams[a][1] - beams[b][1]), coherence_mm)
+        Ja, Jb = beams[a][0], beams[b][0]
+        overlap = abs(Ja[0] * Jb[0].conjugate() + Ja[1] * Jb[1].conjugate())
+        vis = (2.0 * g * overlap / denom) if denom > 1e-12 else 0.0
+    return total, vis
 
 
 # --- self-test (closed-form checks) -----------------------------------------
@@ -291,6 +325,21 @@ if __name__ == "__main__":
     Lc = coherence_length_mm(632.8, 1e-3)
     if not (close(fringe_envelope(0.0, Lc), 1.0) and fringe_envelope(Lc, Lc) < 0.1):
         fails.append("coherence envelope")
+
+    # interference: two equal coherent beams -> OPD 0 gives 4x, OPD lambda/2 gives 0
+    b0 = [(jones_linear(0.0, 1.0), 0.0, 633.0), (jones_linear(0.0, 1.0), 0.0, 633.0)]
+    I0, V0 = interfere(b0)
+    half = 633.0 * NM_TO_MM / 2.0
+    b1 = [(jones_linear(0.0, 1.0), 0.0, 633.0), (jones_linear(0.0, 1.0), half, 633.0)]
+    I1, _ = interfere(b1)
+    if not (close(I0, 4.0, 1e-6) and close(I1, 0.0, 1e-6) and close(V0, 1.0, 1e-6)):
+        fails.append("interfere I0=%.3f I_halfwave=%.3f V0=%.3f" % (I0, I1, V0))
+
+    # orthogonal polarizations do not interfere: I = I1+I2, V = 0
+    bo = [(jones_linear(0.0, 1.0), 0.0, 633.0), (jones_linear(90.0, 1.0), 0.0, 633.0)]
+    Io, Vo = interfere(bo)
+    if not (close(Io, 2.0, 1e-6) and close(Vo, 0.0, 1e-6)):
+        fails.append("interfere orthogonal Io=%.3f Vo=%.3f" % (Io, Vo))
 
     if fails:
         print("PHYSICS SELFTEST FAILED:")
