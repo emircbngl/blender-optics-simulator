@@ -1,0 +1,34 @@
+# Vendor CAD / meshes are not redistributed (intellectual property + size)
+*.stl
+*.obj
+*.step
+*.stp
+*.igs
+*.iges
+*.sldprt
+*.eprt
+*.fcstd
+*.FCStd
+
+# Vendor download folders (local only)
+Edmund and Thorlabs/
+Edmund and Thorlabs */
+
+# Blender working files
+*.blend
+*.blend1
+*.blend2
+
+# Built extension archives
+*.zip
+
+# Python / OS
+__pycache__/
+*.pyc
+.DS_Store
+
+
+# Allow library metadata + docs images explicitly
+!library/*.json
+!docs/*.png
+!docs/*.jpg

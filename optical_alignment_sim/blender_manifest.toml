@@ -1,0 +1,16 @@
+schema_version = "1.0.0"
+
+id = "optical_alignment_sim"
+version = "0.1.0"
+name = "Optical Alignment & Simulation"
+tagline = "Live ray tracing & auto-alignment for optical benches"
+maintainer = "Emir <emircbngl@gmail.com>"
+type = "add-on"
+
+# EEVEE-Next era. The add-on resolves the EEVEE engine id at runtime, so it
+# also works on Blender 5.x where the id is 'BLENDER_EEVEE'.
+blender_version_min = "4.2.0"
+
+license = ["SPDX:GPL-3.0-or-later"]
+
+# No [permissions] block: v1 does all geometry/render locally, no network/disk.

@@ -1,0 +1,316 @@
+"""Alignment automation.
+
+Two parts:
+
+  * refresh_report(scene) - measures, per element, how far the beam misses its
+    IN port (position residual) and how far its outgoing ray points away from the
+    next element's IN port (angular residual); writes the results + an OK/WARN/BAD
+    state and a viewport color.
+
+  * align_element / align_all - a DOF-constrained steering solve. It only turns
+    the element's tip/tilt knobs (within their range) to walk the outgoing beam
+    onto the next element's IN port. If the target cannot be reached within the
+    knob range, it reports "knob range exhausted - move the post (coarse)".
+"""
+from __future__ import annotations
+
+import math
+
+import bpy
+from bpy.types import Operator
+from bpy.props import StringProperty
+from mathutils import Vector
+
+from . import geometry, tracer, mounts
+
+COLOR = {
+    'OK':      (0.05, 0.80, 0.12, 1.0),
+    'WARN':    (1.00, 0.62, 0.05, 1.0),
+    'BAD':     (0.90, 0.05, 0.05, 1.0),
+    'UNKNOWN': (0.55, 0.55, 0.55, 1.0),
+}
+
+
+def _first(props, role):
+    for p in props.ports:
+        if p.role == role:
+            return p
+    return None
+
+
+def _trace(scene):
+    return tracer.trace_scene(scene, mode=scene.optics.trace_mode,
+                              max_segments=scene.optics.max_segments,
+                              max_depth=scene.optics.max_depth)
+
+
+def _seg_in(segs, name):
+    return next((s for s in segs if s["to"] == name), None)
+
+
+def _seg_out(segs, name):
+    return next((s for s in segs if s["from"] == name
+                 and s["kind"] in ('REFLECT', 'TRANSMIT', 'SPLIT_R', 'SOURCE')), None)
+
+
+# --- residuals --------------------------------------------------------------
+
+def compute_residual(scene, segs, obj):
+    props = obj.optics
+    pos_err = 0.0
+    ang_err = 0.0
+    nxt = None
+
+    s_in = _seg_in(segs, obj.name)
+    ip = _first(props, 'IN')
+    if s_in and ip:
+        p1 = Vector(s_in["p1"])
+        d = (Vector(s_in["p2"]) - p1)
+        if d.length > 1e-9:
+            in_center = geometry.world_port(obj, ip.local_position)
+            pos_err = geometry.perpendicular_distance(in_center, p1, d.normalized())
+
+    s_out = _seg_out(segs, obj.name)
+    if s_out and s_out["to"]:
+        tgt = scene.objects.get(s_out["to"])
+        tin = _first(tgt.optics, 'IN') if tgt else None
+        if tgt and tin:
+            o1 = Vector(s_out["p1"])
+            out_dir = (Vector(s_out["p2"]) - o1)
+            desired = (geometry.world_port(tgt, tin.local_position) - o1)
+            if out_dir.length > 1e-9 and desired.length > 1e-9:
+                c = geometry.clamp(out_dir.normalized().dot(desired.normalized()), -1.0, 1.0)
+                ang_err = math.degrees(math.acos(c))
+            nxt = tgt.name
+    return pos_err, ang_err, nxt
+
+
+def _state_for(scene, props, pos_err, ang_err):
+    o = scene.optics
+    if props.mech_state == 'BAD':
+        return 'BAD'
+    if pos_err <= o.ok_pos_mm and ang_err <= o.ok_ang_deg:
+        return 'OK'
+    if pos_err <= o.warn_pos_mm and ang_err <= o.warn_ang_deg:
+        return 'WARN'
+    return 'BAD'
+
+
+def refresh_report(scene):
+    segs = tracer.cached_segments if tracer.cached_segments else _trace(scene)
+    report = []
+    for obj in scene.objects:
+        props = getattr(obj, "optics", None)
+        if not props or not props.is_optical:
+            continue
+        if props.element_type in ('SOURCE',):
+            props.align_state = 'OK'
+            continue
+        pos_err, ang_err, nxt = compute_residual(scene, segs, obj)
+        props.misalign_pos_mm = pos_err
+        props.misalign_ang_deg = ang_err
+        state = _state_for(scene, props, pos_err, ang_err)
+        props.align_state = state
+        if scene.optics.auto_color:
+            obj.color = COLOR.get(state, COLOR['UNKNOWN'])
+        report.append({"name": obj.name, "type": props.element_type,
+                       "pos_err_mm": round(pos_err, 4), "ang_err_deg": round(ang_err, 4),
+                       "state": state, "next": nxt, "mech": props.mech_state})
+    return report
+
+
+# --- DOF-constrained steering solve -----------------------------------------
+
+def _miss_vec(scene, obj):
+    """2D miss of obj's outgoing ray at the next element's IN plane.
+    Returns (e2, target) or (None, None)."""
+    segs = _trace(scene)
+    s_out = _seg_out(segs, obj.name)
+    if not s_out or not s_out["to"]:
+        return None, None
+    tgt = scene.objects.get(s_out["to"])
+    tin = _first(tgt.optics, 'IN') if tgt else None
+    if not tgt or not tin:
+        return None, None
+    Tc = geometry.world_port(tgt, tin.local_position)
+    Tn = geometry.world_normal(tgt, tin.local_normal)
+    miss = Vector(s_out["p2"]) - Tc
+    u = Tn.cross(Vector((0.0, 0.0, 1.0)))
+    if u.length < 1e-6:
+        u = Tn.cross(Vector((1.0, 0.0, 0.0)))
+    u.normalize()
+    v = Tn.cross(u).normalized()
+    return Vector((miss.dot(u), miss.dot(v))), tgt
+
+
+def _solve2(J, e):
+    a, b = J[0]
+    c, d = J[1]
+    det = a * d - b * c
+    if abs(det) < 1e-9:
+        return None
+    ex, ey = -e[0], -e[1]
+    return [(d * ex - b * ey) / det, (-c * ex + a * ey) / det]
+
+
+def align_element(scene, obj, iters=8, h=0.5):
+    props = obj.optics
+    if not props.base_pose_set and len(props.dofs):
+        mounts.store_base_matrix(props, obj.matrix_world.copy())
+    rdofs = [d for d in props.dofs if d.kind in ('TIP', 'TILT', 'ROT')][:2]
+    if not rdofs:
+        return {"ok": False, "msg": "no rotational DOFs to steer"}
+
+    e0, tgt = _miss_vec(scene, obj)
+    if e0 is None:
+        return {"ok": False, "msg": "no downstream target"}
+    before = e0.length
+
+    for _ in range(iters):
+        e, tgt = _miss_vec(scene, obj)
+        if e is None:
+            break
+        if e.length < 0.02:
+            break
+        cols = []
+        for d in rdofs:
+            old = d.current
+            d.current = geometry.clamp(old + h, d.min_val, d.max_val)
+            mounts.compose_pose(obj)
+            bpy.context.view_layer.update()
+            ep, _t = _miss_vec(scene, obj)
+            d.current = old
+            mounts.compose_pose(obj)
+            bpy.context.view_layer.update()
+            step = (d.current - old) if (d.current - old) != 0 else h
+            if ep is None:
+                cols.append((0.0, 0.0))
+            else:
+                cols.append(((ep[0] - e[0]) / h, (ep[1] - e[1]) / h))
+        if len(rdofs) == 2:
+            J = [[cols[0][0], cols[1][0]], [cols[0][1], cols[1][1]]]
+            delta = _solve2(J, (e[0], e[1]))
+            if delta is None:        # singular -> gradient descent fallback
+                delta = [-0.5 * (cols[0][0] * e[0] + cols[0][1] * e[1]),
+                         -0.5 * (cols[1][0] * e[0] + cols[1][1] * e[1])]
+            for d, dl in zip(rdofs, delta):
+                d.current = geometry.clamp(d.current + dl, d.min_val, d.max_val)
+        else:
+            g = cols[0]
+            denom = g[0] * g[0] + g[1] * g[1]
+            stp = -(g[0] * e[0] + g[1] * e[1]) / denom if denom > 1e-9 else 0.0
+            rdofs[0].current = geometry.clamp(rdofs[0].current + stp,
+                                              rdofs[0].min_val, rdofs[0].max_val)
+        mounts.compose_pose(obj)
+        bpy.context.view_layer.update()
+
+    e1, tgt = _miss_vec(scene, obj)
+    after = e1.length if e1 else None
+    clamped = any(d.current <= d.min_val + 1e-4 or d.current >= d.max_val - 1e-4 for d in rdofs)
+    out_of_range = bool(after is not None and after > scene.optics.warn_pos_mm and clamped)
+    if out_of_range:
+        props.align_detail = "knob range exhausted - move the post (coarse placement)"
+    else:
+        props.align_detail = ""
+    return {"ok": True, "before": before, "after": after,
+            "clamped": clamped, "out_of_range": out_of_range}
+
+
+def _path_order(scene):
+    segs = _trace(scene)
+    order = []
+    for s in segs:
+        if s["to"] and s["to"] not in order:
+            order.append(s["to"])
+    return order
+
+
+def align_all(scene):
+    results = []
+    for name in _path_order(scene):
+        obj = scene.objects.get(name)
+        if not obj or not getattr(obj, "optics", None) or not obj.optics.is_optical:
+            continue
+        if any(d.kind in ('TIP', 'TILT', 'ROT') for d in obj.optics.dofs):
+            results.append((name, align_element(scene, obj)))
+    return results
+
+
+# --- operators --------------------------------------------------------------
+
+class OPTICS_OT_refresh_report(Operator):
+    bl_idname = "optics.refresh_report"
+    bl_label = "Update Report"
+    bl_description = "Recompute alignment residuals for every optical element"
+    bl_options = {'REGISTER'}
+
+    def execute(self, context):
+        tracer.cached_segments = _trace(context.scene)
+        report = refresh_report(context.scene)
+        worst = max((r["state"] for r in report),
+                    key=lambda s: {'OK': 1, 'WARN': 2, 'BAD': 3}.get(s, 0), default='UNKNOWN')
+        self.report({'INFO'}, "Report updated for %d elements (worst: %s)" % (len(report), worst))
+        return {'FINISHED'}
+
+
+class OPTICS_OT_align_element(Operator):
+    bl_idname = "optics.align_element"
+    bl_label = "Align"
+    bl_description = "Steer this element's knobs to aim the beam at the next element"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    name: StringProperty()
+
+    def execute(self, context):
+        scene = context.scene
+        obj = scene.objects.get(self.name) if self.name else context.object
+        if obj is None:
+            self.report({'ERROR'}, "No element")
+            return {'CANCELLED'}
+        res = align_element(scene, obj)
+        tracer.cached_segments = _trace(scene)
+        refresh_report(scene)
+        tracer._tag_redraw()
+        if not res["ok"]:
+            self.report({'WARNING'}, "%s: %s" % (obj.name, res["msg"]))
+            return {'CANCELLED'}
+        if res["out_of_range"]:
+            self.report({'WARNING'}, "%s: knob range exhausted - move the post (coarse)" % obj.name)
+        else:
+            self.report({'INFO'}, "%s aligned: miss %.3f -> %.3f mm"
+                        % (obj.name, res["before"] or 0.0, res["after"] or 0.0))
+        return {'FINISHED'}
+
+
+class OPTICS_OT_align_all(Operator):
+    bl_idname = "optics.align_all"
+    bl_label = "Align All"
+    bl_description = "Align every steerable element in beam order, source to detector"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        scene = context.scene
+        results = align_all(scene)
+        tracer.cached_segments = _trace(scene)
+        refresh_report(scene)
+        tracer._tag_redraw()
+        bad = sum(1 for _n, r in results if r.get("out_of_range"))
+        self.report({'INFO'}, "Aligned %d elements (%d need coarse move)" % (len(results), bad))
+        return {'FINISHED'}
+
+
+_classes = (
+    OPTICS_OT_refresh_report,
+    OPTICS_OT_align_element,
+    OPTICS_OT_align_all,
+)
+
+
+def register():
+    for c in _classes:
+        bpy.utils.register_class(c)
+
+
+def unregister():
+    for c in reversed(_classes):
+        bpy.utils.unregister_class(c)

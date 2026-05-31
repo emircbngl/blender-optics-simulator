@@ -1,0 +1,10 @@
+{
+  "HNL100LB": {"label": "HeNe Laser (HNL100LB)", "vendor": "Thorlabs", "mesh": "HNL100LB.stl", "format": "stl", "name": "LASER_HNL100LB", "element_type": "SOURCE"},
+  "KCB1C": {"label": "Corner-Cube Mirror (KCB1C)", "vendor": "Thorlabs", "mesh": "KCB1C_M.stl", "format": "stl", "name": "M0_KCB1C", "element_type": "PRISM_MIRROR"},
+  "C6WR": {"label": "Beamsplitter Combiner (C6WR)", "vendor": "Thorlabs", "mesh": "C6WR.stl", "format": "stl", "name": "BS_C6WR", "element_type": "BEAMSPLITTER"},
+  "VA5": {"label": "Variable Attenuator (VA5-633)", "vendor": "Thorlabs", "mesh": "VA5-633_M.stl", "format": "stl", "name": "VA5_attenuator", "element_type": "ATTENUATOR"},
+  "BE10A": {"label": "Beam Expander (BE10-A)", "vendor": "Thorlabs", "mesh": "beam_expander.stl", "format": "stl", "name": "BE_expander", "element_type": "LENS"},
+  "MO50X": {"label": "Microscope Objective 50x", "vendor": "generic", "mesh": "microscope_objective.stl", "format": "stl", "name": "MO_objective", "element_type": "LENS"},
+  "PRM05": {"label": "Waveplate Mount (PRM05)", "vendor": "Thorlabs", "mesh": "PRM05_M.stl", "format": "stl", "name": "PRM_waveplate", "element_type": "WAVEPLATE"},
+  "KM100CP_M": {"label": "Kinematic Mirror Mount (KM100CP/M)", "vendor": "Thorlabs", "mesh": "KM100CP_M.step", "format": "step", "name": "M_KM100CP", "element_type": "PRISM_MIRROR", "mount": "KM100CP/M"}
+}
