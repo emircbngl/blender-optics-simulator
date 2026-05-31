@@ -55,6 +55,13 @@ MATS = {
     "laser":  lambda: _mat("OG_laser", (0.7, 0.05, 0.03), emit=(1.0, 0.1, 0.05)),
     "det":    lambda: _mat("OG_detector", (0.04, 0.04, 0.05), metal=0.3, rough=0.8),
     "ap":     lambda: _mat("OG_aperture", (0.06, 0.06, 0.06), metal=0.5, rough=0.6),
+    "pol":    lambda: _mat("OG_polarizer", (0.20, 0.70, 0.55), metal=0.1, rough=0.25),
+    "filt":   lambda: _mat("OG_filter", (0.95, 0.45, 0.20), metal=0.0, rough=0.20),
+    "iso":    lambda: _mat("OG_isolator", (0.30, 0.30, 0.34), metal=0.8, rough=0.35),
+    "dichroic": lambda: _mat("OG_dichroic", (0.80, 0.35, 0.70), metal=0.1, rough=0.12),
+    "grating": lambda: _mat("OG_grating", (0.55, 0.45, 0.65), metal=0.9, rough=0.20),
+    "retro":  lambda: _mat("OG_retro", (0.75, 0.78, 0.85), metal=1.0, rough=0.10),
+    "fiber":  lambda: _mat("OG_fiber", (0.40, 0.42, 0.48), metal=0.85, rough=0.30),
 }
 
 
@@ -217,6 +224,102 @@ def crystal(name, loc, beam_dir, coll=None, size=14.0):
     _tag(o, 'DETECTOR', clear_aperture=size)
     _add_port(o, "IN", 'IN', (0, 0, size * 0.5), (0, 0, 1), size)
     _set_matrix(o, Vector(loc), _z_to(-Vector(beam_dir).normalized()))
+    return o
+
+
+# --- additional component builders (broad library) --------------------------
+# Inline (pass-through) parts reuse `_inline`: a disc with IN/OUT ports on its
+# optical axis; the tracer transmits the beam straight through (layout fidelity).
+
+def polarizer(name, loc, axis, coll=None, radius=12.5):
+    """A linear polarizer; geometrically a pass-through inline plate."""
+    return _inline(name, loc, axis, coll, 'POLARIZER', "pol", radius=radius, depth=3.0)
+
+
+def optical_filter(name, loc, axis, coll=None, radius=12.5):
+    """An optical filter (longpass/shortpass/bandpass/ND); pass-through inline plate."""
+    return _inline(name, loc, axis, coll, 'FILTER', "filt", radius=radius, depth=3.5)
+
+
+def pinhole(name, loc, axis, coll=None, radius=12.5):
+    """A spatial-filter pinhole; the beam passes through the bore."""
+    return _inline(name, loc, axis, coll, 'PINHOLE', "ap", radius=radius, depth=2.0)
+
+
+def isolator(name, loc, axis, coll=None, radius=9.0, length=40.0):
+    """A Faraday optical isolator; a tube the beam passes through one way."""
+    return _inline(name, loc, axis, coll, 'ISOLATOR', "iso", radius=radius, depth=length)
+
+
+def fiber_collimator(name, loc, direction, coll=None, wavelength=632.8, length=30.0, radius=6.0):
+    """A fiber-coupled collimator that launches a beam along `direction` (source-like)."""
+    o = _disc(name, radius, length, coll)
+    o.data.materials.clear(); o.data.materials.append(MATS["fiber"]())
+    _tag(o, 'FIBER_COLLIMATOR', is_source=True, wavelength=wavelength)
+    _add_port(o, "OUT", 'OUT', (0, 0, length * 0.5), (0, 0, 1), radius)
+    _set_matrix(o, Vector(loc), _z_to(direction))
+    return o
+
+
+def photodiode(name, loc, beam_dir, coll=None, size=14.0):
+    """A point photodiode whose sensor faces the incoming beam; terminates it."""
+    o = _cube(name, (size, size, 6.0), coll)
+    o.data.materials.clear(); o.data.materials.append(MATS["det"]())
+    _tag(o, 'PHOTODIODE', is_detector=True, clear_aperture=size * 0.5)
+    _add_port(o, "IN", 'IN', (0, 0, 3.0), (0, 0, 1), size * 0.5)
+    _set_matrix(o, Vector(loc), _z_to(-Vector(beam_dir).normalized()))
+    return o
+
+
+def power_meter(name, loc, beam_dir, coll=None, size=20.0):
+    """A power-meter sensor head facing the incoming beam; terminates it."""
+    o = _cube(name, (size, size, 10.0), coll)
+    o.data.materials.clear(); o.data.materials.append(MATS["det"]())
+    _tag(o, 'POWER_METER', is_detector=True, clear_aperture=size * 0.5)
+    _add_port(o, "IN", 'IN', (0, 0, 5.0), (0, 0, 1), size * 0.5)
+    _set_matrix(o, Vector(loc), _z_to(-Vector(beam_dir).normalized()))
+    return o
+
+
+def dichroic(name, loc, in_dir, reflect_dir, coll=None, split=0.5, size=25.0):
+    """A dichroic mirror (plate at 45deg): reflects toward `reflect_dir`, transmits
+    along `in_dir`. Reuses the beam-splitter interaction (reflect + straight transmit)."""
+    n = (Vector(reflect_dir).normalized() - Vector(in_dir).normalized())
+    n = n.normalized() if n.length > 1e-6 else Vector((0, 0, 1))
+    o = _cube(name, (size, size, 3.0), coll)
+    o.data.materials.clear(); o.data.materials.append(MATS["dichroic"]())
+    _tag(o, 'DICHROIC', split_ratio=split, clear_aperture=size * 0.5, reflectivity=1.0)
+    _add_port(o, "IN", 'IN', (0, 0, 1.5), (0, 0, 1), size * 0.5)
+    _add_port(o, "REFLECT", 'REFLECT', (0, 0, 0), (0, 0, 1), size * 0.5)
+    _set_matrix(o, Vector(loc), _z_to(n))     # local +Z (REFLECT normal) -> bisector n
+    return o
+
+
+def grating(name, loc, in_dir, out_dir, coll=None, size=25.0):
+    """A reflective diffraction grating; modeled as a specular (0th-order) mirror
+    turning the beam from in_dir to out_dir for layout/routing."""
+    n = (Vector(out_dir).normalized() - Vector(in_dir).normalized())
+    n = n.normalized() if n.length > 1e-6 else Vector((0, 0, 1))
+    o = _cube(name, (size, size, 5.0), coll)
+    o.data.materials.clear(); o.data.materials.append(MATS["grating"]())
+    _tag(o, 'GRATING', clear_aperture=size * 0.5, reflectivity=0.8)
+    _add_port(o, "IN", 'IN', (0, 0, 2.5), (0, 0, 1), size * 0.5)
+    _add_port(o, "REFLECT", 'REFLECT', (0, 0, 0), (0, 0, 1), size * 0.5)
+    _set_matrix(o, Vector(loc), _z_to(n))
+    return o
+
+
+def retroreflector(name, loc, in_dir, coll=None, size=25.0):
+    """A corner-cube retroreflector: returns the beam antiparallel to `in_dir`.
+    The REFLECT normal is set anti-parallel to the incoming beam so the specular
+    reflection sends it straight back."""
+    d = Vector(in_dir).normalized()
+    o = _cube(name, (size, size, size * 0.8), coll)
+    o.data.materials.clear(); o.data.materials.append(MATS["retro"]())
+    _tag(o, 'RETROREFLECTOR', clear_aperture=size * 0.5, reflectivity=0.95)
+    _add_port(o, "IN", 'IN', (0, 0, size * 0.4), (0, 0, 1), size * 0.5)
+    _add_port(o, "REFLECT", 'REFLECT', (0, 0, 0), (0, 0, 1), size * 0.5)
+    _set_matrix(o, Vector(loc), _z_to(-d))    # REFLECT normal anti-parallel to incoming
     return o
 
 

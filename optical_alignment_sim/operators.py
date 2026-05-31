@@ -30,14 +30,17 @@ def _default_specs_for_type(etype, obj):
     """Fallback port specs when the name prefix is unknown, keyed by element type."""
     ax = geometry.longest_axis(obj)
     plus, minus = "+" + ax, "-" + ax
-    if etype in ('LENS', 'WAVEPLATE', 'ATTENUATOR', 'PASSTHROUGH'):
+    if etype in ('LENS', 'WAVEPLATE', 'ATTENUATOR', 'PASSTHROUGH',
+                 'POLARIZER', 'FILTER', 'ISOLATOR', 'PINHOLE'):
         return [("IN", "IN", minus), ("OUT", "OUT", plus)]
-    if etype == 'SOURCE':
+    if etype in ('SOURCE', 'FIBER_COLLIMATOR'):
         return [("OUT", "OUT", plus)]
-    if etype == 'DETECTOR':
+    if etype in ('DETECTOR', 'PHOTODIODE', 'POWER_METER'):
         return [("IN", "IN", minus)]
-    if etype in ('MIRROR', 'PRISM_MIRROR'):
+    if etype in ('MIRROR', 'PRISM_MIRROR', 'DICHROIC', 'GRATING'):
         return [("IN", "IN", "+Z"), ("OUT", "OUT", "+Y")]
+    if etype == 'RETROREFLECTOR':
+        return [("IN", "IN", "+Z"), ("OUT", "OUT", "+Z")]
     if etype == 'BEAMSPLITTER':
         return [("IN_ref", "IN", "+X"), ("IN_sam", "IN", "-Y"), ("OUT", "OUT", "+Y")]
     if etype == 'APERTURE':
@@ -60,7 +63,8 @@ def _populate_ports_from_specs(obj, props, port_specs):
                   geometry.face_center_local(obj, axis),
                   geometry.axis_vector(axis), ca)
     # derive the internal reflective plane for reflective elements
-    if props.element_type in ('PRISM_MIRROR', 'MIRROR', 'BEAMSPLITTER') and in_n is not None and out_n is not None:
+    if props.element_type in ('PRISM_MIRROR', 'MIRROR', 'BEAMSPLITTER',
+                              'DICHROIC', 'GRATING', 'RETROREFLECTOR') and in_n is not None and out_n is not None:
         _, _, ctr = geometry.local_bounds(obj)
         rn = in_n + out_n
         rn = rn.normalized() if rn.length > geometry.EPS else geometry.axis_vector("+Z")

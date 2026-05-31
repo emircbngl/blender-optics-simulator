@@ -28,6 +28,17 @@ PREFIX_RULES = [
     ("MO",       "LENS",         [("IN", "IN", "+Z"), ("OUT", "OUT", "-Z")]),
     ("TubeLens", "LENS",         [("IN", "IN", "+Z"), ("OUT", "OUT", "-Z")]),
     ("CCD",      "DETECTOR",     [("IN", "IN", "+Z")]),
+    # --- broad-library additions ---
+    ("DM",       "DICHROIC",       [("IN", "IN", "+Z"), ("OUT", "OUT", "+Y")]),
+    ("GR",       "GRATING",        [("IN", "IN", "+Z"), ("OUT", "OUT", "+Y")]),
+    ("RR",       "RETROREFLECTOR", [("IN", "IN", "+Z"), ("OUT", "OUT", "+Z")]),
+    ("POL",      "POLARIZER",      [("IN", "IN", "+Z"), ("OUT", "OUT", "-Z")]),
+    ("FILT",     "FILTER",         [("IN", "IN", "+Z"), ("OUT", "OUT", "-Z")]),
+    ("PIN",      "PINHOLE",        [("IN", "IN", "+Z"), ("OUT", "OUT", "-Z")]),
+    ("ISO",      "ISOLATOR",       [("IN", "IN", "+Z"), ("OUT", "OUT", "-Z")]),
+    ("FC",       "FIBER_COLLIMATOR", [("OUT", "OUT", "-Y")]),
+    ("PD",       "PHOTODIODE",     [("IN", "IN", "+Z")]),
+    ("PM",       "POWER_METER",    [("IN", "IN", "+Z")]),
     # NOTE: a bare "M" rule is intentionally omitted to avoid swallowing MO/M_*.
 ]
 
@@ -73,5 +84,43 @@ MOUNT_LIBRARY = {
             {"kind": "TILT", "axis": "+Y", "min": -4.0, "max": 4.0},   # drawing label: ROLL
         ],
         "note": "Edmund 25/25.4mm E-Series; axes PITCH/ROLL on drawing; range from spec.",
+    },
+    "KM100": {
+        "mount_type": "KINEMATIC_2AXIS",
+        "pivot": "OPTIC_CENTER",
+        "optic_diameter_mm": 25.4,
+        "clear_aperture_mm": 22.3,
+        "adjuster_thread": "8-32",
+        "dofs": [
+            {"kind": "TIP",  "axis": "+X", "min": -4.0, "max": 4.0},
+            {"kind": "TILT", "axis": "+Y", "min": -4.0, "max": 4.0},
+        ],
+        "note": "Thorlabs 1in kinematic mirror mount; angular range is a spec value - confirm.",
+    },
+    "POLARIS-K1": {
+        "mount_type": "KINEMATIC_2AXIS",
+        "pivot": "OPTIC_CENTER",
+        "optic_diameter_mm": 25.4,
+        "clear_aperture_mm": 23.1,
+        "adjuster_thread": "100 TPI",
+        "mm_per_rev": 25.4 / 100.0,             # 0.254 mm/rev
+        "dofs": [
+            {"kind": "TIP",  "axis": "+X", "min": -4.0, "max": 4.0},
+            {"kind": "TILT", "axis": "+Y", "min": -4.0, "max": 4.0},
+        ],
+        "note": "Thorlabs Polaris 1in low-drift mount; range is a spec value - confirm.",
+    },
+    "KS1": {
+        "mount_type": "KINEMATIC_2AXIS",
+        "pivot": "OPTIC_CENTER",
+        "optic_diameter_mm": 25.4,
+        "clear_aperture_mm": 22.6,
+        "adjuster_thread": "100 TPI",
+        "mm_per_rev": 25.4 / 100.0,
+        "dofs": [
+            {"kind": "TIP",  "axis": "+X", "min": -4.0, "max": 4.0},
+            {"kind": "TILT", "axis": "+Y", "min": -4.0, "max": 4.0},
+        ],
+        "note": "Thorlabs 1in kinematic mount; range is a spec value - confirm.",
     },
 }

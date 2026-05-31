@@ -71,11 +71,12 @@ class OPTICS_PT_tag(Panel):
         et = props.element_type
         if et == 'LENS':
             pcol.prop(props, "focal_length")
-        if et == 'BEAMSPLITTER':
+        if et in ('BEAMSPLITTER', 'DICHROIC'):
             pcol.prop(props, "split_ratio")
         if et == 'PRISM_MIRROR':
             pcol.prop(props, "prism_angle")
-        if et in ('MIRROR', 'PRISM_MIRROR', 'BEAMSPLITTER'):
+        if et in ('MIRROR', 'PRISM_MIRROR', 'BEAMSPLITTER',
+                  'DICHROIC', 'GRATING', 'RETROREFLECTOR'):
             pcol.prop(props, "reflectivity")
         if et in ('LENS', 'WAVEPLATE', 'PASSTHROUGH'):
             pcol.prop(props, "refractive_index")
