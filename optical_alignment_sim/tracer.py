@@ -157,6 +157,39 @@ def _child(ray, E, H, d, power, kind, idx, t, jones=None, q=None):
                 src_id=ray.src_id)
 
 
+def _transmission(op, wl):
+    """Wavelength-dependent power transmission of a filter / attenuator."""
+    if op.element_type == 'ATTENUATOR':
+        return 10.0 ** (-op.od)
+    ft = op.filt_type
+    if ft == 'ND':
+        return 10.0 ** (-op.od)
+    if ft == 'LP':
+        return 1.0 if wl >= op.cut_lo_nm else 0.0
+    if ft == 'SP':
+        return 1.0 if wl <= op.cut_hi_nm else 0.0
+    if ft == 'BP':
+        return 1.0 if op.cut_lo_nm <= wl <= op.cut_hi_nm else 0.0
+    return 1.0
+
+
+def _diffract(d, n, wl_nm, lines_per_mm, order):
+    """Grating equation in the plane of incidence: sin(theta_m) = sin(theta_i) +
+    m*lambda/d, d = 1/lines_per_mm. 0th order -> specular; an evanescent order
+    (|sin|>1) returns None so the caller can fall back to specular."""
+    if order == 0 or lines_per_mm <= 0.0:
+        return geometry.reflect(d, n)
+    n_in = n if d.dot(n) < 0.0 else -n              # normal facing the incoming ray
+    d_t = d - d.dot(n_in) * n_in
+    sin_i = d_t.length
+    t_hat = (d_t / sin_i) if sin_i > 1e-9 else n_in.orthogonal().normalized()
+    sin_m = sin_i + order * (wl_nm * 1.0e-6) * lines_per_mm
+    if abs(sin_m) > 1.0:
+        return None
+    cos_m = math.sqrt(max(0.0, 1.0 - sin_m * sin_m))
+    return (sin_m * t_hat + cos_m * n_in).normalized()
+
+
 def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
     elems = [o for o in scene.objects
              if getattr(o, "optics", None) and o.optics.is_optical]
@@ -209,12 +242,25 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
         if et == 'APERTURE':
             stack.append(_child(ray, E, H, ray.dir, ray.power, 'TRANSMIT', idx, t))
             continue
-        if et in ('MIRROR', 'PRISM_MIRROR', 'GRATING', 'RETROREFLECTOR'):
+        if et in ('MIRROR', 'PRISM_MIRROR', 'RETROREFLECTOR'):
             nd = geometry.reflect(ray.dir, sn)
             a = math.sqrt(max(op.reflectivity, 0.0))      # ideal: preserve polarization, scale amplitude
             stack.append(_child(ray, E, H, nd, ray.power * op.reflectivity, 'REFLECT', idx, t,
                                 jones=physics.scale(J, a) if J else None))
-        elif et in ('BEAMSPLITTER', 'DICHROIC'):
+        elif et == 'GRATING':
+            nd = _diffract(ray.dir, sn, ray.wl, op.lines_per_mm, op.grating_order)
+            if nd is None:
+                nd = geometry.reflect(ray.dir, sn)         # evanescent order -> specular
+            a = math.sqrt(max(op.reflectivity, 0.0))
+            stack.append(_child(ray, E, H, nd, ray.power * op.reflectivity, 'REFLECT', idx, t,
+                                jones=physics.scale(J, a) if J else None))
+        elif et == 'DICHROIC':
+            transmit = (ray.wl >= op.cut_nm) if op.pass_type == 'LP' else (ray.wl <= op.cut_nm)
+            if transmit:
+                stack.append(_child(ray, E, H, ray.dir, ray.power, 'TRANSMIT', idx, t))
+            else:
+                stack.append(_child(ray, E, H, geometry.reflect(ray.dir, sn), ray.power, 'REFLECT', idx, t))
+        elif et == 'BEAMSPLITTER':
             if op.is_pbs and J:                            # polarizing: reflect s (y), transmit p (x)
                 Jr = physics.apply(physics.PBS_REFLECT, J)
                 Jt = physics.apply(physics.PBS_TRANSMIT, J)
@@ -234,7 +280,11 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
         elif et == 'WAVEPLATE' and J:
             Jw = physics.apply(physics.M_waveplate(op.retardance_deg, op.fast_axis_deg), J)
             stack.append(_child(ray, E, H, ray.dir, physics.intensity(Jw), 'TRANSMIT', idx, t, jones=Jw))
-        else:  # LENS / FILTER / ATTENUATOR / ISOLATOR / PINHOLE / PASSTHROUGH
+        elif et in ('FILTER', 'ATTENUATOR'):
+            T = _transmission(op, ray.wl)
+            stack.append(_child(ray, E, H, ray.dir, ray.power * T, 'TRANSMIT', idx, t,
+                                jones=physics.scale(J, math.sqrt(max(T, 0.0))) if J else None))
+        else:  # LENS / ISOLATOR / PINHOLE / PASSTHROUGH
             stack.append(_child(ray, E, H, ray.dir, ray.power, 'TRANSMIT', idx, t))
 
     return segments

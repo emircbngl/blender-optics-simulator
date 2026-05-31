@@ -238,9 +238,11 @@ def polarizer(name, loc, axis, coll=None, radius=12.5):
     return _inline(name, loc, axis, coll, 'POLARIZER', "pol", radius=radius, depth=3.0)
 
 
-def optical_filter(name, loc, axis, coll=None, radius=12.5):
-    """An optical filter (longpass/shortpass/bandpass/ND); pass-through inline plate."""
-    return _inline(name, loc, axis, coll, 'FILTER', "filt", radius=radius, depth=3.5)
+def optical_filter(name, loc, axis, coll=None, radius=12.5,
+                   filt_type='BP', cut_lo_nm=600.0, cut_hi_nm=700.0, od=1.0):
+    """An optical filter (longpass/shortpass/bandpass/ND); transmits per its band."""
+    return _inline(name, loc, axis, coll, 'FILTER', "filt", radius=radius, depth=3.5,
+                   filt_type=filt_type, cut_lo_nm=cut_lo_nm, cut_hi_nm=cut_hi_nm, od=od)
 
 
 def pinhole(name, loc, axis, coll=None, radius=12.5):
@@ -283,28 +285,32 @@ def power_meter(name, loc, beam_dir, coll=None, size=20.0):
     return o
 
 
-def dichroic(name, loc, in_dir, reflect_dir, coll=None, split=0.5, size=25.0):
-    """A dichroic mirror (plate at 45deg): reflects toward `reflect_dir`, transmits
-    along `in_dir`. Reuses the beam-splitter interaction (reflect + straight transmit)."""
+def dichroic(name, loc, in_dir, reflect_dir, coll=None, split=0.5, size=25.0,
+             pass_type='LP', cut_nm=650.0):
+    """A dichroic mirror (plate at 45deg): transmits or reflects by wavelength
+    (longpass transmits >= cut_nm, shortpass transmits <= cut_nm)."""
     n = (Vector(reflect_dir).normalized() - Vector(in_dir).normalized())
     n = n.normalized() if n.length > 1e-6 else Vector((0, 0, 1))
     o = _cube(name, (size, size, 3.0), coll)
     o.data.materials.clear(); o.data.materials.append(MATS["dichroic"]())
-    _tag(o, 'DICHROIC', split_ratio=split, clear_aperture=size * 0.5, reflectivity=1.0)
+    _tag(o, 'DICHROIC', split_ratio=split, clear_aperture=size * 0.5, reflectivity=1.0,
+         pass_type=pass_type, cut_nm=cut_nm)
     _add_port(o, "IN", 'IN', (0, 0, 1.5), (0, 0, 1), size * 0.5)
     _add_port(o, "REFLECT", 'REFLECT', (0, 0, 0), (0, 0, 1), size * 0.5)
     _set_matrix(o, Vector(loc), _z_to(n))     # local +Z (REFLECT normal) -> bisector n
     return o
 
 
-def grating(name, loc, in_dir, out_dir, coll=None, size=25.0):
-    """A reflective diffraction grating; modeled as a specular (0th-order) mirror
-    turning the beam from in_dir to out_dir for layout/routing."""
+def grating(name, loc, in_dir, out_dir, coll=None, size=25.0, lines_per_mm=1200.0, order=1):
+    """A reflective diffraction grating. ``out_dir`` sets the surface orientation
+    (the 0th-order/specular direction); the traced ``order`` beam is deflected from
+    it by the grating equation."""
     n = (Vector(out_dir).normalized() - Vector(in_dir).normalized())
     n = n.normalized() if n.length > 1e-6 else Vector((0, 0, 1))
     o = _cube(name, (size, size, 5.0), coll)
     o.data.materials.clear(); o.data.materials.append(MATS["grating"]())
-    _tag(o, 'GRATING', clear_aperture=size * 0.5, reflectivity=0.8)
+    _tag(o, 'GRATING', clear_aperture=size * 0.5, reflectivity=0.8,
+         lines_per_mm=lines_per_mm, grating_order=order)
     _add_port(o, "IN", 'IN', (0, 0, 2.5), (0, 0, 1), size * 0.5)
     _add_port(o, "REFLECT", 'REFLECT', (0, 0, 0), (0, 0, 1), size * 0.5)
     _set_matrix(o, Vector(loc), _z_to(n))
