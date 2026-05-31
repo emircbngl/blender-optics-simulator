@@ -30,8 +30,12 @@ MCP) drive the same core.
   camera presets.
 - **Canonical examples** — one-click Mach-Zehnder, Michelson, Hong-Ou-Mandel and
   Bell/entanglement setups, built from generic (mesh-free) components.
-- **Component library** — import your own vendor parts (STL/OBJ natively, STEP/IGES
-  via FreeCAD) and save them as reusable library entries.
+- **Component library** — a broad built-in catalog of real vendor parts (mirrors,
+  beam splitters, lenses, waveplates, polarizers, filters, dichroics, gratings,
+  retroreflectors, isolators, detectors, …) addressable by part number. Import your
+  own vendor CAD (STL/OBJ natively, STEP/IGES via FreeCAD), or let an entry fall
+  back to generic mesh-free geometry when the CAD isn't on disk. Save your own
+  setups as reusable entries.
 
 ## Install
 
@@ -73,9 +77,12 @@ mount parameters). To use real parts:
    (`freecadcmd` / `FreeCADCmd`) in preferences — the add-on converts on import.
    Standalone conversion: see `tools/freecad_convert.py`.
 
-The seeded library entries (laser, cage-cube mirror, beamsplitter, attenuator,
-beam expander, objective, waveplate, KM100CP/M mount) reference meshes by filename;
-supply your own to use them.
+The built-in catalog (~40 real vendor parts — lasers, mirrors, prism/corner-cube
+mirrors, beam splitters, dichroics, gratings, retroreflectors, lenses, waveplates,
+polarizers, filters, attenuators, isolators, apertures, pinholes, fiber collimators,
+photodiodes and power-meter heads) references meshes by filename. Supply the vendor
+CAD to use the real geometry; without it, **Add Component** still spawns a correct
+generic (mesh-free) element, so every catalog entry is usable immediately.
 
 ## Examples (scripts)
 

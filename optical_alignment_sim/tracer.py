@@ -24,7 +24,10 @@ EXTEND_MM = 150.0          # how far an escaping ray is drawn
 # overlay reads this; handlers write it
 cached_segments = []
 
-REFLECTIVE = ('MIRROR', 'PRISM_MIRROR', 'BEAMSPLITTER')
+# Elements whose beam interaction happens at the REFLECT port plane (not the IN plane).
+REFLECTIVE = ('MIRROR', 'PRISM_MIRROR', 'BEAMSPLITTER', 'DICHROIC', 'GRATING', 'RETROREFLECTOR')
+# Elements that absorb the beam (no outgoing ray).
+TERMINAL = ('DETECTOR', 'PHOTODIODE', 'POWER_METER')
 
 
 class _Ray:
@@ -162,22 +165,22 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
         segments.append(_seg(ray, H, E))
         et = E.optics.element_type
 
-        if et == 'DETECTOR':
+        if et in TERMINAL:
             continue
         if et == 'APERTURE':
             stack.append(_Ray(H, ray.dir, ray.power, ray.depth + 1, E, ray.wl, 'TRANSMIT', idx))
             continue
-        if et in ('MIRROR', 'PRISM_MIRROR'):
+        if et in ('MIRROR', 'PRISM_MIRROR', 'GRATING', 'RETROREFLECTOR'):
             nd = geometry.reflect(ray.dir, sn)
             stack.append(_Ray(H, nd, ray.power * E.optics.reflectivity,
                               ray.depth + 1, E, ray.wl, 'REFLECT', idx))
-        elif et == 'BEAMSPLITTER':
+        elif et in ('BEAMSPLITTER', 'DICHROIC'):
             r = E.optics.split_ratio
             stack.append(_Ray(H, geometry.reflect(ray.dir, sn), ray.power * r,
                               ray.depth + 1, E, ray.wl, 'SPLIT_R', idx))
             stack.append(_Ray(H, ray.dir, ray.power * (1.0 - r),
                               ray.depth + 1, E, ray.wl, 'SPLIT_T', idx))
-        else:  # LENS / WAVEPLATE / ATTENUATOR / PASSTHROUGH
+        else:  # LENS / WAVEPLATE / POLARIZER / FILTER / ATTENUATOR / ISOLATOR / PINHOLE / PASSTHROUGH
             stack.append(_Ray(H, ray.dir, ray.power, ray.depth + 1, E, ray.wl, 'TRANSMIT', idx))
 
     return segments
