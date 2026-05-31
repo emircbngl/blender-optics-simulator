@@ -99,6 +99,15 @@ def _live_update(self, context):
         pass
 
 
+def _bg_update(self, context):
+    """Background preset changed -> apply it immediately (live in rendered view)."""
+    try:
+        from . import render
+        render.apply_background(self.id_data)        # self.id_data is the Scene
+    except Exception:
+        pass
+
+
 # --- property groups --------------------------------------------------------
 
 class OpticalPort(PropertyGroup):
@@ -181,6 +190,13 @@ class OpticalSceneProps(PropertyGroup):
     line_width: FloatProperty(name="Beam width", default=3.0, min=0.5, max=10.0)
     show_ports: BoolProperty(name="Show ports", default=True)
     auto_color: BoolProperty(name="Auto color by alignment", default=True)
+    bg_preset: EnumProperty(
+        name="Background",
+        items=[('DARK',        "Dark",          "Dim dark backdrop (default)"),
+               ('BLACK',       "Black",         "Pure black backdrop"),
+               ('WHITE',       "White / Paper", "White backdrop for light figures"),
+               ('TRANSPARENT', "Transparent",   "Alpha (PNG) background for compositing onto paper/figures")],
+        default='DARK', update=_bg_update)
     # alignment thresholds
     ok_pos_mm: FloatProperty(name="OK pos (mm)", default=0.5, min=0.0)
     ok_ang_deg: FloatProperty(name="OK ang (deg)", default=0.2, min=0.0)

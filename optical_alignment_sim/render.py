@@ -26,33 +26,54 @@ def resolve_eevee_id():
     return 'BLENDER_EEVEE'
 
 
+def _world_bg_node(scene):
+    """Return (world, background-shader-node), creating an OPTICS_World if none.
+    Robust to renamed/custom node trees (falls back to the World Output's surface)."""
+    w = scene.world
+    if w is None:
+        w = bpy.data.worlds.new("OPTICS_World")
+        scene.world = w
+    w.use_nodes = True
+    bg = w.node_tree.nodes.get("Background")
+    if bg is None:
+        out = next((n for n in w.node_tree.nodes if n.type == 'OUTPUT_WORLD'), None)
+        if out and out.inputs[0].is_linked:
+            bg = out.inputs[0].links[0].from_node
+    return w, bg
+
+
+# Backdrop presets for renders. TRANSPARENT sets film_transparent so the render
+# is an alpha PNG to composite onto paper/figures/slides.
+_BG = {
+    'DARK':        {"color": (0.02, 0.02, 0.03, 1.0), "strength": 0.4, "transparent": False},
+    'BLACK':       {"color": (0.0, 0.0, 0.0, 1.0),    "strength": 1.0, "transparent": False},
+    'WHITE':       {"color": (1.0, 1.0, 1.0, 1.0),    "strength": 1.0, "transparent": False},
+    'TRANSPARENT': {"color": (0.02, 0.02, 0.03, 1.0), "strength": 0.3, "transparent": True},
+}
+
+
+def apply_background(scene, preset=None):
+    """Set the world backdrop colour/strength + film transparency from a named
+    preset (or scene.optics.bg_preset). An explicit choice is applied as-is."""
+    preset = preset or getattr(getattr(scene, "optics", None), "bg_preset", 'DARK')
+    cfg = _BG.get(preset, _BG['DARK'])
+    _w, bg = _world_bg_node(scene)
+    if bg and "Strength" in bg.inputs:
+        if "Color" in bg.inputs:
+            bg.inputs["Color"].default_value = cfg["color"]
+        bg.inputs["Strength"].default_value = cfg["strength"]
+    scene.render.film_transparent = cfg["transparent"]
+
+
 def ensure_lighting(scene):
-    """Add a default sun + soft world background if the scene has none, so a
-    one-click render is not black."""
+    """Add a default sun if the scene has none, so a one-click render is not black.
+    The world backdrop itself is set separately by apply_background()."""
     if not any(o.type == 'LIGHT' for o in scene.objects):
         ld = bpy.data.lights.new("OPTICS_Sun", 'SUN')
         ld.energy = 3.0
         sun = bpy.data.objects.new("OPTICS_Sun", ld)
         scene.collection.objects.link(sun)
         sun.rotation_euler = (math.radians(52), math.radians(8), math.radians(40))
-    w = scene.world
-    new_world = False
-    if w is None:
-        w = bpy.data.worlds.new("OPTICS_World")
-        scene.world = w
-        new_world = True
-    w.use_nodes = True
-    bg = w.node_tree.nodes.get("Background")
-    if bg is None:                                   # robust to renamed/custom node trees
-        out = next((n for n in w.node_tree.nodes if n.type == 'OUTPUT_WORLD'), None)
-        if out and out.inputs[0].is_linked:
-            bg = out.inputs[0].links[0].from_node
-    if bg and "Strength" in bg.inputs:
-        # dim a world we created or the stock default "World"; respect a user's custom world
-        if new_world or w.name == "World" or bg.inputs["Strength"].default_value < 0.05:
-            if "Color" in bg.inputs:
-                bg.inputs["Color"].default_value = (0.02, 0.02, 0.03, 1.0)
-            bg.inputs["Strength"].default_value = 0.4
 
 
 def setup_preview(scene):
@@ -60,6 +81,7 @@ def setup_preview(scene):
     scene.render.resolution_x = 1280
     scene.render.resolution_y = 720
     ensure_lighting(scene)
+    apply_background(scene)
     return scene.render.engine
 
 
@@ -74,6 +96,7 @@ def setup_final(scene):
     except Exception:
         pass
     ensure_lighting(scene)
+    apply_background(scene)
     return scene.render.engine
 
 

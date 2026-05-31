@@ -230,6 +230,8 @@ class OPTICS_PT_render(Panel):
         grid = layout.grid_flow(columns=4, align=True)
         for pr in ('HERO', 'TOP', 'FRONT', 'SIDE'):
             grid.operator("optics.set_camera", text=pr.title()).preset = pr
+        layout.label(text="Background")
+        layout.prop(context.scene.optics, "bg_preset", text="")
         col = layout.column(align=True)
         col.operator("optics.render_preview", icon='RENDER_STILL')
         col.operator("optics.render_final", icon='RENDER_RESULT')
