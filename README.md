@@ -1,69 +1,93 @@
-# Optical Alignment & Simulation — Blender Add-on
+# Blender Optics Simulator
 
-A Blender 4.2+/5.x add-on for **building, simulating and aligning optical setups**
-(mirrors, beam splitters, lenses, waveplates, lasers, detectors). It traces the
-beam path live in the viewport, models real kinematic-mount adjustment within
-physical limits, auto-aligns components, and renders publication-quality figures.
+> *"See a need, fill a need."* — Bigweld, *Robots* (2005)
 
-Human-first: every feature is driven from the **View3D ▸ Sidebar ▸ Optics** tab.
-An optional Python API (`optics_api`) lets an agent (e.g. Claude via the Blender
-MCP) drive the same core.
+A Blender **4.2+ / 5.x** add-on for **designing, simulating, aligning, and rendering
+optical setups** — lasers, mirrors, beam splitters, lenses, waveplates, polarizers,
+dichroics, gratings, retroreflectors, isolators, cavities, detectors — backed by a real
+**optical-physics engine**: polarization (Jones/Stokes), interference (live fringes),
+wavelength-selective optics, Gaussian-beam propagation, and analytic quantum readouts.
 
-> Status: geometric layout **plus a physics layer** — polarization (Jones), classical
-> interference (fringes / visibility), wavelength-selective optics, Gaussian-beam (ABCD)
-> spot sizes, a power budget, and analytic readouts for the quantum examples.
+Everything is driven from **View3D ▸ Sidebar ▸ Optics**. An optional Python API
+(`optics_api`) lets a script — or an AI agent (e.g. Claude via the Blender MCP) — drive
+the same core headlessly.
+
+---
+
+## Why this exists
+
+While driving Blender through the MCP, an AI agent literally **could not see** the
+optics: where each mirror's center was, which way its surface normal pointed, where a beam
+would actually go. The optical truth was hidden behind object origins and arbitrary
+rotations, so alignment was guesswork.
+
+So — *see a need, fill a need.* This add-on makes the geometry explicit: every element
+carries its **ports** (entry / exit / reflective surfaces) as world-space **position and
+normal**, recoverable no matter where the object origin sits:
+
+```text
+world_position = obj.matrix_world @ local_position
+world_normal   = (obj.matrix_world.to_3x3() @ local_normal).normalized()
+```
+
+On that foundation it builds a live beam tracer, kinematic-mount alignment, a physics
+layer, and a render pipeline — all readable by both humans (the Optics panel) and agents
+(`optics_api` returns the full state: ports, normals, beam path, detector readings).
+
+---
 
 ## Features
 
-- **Optical data model** — every element carries its ports (entry/exit/reflective
-  surfaces) as world-space position **and normal**, so the true optical geometry is
-  always recoverable (origin offsets and rotations no longer hide it).
-- **Live beam tracer** — sequential geometric ray tracing (reflection, refraction
-  direction, beam splitting) drawn as a GPU overlay that updates as you drag parts.
-- **Kinematic mounts** — rig a static mesh with the tip/tilt/rotation/translation
-  knobs it's missing, each with a real range; auto-align drives only the knobs and
-  tells you "move the post" when a target is out of range.
-- **Opto-mechanical limits** — warns when a post rod pulls out of its holder or a
-  cage rod leaves its bore.
-- **Alignment report** — per-element position/angle residuals with OK/Warn/Bad
-  states and color feedback.
-- **Render helper** — one-click EEVEE preview / Cycles final with beam baking and
-  camera presets.
-- **Canonical examples** — one-click Mach-Zehnder, Michelson, Hong-Ou-Mandel and
-  Bell/entanglement setups, built from generic (mesh-free) components.
-- **Component library** — a broad built-in catalog of real vendor parts (mirrors,
-  beam splitters, lenses, waveplates, polarizers, filters, dichroics, gratings,
-  retroreflectors, isolators, detectors, …) addressable by part number. Import your
-  own vendor CAD (STL/OBJ natively, STEP/IGES via FreeCAD), or let an entry fall
-  back to generic mesh-free geometry when the CAD isn't on disk. Save your own
-  setups as reusable entries.
-- **Polarization (Jones)** — sources emit a polarization state; polarizers (Malus),
-  waveplates (HWP/QWP) and polarizing beam splitters transform it; detectors report
-  power, polarization (azimuth / DOP) and honor an optional analyzer.
-- **Interference** — beams from one source recombine coherently (optical path length →
-  phase) with a coherence envelope from the source linewidth; detectors report fringe
-  visibility (Michelson / Mach-Zehnder fringes, complementary MZ outputs).
-- **Wavelength optics** — dichroics route by cut wavelength, filters pass their band
-  (longpass / shortpass / bandpass / ND), gratings diffract by the grating equation.
-- **Gaussian beams (ABCD)** — q-parameter propagation through free space and lenses;
-  per-segment spot size and Gaussian aperture clipping.
-- **Scan, plots & budget** — sweep an OPD stage / waveplate angle / wavelength and plot
-  each detector's response (interferogram, Malus curve, spectrum) to PNG + CSV;
-  synthesize the 2-D fringe pattern on a detector; write a per-detector power/loss budget.
-- **Quantum readouts (analytic)** — Hong-Ou-Mandel dip and Bell CHSH (|S| = 2√2) for the
-  named examples (analytic, not a full quantum engine).
-- **Advanced physics** — unpolarized / partial light (Stokes, DOP); Fresnel metal-mirror
-  s/p phase (linear → elliptical); chromatic dispersion (Sellmeier n(λ): a 633 nm waveplate
-  behaves like a QWP at 450 nm, chromatic lens focus); white-light fringe packets; a
-  detector camera model (shot + read noise, saturation); one-way Faraday isolators; and
-  Fabry-Pérot cavities (Airy resonances, finesse, FSR).
-- **Render backgrounds** — Dark / Black / White-paper / Transparent (alpha PNG) presets.
+- **Explicit optical data model** — ports as world-space position **+ normal**; the true
+  geometry is always recoverable (origin offsets and rotations no longer hide it).
+- **Live beam tracer** — sequential ray tracing (reflect / split / transmit / diffract /
+  terminate) drawn as a GPU overlay that updates as you drag parts. No mesh, no undo spam.
+- **Kinematic mounts** — rig a static vendor mesh with the tip/tilt/rotate/translate knobs
+  it lacks, each with a real range; **auto-align** drives only the knobs and says
+  *"move the post"* when a target is out of reach.
+- **Opto-mechanical limits** — warns when a post pulls out of its holder or a cage rod
+  leaves its bore.
+- **Alignment report** — per-element position/angle residuals with OK/Warn/Bad states and
+  viewport color feedback.
+- **Component library** — a broad built-in catalog of **38 real vendor parts** (Thorlabs &
+  co.) addressable by part number. Import your own CAD (STL/OBJ natively, **STEP/IGES via
+  FreeCAD**), or let an entry fall back to correct **generic mesh-free geometry** when the
+  CAD isn't on disk — so every catalog entry is usable immediately.
+- **Render helper** — one-click EEVEE preview / Cycles final, camera presets
+  (Hero/Top/Front/Side), beam baking, and **background presets** (Dark / Black / White-paper
+  / **Transparent** alpha-PNG for figures).
+- **Canonical examples** — one-click Mach-Zehnder, Michelson, Hong-Ou-Mandel, and
+  Bell/entanglement setups, built from portable generic components.
+
+### Physics layer
+
+| Layer | Models | Validated against |
+|-------|--------|-------------------|
+| **Polarization** | Jones vectors/matrices: source state, polarizer (Malus), waveplate (HWP/QWP + fast axis), PBS (s/p); Stokes/**DOP** for partial & unpolarized light | Malus cos²θ, QWP→circular, PBS 50/50 |
+| **Interference** | coherent recombination (OPL→phase), coherence envelope from linewidth, fringe **visibility**; complementary Mach-Zehnder outputs | V=1 at zero OPD, energy conservation |
+| **Wavelength** | dichroic routing by cut-λ, filters (LP/SP/BP/ND), grating equation `mλ = d·Δsinθ`, **dispersion** n(λ) (Sellmeier) | grating angle, d-line n(587.6)=1.5168 |
+| **Gaussian beam** | complex q-parameter through free space + lenses (ABCD), spot size w(z), aperture clipping | focal spot λf/πw₀ |
+| **Advanced** | Fresnel metal-mirror s/p phase (linear→elliptical), white-light fringe packets, detector **camera model** (shot/read noise, saturation), one-way **isolators**, **Fabry-Pérot** cavities (Airy/finesse/FSR) | Fresnel Brewster/normal, Airy comb, finesse |
+| **Quantum (analytic)** | Hong-Ou-Mandel dip, Bell **CHSH** | R(0)=0, \|S\|=2√2 |
+
+Analysis tools — **Scan + Plot** (interferogram / Malus / spectrum), **Detector Fringe
+Image** (2-D pattern), **Power Budget**, **Quantum Readout** — render results into a Blender
+Image Editor (also saved as PNG + CSV), so they stay in one place and are queryable.
+
+The physics lives in a dependency-free `physics.py` with a closed-form self-test you can run
+with a bare interpreter:
+
+```bash
+python3 optical_alignment_sim/physics.py   # -> PHYSICS SELFTEST PASSED
+```
+
+---
 
 ## Install
 
-1. Download `optical_alignment_sim-<version>.zip` (or build it, see below).
-2. In Blender: **drag the zip onto the window**, or *Edit ▸ Preferences ▸ Add-ons ▸
-   Install from Disk…* and pick the zip.
+1. Download `optical_alignment_sim-<version>.zip` (or build it, below).
+2. In Blender: **drag the zip onto the window**, or *Edit ▸ Preferences ▸ Add-ons ▸ Install
+   from Disk…* and pick the zip.
 3. Open the **Optics** tab in the 3D viewport sidebar (press `N`).
 
 Build the zip yourself:
@@ -73,61 +97,71 @@ blender --command extension build --source-dir optical_alignment_sim --output-di
 blender --command extension validate optical_alignment_sim
 ```
 
+---
+
 ## Quick start
 
-- **Examples ▸** pick *Mach-Zehnder* (or any of the four) to spawn a full setup with
-  the live beam overlay.
-- **Element** — select an object, *Tag as Optical Element*, *Auto-Detect Ports* (by
-  name) or *Add Port from Face* (for arbitrary meshes); *Normalize Imported CAD*
-  fixes units/scale.
-- **Mount & Adjustment** — *Apply Mount Preset* (e.g. KM100CP/M), *Set Coarse Pose*,
-  then drive the tip/tilt knobs.
+- **Examples ▸** pick *Michelson* (or any of the four) to spawn a full setup with the live
+  beam overlay.
+- **Element** — select an object, *Tag as Optical Element*, then *Auto-Detect Ports* (by
+  name) or *Add Port from Face* (any mesh); *Normalize Imported CAD* fixes units/scale.
+  Per-type parameters appear here: source polarization, waveplate angle, mirror coating, …
+- **Mount & Adjustment** — *Apply Mount Preset* (e.g. KM100CP/M), *Set Coarse Pose*, then
+  drive the tip/tilt knobs.
 - **Simulation** — toggle *Live simulation*; the beam updates as you move parts.
-- **Alignment Report** — *Update Report* / *Align* / *Align All*.
-- **Render** — *Bake Beams to Mesh*, pick a camera preset and a **Background** preset
-  (Dark / Black / White / Transparent), *EEVEE Preview* / *Cycles Final*.
-- **Analysis** — set source polarization and waveplate/polarizer angles, then use
-  *Scan + Plot* (interferogram / Malus / spectrum), *Detector Fringe Image*,
-  *Power Budget*, and *Quantum Readout* (HOM dip / Bell CHSH).
+- **Alignment Report** — *Update Report* / *Align* / *Align All*; detectors show measured
+  power, polarization, and fringe visibility.
+- **Render** — pick a camera + **Background** preset, then *EEVEE Preview* / *Cycles Final*.
+
+## Worked example: a Michelson interferometer
+
+1. **Optics ▸ Examples ▸ Michelson** → laser → beam splitter → two arms → detector, with the
+   live red beam path.
+2. Select the beam splitter, nudge a tip knob → watch the recombined beam break; **Align All**
+   walks it back onto the detector.
+3. Select the moving-arm mirror, **Scan + Plot ▸ OPD stage** → the **interferogram** (a clean
+   cosine of intensity vs. path difference) opens in a Blender Image Editor.
+4. Give the laser a **bandwidth** (e.g. 550 ± 75 nm) and scan again → the fringes localize
+   into a **white-light packet** near zero OPD.
+5. Tilt a mirror and run **Detector Fringe Image** → the 2-D straight-fringe pattern, with an
+   optional camera noise/exposure model.
+
+The same, headlessly, via the agent/script API:
+
+```python
+import optics_api
+
+optics_api.build_example("michelson")   # full setup + live beam
+optics_api.align_all()                   # auto-tune the knobs to the detector
+state = optics_api.get_state()           # ports, world normals, beam path, detector readings
+optics_api.render(preset="final", camera="hero", filepath="/tmp/michelson.png")
+```
+
+---
 
 ## Component library & meshes
 
-Vendor 3D models (Thorlabs, Edmund, …) are **not bundled** — they are the vendors'
-intellectual property. The add-on ships only metadata (element type, port geometry,
-mount parameters). To use real parts:
+Vendor 3-D models (Thorlabs, Edmund, …) are **not bundled** — they are the vendors'
+intellectual property. The add-on ships only metadata (element type, port geometry, mount
+parameters). To use real parts:
 
-1. Download the CAD from the vendor and put the meshes in a folder.
-2. Set that folder as **Component mesh folder** in the add-on preferences.
-3. STL/OBJ import directly. For STEP/IGES, set the **FreeCAD command**
-   (`freecadcmd` / `FreeCADCmd`) in preferences — the add-on converts on import.
-   Standalone conversion: see `tools/freecad_convert.py`.
+1. Download the CAD from the vendor into a folder.
+2. Set it as **Component mesh folder** in the add-on preferences.
+3. STL/OBJ import directly; for STEP/IGES, set the **FreeCAD command** (`freecadcmd`) in
+   preferences and the add-on converts on import (`tools/freecad_convert.py` for CLI use).
 
-The built-in catalog (~40 real vendor parts — lasers, mirrors, prism/corner-cube
-mirrors, beam splitters, dichroics, gratings, retroreflectors, lenses, waveplates,
-polarizers, filters, attenuators, isolators, apertures, pinholes, fiber collimators,
-photodiodes and power-meter heads) references meshes by filename. Supply the vendor
-CAD to use the real geometry; without it, **Add Component** still spawns a correct
-generic (mesh-free) element, so every catalog entry is usable immediately.
+The built-in catalog (~40 real parts — lasers, mirrors, prism/corner-cube mirrors, beam
+splitters, dichroics, gratings, retroreflectors, lenses, waveplates, polarizers, filters,
+attenuators, isolators, apertures, pinholes, fiber collimators, photodiodes, power-meter
+heads) references meshes by filename. Without the CAD, **Add Component** still spawns a
+correct generic element, so the catalog is fully usable out of the box.
 
-## Examples (scripts)
+## Examples (standalone scripts)
 
-`examples/` contains standalone builders that run with or without the add-on
-installed:
+`examples/` contains builders that run with or without the add-on installed:
 
 ```bash
 blender --background --python examples/mach_zehnder.py
-```
-
-## Optional Python / agent API
-
-With the add-on enabled, `optics_api` is importable inside Blender:
-
-```python
-import optics_api, json
-print(json.dumps(optics_api.get_state()))          # full optical state (ports, normals, beam path)
-optics_api.build_example("michelson")
-optics_api.align_all()
-optics_api.render(preset="final", camera="hero", filepath="/tmp/figure.png")
 ```
 
 ## Roadmap
@@ -135,11 +169,11 @@ optics_api.render(preset="final", camera="hero", filepath="/tmp/figure.png")
 - Vectorial (3-D) polarization frame for exact off-axis Fresnel at arbitrary mirrors
 - CAD-assisted DOF extraction from STEP geometry + datasheets
 - POV-Ray / Asymptote export for publication figures
-- Dedicated MCP server wrapping `optics_api`
+- A dedicated MCP server wrapping `optics_api`
 
-## License
+## License & credits
 
-GPL-3.0-or-later. See `LICENSE`.
+**GPL-3.0-or-later.** See [`LICENSE`](LICENSE). Vendor CAD/meshes are not included and remain
+the property of their respective owners; this project ships only original metadata and tooling.
 
-Vendor CAD/meshes are not included and remain the property of their respective
-owners. This project ships only original metadata and tooling.
+Built in the spirit of Bigweld's maxim from *Robots* (2005) — **"See a need, fill a need."**
