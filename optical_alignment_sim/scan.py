@@ -290,7 +290,56 @@ class OPTICS_OT_fringe(Operator):
         return {'FINISHED'}
 
 
-_classes = (OPTICS_OT_scan, OPTICS_OT_fringe)
+class OPTICS_OT_quantum(Operator):
+    bl_idname = "optics.quantum"
+    bl_label = "Quantum Readout (analytic)"
+    bl_description = ("Analytic two-photon readout for the named quantum examples: "
+                      "Hong-Ou-Mandel coincidence dip or Bell CHSH curve (not a full QM engine)")
+    bl_options = {'REGISTER'}
+
+    kind: EnumProperty(name="Setup",
+                       items=[('HOM', "Hong-Ou-Mandel dip", "Coincidences vs delay"),
+                              ('BELL', "Bell CHSH", "Correlation vs analyzer angle")],
+                       default='HOM')
+    visibility: FloatProperty(name="Visibility", default=1.0, min=0.0, max=1.0)
+    steps: IntProperty(name="Steps", default=200, min=10, max=2000)
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        import os
+        import tempfile
+        import math
+        base = os.path.join(tempfile.gettempdir(), "optics_quantum")
+        n = max(self.steps, 10)
+        if self.kind == 'HOM':
+            # two-photon coincidence rate vs delay (units of coherence time): dips to
+            # 0 at tau=0 for indistinguishable photons, classical floor 0.5.
+            xs = [-5.0 + 10.0 * i / (n - 1) for i in range(n)]
+            ys = [0.5 * (1.0 - self.visibility * math.exp(-(x * x))) for x in xs]
+            _render_plot(xs, {"coincidence R(tau)": ys}, base + ".png")
+            msg = "HOM dip: R(0)=%.3f (V=%.2f), classical floor 0.5" % (ys[n // 2], self.visibility)
+        else:
+            # CHSH with the singlet correlation E(a,b) = -V*cos(2(a-b)); optimal angles
+            # a=0, a'=45, b=22.5, b'=67.5 give |S| = 2*sqrt(2)*V (>2 violates locality).
+            def E(a, b):
+                return -self.visibility * math.cos(2.0 * math.radians(a - b))
+            S = E(0, 22.5) - E(0, 67.5) + E(45, 22.5) + E(45, 67.5)
+            xs = [180.0 * i / (n - 1) for i in range(n)]
+            ys = [(E(x, 0.0) + 1.0) * 0.5 for x in xs]   # map correlation -1..1 to 0..1 for the plot
+            _render_plot(xs, {"correlation (E+1)/2 vs angle": ys}, base + ".png")
+            msg = ("Bell CHSH |S|=%.3f (quantum 2sqrt2=2.83, classical <=2) -> %s"
+                   % (abs(S), "VIOLATED" if abs(S) > 2.0 else "within classical"))
+        with open(base + ".csv", "w") as f:
+            f.write("# " + msg + "\nx,y\n")
+            for x, y in zip(xs, ys):
+                f.write("%.6g,%.6g\n" % (x, y))
+        self.report({'INFO'}, msg)
+        return {'FINISHED'}
+
+
+_classes = (OPTICS_OT_scan, OPTICS_OT_fringe, OPTICS_OT_quantum)
 
 
 def register():
