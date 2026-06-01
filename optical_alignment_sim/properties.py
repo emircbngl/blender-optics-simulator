@@ -91,6 +91,22 @@ def _dof_update(self, context):
         pass
 
 
+def _anchor_poll(self, obj):
+    """An element may only be anchored to a different object (not itself)."""
+    return obj is not self.id_data
+
+
+def _anchor_update(self, context):
+    """Anchor pointer changed -> recompose so the element follows it immediately."""
+    try:
+        from . import mounts
+        o = self.id_data
+        if o is not None and getattr(o, "optics", None) and o.optics.base_pose_set:
+            mounts.compose_pose(o)
+    except Exception:
+        pass
+
+
 def _live_update(self, context):
     """Live-simulation toggle changed -> arm/disarm handlers (milestone 3)."""
     try:
@@ -210,6 +226,9 @@ class OpticalElementProps(PropertyGroup):
     sensor_read_noise: FloatProperty(name="Read noise (counts)", default=5.0, min=0.0)
     sensor_well_depth: FloatProperty(name="Saturation (counts)", default=4000.0, min=1.0)
     part_key: StringProperty(name="Part", default="")   # catalog key / filename currently filling this slot
+    anchor: PointerProperty(name="Anchor", type=bpy.types.Object, poll=_anchor_poll,
+                            update=_anchor_update,
+                            description="If set, this element's pose is relative to (follows) this object")
 
     is_source: BoolProperty(default=False)
     is_detector: BoolProperty(default=False)

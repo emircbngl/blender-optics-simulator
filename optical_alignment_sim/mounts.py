@@ -49,11 +49,18 @@ def dof_world(B: Matrix, dof):
 
 
 def compose_pose(obj):
-    """Recompute obj.matrix_world from base_pose + current DOF values."""
+    """Recompute obj.matrix_world from base_pose + current DOF values.
+
+    If the element has an `anchor`, its base_pose is stored *in the anchor's frame*,
+    so the world base = anchor.matrix_world @ base_pose - moving the anchor moves the
+    element (relative positioning / assembly group / live "B follows A" link)."""
     props = obj.optics
     if not props.base_pose_set:
         return
     B = base_matrix(props)
+    anchor = getattr(props, "anchor", None)
+    if anchor is not None and anchor is not obj:
+        B = anchor.matrix_world @ B
     pose = B.copy()
     # Apply rotations first (about the base pivot), then translations, so the two
     # act as independent base-frame knobs - a later rotation must not rotate an
@@ -79,6 +86,35 @@ def capture_base_pose(obj):
     for d in props.dofs:
         d.current = 0.0
     store_base_matrix(props, obj.matrix_world.copy())
+
+
+def set_anchor(obj, anchor):
+    """Attach obj to an anchor so its pose follows the anchor. base_pose is re-expressed
+    in the anchor's frame so the element does not jump. Returns True on success."""
+    props = obj.optics
+    if anchor is None or anchor is obj:
+        return False
+    if not props.base_pose_set:
+        store_base_matrix(props, obj.matrix_world.copy())
+    Bw = base_matrix(props)                          # current world base (knobs zero)
+    rel = anchor.matrix_world.inverted() @ Bw        # express it in the anchor's frame
+    store_base_matrix(props, rel)
+    props.anchor = anchor
+    compose_pose(obj)
+    return True
+
+
+def clear_anchor(obj):
+    """Detach obj from its anchor, baking the current relative base back into world."""
+    props = obj.optics
+    anchor = getattr(props, "anchor", None)
+    if anchor is None:
+        return False
+    Bw = anchor.matrix_world @ base_matrix(props)    # relative base -> world base
+    store_base_matrix(props, Bw)
+    props.anchor = None
+    compose_pose(obj)
+    return True
 
 
 # --- mount preset library (seed + user JSON) --------------------------------

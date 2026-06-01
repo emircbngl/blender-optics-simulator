@@ -380,6 +380,16 @@ class OPTICS_PT_assembly(Panel):
         if op and op.is_optical and op.part_key:
             layout.label(text="Active part: %s" % op.part_key, icon='MESH_DATA')
 
+        layout.separator()
+        layout.label(text="Relative positioning")
+        col = layout.column(align=True)
+        col.operator("optics.place_relative", icon='TRANSFORM_ORIGINS')
+        row = col.row(align=True)
+        row.operator("optics.create_anchor", text="Create Anchor", icon='EMPTY_AXIS')
+        row.operator("optics.clear_anchor", text="Clear", icon='X')
+        if op and op.is_optical and op.anchor is not None:
+            layout.label(text="Anchored to: %s" % op.anchor.name, icon='LINKED')
+
 
 _classes = (
     OPTICS_UL_ports,

@@ -44,12 +44,22 @@ def _deferred_trace():
     scene = bpy.context.scene
     if scene is None or not getattr(scene, "optics", None):
         return None
-    sig = _signature(scene)
-    if sig == _last_sig:
-        return None                     # nothing geometric changed -> no work
-    _last_sig = sig
     _recomputing = True
     try:
+        # Propagate relative placement first: a moved anchor / leader updates its
+        # followers BEFORE we snapshot the signature, so the change is detected.
+        try:
+            from . import mounts
+            for o in scene.objects:
+                op = getattr(o, "optics", None)
+                if op and op.is_optical and getattr(op, "anchor", None) is not None:
+                    mounts.compose_pose(o)
+        except Exception:
+            pass
+        sig = _signature(scene)
+        if sig == _last_sig:
+            return None                 # nothing geometric changed -> no work
+        _last_sig = sig
         tracer.cached_segments = tracer.trace_scene(
             scene, mode=scene.optics.trace_mode,
             max_segments=scene.optics.max_segments,

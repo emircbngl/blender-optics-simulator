@@ -14,11 +14,28 @@ import os
 
 import bpy
 from bpy.types import Operator
-from bpy.props import EnumProperty, StringProperty, BoolProperty
+from bpy.props import EnumProperty, StringProperty, BoolProperty, FloatProperty
+from mathutils import Vector, Matrix
 
-from . import library, mounts, presets, operators as _ops
+from . import library, mounts, presets, geometry, operators as _ops
 
 _ENUM_CACHE = []        # keep dynamic-enum item strings alive (Blender requirement)
+
+
+def _retrace(context):
+    """Recompute the live beam + redraw after a structural change."""
+    try:
+        from . import tracer
+        sp = context.scene.optics
+        tracer.cached_segments = tracer.trace_scene(
+            context.scene, mode=sp.trace_mode,
+            max_segments=sp.max_segments, max_depth=sp.max_depth)
+        for w in context.window_manager.windows:
+            for a in w.screen.areas:
+                if a.type == 'VIEW_3D':
+                    a.tag_redraw()
+    except Exception:
+        pass
 
 
 def _importable_path(source, key, filepath):
@@ -191,25 +208,154 @@ class OPTICS_OT_swap_part(Operator):
         if new_data.users == 0:                          # nothing took it (all skipped)
             bpy.data.meshes.remove(new_data)
 
-        try:                                             # refresh the live beam
-            from . import tracer
-            sp = context.scene.optics
-            tracer.cached_segments = tracer.trace_scene(
-                context.scene, mode=sp.trace_mode,
-                max_segments=sp.max_segments, max_depth=sp.max_depth)
-            for w in context.window_manager.windows:
-                for a in w.screen.areas:
-                    if a.type == 'VIEW_3D':
-                        a.tag_redraw()
-        except Exception:
-            pass
-
+        _retrace(context)
         self.report({'INFO'}, "Swapped %d element(s) -> %s%s"
                     % (done, part_key, "  (+mount)" if mount_ok else ""))
         return {'FINISHED'}
 
 
-_classes = (OPTICS_OT_swap_part,)
+class OPTICS_OT_place_relative(Operator):
+    bl_idname = "optics.place_relative"
+    bl_label = "Place Relative"
+    bl_description = ("Place the active element a set distance from a reference along a chosen "
+                      "axis (or the reference's beam); optionally link it to follow the reference")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    reference: StringProperty(name="Reference")
+    axis: EnumProperty(
+        name="Direction",
+        items=[('BEAM', "Reference beam (OUT)", "Along the reference's OUT-port normal"),
+               ('+X', "+X", ""), ('-X', "-X", ""), ('+Y', "+Y", ""),
+               ('-Y', "-Y", ""), ('+Z', "+Z", ""), ('-Z', "-Z", "")],
+        default='BEAM')
+    frame: EnumProperty(name="Axis frame",
+                        items=[('REFERENCE', "Reference", ""), ('WORLD', "World", "")],
+                        default='REFERENCE')
+    distance: FloatProperty(name="Distance (mm)", default=50.0)
+    align_rotation: BoolProperty(name="Match reference orientation", default=True)
+    link: BoolProperty(name="Link (follow the reference live)", default=True)
+
+    @classmethod
+    def poll(cls, context):
+        ob = context.object
+        return ob is not None and getattr(ob, "optics", None) and ob.optics.is_optical
+
+    def invoke(self, context, event):
+        sel = [o for o in context.selected_objects if o is not context.object
+               and getattr(o, "optics", None) and o.optics.is_optical]
+        if sel:
+            self.reference = sel[0].name
+        return context.window_manager.invoke_props_dialog(self, width=380)
+
+    def draw(self, context):
+        col = self.layout.column()
+        col.prop_search(self, "reference", context.scene, "objects")
+        col.prop(self, "axis")
+        if self.axis != 'BEAM':
+            col.prop(self, "frame")
+        col.prop(self, "distance")
+        col.prop(self, "align_rotation")
+        col.prop(self, "link")
+
+    def execute(self, context):
+        act = context.object
+        ref = context.scene.objects.get(self.reference)
+        if ref is None or ref is act:
+            self.report({'ERROR'}, "Pick a reference object (not the active one)")
+            return {'CANCELLED'}
+        if self.axis == 'BEAM':
+            rop = getattr(ref, "optics", None)
+            out = next((p for p in rop.ports if p.role == 'OUT'), None) if rop else None
+            if out is None:
+                self.report({'ERROR'}, "Reference has no OUT port for BEAM placement")
+                return {'CANCELLED'}
+            origin = geometry.world_port(ref, out.local_position)
+            direction = geometry.world_normal(ref, out.local_normal)
+        else:
+            unit = geometry.axis_vector(self.axis)
+            direction = ((ref.matrix_world.to_3x3() @ unit).normalized()
+                         if self.frame == 'REFERENCE' else Vector(unit))
+            origin = ref.matrix_world.translation.copy()
+        target = origin + direction * self.distance
+        _, _, scl = act.matrix_world.decompose()
+        rot = (ref.matrix_world.to_quaternion() if self.align_rotation
+               else act.matrix_world.to_quaternion())
+        Mw = Matrix.LocRotScale(target, rot, scl)
+        mounts.store_base_matrix(act.optics, Mw)
+        if self.link:
+            mounts.set_anchor(act, ref)               # re-base into ref frame + live follow
+            how = "linked to %s" % ref.name
+        else:
+            act.optics.anchor = None
+            mounts.compose_pose(act)
+            how = "one-shot"
+        _retrace(context)
+        self.report({'INFO'}, "Placed %s %.1f mm from %s along %s (%s)"
+                    % (act.name, self.distance, ref.name, self.axis, how))
+        return {'FINISHED'}
+
+
+class OPTICS_OT_create_anchor(Operator):
+    bl_idname = "optics.create_anchor"
+    bl_label = "Create Assembly Anchor"
+    bl_description = ("Create an Empty at the selection centroid and anchor all selected optical "
+                      "elements to it - move the Empty to move the whole assembly as one")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    at_cursor: BoolProperty(name="At 3D cursor", default=False)
+
+    @classmethod
+    def poll(cls, context):
+        return any(getattr(o, "optics", None) and o.optics.is_optical
+                   for o in context.selected_objects)
+
+    def execute(self, context):
+        sel = [o for o in context.selected_objects
+               if getattr(o, "optics", None) and o.optics.is_optical]
+        if not sel:
+            self.report({'ERROR'}, "Select optical elements first")
+            return {'CANCELLED'}
+        loc = (context.scene.cursor.location.copy() if self.at_cursor
+               else sum((o.matrix_world.translation for o in sel), Vector()) / len(sel))
+        empty = bpy.data.objects.new("OpticsAnchor", None)
+        empty.empty_display_type = 'PLAIN_AXES'
+        empty.empty_display_size = 20.0
+        empty.location = loc
+        context.scene.collection.objects.link(empty)
+        context.view_layer.update()
+        n = sum(1 for o in sel if mounts.set_anchor(o, empty))
+        context.view_layer.objects.active = empty
+        _retrace(context)
+        self.report({'INFO'}, "Anchored %d element(s) to %s - move it to move the assembly"
+                    % (n, empty.name))
+        return {'FINISHED'}
+
+
+class OPTICS_OT_clear_anchor(Operator):
+    bl_idname = "optics.clear_anchor"
+    bl_label = "Clear Anchor"
+    bl_description = "Detach the selected optical elements from their anchor (bake pose to world)"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    @classmethod
+    def poll(cls, context):
+        return any(getattr(o, "optics", None) and o.optics.is_optical
+                   and getattr(o.optics, "anchor", None) is not None
+                   for o in context.selected_objects)
+
+    def execute(self, context):
+        n = 0
+        for o in context.selected_objects:
+            op = getattr(o, "optics", None)
+            if op and op.is_optical and op.anchor is not None and mounts.clear_anchor(o):
+                n += 1
+        _retrace(context)
+        self.report({'INFO'}, "Cleared anchor on %d element(s)" % n)
+        return {'FINISHED'}
+
+
+_classes = (OPTICS_OT_swap_part, OPTICS_OT_place_relative,
+            OPTICS_OT_create_anchor, OPTICS_OT_clear_anchor)
 
 
 def register():
