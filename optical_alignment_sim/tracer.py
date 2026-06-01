@@ -34,10 +34,10 @@ TERMINAL = ('DETECTOR', 'PHOTODIODE', 'POWER_METER')
 
 class _Ray:
     __slots__ = ('p1', 'dir', 'power', 'depth', 'from_obj', 'wl', 'kind', 'parent',
-                 'jones', 'opl', 'q', 'src_id', 'coh')
+                 'jones', 'opl', 'q', 'src_id', 'coh', 'evec')
 
     def __init__(self, p1, d, power, depth, from_obj, wl, kind, parent,
-                 jones=None, opl=0.0, q=None, src_id=-1, coh=1.0e12):
+                 jones=None, opl=0.0, q=None, src_id=-1, coh=1.0e12, evec=None):
         self.p1 = p1
         self.dir = d.normalized()
         self.power = power
@@ -46,11 +46,12 @@ class _Ray:
         self.wl = wl
         self.kind = kind
         self.parent = parent
-        self.jones = jones          # (Ex, Ey) complex Jones vector (polarization)
+        self.jones = jones          # (Ex, Ey) Jones vector in the dir's transverse frame
         self.opl = opl              # optical path length accumulated up to p1 (mm)
         self.q = q                  # Gaussian complex beam parameter
         self.src_id = src_id        # coherence group (which source this ray came from)
         self.coh = coh              # coherence length (mm) from the source linewidth
+        self.evec = evec            # 3-D complex field (vectorial pol), transverse to dir
 
 
 def _find_port(props, role):
@@ -148,10 +149,15 @@ def _seg(ray, p2, to_obj):
     }
 
 
-def _child(ray, E, H, d, power, kind, idx, t, jones=None, q=None):
-    """Construct a continuation ray: inherit polarization/coherence, advance the
-    optical path length, and propagate the Gaussian beam q through the free space to
-    E (and through E's focal power when it is a lens)."""
+def _child(ray, E, H, d, power, kind, idx, t, jones=None, q=None, evec=None):
+    """Construct a continuation ray: carry polarization/coherence, advance the optical
+    path length, and propagate the Gaussian beam q through the free space to E (and
+    through E's focal power when it is a lens).
+
+    Polarization is kept as a 3-D field `evec` plus its 2-D Jones projection in the new
+    direction's transverse frame. An explicit evec (exact 3-D reflection) wins; otherwise
+    the field is rebuilt from the 2-D jones, reproducing the prior Jones-only behaviour
+    while still carrying a faithful 3-D field for the next reflection."""
     if q is None:
         q = ray.q
         if q is not None:
@@ -162,10 +168,15 @@ def _child(ray, E, H, d, power, kind, idx, t, jones=None, q=None):
                 f_eff = (E.optics.focal_length * (nd - 1.0) / (nl - 1.0)
                          if abs(nl - 1.0) > 1e-6 else E.optics.focal_length)
                 q = physics.q_propagate(q, physics.abcd_lens(f_eff))
+    if evec is not None:
+        nev = evec
+        nj = physics.jones_from_field(evec, d)
+    else:
+        nj = ray.jones if jones is None else jones
+        nev = physics.field_from_jones(nj, d) if nj is not None else None
     return _Ray(H, d, power, ray.depth + 1, E, ray.wl, kind, idx,
-                jones=ray.jones if jones is None else jones,
-                opl=ray.opl + t, q=q,
-                src_id=ray.src_id, coh=ray.coh)
+                jones=nj, opl=ray.opl + t, q=q,
+                src_id=ray.src_id, coh=ray.coh, evec=nev)
 
 
 def _clip_T(ray, E, t):
@@ -252,9 +263,10 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 q0 = physics.q_from_waist(max(sp.waist_um, 1.0) * 1.0e-3, wl_i)
                 coh0 = min(physics.coherence_length_mm(wl_i, sp.linewidth_nm), 1.0e12)
                 for jv, pw in emit:
+                    js = physics.scale(jv, math.sqrt(sw))
                     stack.append(_Ray(P, D, pw * sw, 0, src, wl_i, 'SOURCE', -1,
-                                      jones=physics.scale(jv, math.sqrt(sw)), opl=0.0,
-                                      q=q0, src_id=sid, coh=coh0))
+                                      jones=js, opl=0.0, q=q0, src_id=sid, coh=coh0,
+                                      evec=physics.field_from_jones(js, D)))
                     sid += 1
 
     segments = []
@@ -286,17 +298,24 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             continue
         if et in ('MIRROR', 'PRISM_MIRROR', 'RETROREFLECTOR'):
             nd = geometry.reflect(ray.dir, sn)
-            if J and getattr(op, 'coating', 'DIELECTRIC') != 'DIELECTRIC':
-                # metal mirror: Fresnel s/p amplitude + phase (p ~ local x, s ~ local y),
-                # so it alters polarization at non-normal incidence
+            if ray.evec is not None and getattr(op, 'coating', 'DIELECTRIC') != 'DIELECTRIC':
+                # metal mirror: exact s/p Fresnel in the TRUE plane of incidence (d x n),
+                # so off-axis reflection rotates azimuth / adds the right s-p phase
                 theta = math.acos(min(1.0, abs(ray.dir.dot(sn))))
                 rs, rp = physics.fresnel_reflect(1.0, physics.METALS.get(op.coating, physics.METALS['AL']), theta)
-                Jr = (J[0] * rp, J[1] * rs)
-                stack.append(_child(ray, E, H, nd, physics.intensity(Jr), 'REFLECT', idx, t, jones=Jr))
+                ev, _do = physics.reflect_field(ray.evec, ray.dir, sn, rs, rp)
+                pw = sum((c * c.conjugate()).real for c in ev)
+                stack.append(_child(ray, E, H, nd, pw, 'REFLECT', idx, t, evec=ev))
+            elif ray.evec is not None:
+                # dielectric / ideal mirror: exact 3-D reflection with the Fresnel sign
+                # convention rp = -rs (a perfect conductor has rs=-1, rp=+1), so at normal
+                # incidence the lab-frame polarization is preserved (both interferometer
+                # arms transform identically -> visibility stays 1)
+                a = math.sqrt(max(op.reflectivity, 0.0))
+                ev, _do = physics.reflect_field(ray.evec, ray.dir, sn, a, -a)
+                stack.append(_child(ray, E, H, nd, ray.power * op.reflectivity, 'REFLECT', idx, t, evec=ev))
             else:
-                a = math.sqrt(max(op.reflectivity, 0.0))   # dielectric / ideal: preserve polarization
-                stack.append(_child(ray, E, H, nd, ray.power * op.reflectivity, 'REFLECT', idx, t,
-                                    jones=physics.scale(J, a) if J else None))
+                stack.append(_child(ray, E, H, nd, ray.power * op.reflectivity, 'REFLECT', idx, t, jones=None))
         elif et == 'GRATING':
             nd = _diffract(ray.dir, sn, ray.wl, op.lines_per_mm, op.grating_order)
             if nd is None:

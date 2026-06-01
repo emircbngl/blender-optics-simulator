@@ -205,6 +205,75 @@ def fresnel_reflect(n1, n2, theta_i):
     return rs, rp
 
 
+# --- vectorial (3-D) polarization field -------------------------------------
+# A field is a complex 3-vector evec = (cx, cy, cz) in world axes, transverse to the
+# unit propagation direction. The 2-D Jones (Ex, Ey) lives in a transverse frame; this
+# lets reflection at an arbitrarily-oriented mirror use the TRUE plane of incidence
+# (exact off-axis Fresnel s/p), instead of assuming the Jones x/y align with s/p.
+
+def _rnorm(v):
+    m = math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
+    return (v[0] / m, v[1] / m, v[2] / m) if m > 1e-12 else (0.0, 0.0, 1.0)
+
+
+def _rcross(a, b):
+    return (a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0])
+
+
+def _rdot(a, b):
+    return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+
+
+def transverse_basis(d):
+    """Real orthonormal (e1, e2) spanning the plane transverse to unit dir d, e1 x e2 = d.
+    Deterministic in d, so collinear beams share a frame (their fields stay comparable)."""
+    d = _rnorm(d)
+    ref = min(((abs(d[0]), (1.0, 0.0, 0.0)), (abs(d[1]), (0.0, 1.0, 0.0)),
+               (abs(d[2]), (0.0, 0.0, 1.0))), key=lambda t: t[0])[1]
+    e1 = _rnorm(_rcross(ref, d))
+    e2 = _rcross(d, e1)
+    return e1, e2
+
+
+def field_from_jones(J, d):
+    """3-D complex field from a 2-D Jones (Ex, Ey) in the transverse basis of dir d."""
+    e1, e2 = transverse_basis(d)
+    ex, ey = J
+    return (ex * e1[0] + ey * e2[0], ex * e1[1] + ey * e2[1], ex * e1[2] + ey * e2[2])
+
+
+def jones_from_field(evec, d):
+    """Project a 3-D complex field onto the transverse basis of dir d -> (Ex, Ey)."""
+    e1, e2 = transverse_basis(d)
+    ex = evec[0] * e1[0] + evec[1] * e1[1] + evec[2] * e1[2]
+    ey = evec[0] * e2[0] + evec[1] * e2[1] + evec[2] * e2[2]
+    return (ex, ey)
+
+
+def reflect_field(evec, d_in, n, rs, rp):
+    """Reflect a 3-D field at a surface with unit normal n: decompose into true s (perp to
+    the plane of incidence, d x n) and p (in-plane), apply Fresnel rs/rp, and rebuild on
+    the reflected direction. Returns (evec_out, d_out)."""
+    d_in = _rnorm(d_in)
+    n = _rnorm(n)
+    dn = _rdot(d_in, n)
+    d_out = _rnorm((d_in[0] - 2.0 * dn * n[0], d_in[1] - 2.0 * dn * n[1], d_in[2] - 2.0 * dn * n[2]))
+    s_axis = _rcross(d_in, n)
+    smag = math.sqrt(_rdot(s_axis, s_axis))
+    if smag < 1e-9:                                   # normal incidence -> s/p degenerate
+        s_hat = transverse_basis(d_in)[0]
+    else:
+        s_hat = (s_axis[0] / smag, s_axis[1] / smag, s_axis[2] / smag)
+    p_in = _rcross(d_in, s_hat)
+    p_out = _rcross(d_out, s_hat)
+    es = evec[0] * s_hat[0] + evec[1] * s_hat[1] + evec[2] * s_hat[2]
+    ep = evec[0] * p_in[0] + evec[1] * p_in[1] + evec[2] * p_in[2]
+    out = (rs * es * s_hat[0] + rp * ep * p_out[0],
+           rs * es * s_hat[1] + rp * ep * p_out[1],
+           rs * es * s_hat[2] + rp * ep * p_out[2])
+    return out, d_out
+
+
 # --- ABCD ray-transfer matrices + Gaussian beam q-parameter -----------------
 
 def abcd_free(d_mm):
@@ -438,6 +507,53 @@ if __name__ == "__main__":
         fails.append("airy t_res=%.3f t_anti=%.3f" % (t_res, t_anti))
     if not close(cavity_finesse(0.9), math.pi * math.sqrt(0.9) / 0.1, 1e-6):
         fails.append("finesse=%.2f" % cavity_finesse(0.9))
+
+    # --- vectorial (3-D) field ---------------------------------------------
+    # jones <-> field round-trips exactly along any direction
+    for d in ((0.0, 0.0, 1.0), (0.0, -1.0, 0.0), (1.0, 1.0, 1.0)):
+        J0 = jones_linear(35.0)
+        J1 = jones_from_field(field_from_jones(J0, d), d)
+        if not (close(J1[0].real, J0[0].real, 1e-9) and close(J1[1].real, J0[1].real, 1e-9)):
+            fails.append("field roundtrip %s" % (d,))
+
+    # Brewster: rp ~ 0, so a field with equal s & p reflects fully s-polarized
+    n1b, n2b = 1.0, 1.5
+    thB = math.atan2(n2b, n1b)
+    rsB, rpB = fresnel_reflect(n1b, n2b, thB)
+    if abs(rpB) > 1e-6:
+        fails.append("Brewster |rp|=%.3g (want 0)" % abs(rpB))
+    din = _rnorm((math.sin(thB), 0.0, -math.cos(thB)))   # plane of incidence = x-z
+    s_hat = _rnorm(_rcross(din, (0.0, 0.0, 1.0)))         # s along y
+    p_in = _rcross(din, s_hat)
+    ev = (complex(s_hat[0] + p_in[0]), complex(s_hat[1] + p_in[1]), complex(s_hat[2] + p_in[2]))
+    out, _dout = reflect_field(ev, din, (0.0, 0.0, 1.0), rsB, rpB)
+    spow = abs(out[0] * s_hat[0] + out[1] * s_hat[1] + out[2] * s_hat[2]) ** 2
+    tot = abs(out[0]) ** 2 + abs(out[1]) ** 2 + abs(out[2]) ** 2
+    if tot < 1e-12 or spow / tot < 0.999:
+        fails.append("Brewster reflection not s-polarized: %.4f" % (spow / max(tot, 1e-12)))
+
+    # a metal mirror at 45 deg has a nonzero s-p phase difference, so it turns linear
+    # light elliptical (the headline of exact off-axis Fresnel)
+    rs45, rp45 = fresnel_reflect(1.0, METALS['AG'], math.radians(45.0))
+    if abs(cmath.phase(rs45) - cmath.phase(rp45)) < 1e-3:
+        fails.append("metal 45deg s-p phase ~0 (expected nonzero)")
+
+    # an out-of-plane ideal mirror (rs=1, rp=-1) reflects without changing |field|
+    ev2 = field_from_jones(jones_linear(20.0), (0.0, 0.0, 1.0))
+    out2, _ = reflect_field(ev2, (0.0, 0.0, 1.0), (0.0, 0.3, 1.0), 1.0, -1.0)
+    p_in_tot = abs(ev2[0]) ** 2 + abs(ev2[1]) ** 2 + abs(ev2[2]) ** 2
+    p_out_tot = abs(out2[0]) ** 2 + abs(out2[1]) ** 2 + abs(out2[2]) ** 2
+    if not close(p_in_tot, p_out_tot, 1e-9):
+        fails.append("ideal reflect changed |field|: %.4f -> %.4f" % (p_in_tot, p_out_tot))
+
+    # normal-incidence ideal mirror with rp=-rs preserves the lab-frame field (so two
+    # interferometer arms stay co-polarized -> full fringe visibility)
+    evn = field_from_jones(jones_linear(25.0), (0.0, 0.0, 1.0))
+    outn, _ = reflect_field(evn, (0.0, 0.0, 1.0), (0.0, 0.0, 1.0), 1.0, -1.0)
+    ov = abs(sum(outn[i] * evn[i].conjugate() for i in range(3)))
+    nn = sum(abs(evn[i]) ** 2 for i in range(3))
+    if nn > 1e-12 and abs(ov - nn) / nn > 1e-6:
+        fails.append("normal-incidence ideal didn't preserve field: %.4f vs %.4f" % (ov, nn))
 
     if fails:
         print("PHYSICS SELFTEST FAILED:")
