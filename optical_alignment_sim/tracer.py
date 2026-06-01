@@ -222,19 +222,22 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 continue
             sp = src.optics
             if sp.pol_type == 'CIRCULAR':
-                j = physics.jones_circular(sp.handedness)
+                emit = [(physics.jones_circular(sp.handedness), 1.0)]
             elif sp.pol_type == 'UNPOL':
-                j = physics.jones_unpolarized()
+                # unpolarized = incoherent H + V (half power each), in distinct
+                # coherence groups so they never interfere with one another
+                emit = [(physics.jones_linear(0.0, math.sqrt(0.5)), 0.5),
+                        (physics.jones_linear(90.0, math.sqrt(0.5)), 0.5)]
             else:
-                j = physics.jones_linear(sp.pol_angle)
+                emit = [(physics.jones_linear(sp.pol_angle), 1.0)]
             q0 = physics.q_from_waist(max(sp.waist_um, 1.0) * 1.0e-3, sp.wavelength)
             coh0 = min(physics.coherence_length_mm(sp.wavelength, sp.linewidth_nm), 1.0e12)
-            stack.append(_Ray(
-                geometry.world_port(src, op.local_position),
-                geometry.world_normal(src, op.local_normal),
-                1.0, 0, src, sp.wavelength, 'SOURCE', -1,
-                jones=j, opl=0.0, q=q0, src_id=sid, coh=coh0))
-            sid += 1
+            P = geometry.world_port(src, op.local_position)
+            D = geometry.world_normal(src, op.local_normal)
+            for jv, pw in emit:
+                stack.append(_Ray(P, D, pw, 0, src, sp.wavelength, 'SOURCE', -1,
+                                  jones=jv, opl=0.0, q=q0, src_id=sid, coh=coh0))
+                sid += 1
 
     segments = []
     guard = 0

@@ -138,9 +138,23 @@ def _measure_detector(props, segs, name):
         return
     props.meas_power = power
     props.meas_visibility = vis
-    j = strongest.get("jones") if strongest else None
-    if j:
-        ps = physics.polarization_state((complex(j[0], j[1]), complex(j[2], j[3])))
+    # polarization from the incoherent Stokes sum of every incoming beam, so mixed /
+    # unpolarized light correctly reads DOP < 1 (an analyzer projects each field first)
+    M = physics.analyzer_matrix(props.analyzer)
+    S = [0.0, 0.0, 0.0, 0.0]
+    for s in segs:
+        if s["to"] != name:
+            continue
+        j = s.get("jones")
+        if not j:
+            continue
+        J = (complex(j[0], j[1]), complex(j[2], j[3]))
+        if M is not None:
+            J = physics.apply(M, J)
+        for i, val in enumerate(physics.stokes(J)):
+            S[i] += val
+    if S[0] > 1e-12:
+        ps = physics.polarization_state_from_stokes(*S)
         props.meas_pol = "%s, az %.0f deg, DOP %.2f" % (ps["kind"], ps["azimuth_deg"], ps["dop"])
     else:
         props.meas_pol = ""

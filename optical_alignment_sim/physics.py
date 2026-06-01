@@ -145,17 +145,29 @@ def stokes(J):
     return (s0, s1, s2, s3)
 
 
-def polarization_state(J):
-    """Human-readable polarization summary from a Jones vector."""
-    s0, s1, s2, s3 = stokes(J)
+def polarization_state_from_stokes(s0, s1, s2, s3):
+    """Polarization summary from a (possibly partial) Stokes vector. DOP < 1 for
+    mixed/unpolarized light; the incoherent sum of beams' Stokes is partial."""
     if s0 < 1e-12:
         return {"kind": "none", "azimuth_deg": 0.0, "ellipticity_deg": 0.0, "dop": 0.0}
     dop = math.sqrt(s1 * s1 + s2 * s2 + s3 * s3) / s0
     azimuth = 0.5 * math.degrees(math.atan2(s2, s1))
     ellipticity = 0.5 * math.degrees(math.asin(max(-1.0, min(1.0, s3 / s0))))
     frac_circ = abs(s3) / s0
-    kind = "circular" if frac_circ > 0.9 else ("linear" if frac_circ < 0.1 else "elliptical")
+    if dop < 0.3:
+        kind = "unpolarized"
+    elif frac_circ > 0.9 * dop:
+        kind = "circular"
+    elif frac_circ < 0.1:
+        kind = "linear"
+    else:
+        kind = "elliptical"
     return {"kind": kind, "azimuth_deg": azimuth, "ellipticity_deg": ellipticity, "dop": dop}
+
+
+def polarization_state(J):
+    """Human-readable polarization summary from a Jones vector."""
+    return polarization_state_from_stokes(*stokes(J))
 
 
 # --- ABCD ray-transfer matrices + Gaussian beam q-parameter -----------------
