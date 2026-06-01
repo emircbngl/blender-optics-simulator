@@ -209,6 +209,7 @@ class OpticalElementProps(PropertyGroup):
     sensor_exposure: FloatProperty(name="Exposure (0 = ideal)", default=0.0, min=0.0)
     sensor_read_noise: FloatProperty(name="Read noise (counts)", default=5.0, min=0.0)
     sensor_well_depth: FloatProperty(name="Saturation (counts)", default=4000.0, min=1.0)
+    part_key: StringProperty(name="Part", default="")   # catalog key / filename currently filling this slot
 
     is_source: BoolProperty(default=False)
     is_detector: BoolProperty(default=False)

@@ -363,6 +363,24 @@ class OPTICS_PT_library(Panel):
             box.label(text="Open Add-on Preferences to set mesh folder", icon='INFO')
 
 
+class OPTICS_PT_assembly(Panel):
+    bl_label = "Assembly & Parts"
+    bl_idname = "OPTICS_PT_assembly"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Optics"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    def draw(self, context):
+        layout = self.layout
+        layout.operator("optics.swap_part", icon='FILE_REFRESH')
+        layout.label(text="Fills/replaces the mesh; keeps ports, mount & beam path.")
+        ob = context.object
+        op = getattr(ob, "optics", None) if ob is not None else None
+        if op and op.is_optical and op.part_key:
+            layout.label(text="Active part: %s" % op.part_key, icon='MESH_DATA')
+
+
 _classes = (
     OPTICS_UL_ports,
     OPTICS_PT_tag,
@@ -371,6 +389,7 @@ _classes = (
     OPTICS_PT_report,
     OPTICS_PT_render,
     OPTICS_PT_library,
+    OPTICS_PT_assembly,
     OPTICS_PT_examples,
 )
 
