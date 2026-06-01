@@ -125,6 +125,27 @@ def _bg_update(self, context):
         pass
 
 
+def _monitor_update(self, context):
+    """Sensor-window toggle changed -> show + refresh the overlay immediately, instead of
+    waiting for the next depsgraph update (so the checkbox feels responsive)."""
+    try:
+        from . import monitor, scan, tracer
+        scn = self.id_data                           # the Scene
+        if self.monitor_show:
+            monitor.enable()
+            if not tracer.cached_segments:
+                tracer.cached_segments = scan._trace(scn)
+            scan.live_fringe_update(scn)
+        wm = context.window_manager if context else None
+        if wm:
+            for w in wm.windows:
+                for a in w.screen.areas:
+                    if a.type == 'VIEW_3D':
+                        a.tag_redraw()
+    except Exception:
+        pass
+
+
 # --- property groups --------------------------------------------------------
 
 class OpticalPort(PropertyGroup):
@@ -268,7 +289,7 @@ class OpticalSceneProps(PropertyGroup):
                ('WHITE',       "White / Paper", "White backdrop for light figures"),
                ('TRANSPARENT', "Transparent",   "Alpha (PNG) background for compositing onto paper/figures")],
         default='DARK', update=_bg_update)
-    monitor_show: BoolProperty(name="Sensor window", default=False)
+    monitor_show: BoolProperty(name="Sensor window", default=False, update=_monitor_update)
     monitor_size: IntProperty(name="Sensor window size (px)", default=256, min=96, max=720)
     # alignment thresholds
     ok_pos_mm: FloatProperty(name="OK pos (mm)", default=0.5, min=0.0)

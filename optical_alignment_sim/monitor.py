@@ -33,6 +33,10 @@ def has_frames():
     return bool(_frames)
 
 
+def frame_names():
+    return list(_frames.keys())
+
+
 def _pick(context):
     ob = getattr(context, "active_object", None)
     if ob is not None and getattr(ob, "optics", None) and ob.name in _frames:
@@ -52,68 +56,80 @@ def _rect(x0, y0, x1, y1, color):
     batch.draw(sh)
 
 
+def _set_size(fid, px):
+    try:
+        import blf
+        blf.size(fid, px)
+    except TypeError:
+        import blf
+        blf.size(fid, px, 72)
+
+
 def _draw():
     try:
         scn = bpy.context.scene
         sp = getattr(scn, "optics", None)
-        if not sp or not getattr(sp, "monitor_show", False) or not _frames:
+        if not sp or not getattr(sp, "monitor_show", False):
             return
         region = bpy.context.region
         if region is None:
             return
-        name = _pick(bpy.context)
-        fr = _frames.get(name)
-        if not fr:
-            return
 
         import gpu
         from gpu_extras.batch import batch_for_shader
+        import blf
 
-        cached = _tex_cache.get(name)
-        if not cached or cached[0] != fr["ver"]:
-            flat = fr["arr"].reshape(-1)
-            buf = gpu.types.Buffer('FLOAT', fr["w"] * fr["h"] * 4, flat)
-            tex = gpu.types.GPUTexture((fr["w"], fr["h"]), format='RGBA32F', data=buf)
-            _tex_cache[name] = (fr["ver"], tex)
-        else:
-            tex = cached[1]
+        name = _pick(bpy.context)
+        fr = _frames.get(name) if name else None
 
         S = max(96, int(getattr(sp, "monitor_size", 256)))
-        m, title_h, pad = 16, 18, 6
+        m, title_h, pad, b = 16, 18, 6, 2
         x0, y0, x1, y1 = m, m, m + S, m + S
+        fid = 0
 
+        # Always paint the framed panel so the window is visibly present once enabled,
+        # even before a beam reaches a sensor.
         gpu.state.blend_set('ALPHA')
-        b = 2
         _rect(x0 - pad - b, y0 - pad - b, x1 + pad + b, y1 + title_h + pad + b,
               (0.40, 0.44, 0.52, 0.95))                                                 # light border
         _rect(x0 - pad, y0 - pad, x1 + pad, y1 + title_h + pad, (0.07, 0.07, 0.09, 0.92))  # panel bg
-        sh = gpu.shader.from_builtin('IMAGE')
-        batch = batch_for_shader(sh, 'TRI_FAN',
-                                 {"pos": [(x0, y0), (x1, y0), (x1, y1), (x0, y1)],
-                                  "texCoord": [(0, 0), (1, 0), (1, 1), (0, 1)]})
-        sh.bind()
-        sh.uniform_sampler("image", tex)
-        batch.draw(sh)
+
+        if fr is not None:
+            cached = _tex_cache.get(name)
+            if not cached or cached[0] != fr["ver"]:
+                flat = fr["arr"].reshape(-1)
+                buf = gpu.types.Buffer('FLOAT', fr["w"] * fr["h"] * 4, flat)
+                tex = gpu.types.GPUTexture((fr["w"], fr["h"]), format='RGBA32F', data=buf)
+                _tex_cache[name] = (fr["ver"], tex)
+            else:
+                tex = cached[1]
+            sh = gpu.shader.from_builtin('IMAGE')
+            batch = batch_for_shader(sh, 'TRI_FAN',
+                                     {"pos": [(x0, y0), (x1, y0), (x1, y1), (x0, y1)],
+                                      "texCoord": [(0, 0), (1, 0), (1, 1), (0, 1)]})
+            sh.bind()
+            sh.uniform_sampler("image", tex)
+            batch.draw(sh)
         gpu.state.blend_set('NONE')
 
-        import blf
-        fid = 0
-        title = "Plot" if name == "__plot__" else ("Sensor: %s" % name)
-        try:
-            blf.size(fid, 12)
-        except TypeError:
-            blf.size(fid, 12, 72)
+        title = "Plot" if name == "__plot__" else ("Sensor: %s" % name if name else "Sensor")
+        _set_size(fid, 12)
         blf.color(fid, 0.92, 0.92, 0.95, 1.0)
         blf.position(fid, x0, y1 + 4, 0)
         blf.draw(fid, title)
-        if fr.get("text"):
-            try:
-                blf.size(fid, 11)
-            except TypeError:
-                blf.size(fid, 11, 72)
+
+        if fr is not None and fr.get("text"):
+            _set_size(fid, 11)
             blf.color(fid, 0.7, 0.85, 1.0, 1.0)
             blf.position(fid, x0, y0 - 14, 0)
             blf.draw(fid, fr["text"])
+        elif fr is None:                                   # window on, nothing to show yet
+            _set_size(fid, 11)
+            blf.color(fid, 0.72, 0.74, 0.80, 1.0)
+            blf.position(fid, x0 + 8, y0 + S // 2 + 6, 0)
+            blf.draw(fid, "no beam at sensor")
+            blf.position(fid, x0 + 8, y0 + S // 2 - 12, 0)
+            blf.draw(fid, "move optics / pick a detector")
     except Exception as e:                       # never raise inside a draw handler
         print("[optics monitor] draw error:", e)
 

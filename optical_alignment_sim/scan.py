@@ -310,28 +310,46 @@ def _sensor_field_mm(op):
     return field, px
 
 
+def _monitor_targets(scene, segs):
+    """Detectors whose recorded pattern belongs in the sensor window: those explicitly
+    flagged `is_monitor`, or - if none are - every terminal detector currently receiving a
+    beam. So the scene's "Sensor window" toggle works on its own; `is_monitor` is just an
+    explicit override (the per-detector button)."""
+    terminals = [o for o in scene.objects if getattr(o, "optics", None) and o.optics.is_optical
+                 and o.optics.element_type in tracer.TERMINAL]
+    flagged = [o for o in terminals if getattr(o.optics, "is_monitor", False)]
+    if flagged:
+        return flagged
+    return [o for o in terminals if any(s["to"] == o.name for s in segs)]
+
+
 def live_fringe_update(scene):
-    """Recompute every monitored detector's recorded pattern and publish it to the
-    bottom-left monitor overlay. Called from the live depsgraph handler so the sensor
-    window updates as optics move. Render-independent (overlay is a viewport handler)."""
+    """Recompute each monitored detector's recorded pattern and publish it to the bottom-left
+    sensor window. Called from the live depsgraph handler (updates as optics move) and when
+    the window is toggled on. Render-independent (the overlay is a viewport draw handler)."""
+    sp = getattr(scene, "optics", None)
+    if not sp or not getattr(sp, "monitor_show", False):
+        return
     segs = tracer.cached_segments
     if not segs:
         return
-    for det in scene.objects:
-        op = getattr(det, "optics", None)
-        if not op or not op.is_optical or not getattr(op, "is_monitor", False):
-            continue
+    keep = set()
+    for det in _monitor_targets(scene, segs):
+        op = det.optics
         field, px = _sensor_field_mm(op)
         arr, _used = _fringe_array(det, segs, field, px,
                                    getattr(op, "sensor_exposure", 0.0),
                                    getattr(op, "sensor_read_noise", 0.0),
                                    getattr(op, "sensor_well_depth", 4000.0), norm='peak')
         if arr is None:
-            monitor.set_frame(det.name, None)
             continue
         p, vis, _s = alignment.measure(segs, det.name, op.analyzer)
         txt = "P=%.3f" % p + ("  V=%.2f" % vis if vis >= 0.0 else "") + ("  %dpx @ %.1fum" % (px, op.pixel_size_um))
         monitor.set_frame(det.name, arr, txt)
+        keep.add(det.name)
+    for name in monitor.frame_names():            # drop stale detector frames (no beam now)
+        if name != "__plot__" and name not in keep:
+            monitor.set_frame(name, None)
 
 
 class OPTICS_OT_fringe(Operator):
