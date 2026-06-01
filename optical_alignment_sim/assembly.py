@@ -167,26 +167,35 @@ class OPTICS_OT_swap_part(Operator):
             col.prop(self, "prefix")
 
     def execute(self, context):
-        try:
-            mesh_path, entry = _importable_path(self.source, self.component, self.filepath)
-        except Exception as ex:
-            self.report({'ERROR'}, str(ex))
-            return {'CANCELLED'}
-
         targets = _targets(context, self.scope, self.prefix)
         if not targets:
             self.report({'ERROR'}, "No target optical mesh element for scope '%s'" % self.scope)
             return {'CANCELLED'}
 
-        # Import the mesh ONCE and share its data across all targets (identical parts).
-        temp = library.import_mesh(mesh_path, recenter=True)
-        if temp is None or temp.type != 'MESH' or temp.data is None:
-            if temp is not None:
-                bpy.data.objects.remove(temp, do_unlink=True)
-            self.report({'ERROR'}, "import produced no mesh")
+        # Obtain the source mesh ONCE: import the real file, or - for a CATALOG part whose
+        # vendor mesh isn't on disk - fall back to the generic placeholder (like Add
+        # Component), so the swap still works without downloaded CAD. Then share the mesh
+        # data across all targets (identical parts).
+        entry = None
+        used_generic = False
+        try:
+            mesh_path, entry = _importable_path(self.source, self.component, self.filepath)
+            src = library.import_mesh(mesh_path, recenter=True)
+        except (FileNotFoundError, RuntimeError) as ex:
+            if self.source != 'CATALOG':
+                self.report({'ERROR'}, str(ex))
+                return {'CANCELLED'}
+            entry = library.get_components().get(self.component) or {}
+            et = entry.get("element_type") or 'PASSTHROUGH'
+            src = library._generic_fallback(et, "_swap_src", (0.0, 0.0, 0.0), entry.get("generic"))
+            used_generic = True
+        if src is None or src.type != 'MESH' or src.data is None:
+            if src is not None:
+                bpy.data.objects.remove(src, do_unlink=True)
+            self.report({'ERROR'}, "could not obtain a mesh for the swap")
             return {'CANCELLED'}
-        new_data = temp.data
-        bpy.data.objects.remove(temp, do_unlink=True)
+        new_data = src.data
+        bpy.data.objects.remove(src, do_unlink=True)
 
         part_key = (self.component if self.source == 'CATALOG'
                     else os.path.basename(bpy.path.abspath(self.filepath)))
@@ -209,8 +218,10 @@ class OPTICS_OT_swap_part(Operator):
             bpy.data.meshes.remove(new_data)
 
         _retrace(context)
-        self.report({'INFO'}, "Swapped %d element(s) -> %s%s"
-                    % (done, part_key, "  (+mount)" if mount_ok else ""))
+        self.report({'INFO'}, "Swapped %d element(s) -> %s%s%s"
+                    % (done, part_key, "  (+mount)" if mount_ok else "",
+                       "  (generic placeholder; set the mesh folder in Preferences for real CAD)"
+                       if used_generic else ""))
         return {'FINISHED'}
 
 
