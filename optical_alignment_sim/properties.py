@@ -204,6 +204,11 @@ class OpticalElementProps(PropertyGroup):
     design_wl: FloatProperty(name="Design wavelength (nm)", default=633.0)  # waveplate/lens spec point
     cavity_spacing_mm: FloatProperty(name="Cavity spacing (mm)", default=0.05, min=1e-4)
     is_monitor: BoolProperty(default=False)        # live sensor-monitor target (fringe recomputed live)
+    sensor_px: IntProperty(name="Sensor resolution (px)", default=256, min=16, max=1024)
+    pixel_size_um: FloatProperty(name="Pixel size (um)", default=5.0, min=0.1)
+    sensor_exposure: FloatProperty(name="Exposure (0 = ideal)", default=0.0, min=0.0)
+    sensor_read_noise: FloatProperty(name="Read noise (counts)", default=5.0, min=0.0)
+    sensor_well_depth: FloatProperty(name="Saturation (counts)", default=4000.0, min=1.0)
 
     is_source: BoolProperty(default=False)
     is_detector: BoolProperty(default=False)
@@ -243,6 +248,8 @@ class OpticalSceneProps(PropertyGroup):
                ('WHITE',       "White / Paper", "White backdrop for light figures"),
                ('TRANSPARENT', "Transparent",   "Alpha (PNG) background for compositing onto paper/figures")],
         default='DARK', update=_bg_update)
+    monitor_show: BoolProperty(name="Sensor window", default=False)
+    monitor_size: IntProperty(name="Sensor window size (px)", default=256, min=96, max=720)
     # alignment thresholds
     ok_pos_mm: FloatProperty(name="OK pos (mm)", default=0.5, min=0.0)
     ok_ang_deg: FloatProperty(name="OK ang (deg)", default=0.2, min=0.0)

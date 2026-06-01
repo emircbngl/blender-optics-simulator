@@ -54,6 +54,11 @@ layer, and a render pipeline — all readable by both humans (the Optics panel) 
   geometry is always recoverable (origin offsets and rotations no longer hide it).
 - **Live beam tracer** — sequential ray tracing (reflect / split / transmit / diffract /
   terminate) drawn as a GPU overlay that updates as you drag parts. No mesh, no undo spam.
+- **Live sensor window** — a framed picture-in-picture panel docked to the viewport's
+  bottom-left corner showing what a detector *records* (its 2-D intensity / fringe pattern),
+  rebuilt every redraw so it's always live and never goes stale. Per-detector sensor model
+  (resolution, pixel pitch, exposure / read-noise / saturation); render-independent (it never
+  appears in an F12 render) yet savable to PNG on demand.
 - **Kinematic mounts** — rig a static vendor mesh with the tip/tilt/rotate/translate knobs
   it lacks, each with a real range; **auto-align** drives only the knobs and says
   *"move the post"* when a target is out of reach.
@@ -83,8 +88,9 @@ layer, and a render pipeline — all readable by both humans (the Optics panel) 
 | **Quantum (analytic)** | Hong-Ou-Mandel dip, Bell **CHSH** | R(0)=0, \|S\|=2√2 |
 
 Analysis tools — **Scan + Plot** (interferogram / Malus / spectrum), **Detector Fringe
-Image** (2-D pattern), **Power Budget**, **Quantum Readout** — render results into a Blender
-Image Editor (also saved as PNG + CSV), so they stay in one place and are queryable.
+Image** (2-D pattern), **Power Budget**, **Quantum Readout** — paint their result into the
+live **sensor window** docked to the viewport's bottom-left corner (and still save a PNG +
+CSV), so everything stays in one place, on-screen, and queryable.
 
 The physics lives in a dependency-free `physics.py` with a closed-form self-test you can run
 with a bare interpreter:
@@ -132,7 +138,9 @@ blender --command extension validate optical_alignment_sim
 2. Select the beam splitter, nudge a tip knob → watch the recombined beam break; **Align All**
    walks it back onto the detector.
 3. Select the moving-arm mirror, **Scan + Plot ▸ OPD stage** → the **interferogram** (a clean
-   cosine of intensity vs. path difference) opens in a Blender Image Editor.
+   cosine of intensity vs. path difference) appears in the live sensor window (bottom-left) and
+   saves a PNG + CSV. Open a detector's **Live sensor window** to watch its recorded field go
+   bright ↔ dark as you nudge the stage.
 4. Give the laser a **bandwidth** (e.g. 550 ± 75 nm) and scan again → the fringes localize
    into a **white-light packet** near zero OPD.
 5. Tilt a mirror and run **Detector Fringe Image** → the 2-D straight-fringe pattern, with an

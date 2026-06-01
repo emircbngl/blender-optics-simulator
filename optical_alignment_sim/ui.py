@@ -125,6 +125,15 @@ class OPTICS_PT_tag(Panel):
             pcol.prop(props, "reflectivity")
         elif et in ('DETECTOR', 'PHOTODIODE', 'POWER_METER'):
             pcol.prop(props, "analyzer")
+            sbox = pcol.box()
+            sbox.label(text="Sensor", icon='IMAGE_BACKGROUND')
+            srow = sbox.row(align=True)
+            srow.prop(props, "sensor_px", text="Res")
+            srow.prop(props, "pixel_size_um", text="Pitch um")
+            sbox.prop(props, "sensor_exposure")
+            if props.sensor_exposure > 0.0:
+                sbox.prop(props, "sensor_read_noise")
+                sbox.prop(props, "sensor_well_depth")
         if et in ('MIRROR', 'PRISM_MIRROR'):
             pcol.prop(props, "coating")
         pcol.prop(props, "clear_aperture")
@@ -239,6 +248,13 @@ class OPTICS_PT_report(Panel):
         srow.operator("optics.power_budget", icon='TEXT')
         layout.operator("optics.quantum", icon='EXPERIMENTAL')
 
+        wbox = layout.box()
+        wr = wbox.row(align=True)
+        wr.prop(scene.optics, "monitor_show", text="Sensor window (bottom-left)",
+                icon='IMAGE_BACKGROUND', toggle=True)
+        wr.prop(scene.optics, "monitor_size", text="px")
+        wbox.operator("optics.save_sensor", icon='FILE_TICK')
+
         col = layout.column(align=True)
         for obj in scene.objects:
             op = getattr(obj, "optics", None)
@@ -251,7 +267,10 @@ class OPTICS_PT_report(Panel):
                 r.operator("optics.align_element", text="", icon='CON_TRACKTO').name = obj.name
             box.label(text="pos %.2f mm   ang %.2f deg" % (op.misalign_pos_mm, op.misalign_ang_deg))
             if op.element_type in ('DETECTOR', 'PHOTODIODE', 'POWER_METER'):
-                box.operator("optics.sensor_monitor", text="Live sensor monitor", icon='CAMERA_DATA').name = obj.name
+                mr = box.row(align=True)
+                mr.operator("optics.sensor_monitor", text="Live sensor window",
+                            icon='IMAGE_BACKGROUND').name = obj.name
+                mr.operator("optics.save_sensor", text="", icon='FILE_TICK')
                 if op.meas_power >= 0.0:
                     box.label(text="power %.3f" % op.meas_power)
                     if op.meas_pol:

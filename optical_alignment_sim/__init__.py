@@ -13,7 +13,7 @@ from __future__ import annotations
 if "properties" in locals():
     import importlib
     for _m in ("prefs", "physics", "properties", "operators", "mounts", "tracer", "overlay",
-               "handlers", "alignment", "scan", "bake", "render", "library",
+               "monitor", "handlers", "alignment", "scan", "bake", "render", "library",
                "elements_generic", "examples_builtin", "ui"):
         if _m in locals():
             importlib.reload(locals()[_m])
@@ -21,12 +21,12 @@ if "properties" in locals():
 import sys
 
 from . import (prefs, physics, properties, operators, mounts, tracer, overlay,
-               handlers, alignment, scan, bake, render, library, elements_generic,
+               monitor, handlers, alignment, scan, bake, render, library, elements_generic,
                examples_builtin, ui, optics_api)
 
 # Registration order matters: property groups + pointers first, then the
-# operators, mount logic, tracer/overlay/handlers/alignment/bake/render, and panels.
-_modules = (prefs, properties, operators, mounts, tracer, overlay,
+# operators, mount logic, tracer/overlay/monitor/handlers/alignment/bake/render, and panels.
+_modules = (prefs, properties, operators, mounts, tracer, overlay, monitor,
             handlers, alignment, scan, bake, render, library, examples_builtin, ui)
 
 

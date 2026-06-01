@@ -17,7 +17,7 @@ from bpy.props import EnumProperty, IntProperty, FloatProperty
 
 from bpy.props import BoolProperty, StringProperty
 
-from . import tracer, alignment, geometry
+from . import tracer, alignment, geometry, monitor
 
 SCAN_ITEMS = [
     ('STAGE', "OPD stage (mm)", "Sweep the active element's translation knob"),
@@ -38,9 +38,10 @@ def _trace(scene):
                               max_depth=scene.optics.max_depth)
 
 
-def _render_plot(xs, series, out_path, W=720, H=440):
+def _render_plot(xs, series, out_path, W=720, H=440, title=""):
     """Rasterize line plots of {label: y-values} vs xs to an RGBA PNG and return
-    the Blender image. Pure numpy - dark background, grid, colored polylines."""
+    the Blender image. Pure numpy - dark background, grid, colored polylines.
+    The same array is published to the bottom-left monitor overlay."""
     import numpy as np
     arr = np.empty((H, W, 4), dtype='float32')
     arr[:] = (0.08, 0.08, 0.10, 1.0)
@@ -89,32 +90,23 @@ def _render_plot(xs, series, out_path, W=720, H=440):
     img.filepath_raw = out_path
     img.file_format = 'PNG'
     img.save()
+    # arr is built bottom-up (row 0 = bottom), matching both Image datablocks and
+    # GPUTexture data layout, so the overlay shows it the same way up as the PNG.
+    monitor.set_frame("__plot__", arr, title)
     return img
 
 
-def _show_image_in_blender(img):
-    """Show a result image inside Blender (one place, and queryable by the add-on/AI):
-    reuse an open Image Editor if there is one, else open a new window as an Image
-    Editor. Falls back silently in background mode."""
-    if img is None:
-        return
-    try:
-        for w in bpy.context.window_manager.windows:
+def _show_monitor(context):
+    """Turn on + redraw the bottom-left sensor/plot overlay window."""
+    monitor.enable()
+    if getattr(context.scene, "optics", None):
+        context.scene.optics.monitor_show = True
+    wm = context.window_manager
+    if wm:
+        for w in wm.windows:
             for a in w.screen.areas:
-                if a.type == 'IMAGE_EDITOR':
-                    a.spaces.active.image = img
-                    region = next((r for r in a.regions if r.type == 'WINDOW'), None)
-                    if region:
-                        with bpy.context.temp_override(window=w, area=a, region=region):
-                            bpy.ops.image.view_all(fit_view=True)
+                if a.type == 'VIEW_3D':
                     a.tag_redraw()
-                    return
-        bpy.ops.wm.window_new()
-        area = bpy.context.window_manager.windows[-1].screen.areas[0]
-        area.type = 'IMAGE_EDITOR'
-        area.spaces.active.image = img
-    except Exception:
-        pass
 
 
 class OPTICS_OT_scan(Operator):
@@ -193,13 +185,13 @@ class OPTICS_OT_scan(Operator):
         tracer.cached_segments = _trace(scene)
 
         base = os.path.join(tempfile.gettempdir(), "optics_scan")
-        _render_plot(xs, series, base + ".png")
+        _render_plot(xs, series, base + ".png", title="Scan: %s" % self.kind)
         with open(base + ".csv", "w") as f:
             f.write("x," + ",".join(series.keys()) + "\n")
             for i, x in enumerate(xs):
                 f.write(("%.6g," % x) + ",".join("%.6g" % series[k][i] for k in series) + "\n")
-        _show_image_in_blender(bpy.data.images.get("optics_scan.png"))
-        self.report({'INFO'}, "Scan %s: %d steps -> shown in the Image Editor (+ %s.png/.csv)" % (self.kind, n, base))
+        _show_monitor(context)
+        self.report({'INFO'}, "Scan %s: %d steps -> bottom-left window (+ %s.png/.csv)" % (self.kind, n, base))
         return {'FINISHED'}
 
 
@@ -237,10 +229,16 @@ def _assign_fringe_material(det, img):
     det.data.materials.append(m)
 
 
-def _fringe_array(det, segs, size_mm, px, exposure=0.0, read_noise=0.0, well_depth=1.0):
+def _fringe_array(det, segs, size_mm, px, exposure=0.0, read_noise=0.0, well_depth=1.0,
+                  norm='self'):
     """2-D interference intensity (RGBA float32) across a detector plane from the beams
     reaching it. Returns (arr, beam_count) or (None, 0). Shared by the one-shot operator
-    and the live monitor."""
+    and the live monitor.
+
+    norm='self' rescales to the frame's own max (best spatial contrast - for the saved
+    fringe image); norm='peak' rescales to the fully-constructive maximum so ABSOLUTE
+    brightness is faithful (a dark fringe looks dark) - what the live sensor window wants.
+    """
     import numpy as np
     from mathutils import Vector
     beams = [s for s in segs if s["to"] == det.name]
@@ -254,6 +252,7 @@ def _fringe_array(det, segs, size_mm, px, exposure=0.0, read_noise=0.0, well_dep
     fy = np.zeros((px, px), dtype=complex)
     opl_ref = beams[0].get("opl", 0.0)
     used = 0
+    amp_sum = 0.0
     for s in beams:
         j = s.get("jones")
         d = (Vector(s["p2"]) - Vector(s["p1"]))
@@ -263,15 +262,20 @@ def _fringe_array(det, segs, size_mm, px, exposure=0.0, read_noise=0.0, well_dep
         k = 2.0 * np.pi / (s.get("wavelength", 632.8) * 1.0e-6)
         phase = k * (s.get("opl", 0.0) - opl_ref) + (k * d.dot(u)) * uu + (k * d.dot(v)) * vv
         wave = np.exp(1j * phase)
-        fx += complex(j[0], j[1]) * wave
-        fy += complex(j[2], j[3]) * wave
+        jx, jy = complex(j[0], j[1]), complex(j[2], j[3])
+        fx += jx * wave
+        fy += jy * wave
+        amp_sum += (abs(jx) ** 2 + abs(jy) ** 2) ** 0.5     # max coherent amplitude
         used += 1
     if used == 0:
         return None, 0
     inten = np.abs(fx) ** 2 + np.abs(fy) ** 2
-    mx = float(inten.max())
-    if mx > 1e-12:
-        inten = inten / mx
+    if norm == 'peak' and amp_sum > 1e-12:
+        inten = np.clip(inten / (amp_sum ** 2), 0.0, 1.0)   # absolute: constructive=1, dark=0
+    else:
+        mx = float(inten.max())
+        if mx > 1e-12:
+            inten = inten / mx
     if exposure > 0.0:                                   # camera model: shot + read noise + saturation
         sig = inten * exposure
         sig = sig + np.sqrt(np.maximum(sig, 0.0)) * np.random.standard_normal(sig.shape)
@@ -296,9 +300,20 @@ def _fringe_image_for(det, px):
     return img
 
 
+def _sensor_field_mm(op):
+    """Physical sensor extent in mm = resolution x pixel pitch (falls back to aperture)."""
+    px = int(getattr(op, "sensor_px", 256))
+    pitch_um = float(getattr(op, "pixel_size_um", 5.0))
+    field = px * pitch_um * 1.0e-3
+    if field <= 1.0e-6:
+        field = max(getattr(op, "clear_aperture", 5.0) * 2.0, 5.0)
+    return field, px
+
+
 def live_fringe_update(scene):
-    """Recompute + refresh the fringe pattern on every monitored detector. Called from
-    the live depsgraph handler so the sensor view updates as optics move."""
+    """Recompute every monitored detector's recorded pattern and publish it to the
+    bottom-left monitor overlay. Called from the live depsgraph handler so the sensor
+    window updates as optics move. Render-independent (overlay is a viewport handler)."""
     segs = tracer.cached_segments
     if not segs:
         return
@@ -306,16 +321,17 @@ def live_fringe_update(scene):
         op = getattr(det, "optics", None)
         if not op or not op.is_optical or not getattr(op, "is_monitor", False):
             continue
-        px = 128
-        arr, _used = _fringe_array(det, segs, max(op.clear_aperture * 2.0, 5.0), px)
+        field, px = _sensor_field_mm(op)
+        arr, _used = _fringe_array(det, segs, field, px,
+                                   getattr(op, "sensor_exposure", 0.0),
+                                   getattr(op, "sensor_read_noise", 0.0),
+                                   getattr(op, "sensor_well_depth", 4000.0), norm='peak')
         if arr is None:
+            monitor.set_frame(det.name, None)
             continue
-        img = _fringe_image_for(det, px)
-        img.pixels.foreach_set(arr.reshape(-1))
-        img.update()
-        mname = "OG_fringe_" + det.name
-        if not det.data.materials or det.data.materials[0].name != mname:
-            _assign_fringe_material(det, img)
+        p, vis, _s = alignment.measure(segs, det.name, op.analyzer)
+        txt = "P=%.3f" % p + ("  V=%.2f" % vis if vis >= 0.0 else "") + ("  %dpx @ %.1fum" % (px, op.pixel_size_um))
+        monitor.set_frame(det.name, arr, txt)
 
 
 class OPTICS_OT_fringe(Operator):
@@ -365,8 +381,9 @@ class OPTICS_OT_fringe(Operator):
         img.save()
         if self.to_material:
             _assign_fringe_material(det, img)
-        _show_image_in_blender(img)
-        self.report({'INFO'}, "Fringe image (%d beams) on %s -> shown in the Image Editor" % (used, det.name))
+        monitor.set_frame(det.name, arr, "fringe  (%d beams)" % used)
+        _show_monitor(context)
+        self.report({'INFO'}, "Fringe image (%d beams) on %s -> bottom-left window (+ %s)" % (used, det.name, out))
         return {'FINISHED'}
 
 
@@ -398,7 +415,7 @@ class OPTICS_OT_quantum(Operator):
             # 0 at tau=0 for indistinguishable photons, classical floor 0.5.
             xs = [-5.0 + 10.0 * i / (n - 1) for i in range(n)]
             ys = [0.5 * (1.0 - self.visibility * math.exp(-(x * x))) for x in xs]
-            _render_plot(xs, {"coincidence R(tau)": ys}, base + ".png")
+            _render_plot(xs, {"coincidence R(tau)": ys}, base + ".png", title="HOM dip")
             msg = "HOM dip: R(0)=%.3f (V=%.2f), classical floor 0.5" % (ys[n // 2], self.visibility)
         else:
             # CHSH with the singlet correlation E(a,b) = -V*cos(2(a-b)); optimal angles
@@ -408,79 +425,104 @@ class OPTICS_OT_quantum(Operator):
             S = E(0, 22.5) - E(0, 67.5) + E(45, 22.5) + E(45, 67.5)
             xs = [180.0 * i / (n - 1) for i in range(n)]
             ys = [(E(x, 0.0) + 1.0) * 0.5 for x in xs]   # map correlation -1..1 to 0..1 for the plot
-            _render_plot(xs, {"correlation (E+1)/2 vs angle": ys}, base + ".png")
+            _render_plot(xs, {"correlation (E+1)/2 vs angle": ys}, base + ".png", title="Bell CHSH")
             msg = ("Bell CHSH |S|=%.3f (quantum 2sqrt2=2.83, classical <=2) -> %s"
                    % (abs(S), "VIOLATED" if abs(S) > 2.0 else "within classical"))
         with open(base + ".csv", "w") as f:
             f.write("# " + msg + "\nx,y\n")
             for x, y in zip(xs, ys):
                 f.write("%.6g,%.6g\n" % (x, y))
-        _show_image_in_blender(bpy.data.images.get("optics_quantum.png"))
+        _show_monitor(context)
         self.report({'INFO'}, msg)
         return {'FINISHED'}
 
 
-def _sensor_camera(scene, det):
-    name = "SENSOR_" + det.name
-    cam = bpy.data.objects.get(name)
-    if cam is None or cam.type != 'CAMERA':
-        cam = bpy.data.objects.new(name, bpy.data.cameras.new(name))
-        scene.collection.objects.link(cam)
-    c, n, _u, _v = _detector_plane(det)
-    size = max(det.optics.clear_aperture * 2.0, 5.0)
-    cam.data.lens = 50.0
-    dist = size * 1.6
-    cam.location = c + n * dist                  # in front of the sensor face, looking back at it
-    cam.rotation_euler = (c - cam.location).to_track_quat('-Z', 'Y').to_euler()
-    cam.data.clip_start = max(0.001, dist * 0.01)
-    cam.data.clip_end = dist * 50.0 + 1000.0
-    return cam
-
-
-def _open_camera_window(cam):
-    try:
-        bpy.ops.wm.window_new()
-        area = bpy.context.window_manager.windows[-1].screen.areas[0]
-        area.type = 'VIEW_3D'
-        sp = area.spaces.active
-        sp.use_local_camera = True
-        sp.camera = cam
-        sp.region_3d.view_perspective = 'CAMERA'
-        sp.shading.type = 'MATERIAL'
-    except Exception:
-        pass
+def _resolve_detector(scene, name):
+    """The named detector, else the active object if it's a terminal, else the
+    terminal currently receiving the most beams."""
+    det = scene.objects.get(name) if name else None
+    if det is None:
+        ob = bpy.context.object
+        if ob is not None and getattr(ob, "optics", None) and ob.optics.is_optical \
+                and ob.optics.element_type in tracer.TERMINAL:
+            det = ob
+    if det is None:
+        segs = tracer.cached_segments or _trace(scene)
+        cand = [o for o in scene.objects if getattr(o, "optics", None) and o.optics.is_optical
+                and o.optics.element_type in tracer.TERMINAL]
+        det = next((o for o in cand if any(s["to"] == o.name for s in segs)), cand[0] if cand else None)
+    return det
 
 
 class OPTICS_OT_sensor_monitor(Operator):
     bl_idname = "optics.sensor_monitor"
-    bl_label = "Live Sensor Monitor"
-    bl_description = ("Place a camera at this detector and open a live window of what it "
-                      "records; the fringe pattern updates as the optics move")
+    bl_label = "Live Sensor Window"
+    bl_description = ("Show what this detector RECORDS (its 2-D intensity / fringe pattern) "
+                      "in a live framed window docked to the viewport's bottom-left corner. "
+                      "Updates as the optics move; never appears in a render")
     bl_options = {'REGISTER'}
 
     name: StringProperty()
 
     def execute(self, context):
         scene = context.scene
-        det = scene.objects.get(self.name) if self.name else context.object
-        if det is None or det.optics.element_type not in tracer.TERMINAL:
-            segs = tracer.cached_segments or _trace(scene)
-            cand = [o for o in scene.objects if getattr(o, "optics", None) and o.optics.is_optical
-                    and o.optics.element_type in tracer.TERMINAL]
-            det = next((o for o in cand if any(s["to"] == o.name for s in segs)), cand[0] if cand else None)
+        det = _resolve_detector(scene, self.name)
         if det is None:
             self.report({'ERROR'}, "No detector to monitor")
             return {'CANCELLED'}
         det.optics.is_monitor = True
+        context.view_layer.objects.active = det      # so the overlay shows this sensor
         scene.optics.live_enabled = True             # arm the live handler (drives the fringe)
         tracer.cached_segments = _trace(scene)
         live_fringe_update(scene)
-        _open_camera_window(_sensor_camera(scene, det))
-        self.report({'INFO'}, "Live sensor monitor on %s (move the optics to watch it update)" % det.name)
+        _show_monitor(context)
+        self.report({'INFO'}, "Live sensor window on %s (bottom-left; updates as the optics move)" % det.name)
         return {'FINISHED'}
 
 
-_classes = (OPTICS_OT_scan, OPTICS_OT_fringe, OPTICS_OT_quantum, OPTICS_OT_sensor_monitor)
+class OPTICS_OT_save_sensor(Operator):
+    bl_idname = "optics.save_sensor"
+    bl_label = "Save Sensor Image"
+    bl_description = "Save the active sensor's currently recorded pattern to a PNG (render-independent)"
+    bl_options = {'REGISTER'}
+
+    filepath: StringProperty(subtype='FILE_PATH', default="//sensor.png")
+    filter_glob: StringProperty(default="*.png", options={'HIDDEN'})
+
+    def invoke(self, context, event):
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+
+    def execute(self, context):
+        scene = context.scene
+        det = _resolve_detector(scene, "")
+        if det is None:
+            self.report({'ERROR'}, "Select a detector / sensor")
+            return {'CANCELLED'}
+        op = det.optics
+        field, px = _sensor_field_mm(op)
+        segs = tracer.cached_segments or _trace(scene)
+        arr, _used = _fringe_array(det, segs, field, px,
+                                   getattr(op, "sensor_exposure", 0.0),
+                                   getattr(op, "sensor_read_noise", 0.0),
+                                   getattr(op, "sensor_well_depth", 4000.0), norm='peak')
+        if arr is None:
+            self.report({'ERROR'}, "No beam at the sensor")
+            return {'CANCELLED'}
+        img = bpy.data.images.new("optics_sensor_save", px, px, alpha=True)
+        try:
+            img.pixels.foreach_set(arr.reshape(-1))
+            img.filepath_raw = bpy.path.abspath(self.filepath)
+            img.file_format = 'PNG'
+            img.save()
+        finally:
+            bpy.data.images.remove(img)
+        self.report({'INFO'}, "Saved %s sensor image -> %s" % (det.name, self.filepath))
+        return {'FINISHED'}
+
+
+_classes = (OPTICS_OT_scan, OPTICS_OT_fringe, OPTICS_OT_quantum,
+            OPTICS_OT_sensor_monitor, OPTICS_OT_save_sensor)
 
 
 def register():
