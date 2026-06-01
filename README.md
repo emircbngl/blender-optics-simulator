@@ -9,8 +9,9 @@ Human-first: every feature is driven from the **View3D ▸ Sidebar ▸ Optics** 
 An optional Python API (`optics_api`) lets an agent (e.g. Claude via the Blender
 MCP) drive the same core.
 
-> Status: geometric ray tracing (layout / routing fidelity). Wave interference
-> (fringes) and quantum behavior (HOM dip, Bell coincidences) are on the roadmap.
+> Status: geometric layout **plus a physics layer** — polarization (Jones), classical
+> interference (fringes / visibility), wavelength-selective optics, Gaussian-beam (ABCD)
+> spot sizes, a power budget, and analytic readouts for the quantum examples.
 
 ## Features
 
@@ -36,6 +37,22 @@ MCP) drive the same core.
   own vendor CAD (STL/OBJ natively, STEP/IGES via FreeCAD), or let an entry fall
   back to generic mesh-free geometry when the CAD isn't on disk. Save your own
   setups as reusable entries.
+- **Polarization (Jones)** — sources emit a polarization state; polarizers (Malus),
+  waveplates (HWP/QWP) and polarizing beam splitters transform it; detectors report
+  power, polarization (azimuth / DOP) and honor an optional analyzer.
+- **Interference** — beams from one source recombine coherently (optical path length →
+  phase) with a coherence envelope from the source linewidth; detectors report fringe
+  visibility (Michelson / Mach-Zehnder fringes, complementary MZ outputs).
+- **Wavelength optics** — dichroics route by cut wavelength, filters pass their band
+  (longpass / shortpass / bandpass / ND), gratings diffract by the grating equation.
+- **Gaussian beams (ABCD)** — q-parameter propagation through free space and lenses;
+  per-segment spot size and Gaussian aperture clipping.
+- **Scan, plots & budget** — sweep an OPD stage / waveplate angle / wavelength and plot
+  each detector's response (interferogram, Malus curve, spectrum) to PNG + CSV;
+  synthesize the 2-D fringe pattern on a detector; write a per-detector power/loss budget.
+- **Quantum readouts (analytic)** — Hong-Ou-Mandel dip and Bell CHSH (|S| = 2√2) for the
+  named examples (analytic, not a full quantum engine).
+- **Render backgrounds** — Dark / Black / White-paper / Transparent (alpha PNG) presets.
 
 ## Install
 
@@ -62,8 +79,11 @@ blender --command extension validate optical_alignment_sim
   then drive the tip/tilt knobs.
 - **Simulation** — toggle *Live simulation*; the beam updates as you move parts.
 - **Alignment Report** — *Update Report* / *Align* / *Align All*.
-- **Render** — *Bake Beams to Mesh*, pick a camera preset, *EEVEE Preview* /
-  *Cycles Final*.
+- **Render** — *Bake Beams to Mesh*, pick a camera preset and a **Background** preset
+  (Dark / Black / White / Transparent), *EEVEE Preview* / *Cycles Final*.
+- **Analysis** — set source polarization and waveplate/polarizer angles, then use
+  *Scan + Plot* (interferogram / Malus / spectrum), *Detector Fringe Image*,
+  *Power Budget*, and *Quantum Readout* (HOM dip / Bell CHSH).
 
 ## Component library & meshes
 
@@ -107,8 +127,8 @@ optics_api.render(preset="final", camera="hero", filepath="/tmp/figure.png")
 
 ## Roadmap
 
-- Wave optics (interference / fringes), Gaussian beams (ABCD)
-- Quantum layer (HOM dip, Bell coincidences, polarization)
+- Full Stokes/Mueller partial polarization; Fresnel amplitude+phase; dispersion n(λ)
+- White-light (broadband) fringes; detector-as-camera noise / exposure
 - CAD-assisted DOF extraction from STEP geometry + datasheets
 - POV-Ray / Asymptote export for publication figures
 - Dedicated MCP server wrapping `optics_api`
