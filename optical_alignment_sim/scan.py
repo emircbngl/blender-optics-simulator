@@ -225,6 +225,12 @@ class OPTICS_OT_fringe(Operator):
     size_mm: FloatProperty(name="Detector size (mm)", default=10.0, min=0.1)
     px: IntProperty(name="Resolution (px)", default=256, min=32, max=1024)
     to_material: BoolProperty(name="Show on detector (render)", default=True)
+    exposure: FloatProperty(name="Exposure (peak counts, 0 = ideal)", default=0.0, min=0.0)
+    read_noise: FloatProperty(name="Read noise (counts)", default=5.0, min=0.0)
+    well_depth: FloatProperty(name="Saturation (counts)", default=4000.0, min=1.0)
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
 
     def execute(self, context):
         import os
@@ -274,6 +280,11 @@ class OPTICS_OT_fringe(Operator):
         mx = float(inten.max())
         if mx > 1e-12:
             inten = inten / mx
+        if self.exposure > 0.0:                          # camera model: shot + read noise + saturation
+            sig = inten * self.exposure
+            sig = sig + np.sqrt(np.maximum(sig, 0.0)) * np.random.standard_normal(sig.shape)
+            sig = sig + self.read_noise * np.random.standard_normal(sig.shape)
+            inten = np.clip(sig, 0.0, self.well_depth) / self.well_depth
         arr = np.empty((self.px, self.px, 4), dtype='float32')
         arr[..., 0] = inten
         arr[..., 1] = inten * 0.5
