@@ -64,6 +64,11 @@ def _deferred_trace():
             mounts.check_mechanics(scene)
         except Exception:
             pass
+        try:
+            from . import scan
+            scan.live_fringe_update(scene)      # refresh live sensor monitors
+        except Exception:
+            pass
         _tag_redraw()
     finally:
         _recomputing = False

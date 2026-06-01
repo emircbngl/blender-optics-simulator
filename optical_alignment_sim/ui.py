@@ -250,14 +250,16 @@ class OPTICS_PT_report(Panel):
             if any(d.kind in ('TIP', 'TILT', 'ROT') for d in op.dofs):
                 r.operator("optics.align_element", text="", icon='CON_TRACKTO').name = obj.name
             box.label(text="pos %.2f mm   ang %.2f deg" % (op.misalign_pos_mm, op.misalign_ang_deg))
-            if op.element_type in ('DETECTOR', 'PHOTODIODE', 'POWER_METER') and op.meas_power >= 0.0:
-                box.label(text="power %.3f" % op.meas_power)
-                if op.meas_pol:
-                    box.label(text="pol: %s" % op.meas_pol)
-                if op.meas_visibility >= 0.0:
-                    box.label(text="visibility %.3f" % op.meas_visibility)
-                if op.meas_text:
-                    box.label(text=op.meas_text)
+            if op.element_type in ('DETECTOR', 'PHOTODIODE', 'POWER_METER'):
+                box.operator("optics.sensor_monitor", text="Live sensor monitor", icon='CAMERA_DATA').name = obj.name
+                if op.meas_power >= 0.0:
+                    box.label(text="power %.3f" % op.meas_power)
+                    if op.meas_pol:
+                        box.label(text="pol: %s" % op.meas_pol)
+                    if op.meas_visibility >= 0.0:
+                        box.label(text="visibility %.3f" % op.meas_visibility)
+                    if op.meas_text:
+                        box.label(text=op.meas_text)
             if op.mech_state not in ('UNKNOWN', 'OK'):
                 box.label(text="mech: %s" % op.mech_state, icon='CONSTRAINT')
             if op.align_detail:

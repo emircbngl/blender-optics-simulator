@@ -15,7 +15,7 @@ import bpy
 from bpy.types import Operator
 from bpy.props import EnumProperty, IntProperty, FloatProperty
 
-from bpy.props import BoolProperty
+from bpy.props import BoolProperty, StringProperty
 
 from . import tracer, alignment, geometry
 
@@ -237,6 +237,87 @@ def _assign_fringe_material(det, img):
     det.data.materials.append(m)
 
 
+def _fringe_array(det, segs, size_mm, px, exposure=0.0, read_noise=0.0, well_depth=1.0):
+    """2-D interference intensity (RGBA float32) across a detector plane from the beams
+    reaching it. Returns (arr, beam_count) or (None, 0). Shared by the one-shot operator
+    and the live monitor."""
+    import numpy as np
+    from mathutils import Vector
+    beams = [s for s in segs if s["to"] == det.name]
+    if not beams:
+        return None, 0
+    _c, _n, u, v = _detector_plane(det)
+    half = size_mm * 0.5
+    ax = np.linspace(-half, half, px)
+    uu, vv = np.meshgrid(ax, ax)
+    fx = np.zeros((px, px), dtype=complex)
+    fy = np.zeros((px, px), dtype=complex)
+    opl_ref = beams[0].get("opl", 0.0)
+    used = 0
+    for s in beams:
+        j = s.get("jones")
+        d = (Vector(s["p2"]) - Vector(s["p1"]))
+        if not j or d.length < 1e-9:
+            continue
+        d = d.normalized()
+        k = 2.0 * np.pi / (s.get("wavelength", 632.8) * 1.0e-6)
+        phase = k * (s.get("opl", 0.0) - opl_ref) + (k * d.dot(u)) * uu + (k * d.dot(v)) * vv
+        wave = np.exp(1j * phase)
+        fx += complex(j[0], j[1]) * wave
+        fy += complex(j[2], j[3]) * wave
+        used += 1
+    if used == 0:
+        return None, 0
+    inten = np.abs(fx) ** 2 + np.abs(fy) ** 2
+    mx = float(inten.max())
+    if mx > 1e-12:
+        inten = inten / mx
+    if exposure > 0.0:                                   # camera model: shot + read noise + saturation
+        sig = inten * exposure
+        sig = sig + np.sqrt(np.maximum(sig, 0.0)) * np.random.standard_normal(sig.shape)
+        sig = sig + read_noise * np.random.standard_normal(sig.shape)
+        inten = np.clip(sig, 0.0, well_depth) / well_depth
+    arr = np.empty((px, px, 4), dtype='float32')
+    arr[..., 0] = inten
+    arr[..., 1] = inten * 0.5
+    arr[..., 2] = inten * 0.45
+    arr[..., 3] = 1.0
+    return arr, used
+
+
+def _fringe_image_for(det, px):
+    """Get/create the per-detector fringe image datablock at resolution px."""
+    name = "OG_fringe_" + det.name
+    img = bpy.data.images.get(name)
+    if img is None or tuple(img.size) != (px, px):
+        if img:
+            bpy.data.images.remove(img)
+        img = bpy.data.images.new(name, px, px, alpha=True)
+    return img
+
+
+def live_fringe_update(scene):
+    """Recompute + refresh the fringe pattern on every monitored detector. Called from
+    the live depsgraph handler so the sensor view updates as optics move."""
+    segs = tracer.cached_segments
+    if not segs:
+        return
+    for det in scene.objects:
+        op = getattr(det, "optics", None)
+        if not op or not op.is_optical or not getattr(op, "is_monitor", False):
+            continue
+        px = 128
+        arr, _used = _fringe_array(det, segs, max(op.clear_aperture * 2.0, 5.0), px)
+        if arr is None:
+            continue
+        img = _fringe_image_for(det, px)
+        img.pixels.foreach_set(arr.reshape(-1))
+        img.update()
+        mname = "OG_fringe_" + det.name
+        if not det.data.materials or det.data.materials[0].name != mname:
+            _assign_fringe_material(det, img)
+
+
 class OPTICS_OT_fringe(Operator):
     bl_idname = "optics.fringe_image"
     bl_label = "Detector Fringe Image"
@@ -257,61 +338,22 @@ class OPTICS_OT_fringe(Operator):
     def execute(self, context):
         import os
         import tempfile
-        import numpy as np
-        from mathutils import Vector
         scene = context.scene
         segs = tracer.trace_scene(scene, mode=scene.optics.trace_mode,
                                   max_segments=scene.optics.max_segments, max_depth=scene.optics.max_depth)
-
-        def incoming(nm):
-            return [s for s in segs if s["to"] == nm]
-
         det = context.object
-        if det is None or det.optics.element_type not in tracer.TERMINAL or not incoming(det.name):
-            ranked = sorted(
-                (o for o in scene.objects if getattr(o, "optics", None) and o.optics.is_optical
-                 and o.optics.element_type in tracer.TERMINAL),
-                key=lambda o: -len(incoming(o.name)))
-            ranked = [o for o in ranked if incoming(o.name)]
+        if det is None or det.optics.element_type not in tracer.TERMINAL or not [s for s in segs if s["to"] == det.name]:
+            ranked = [o for o in scene.objects if getattr(o, "optics", None) and o.optics.is_optical
+                      and o.optics.element_type in tracer.TERMINAL and any(s["to"] == o.name for s in segs)]
             if not ranked:
                 self.report({'ERROR'}, "No detector with an incoming beam")
                 return {'CANCELLED'}
-            det = ranked[0]
-        beams = incoming(det.name)
-        _c, _n, u, v = _detector_plane(det)
-        half = self.size_mm * 0.5
-        axis = np.linspace(-half, half, self.px)
-        uu, vv = np.meshgrid(axis, axis)
-        fx = np.zeros((self.px, self.px), dtype=complex)
-        fy = np.zeros((self.px, self.px), dtype=complex)
-        opl_ref = beams[0].get("opl", 0.0)
-        used = 0
-        for s in beams:
-            j = s.get("jones")
-            d = (Vector(s["p2"]) - Vector(s["p1"]))
-            if not j or d.length < 1e-9:
-                continue
-            d = d.normalized()
-            k = 2.0 * np.pi / (s.get("wavelength", 632.8) * 1.0e-6)
-            phase = k * (s.get("opl", 0.0) - opl_ref) + (k * d.dot(u)) * uu + (k * d.dot(v)) * vv
-            wave = np.exp(1j * phase)
-            fx += complex(j[0], j[1]) * wave
-            fy += complex(j[2], j[3]) * wave
-            used += 1
-        inten = np.abs(fx) ** 2 + np.abs(fy) ** 2
-        mx = float(inten.max())
-        if mx > 1e-12:
-            inten = inten / mx
-        if self.exposure > 0.0:                          # camera model: shot + read noise + saturation
-            sig = inten * self.exposure
-            sig = sig + np.sqrt(np.maximum(sig, 0.0)) * np.random.standard_normal(sig.shape)
-            sig = sig + self.read_noise * np.random.standard_normal(sig.shape)
-            inten = np.clip(sig, 0.0, self.well_depth) / self.well_depth
-        arr = np.empty((self.px, self.px, 4), dtype='float32')
-        arr[..., 0] = inten
-        arr[..., 1] = inten * 0.5
-        arr[..., 2] = inten * 0.45
-        arr[..., 3] = 1.0
+            det = max(ranked, key=lambda o: len([s for s in segs if s["to"] == o.name]))
+        arr, used = _fringe_array(det, segs, self.size_mm, self.px,
+                                  self.exposure, self.read_noise, self.well_depth)
+        if arr is None:
+            self.report({'ERROR'}, "No interfering beams at the detector")
+            return {'CANCELLED'}
         out = os.path.join(tempfile.gettempdir(), "optics_fringe.png")
         old = bpy.data.images.get("optics_fringe.png")
         if old:
@@ -378,7 +420,67 @@ class OPTICS_OT_quantum(Operator):
         return {'FINISHED'}
 
 
-_classes = (OPTICS_OT_scan, OPTICS_OT_fringe, OPTICS_OT_quantum)
+def _sensor_camera(scene, det):
+    name = "SENSOR_" + det.name
+    cam = bpy.data.objects.get(name)
+    if cam is None or cam.type != 'CAMERA':
+        cam = bpy.data.objects.new(name, bpy.data.cameras.new(name))
+        scene.collection.objects.link(cam)
+    c, n, _u, _v = _detector_plane(det)
+    size = max(det.optics.clear_aperture * 2.0, 5.0)
+    cam.data.lens = 50.0
+    dist = size * 1.6
+    cam.location = c + n * dist                  # in front of the sensor face, looking back at it
+    cam.rotation_euler = (c - cam.location).to_track_quat('-Z', 'Y').to_euler()
+    cam.data.clip_start = max(0.001, dist * 0.01)
+    cam.data.clip_end = dist * 50.0 + 1000.0
+    return cam
+
+
+def _open_camera_window(cam):
+    try:
+        bpy.ops.wm.window_new()
+        area = bpy.context.window_manager.windows[-1].screen.areas[0]
+        area.type = 'VIEW_3D'
+        sp = area.spaces.active
+        sp.use_local_camera = True
+        sp.camera = cam
+        sp.region_3d.view_perspective = 'CAMERA'
+        sp.shading.type = 'MATERIAL'
+    except Exception:
+        pass
+
+
+class OPTICS_OT_sensor_monitor(Operator):
+    bl_idname = "optics.sensor_monitor"
+    bl_label = "Live Sensor Monitor"
+    bl_description = ("Place a camera at this detector and open a live window of what it "
+                      "records; the fringe pattern updates as the optics move")
+    bl_options = {'REGISTER'}
+
+    name: StringProperty()
+
+    def execute(self, context):
+        scene = context.scene
+        det = scene.objects.get(self.name) if self.name else context.object
+        if det is None or det.optics.element_type not in tracer.TERMINAL:
+            segs = tracer.cached_segments or _trace(scene)
+            cand = [o for o in scene.objects if getattr(o, "optics", None) and o.optics.is_optical
+                    and o.optics.element_type in tracer.TERMINAL]
+            det = next((o for o in cand if any(s["to"] == o.name for s in segs)), cand[0] if cand else None)
+        if det is None:
+            self.report({'ERROR'}, "No detector to monitor")
+            return {'CANCELLED'}
+        det.optics.is_monitor = True
+        scene.optics.live_enabled = True             # arm the live handler (drives the fringe)
+        tracer.cached_segments = _trace(scene)
+        live_fringe_update(scene)
+        _open_camera_window(_sensor_camera(scene, det))
+        self.report({'INFO'}, "Live sensor monitor on %s (move the optics to watch it update)" % det.name)
+        return {'FINISHED'}
+
+
+_classes = (OPTICS_OT_scan, OPTICS_OT_fringe, OPTICS_OT_quantum, OPTICS_OT_sensor_monitor)
 
 
 def register():

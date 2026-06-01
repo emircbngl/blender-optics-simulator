@@ -203,6 +203,7 @@ class OpticalElementProps(PropertyGroup):
                ('AG', "Silver", ""), ('AU', "Gold", "")], default='DIELECTRIC')
     design_wl: FloatProperty(name="Design wavelength (nm)", default=633.0)  # waveplate/lens spec point
     cavity_spacing_mm: FloatProperty(name="Cavity spacing (mm)", default=0.05, min=1e-4)
+    is_monitor: BoolProperty(default=False)        # live sensor-monitor target (fringe recomputed live)
 
     is_source: BoolProperty(default=False)
     is_detector: BoolProperty(default=False)
