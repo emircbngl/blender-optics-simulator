@@ -71,6 +71,7 @@ class OPTICS_PT_tag(Panel):
         et = props.element_type
         if et == 'LENS':
             pcol.prop(props, "focal_length")
+            pcol.prop(props, "design_wl")
         if et in ('BEAMSPLITTER', 'DICHROIC'):
             pcol.prop(props, "split_ratio")
         if et == 'PRISM_MIRROR':
@@ -93,6 +94,7 @@ class OPTICS_PT_tag(Panel):
         elif et == 'WAVEPLATE':
             pcol.prop(props, "retardance_deg")
             pcol.prop(props, "fast_axis_deg")
+            pcol.prop(props, "design_wl")
         elif et == 'POLARIZER':
             pcol.prop(props, "pol_axis_deg")
             pcol.prop(props, "extinction")

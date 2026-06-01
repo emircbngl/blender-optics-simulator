@@ -170,6 +170,23 @@ def polarization_state(J):
     return polarization_state_from_stokes(*stokes(J))
 
 
+# --- dispersion (Sellmeier n(lambda)) ---------------------------------------
+
+# Sellmeier coefficients (B1,B2,B3,C1,C2,C3; lambda in micron) for common glasses
+GLASSES = {
+    'N-BK7': (1.03961212, 0.231792344, 1.01046945, 0.00600069867, 0.0200179144, 103.560653),
+    'FUSED_SILICA': (0.6961663, 0.4079426, 0.8974794, 0.0046791, 0.0135121, 97.934003),
+}
+
+
+def sellmeier_n(wl_nm, glass='N-BK7'):
+    """Refractive index n(lambda) via the Sellmeier equation (lambda in nm)."""
+    b1, b2, b3, c1, c2, c3 = GLASSES.get(glass, GLASSES['N-BK7'])
+    L2 = (wl_nm * 1.0e-3) ** 2          # lambda^2 in micron^2
+    n2 = 1.0 + b1 * L2 / (L2 - c1) + b2 * L2 / (L2 - c2) + b3 * L2 / (L2 - c3)
+    return math.sqrt(n2) if n2 > 0.0 else 1.0
+
+
 # --- Fresnel reflection (s/p amplitude + phase) -----------------------------
 
 # complex refractive indices of common mirror metals near 633 nm
@@ -382,6 +399,12 @@ if __name__ == "__main__":
     dphi = abs(cmath.phase(rsm) - cmath.phase(rpm))
     if not (abs(rsm) > 0.8 and abs(rpm) > 0.8 and dphi > 0.05):
         fails.append("metal 45deg |rs|=%.2f |rp|=%.2f dphi=%.3f" % (abs(rsm), abs(rpm), dphi))
+
+    # dispersion: N-BK7 d-line n(587.6) ~ 1.5168, and n falls with wavelength
+    if not close(sellmeier_n(587.6, 'N-BK7'), 1.5168, 2e-3):
+        fails.append("sellmeier n(587.6)=%.4f" % sellmeier_n(587.6, 'N-BK7'))
+    if not (sellmeier_n(450.0) > sellmeier_n(650.0)):
+        fails.append("sellmeier dispersion sign")
 
     if fails:
         print("PHYSICS SELFTEST FAILED:")

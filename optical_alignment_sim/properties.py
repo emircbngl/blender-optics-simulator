@@ -199,6 +199,7 @@ class OpticalElementProps(PropertyGroup):
     coating: EnumProperty(name="Mirror coating",
         items=[('DIELECTRIC', "Dielectric (ideal)", ""), ('AL', "Aluminum", ""),
                ('AG', "Silver", ""), ('AU', "Gold", "")], default='DIELECTRIC')
+    design_wl: FloatProperty(name="Design wavelength (nm)", default=633.0)  # waveplate/lens spec point
 
     is_source: BoolProperty(default=False)
     is_detector: BoolProperty(default=False)
