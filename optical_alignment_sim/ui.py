@@ -80,8 +80,46 @@ class OPTICS_PT_tag(Panel):
             pcol.prop(props, "reflectivity")
         if et in ('LENS', 'WAVEPLATE', 'PASSTHROUGH'):
             pcol.prop(props, "refractive_index")
+        # physics-layer parameters (per element type)
+        if et in ('SOURCE', 'FIBER_COLLIMATOR'):
+            pcol.prop(props, "wavelength")
+            pcol.prop(props, "pol_type")
+            if props.pol_type == 'LINEAR':
+                pcol.prop(props, "pol_angle")
+            elif props.pol_type == 'CIRCULAR':
+                pcol.prop(props, "handedness")
+            pcol.prop(props, "linewidth_nm")
+            pcol.prop(props, "waist_um")
+        elif et == 'WAVEPLATE':
+            pcol.prop(props, "retardance_deg")
+            pcol.prop(props, "fast_axis_deg")
+        elif et == 'POLARIZER':
+            pcol.prop(props, "pol_axis_deg")
+            pcol.prop(props, "extinction")
+        elif et == 'BEAMSPLITTER':
+            pcol.prop(props, "is_pbs")
+        elif et == 'DICHROIC':
+            pcol.prop(props, "pass_type")
+            pcol.prop(props, "cut_nm")
+        elif et == 'FILTER':
+            pcol.prop(props, "filt_type")
+            if props.filt_type == 'BP':
+                pcol.prop(props, "cut_lo_nm")
+                pcol.prop(props, "cut_hi_nm")
+            elif props.filt_type == 'LP':
+                pcol.prop(props, "cut_lo_nm")
+            elif props.filt_type == 'SP':
+                pcol.prop(props, "cut_hi_nm")
+            else:
+                pcol.prop(props, "od")
+        elif et == 'GRATING':
+            pcol.prop(props, "lines_per_mm")
+            pcol.prop(props, "grating_order")
+        elif et == 'ATTENUATOR':
+            pcol.prop(props, "od")
+        elif et in ('DETECTOR', 'PHOTODIODE', 'POWER_METER'):
+            pcol.prop(props, "analyzer")
         pcol.prop(props, "clear_aperture")
-        pcol.prop(props, "wavelength")
 
 
 class OPTICS_PT_mount(Panel):

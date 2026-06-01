@@ -173,6 +173,10 @@ class OPTICS_OT_scan(Operator):
             f.write("x," + ",".join(series.keys()) + "\n")
             for i, x in enumerate(xs):
                 f.write(("%.6g," % x) + ",".join("%.6g" % series[k][i] for k in series) + "\n")
+        try:
+            bpy.ops.wm.path_open(filepath=base + ".png")     # show the plot
+        except Exception:
+            pass
         self.report({'INFO'}, "Scan %s: %d steps -> %s.png / .csv" % (self.kind, n, base))
         return {'FINISHED'}
 
@@ -286,6 +290,10 @@ class OPTICS_OT_fringe(Operator):
         img.save()
         if self.to_material:
             _assign_fringe_material(det, img)
+        try:
+            bpy.ops.wm.path_open(filepath=out)               # show the fringe pattern
+        except Exception:
+            pass
         self.report({'INFO'}, "Fringe image (%d beams) on %s -> %s" % (used, det.name, out))
         return {'FINISHED'}
 
@@ -335,6 +343,10 @@ class OPTICS_OT_quantum(Operator):
             f.write("# " + msg + "\nx,y\n")
             for x, y in zip(xs, ys):
                 f.write("%.6g,%.6g\n" % (x, y))
+        try:
+            bpy.ops.wm.path_open(filepath=base + ".png")     # show the curve
+        except Exception:
+            pass
         self.report({'INFO'}, msg)
         return {'FINISHED'}
 
