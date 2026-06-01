@@ -196,6 +196,9 @@ class OpticalElementProps(PropertyGroup):
                ('D', "Diagonal", ""), ('A', "Anti-diagonal", ""),
                ('RCP', "Right circular", ""), ('LCP', "Left circular", "")],
         default='NONE')
+    coating: EnumProperty(name="Mirror coating",
+        items=[('DIELECTRIC', "Dielectric (ideal)", ""), ('AL', "Aluminum", ""),
+               ('AG', "Silver", ""), ('AU', "Gold", "")], default='DIELECTRIC')
 
     is_source: BoolProperty(default=False)
     is_detector: BoolProperty(default=False)

@@ -119,6 +119,8 @@ class OPTICS_PT_tag(Panel):
             pcol.prop(props, "od")
         elif et in ('DETECTOR', 'PHOTODIODE', 'POWER_METER'):
             pcol.prop(props, "analyzer")
+        if et in ('MIRROR', 'PRISM_MIRROR'):
+            pcol.prop(props, "coating")
         pcol.prop(props, "clear_aperture")
 
 

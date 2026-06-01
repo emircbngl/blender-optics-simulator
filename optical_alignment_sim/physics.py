@@ -170,6 +170,24 @@ def polarization_state(J):
     return polarization_state_from_stokes(*stokes(J))
 
 
+# --- Fresnel reflection (s/p amplitude + phase) -----------------------------
+
+# complex refractive indices of common mirror metals near 633 nm
+METALS = {'AL': complex(1.37, 7.62), 'AG': complex(0.14, 3.98), 'AU': complex(0.16, 3.80)}
+
+
+def fresnel_reflect(n1, n2, theta_i):
+    """Amplitude reflection coefficients (rs, rp) at an n1->n2 interface for angle of
+    incidence theta_i (radians). n2 may be complex (a metal), giving the reflection
+    phase; total internal reflection emerges from the complex cos(theta_t)."""
+    ci = math.cos(theta_i)
+    si = math.sin(theta_i)
+    ct = cmath.sqrt(1.0 - (n1 / n2) ** 2 * si * si)      # cos(theta_t), complex-safe
+    rs = (n1 * ci - n2 * ct) / (n1 * ci + n2 * ct)
+    rp = (n2 * ci - n1 * ct) / (n2 * ci + n1 * ct)
+    return rs, rp
+
+
 # --- ABCD ray-transfer matrices + Gaussian beam q-parameter -----------------
 
 def abcd_free(d_mm):
@@ -352,6 +370,18 @@ if __name__ == "__main__":
     Io, Vo = interfere(bo)
     if not (close(Io, 2.0, 1e-6) and close(Vo, 0.0, 1e-6)):
         fails.append("interfere orthogonal Io=%.3f Vo=%.3f" % (Io, Vo))
+
+    # Fresnel: normal incidence |rs|=|rp|=0.2 (glass 4%); Brewster rp~0; metal 45deg s-p phase
+    rs0, rp0 = fresnel_reflect(1.0, 1.5, 0.0)
+    if not (close(abs(rs0), 0.2, 1e-3) and close(abs(rp0), 0.2, 1e-3)):
+        fails.append("fresnel normal |rs|=%.3f |rp|=%.3f" % (abs(rs0), abs(rp0)))
+    _rsb, rpB = fresnel_reflect(1.0, 1.5, math.atan(1.5))
+    if abs(rpB) > 1e-3:
+        fails.append("fresnel Brewster |rp|=%.4f" % abs(rpB))
+    rsm, rpm = fresnel_reflect(1.0, METALS['AL'], math.radians(45.0))
+    dphi = abs(cmath.phase(rsm) - cmath.phase(rpm))
+    if not (abs(rsm) > 0.8 and abs(rpm) > 0.8 and dphi > 0.05):
+        fails.append("metal 45deg |rs|=%.2f |rp|=%.2f dphi=%.3f" % (abs(rsm), abs(rpm), dphi))
 
     if fails:
         print("PHYSICS SELFTEST FAILED:")

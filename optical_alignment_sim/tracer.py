@@ -268,9 +268,17 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             continue
         if et in ('MIRROR', 'PRISM_MIRROR', 'RETROREFLECTOR'):
             nd = geometry.reflect(ray.dir, sn)
-            a = math.sqrt(max(op.reflectivity, 0.0))      # ideal: preserve polarization, scale amplitude
-            stack.append(_child(ray, E, H, nd, ray.power * op.reflectivity, 'REFLECT', idx, t,
-                                jones=physics.scale(J, a) if J else None))
+            if J and getattr(op, 'coating', 'DIELECTRIC') != 'DIELECTRIC':
+                # metal mirror: Fresnel s/p amplitude + phase (p ~ local x, s ~ local y),
+                # so it alters polarization at non-normal incidence
+                theta = math.acos(min(1.0, abs(ray.dir.dot(sn))))
+                rs, rp = physics.fresnel_reflect(1.0, physics.METALS.get(op.coating, physics.METALS['AL']), theta)
+                Jr = (J[0] * rp, J[1] * rs)
+                stack.append(_child(ray, E, H, nd, physics.intensity(Jr), 'REFLECT', idx, t, jones=Jr))
+            else:
+                a = math.sqrt(max(op.reflectivity, 0.0))   # dielectric / ideal: preserve polarization
+                stack.append(_child(ray, E, H, nd, ray.power * op.reflectivity, 'REFLECT', idx, t,
+                                    jones=physics.scale(J, a) if J else None))
         elif et == 'GRATING':
             nd = _diffract(ray.dir, sn, ray.wl, op.lines_per_mm, op.grating_order)
             if nd is None:
