@@ -174,6 +174,7 @@ class OpticalElementProps(PropertyGroup):
     handedness: EnumProperty(name="Handedness",
         items=[('RIGHT', "Right", ""), ('LEFT', "Left", "")], default='RIGHT')
     linewidth_nm: FloatProperty(name="Linewidth (nm)", default=0.0, min=0.0)   # 0 -> ideal coherence
+    bandwidth_nm: FloatProperty(name="Bandwidth (nm)", default=0.0, min=0.0)   # >0 -> broadband / white-light
     waist_um: FloatProperty(name="Beam waist (um)", default=500.0, min=0.0)
     retardance_deg: FloatProperty(name="Retardance (deg)", default=180.0)       # HWP=180, QWP=90
     fast_axis_deg: FloatProperty(name="Fast-axis angle (deg)", default=0.0)

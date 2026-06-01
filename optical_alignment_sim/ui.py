@@ -90,6 +90,7 @@ class OPTICS_PT_tag(Panel):
             elif props.pol_type == 'CIRCULAR':
                 pcol.prop(props, "handedness")
             pcol.prop(props, "linewidth_nm")
+            pcol.prop(props, "bandwidth_nm")
             pcol.prop(props, "waist_um")
         elif et == 'WAVEPLATE':
             pcol.prop(props, "retardance_deg")

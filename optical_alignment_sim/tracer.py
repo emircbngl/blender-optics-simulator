@@ -234,14 +234,28 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                         (physics.jones_linear(90.0, math.sqrt(0.5)), 0.5)]
             else:
                 emit = [(physics.jones_linear(sp.pol_angle), 1.0)]
-            q0 = physics.q_from_waist(max(sp.waist_um, 1.0) * 1.0e-3, sp.wavelength)
-            coh0 = min(physics.coherence_length_mm(sp.wavelength, sp.linewidth_nm), 1.0e12)
+            # spectrum: a single line, or (broadband) a Gaussian-weighted set of
+            # mutually-incoherent wavelengths -> a white-light fringe packet
+            bw = getattr(sp, 'bandwidth_nm', 0.0)
+            if bw > 0.0:
+                Nw = 11
+                sigma = bw / 2.355
+                wls = [sp.wavelength + bw * (i / (Nw - 1) - 0.5) for i in range(Nw)]
+                wts = [math.exp(-0.5 * ((w - sp.wavelength) / sigma) ** 2) for w in wls]
+                tw = sum(wts) or 1.0
+                spectrum = [(wls[i], wts[i] / tw) for i in range(Nw)]
+            else:
+                spectrum = [(sp.wavelength, 1.0)]
             P = geometry.world_port(src, op.local_position)
             D = geometry.world_normal(src, op.local_normal)
-            for jv, pw in emit:
-                stack.append(_Ray(P, D, pw, 0, src, sp.wavelength, 'SOURCE', -1,
-                                  jones=jv, opl=0.0, q=q0, src_id=sid, coh=coh0))
-                sid += 1
+            for wl_i, sw in spectrum:
+                q0 = physics.q_from_waist(max(sp.waist_um, 1.0) * 1.0e-3, wl_i)
+                coh0 = min(physics.coherence_length_mm(wl_i, sp.linewidth_nm), 1.0e12)
+                for jv, pw in emit:
+                    stack.append(_Ray(P, D, pw * sw, 0, src, wl_i, 'SOURCE', -1,
+                                      jones=physics.scale(jv, math.sqrt(sw)), opl=0.0,
+                                      q=q0, src_id=sid, coh=coh0))
+                    sid += 1
 
     segments = []
     guard = 0
