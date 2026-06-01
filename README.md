@@ -52,6 +52,11 @@ MCP) drive the same core.
   synthesize the 2-D fringe pattern on a detector; write a per-detector power/loss budget.
 - **Quantum readouts (analytic)** — Hong-Ou-Mandel dip and Bell CHSH (|S| = 2√2) for the
   named examples (analytic, not a full quantum engine).
+- **Advanced physics** — unpolarized / partial light (Stokes, DOP); Fresnel metal-mirror
+  s/p phase (linear → elliptical); chromatic dispersion (Sellmeier n(λ): a 633 nm waveplate
+  behaves like a QWP at 450 nm, chromatic lens focus); white-light fringe packets; a
+  detector camera model (shot + read noise, saturation); one-way Faraday isolators; and
+  Fabry-Pérot cavities (Airy resonances, finesse, FSR).
 - **Render backgrounds** — Dark / Black / White-paper / Transparent (alpha PNG) presets.
 
 ## Install
@@ -127,8 +132,7 @@ optics_api.render(preset="final", camera="hero", filepath="/tmp/figure.png")
 
 ## Roadmap
 
-- Full Stokes/Mueller partial polarization; Fresnel amplitude+phase; dispersion n(λ)
-- White-light (broadband) fringes; detector-as-camera noise / exposure
+- Vectorial (3-D) polarization frame for exact off-axis Fresnel at arbitrary mirrors
 - CAD-assisted DOF extraction from STEP geometry + datasheets
 - POV-Ray / Asymptote export for publication figures
 - Dedicated MCP server wrapping `optics_api`
