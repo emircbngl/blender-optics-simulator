@@ -12,22 +12,22 @@ from __future__ import annotations
 # Support `Reload Scripts` during development.
 if "properties" in locals():
     import importlib
-    for _m in ("prefs", "properties", "operators", "mounts", "tracer", "overlay",
-               "handlers", "alignment", "bake", "render", "library",
+    for _m in ("prefs", "physics", "properties", "operators", "mounts", "tracer", "overlay",
+               "handlers", "alignment", "scan", "bake", "render", "library",
                "elements_generic", "examples_builtin", "ui"):
         if _m in locals():
             importlib.reload(locals()[_m])
 
 import sys
 
-from . import (prefs, properties, operators, mounts, tracer, overlay,
-               handlers, alignment, bake, render, library, elements_generic,
+from . import (prefs, physics, properties, operators, mounts, tracer, overlay,
+               handlers, alignment, scan, bake, render, library, elements_generic,
                examples_builtin, ui, optics_api)
 
 # Registration order matters: property groups + pointers first, then the
 # operators, mount logic, tracer/overlay/handlers/alignment/bake/render, and panels.
 _modules = (prefs, properties, operators, mounts, tracer, overlay,
-            handlers, alignment, bake, render, library, examples_builtin, ui)
+            handlers, alignment, scan, bake, render, library, examples_builtin, ui)
 
 
 def register():

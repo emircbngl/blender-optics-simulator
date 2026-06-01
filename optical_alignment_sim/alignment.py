@@ -96,16 +96,15 @@ def _state_for(scene, props, pos_err, ang_err):
     return 'BAD'
 
 
-def _measure_detector(props, segs, name):
-    """Write a detector's measured power, polarization, and fringe visibility.
-    Beams from the same source combine coherently (so Michelson/MZ arms interfere
-    and the OPD sets the fringe intensity); different sources add incoherently. An
-    analyzer (if set) projects each field first."""
+def measure(segs, name, analyzer='NONE'):
+    """Return (power, visibility, strongest_segment) at a detector from segments,
+    without writing properties (so a scan can call it cheaply). Beams from the same
+    source combine coherently; different sources add incoherently; an analyzer (if
+    given) projects each field first. power = -1 when no beam reaches the detector."""
     incoming = [s for s in segs if s["to"] == name]
-    M = physics.analyzer_matrix(props.analyzer)
     if not incoming:
-        props.meas_power, props.meas_pol, props.meas_visibility = -1.0, "", -1.0
-        return
+        return -1.0, -1.0, None
+    M = physics.analyzer_matrix(analyzer)
     groups = {}
     for s in incoming:
         groups.setdefault(s.get("src_id", -1), []).append(s)
@@ -128,7 +127,16 @@ def _measure_detector(props, segs, name):
         total += gI
         if gV > vis:
             vis = gV
-    props.meas_power = total
+    return total, vis, strongest
+
+
+def _measure_detector(props, segs, name):
+    """Write a detector's measured power, polarization, fringe visibility, and spot."""
+    power, vis, strongest = measure(segs, name, props.analyzer)
+    if power < 0.0:
+        props.meas_power, props.meas_pol, props.meas_visibility, props.meas_text = -1.0, "", -1.0, ""
+        return
+    props.meas_power = power
     props.meas_visibility = vis
     j = strongest.get("jones") if strongest else None
     if j:

@@ -187,6 +187,7 @@ class OPTICS_PT_report(Panel):
         row = layout.row(align=True)
         row.operator("optics.refresh_report", icon='FILE_REFRESH')
         row.operator("optics.align_all", icon='CON_TRACKTO')
+        layout.operator("optics.scan", icon='FCURVE')
 
         col = layout.column(align=True)
         for obj in scene.objects:
