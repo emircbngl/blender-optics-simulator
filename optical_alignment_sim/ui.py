@@ -226,6 +226,14 @@ class OPTICS_PT_sim(Panel):
         sub.prop(sp, "max_segments")
         sub.prop(sp, "max_depth")
 
+        from . import bridge
+        running = bridge.is_running()
+        bbox = layout.box()
+        bbox.operator("optics.bridge_toggle", icon='CONSOLE', depress=running,
+                      text="Stop MCP Bridge" if running else "Start MCP Bridge")
+        bbox.label(text="MCP bridge: %s" % bridge.info(),
+                   icon='LINKED' if running else 'UNLINKED')
+
 
 class OPTICS_PT_report(Panel):
     bl_label = "Alignment Report"

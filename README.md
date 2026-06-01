@@ -184,12 +184,21 @@ correct generic element, so the catalog is fully usable out of the box.
 blender --background --python examples/mach_zehnder.py
 ```
 
+## Driving it from an MCP client
+
+A dedicated **MCP server** lets an agent drive a *running* Blender scene over a localhost
+socket bridge built into the add-on — build setups, read the full optical state, align,
+swap parts, position elements, scan, render. Start the bridge (**Optics ▸ Simulation ▸
+Start MCP Bridge**) and run the server in [`mcp/`](mcp/README.md).
+
 ## Roadmap
 
-- Vectorial (3-D) polarization frame for exact off-axis Fresnel at arbitrary mirrors
 - CAD-assisted DOF extraction from STEP geometry + datasheets
 - POV-Ray / Asymptote export for publication figures
-- A dedicated MCP server wrapping `optics_api`
+
+*Recently shipped:* a live **sensor window**, **swappable parts** (catalog/file, in bulk),
+**relative positioning** (assembly anchors + live links), exact **vectorial (3-D)
+polarization** for off-axis Fresnel, and the **dedicated MCP server** above.
 
 ## License & credits
 

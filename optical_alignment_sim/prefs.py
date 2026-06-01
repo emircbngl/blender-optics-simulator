@@ -10,7 +10,7 @@ import shutil
 
 import bpy
 from bpy.types import AddonPreferences
-from bpy.props import StringProperty, FloatProperty
+from bpy.props import StringProperty, FloatProperty, IntProperty, BoolProperty
 
 
 def _auto_freecad():
@@ -41,6 +41,12 @@ class OpticsAddonPrefs(AddonPreferences):
     convert_tolerance_mm: FloatProperty(
         name="STEP tessellation (mm)", default=0.5, min=0.01, max=5.0,
         description="Linear deflection for STEP/IGES tessellation; smaller = finer mesh")
+    bridge_port: IntProperty(
+        name="MCP bridge port", default=9765, min=1024, max=65535,
+        description="Localhost TCP port for the MCP bridge (an external MCP server connects here)")
+    bridge_autostart: BoolProperty(
+        name="Auto-start bridge", default=False,
+        description="Start the localhost MCP bridge automatically when the add-on loads")
 
     def draw(self, context):
         col = self.layout.column()
@@ -50,6 +56,11 @@ class OpticsAddonPrefs(AddonPreferences):
         box = col.box()
         box.label(text="Meshes are loaded locally and are not shipped with the add-on", icon='INFO')
         box.label(text="(Thorlabs / Edmund CAD is their intellectual property).")
+        bb = col.box()
+        bb.label(text="MCP bridge (localhost only)", icon='CONSOLE')
+        row = bb.row(align=True)
+        row.prop(self, "bridge_port")
+        row.prop(self, "bridge_autostart")
 
 
 def get_prefs():

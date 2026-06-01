@@ -1,0 +1,219 @@
+"""Localhost socket bridge.
+
+Lets an external process - a dedicated MCP server (see ../mcp/) - drive the add-on's
+`optics_api` over TCP. A background thread accepts newline-delimited JSON requests
+``{"fn": <name>, "args": {...}}`` and dispatches each call onto Blender's MAIN thread
+(bpy is not thread-safe) via a queue drained by a ``bpy.app.timer``, replying with
+``{"ok": true, "result": ...}`` or ``{"ok": false, "error": ...}``.
+
+Only the optics_api whitelist below is callable - never arbitrary code - and the socket
+binds to 127.0.0.1 only, so nothing off the local machine can reach it.
+"""
+from __future__ import annotations
+
+import json
+import queue
+import socket
+import threading
+
+import bpy
+
+# Whitelisted optics_api functions (defence in depth: the bridge never calls anything else).
+_ALLOWED = {
+    "get_state", "trace_beam", "tag_element", "set_mount", "align_element", "align_all",
+    "check_mechanics", "set_param", "bake_beams", "clear_beams", "render", "build_example",
+    "add_component", "swap_part", "place_relative", "scan",
+}
+
+_server = None              # _BridgeServer instance (or None)
+_jobs = queue.Queue()       # (fn, args, holder) handed to the main thread
+_TIMER_DT = 0.05
+
+
+def _api():
+    import sys
+    return sys.modules.get("optics_api")
+
+
+def _drain():
+    """bpy.app.timer on the MAIN thread: run queued optics_api calls, fulfil their events."""
+    api = _api()
+    while True:
+        try:
+            fn, args, holder = _jobs.get_nowait()
+        except queue.Empty:
+            break
+        try:
+            if api is None or not hasattr(api, fn):
+                holder["error"] = "optics_api.%s unavailable" % fn
+            else:
+                holder["result"] = getattr(api, fn)(**(args or {}))
+        except Exception as e:
+            holder["error"] = "%s: %s" % (type(e).__name__, e)
+        finally:
+            holder["event"].set()
+    return _TIMER_DT            # reschedule while the bridge is up
+
+
+class _BridgeServer(threading.Thread):
+    def __init__(self, port):
+        super().__init__(daemon=True)
+        self.port = port
+        self._stop = threading.Event()
+        self._sock = None
+        self.error = None
+
+    def run(self):
+        try:
+            self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self._sock.bind(("127.0.0.1", self.port))
+            self._sock.listen(4)
+            self._sock.settimeout(0.5)
+        except Exception as e:
+            self.error = str(e)
+            print("[optics bridge] bind failed:", e)
+            return
+        print("[optics bridge] listening on 127.0.0.1:%d" % self.port)
+        while not self._stop.is_set():
+            try:
+                conn, _addr = self._sock.accept()
+            except socket.timeout:
+                continue
+            except OSError:
+                break
+            threading.Thread(target=self._serve, args=(conn,), daemon=True).start()
+        try:
+            self._sock.close()
+        except Exception:
+            pass
+        print("[optics bridge] stopped")
+
+    def _serve(self, conn):
+        conn.settimeout(120.0)
+        rf = conn.makefile("rb")
+        try:
+            while not self._stop.is_set():
+                raw = rf.readline()             # readline (not iteration) avoids buffering hangs
+                if not raw:
+                    break                       # client closed
+                line = raw.strip()
+                if not line:
+                    continue
+                resp = self._dispatch(line)
+                conn.sendall((json.dumps(resp) + "\n").encode("utf-8"))
+        except Exception as e:
+            print("[optics bridge] serve error:", e)
+        finally:
+            try:
+                rf.close()
+            except Exception:
+                pass
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    def _dispatch(self, line):
+        try:
+            req = json.loads(line.decode("utf-8"))
+        except Exception as e:
+            return {"ok": False, "error": "bad json: %s" % e}
+        fn = req.get("fn")
+        args = req.get("args") or {}
+        if fn == "ping":
+            return {"ok": True, "result": "pong"}
+        if fn == "list":
+            return {"ok": True, "result": sorted(_ALLOWED)}
+        if fn not in _ALLOWED:
+            return {"ok": False, "error": "function '%s' not allowed" % fn}
+        holder = {"event": threading.Event()}
+        _jobs.put((fn, args, holder))
+        if not holder["event"].wait(timeout=30.0):
+            return {"ok": False, "error": "timeout waiting for Blender main thread"}
+        if "error" in holder:
+            return {"ok": False, "error": holder["error"]}
+        return {"ok": True, "result": holder.get("result")}
+
+    def stop(self):
+        self._stop.set()
+
+
+# --- public control ---------------------------------------------------------
+
+def start(port=None):
+    global _server
+    if is_running():
+        return False, "bridge already running on %d" % _server.port
+    if port is None:
+        from .prefs import get_prefs
+        p = get_prefs()
+        port = int(getattr(p, "bridge_port", 9765)) if p else 9765
+    srv = _BridgeServer(port)
+    srv.start()
+    srv.join(0.2)                       # give bind() a moment to fail loudly
+    if srv.error:
+        return False, "bridge failed: %s" % srv.error
+    _server = srv
+    if not bpy.app.timers.is_registered(_drain):
+        bpy.app.timers.register(_drain, first_interval=0.0, persistent=True)
+    return True, "bridge on 127.0.0.1:%d" % port
+
+
+def stop():
+    global _server
+    if _server is not None:
+        _server.stop()
+        _server = None
+    try:
+        if bpy.app.timers.is_registered(_drain):
+            bpy.app.timers.unregister(_drain)
+    except Exception:
+        pass
+    return True, "bridge stopped"
+
+
+def is_running():
+    return _server is not None and _server.is_alive()
+
+
+def info():
+    return ("127.0.0.1:%d (live)" % _server.port) if is_running() else "offline"
+
+
+class OPTICS_OT_bridge_toggle(bpy.types.Operator):
+    bl_idname = "optics.bridge_toggle"
+    bl_label = "Toggle MCP Bridge"
+    bl_description = ("Start/stop the localhost socket bridge so an external MCP server can "
+                      "drive this scene (get_state, build_example, align, swap_part, ...)")
+    bl_options = {'REGISTER'}
+
+    def execute(self, context):
+        ok, msg = (stop() if is_running() else start())
+        self.report({'INFO'} if ok else {'WARNING'}, msg)
+        for w in context.window_manager.windows:
+            for a in w.screen.areas:
+                if a.type == 'VIEW_3D':
+                    a.tag_redraw()
+        return {'FINISHED'}
+
+
+_classes = (OPTICS_OT_bridge_toggle,)
+
+
+def register():
+    for c in _classes:
+        bpy.utils.register_class(c)
+    try:
+        from .prefs import get_prefs
+        p = get_prefs()
+        if p and getattr(p, "bridge_autostart", False):
+            start()
+    except Exception:
+        pass
+
+
+def unregister():
+    stop()
+    for c in reversed(_classes):
+        bpy.utils.unregister_class(c)

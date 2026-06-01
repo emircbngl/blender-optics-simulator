@@ -191,3 +191,53 @@ def build_example(kind='mach_zehnder'):
     name = ex.build(kind, bpy.context)
     res = trace_beam()
     return {"built": kind, "collection": name, "segments": res["segments"]}
+
+
+def add_component(key, location=(0.0, 0.0, 0.0)):
+    """Spawn a catalog component by key (or its generic mesh-free fallback). {name, msg}."""
+    from . import library
+    obj, msg = library.add_component(key, tuple(location))
+    return {"name": obj.name if obj else None, "msg": msg}
+
+
+def swap_part(name, filepath, refit_ports=False):
+    """Replace element `name`'s mesh from an STL/OBJ (or STEP/IGES via FreeCAD), keeping
+    its optical slot (ports / pose / mount / beam role). {ok, msg, name}."""
+    import os
+    from . import assembly
+    obj = _scene().objects.get(name)
+    if not obj:
+        return {"error": "object not found: %s" % name}
+    try:
+        mesh_path, _entry = assembly._importable_path('FILE', "", filepath)
+    except Exception as e:
+        return {"error": str(e)}
+    ok, msg = assembly.swap_mesh_on(obj, mesh_path, refit=refit_ports)
+    if ok:
+        obj.optics.part_key = os.path.basename(filepath)
+        tracer.cached_segments = _trace(_scene())
+    return {"ok": ok, "msg": msg, "name": name}
+
+
+def place_relative(name, reference, axis='BEAM', distance=50.0, link=True, align_rotation=True):
+    """Place element `name` a distance (mm) from `reference` along a chosen axis or the
+    reference's OUT beam; link=True makes it follow the reference live. {ok, name}."""
+    obj = _scene().objects.get(name)
+    if not obj:
+        return {"error": "object not found: %s" % name}
+    bpy.context.view_layer.objects.active = obj
+    res = bpy.ops.optics.place_relative(reference=reference, axis=axis, distance=distance,
+                                        link=link, align_rotation=align_rotation, frame='REFERENCE')
+    tracer.cached_segments = _trace(_scene())
+    return {"ok": 'FINISHED' in res, "name": name, "reference": reference}
+
+
+def scan(kind='STAGE', lo=0.0, hi=0.002, steps=120, element=None):
+    """Sweep a parameter (STAGE OPD / WAVEPLATE angle / WAVELENGTH); writes a plot PNG +
+    CSV to the temp dir and into the sensor window. Set `element` to the swept part."""
+    if element:
+        obj = _scene().objects.get(element)
+        if obj:
+            bpy.context.view_layer.objects.active = obj
+    res = bpy.ops.optics.scan(kind=kind, lo=lo, hi=hi, steps=steps)
+    return {"ok": 'FINISHED' in res, "kind": kind, "steps": steps}
