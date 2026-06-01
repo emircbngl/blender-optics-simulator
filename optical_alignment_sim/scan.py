@@ -15,7 +15,9 @@ import bpy
 from bpy.types import Operator
 from bpy.props import EnumProperty, IntProperty, FloatProperty
 
-from . import tracer, alignment
+from bpy.props import BoolProperty
+
+from . import tracer, alignment, geometry
 
 SCAN_ITEMS = [
     ('STAGE', "OPD stage (mm)", "Sweep the active element's translation knob"),
@@ -175,7 +177,120 @@ class OPTICS_OT_scan(Operator):
         return {'FINISHED'}
 
 
-_classes = (OPTICS_OT_scan,)
+def _detector_plane(det):
+    """(center, normal, u_hat, v_hat) of a detector's IN face in world space."""
+    from mathutils import Vector
+    ip = next((p for p in det.optics.ports if p.role == 'IN'), None)
+    if ip is not None:
+        c = geometry.world_port(det, ip.local_position)
+        n = geometry.world_normal(det, ip.local_normal)
+    else:
+        c = det.matrix_world.translation.copy()
+        n = (det.matrix_world.to_3x3() @ Vector((0, 0, 1))).normalized()
+    u = n.cross(Vector((0, 0, 1)))
+    if u.length < 1e-6:
+        u = n.cross(Vector((1, 0, 0)))
+    u.normalize()
+    v = n.cross(u).normalized()
+    return c, n, u, v
+
+
+def _assign_fringe_material(det, img):
+    m = bpy.data.materials.get("OG_fringe_" + det.name) or bpy.data.materials.new("OG_fringe_" + det.name)
+    m.use_nodes = True
+    nt = m.node_tree
+    nt.nodes.clear()
+    out = nt.nodes.new("ShaderNodeOutputMaterial")
+    em = nt.nodes.new("ShaderNodeEmission")
+    em.inputs[1].default_value = 2.0
+    tex = nt.nodes.new("ShaderNodeTexImage")
+    tex.image = img
+    nt.links.new(tex.outputs[0], em.inputs[0])
+    nt.links.new(em.outputs[0], out.inputs[0])
+    det.data.materials.clear()
+    det.data.materials.append(m)
+
+
+class OPTICS_OT_fringe(Operator):
+    bl_idname = "optics.fringe_image"
+    bl_label = "Detector Fringe Image"
+    bl_description = ("Synthesize the 2-D interference pattern across a detector plane "
+                      "(beam tilt -> straight fringes) into an image")
+    bl_options = {'REGISTER'}
+
+    size_mm: FloatProperty(name="Detector size (mm)", default=10.0, min=0.1)
+    px: IntProperty(name="Resolution (px)", default=256, min=32, max=1024)
+    to_material: BoolProperty(name="Show on detector (render)", default=True)
+
+    def execute(self, context):
+        import os
+        import tempfile
+        import numpy as np
+        from mathutils import Vector
+        scene = context.scene
+        segs = tracer.trace_scene(scene, mode=scene.optics.trace_mode,
+                                  max_segments=scene.optics.max_segments, max_depth=scene.optics.max_depth)
+
+        def incoming(nm):
+            return [s for s in segs if s["to"] == nm]
+
+        det = context.object
+        if det is None or det.optics.element_type not in tracer.TERMINAL or not incoming(det.name):
+            ranked = sorted(
+                (o for o in scene.objects if getattr(o, "optics", None) and o.optics.is_optical
+                 and o.optics.element_type in tracer.TERMINAL),
+                key=lambda o: -len(incoming(o.name)))
+            ranked = [o for o in ranked if incoming(o.name)]
+            if not ranked:
+                self.report({'ERROR'}, "No detector with an incoming beam")
+                return {'CANCELLED'}
+            det = ranked[0]
+        beams = incoming(det.name)
+        _c, _n, u, v = _detector_plane(det)
+        half = self.size_mm * 0.5
+        axis = np.linspace(-half, half, self.px)
+        uu, vv = np.meshgrid(axis, axis)
+        fx = np.zeros((self.px, self.px), dtype=complex)
+        fy = np.zeros((self.px, self.px), dtype=complex)
+        opl_ref = beams[0].get("opl", 0.0)
+        used = 0
+        for s in beams:
+            j = s.get("jones")
+            d = (Vector(s["p2"]) - Vector(s["p1"]))
+            if not j or d.length < 1e-9:
+                continue
+            d = d.normalized()
+            k = 2.0 * np.pi / (s.get("wavelength", 632.8) * 1.0e-6)
+            phase = k * (s.get("opl", 0.0) - opl_ref) + (k * d.dot(u)) * uu + (k * d.dot(v)) * vv
+            wave = np.exp(1j * phase)
+            fx += complex(j[0], j[1]) * wave
+            fy += complex(j[2], j[3]) * wave
+            used += 1
+        inten = np.abs(fx) ** 2 + np.abs(fy) ** 2
+        mx = float(inten.max())
+        if mx > 1e-12:
+            inten = inten / mx
+        arr = np.empty((self.px, self.px, 4), dtype='float32')
+        arr[..., 0] = inten
+        arr[..., 1] = inten * 0.5
+        arr[..., 2] = inten * 0.45
+        arr[..., 3] = 1.0
+        out = os.path.join(tempfile.gettempdir(), "optics_fringe.png")
+        old = bpy.data.images.get("optics_fringe.png")
+        if old:
+            bpy.data.images.remove(old)
+        img = bpy.data.images.new("optics_fringe.png", self.px, self.px, alpha=True)
+        img.pixels.foreach_set(arr.reshape(-1))
+        img.filepath_raw = out
+        img.file_format = 'PNG'
+        img.save()
+        if self.to_material:
+            _assign_fringe_material(det, img)
+        self.report({'INFO'}, "Fringe image (%d beams) on %s -> %s" % (used, det.name, out))
+        return {'FINISHED'}
+
+
+_classes = (OPTICS_OT_scan, OPTICS_OT_fringe)
 
 
 def register():
