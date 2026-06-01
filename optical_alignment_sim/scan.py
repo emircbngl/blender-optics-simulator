@@ -92,6 +92,31 @@ def _render_plot(xs, series, out_path, W=720, H=440):
     return img
 
 
+def _show_image_in_blender(img):
+    """Show a result image inside Blender (one place, and queryable by the add-on/AI):
+    reuse an open Image Editor if there is one, else open a new window as an Image
+    Editor. Falls back silently in background mode."""
+    if img is None:
+        return
+    try:
+        for w in bpy.context.window_manager.windows:
+            for a in w.screen.areas:
+                if a.type == 'IMAGE_EDITOR':
+                    a.spaces.active.image = img
+                    region = next((r for r in a.regions if r.type == 'WINDOW'), None)
+                    if region:
+                        with bpy.context.temp_override(window=w, area=a, region=region):
+                            bpy.ops.image.view_all(fit_view=True)
+                    a.tag_redraw()
+                    return
+        bpy.ops.wm.window_new()
+        area = bpy.context.window_manager.windows[-1].screen.areas[0]
+        area.type = 'IMAGE_EDITOR'
+        area.spaces.active.image = img
+    except Exception:
+        pass
+
+
 class OPTICS_OT_scan(Operator):
     bl_idname = "optics.scan"
     bl_label = "Scan + Plot"
@@ -173,11 +198,8 @@ class OPTICS_OT_scan(Operator):
             f.write("x," + ",".join(series.keys()) + "\n")
             for i, x in enumerate(xs):
                 f.write(("%.6g," % x) + ",".join("%.6g" % series[k][i] for k in series) + "\n")
-        try:
-            bpy.ops.wm.path_open(filepath=base + ".png")     # show the plot
-        except Exception:
-            pass
-        self.report({'INFO'}, "Scan %s: %d steps -> %s.png / .csv" % (self.kind, n, base))
+        _show_image_in_blender(bpy.data.images.get("optics_scan.png"))
+        self.report({'INFO'}, "Scan %s: %d steps -> shown in the Image Editor (+ %s.png/.csv)" % (self.kind, n, base))
         return {'FINISHED'}
 
 
@@ -301,11 +323,8 @@ class OPTICS_OT_fringe(Operator):
         img.save()
         if self.to_material:
             _assign_fringe_material(det, img)
-        try:
-            bpy.ops.wm.path_open(filepath=out)               # show the fringe pattern
-        except Exception:
-            pass
-        self.report({'INFO'}, "Fringe image (%d beams) on %s -> %s" % (used, det.name, out))
+        _show_image_in_blender(img)
+        self.report({'INFO'}, "Fringe image (%d beams) on %s -> shown in the Image Editor" % (used, det.name))
         return {'FINISHED'}
 
 
@@ -354,10 +373,7 @@ class OPTICS_OT_quantum(Operator):
             f.write("# " + msg + "\nx,y\n")
             for x, y in zip(xs, ys):
                 f.write("%.6g,%.6g\n" % (x, y))
-        try:
-            bpy.ops.wm.path_open(filepath=base + ".png")     # show the curve
-        except Exception:
-            pass
+        _show_image_in_blender(bpy.data.images.get("optics_quantum.png"))
         self.report({'INFO'}, msg)
         return {'FINISHED'}
 
