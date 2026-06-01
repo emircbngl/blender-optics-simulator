@@ -342,7 +342,17 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             Tc = _clip_T(ray, E, t)
             stack.append(_child(ray, E, H, ray.dir, ray.power * Tc, 'TRANSMIT', idx, t,
                                 jones=physics.scale(J, math.sqrt(Tc)) if J else None))
-        else:  # LENS / ISOLATOR / PASSTHROUGH
+        elif et == 'ISOLATOR':
+            # Faraday isolator: passes forward (IN->OUT), blocks back-reflections
+            ipo, opo = _find_port(op, 'IN'), _find_port(op, 'OUT')
+            fwd = None
+            if ipo and opo:
+                fwd = geometry.world_port(E, opo.local_position) - geometry.world_port(E, ipo.local_position)
+                fwd = fwd.normalized() if fwd.length > 1e-9 else None
+            if fwd is not None and ray.dir.dot(fwd) < 0.0:
+                continue                                  # backward -> absorbed
+            stack.append(_child(ray, E, H, ray.dir, ray.power, 'TRANSMIT', idx, t))
+        else:  # LENS / PASSTHROUGH
             stack.append(_child(ray, E, H, ray.dir, ray.power, 'TRANSMIT', idx, t))
 
     return segments
