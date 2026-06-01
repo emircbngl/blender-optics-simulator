@@ -282,8 +282,11 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             else:
                 stack.append(_child(ray, E, H, geometry.reflect(ray.dir, sn), ray.power, 'REFLECT', idx, t))
         elif et == 'BEAMSPLITTER':
+            # A lossless beam splitter is unitary: the reflected field carries a pi/2
+            # phase (r = i*sqrt(R)) relative to the transmitted field. This makes the
+            # two output ports complementary and conserves energy (e.g. Mach-Zehnder).
             if op.is_pbs and J:                            # polarizing: reflect s (y), transmit p (x)
-                Jr = physics.apply(physics.PBS_REFLECT, J)
+                Jr = physics.scale(physics.apply(physics.PBS_REFLECT, J), 1j)
                 Jt = physics.apply(physics.PBS_TRANSMIT, J)
                 stack.append(_child(ray, E, H, geometry.reflect(ray.dir, sn),
                                     physics.intensity(Jr), 'SPLIT_R', idx, t, jones=Jr))
@@ -292,7 +295,7 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             else:
                 r = op.split_ratio
                 stack.append(_child(ray, E, H, geometry.reflect(ray.dir, sn), ray.power * r, 'SPLIT_R', idx, t,
-                                    jones=physics.scale(J, math.sqrt(r)) if J else None))
+                                    jones=physics.scale(J, 1j * math.sqrt(r)) if J else None))
                 stack.append(_child(ray, E, H, ray.dir, ray.power * (1.0 - r), 'SPLIT_T', idx, t,
                                     jones=physics.scale(J, math.sqrt(max(1.0 - r, 0.0))) if J else None))
         elif et == 'POLARIZER' and J:

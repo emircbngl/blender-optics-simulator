@@ -144,7 +144,9 @@ def _measure_detector(props, segs, name):
         props.meas_pol = "%s, az %.0f deg, DOP %.2f" % (ps["kind"], ps["azimuth_deg"], ps["dop"])
     else:
         props.meas_pol = ""
-    props.meas_text = ("spot w=%.3f mm" % strongest.get("w_mm", 0.0)) if strongest else ""
+    loss = ("  %.1f dB" % (-10.0 * math.log10(power))) if power > 1e-12 else ""
+    spot = ("spot w=%.3f mm" % strongest.get("w_mm", 0.0)) if strongest else ""
+    props.meas_text = (spot + loss).strip()
 
 
 def refresh_report(scene):
@@ -358,10 +360,55 @@ class OPTICS_OT_align_all(Operator):
         return {'FINISHED'}
 
 
+class OPTICS_OT_power_budget(Operator):
+    bl_idname = "optics.power_budget"
+    bl_label = "Power Budget"
+    bl_description = "Write a per-detector power/loss breakdown + element list to a text block"
+    bl_options = {'REGISTER'}
+
+    def execute(self, context):
+        scene = context.scene
+        segs = tracer.cached_segments if tracer.cached_segments else _trace(scene)
+        dets = [o for o in scene.objects if getattr(o, "optics", None) and o.optics.is_optical
+                and o.optics.element_type in tracer.TERMINAL]
+        lines = ["Optical Power Budget (source = 1.0 = 0 dB)", "=" * 44]
+        for d in dets:
+            power, vis, _s = measure(segs, d.name, d.optics.analyzer)
+            if power < 0.0:
+                lines.append("\n%s: no beam reaches this detector" % d.name)
+                continue
+            db = -10.0 * math.log10(power) if power > 1e-12 else float('inf')
+            lines.append("\n%s: power %.4f  (%.1f dB loss)%s"
+                         % (d.name, power, db, ("  visibility %.2f" % vis) if vis >= 0 else ""))
+            chain, cur, guard = [], max((s for s in segs if s["to"] == d.name),
+                                        key=lambda x: x["power"]), 0
+            while cur is not None and guard < 128:
+                chain.append(cur)
+                p = cur.get("parent", -1)
+                cur = segs[p] if 0 <= p < len(segs) else None
+                guard += 1
+            for c in reversed(chain):
+                lines.append("    %-12s %-9s P=%.4f" % (c.get("from") or "(source)", c["kind"], c["power"]))
+        lines.append("\nElements:")
+        for o in scene.objects:
+            op = getattr(o, "optics", None)
+            if op and op.is_optical:
+                lines.append("    %-16s %-16s %s"
+                             % (o.name, op.element_type, ("%.1f nm" % op.wavelength) if op.is_source else ""))
+        text = "\n".join(lines)
+        blk = bpy.data.texts.get("OpticsBudget") or bpy.data.texts.new("OpticsBudget")
+        blk.clear()
+        blk.write(text)
+        print(text)
+        self.report({'INFO'}, "Power budget -> Text 'OpticsBudget' (%d detectors)" % len(dets))
+        return {'FINISHED'}
+
+
 _classes = (
     OPTICS_OT_refresh_report,
     OPTICS_OT_align_element,
     OPTICS_OT_align_all,
+    OPTICS_OT_power_budget,
 )
 
 

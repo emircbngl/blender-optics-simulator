@@ -190,6 +190,7 @@ class OPTICS_PT_report(Panel):
         srow = layout.row(align=True)
         srow.operator("optics.scan", icon='FCURVE')
         srow.operator("optics.fringe_image", icon='IMAGE_DATA')
+        srow.operator("optics.power_budget", icon='TEXT')
 
         col = layout.column(align=True)
         for obj in scene.objects:
