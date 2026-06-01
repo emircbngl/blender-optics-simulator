@@ -154,7 +154,16 @@ def set_param(name, key, value):
         return {"error": "object not found: %s" % name}
     if not hasattr(obj.optics, key):
         return {"error": "no such param: %s" % key}
-    setattr(obj.optics, key, value)
+    # Only scalar/enum params are settable here; refuse pointers (anchor), collections
+    # (ports/dofs/mech) and vectors (base_pose) so a remote/API call can't corrupt the
+    # element's structure or trip an RNA type error deep in Blender.
+    cur = getattr(obj.optics, key)
+    if not isinstance(cur, (bool, int, float, str)):
+        return {"error": "param '%s' is not a settable scalar" % key}
+    try:
+        setattr(obj.optics, key, value)
+    except Exception as e:
+        return {"error": "could not set %s=%r: %s" % (key, value, e)}
     return {"ok": True, "name": name, key: value}
 
 

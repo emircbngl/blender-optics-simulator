@@ -170,6 +170,15 @@ def stop():
             bpy.app.timers.unregister(_drain)
     except Exception:
         pass
+    # Release any queued jobs so their client threads return immediately instead of
+    # blocking the full 30 s wait now that the drain timer is gone.
+    while True:
+        try:
+            _fn, _args, holder = _jobs.get_nowait()
+        except queue.Empty:
+            break
+        holder["error"] = "bridge stopped"
+        holder["event"].set()
     return True, "bridge stopped"
 
 

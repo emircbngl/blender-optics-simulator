@@ -132,12 +132,23 @@ def _find_next(elems, ray, mode, order):
     return best
 
 
-def _seg(ray, p2, to_obj):
+def _seg(ray, p2, to_obj, sn=None):
     seg_len = (p2 - ray.p1).length
     opl = ray.opl + seg_len                      # free-space (air, n~=1) optical path
     lam_mm = ray.wl * 1.0e-6
     phase = (2.0 * math.pi * opl / lam_mm) if lam_mm > 0.0 else 0.0
     j = ray.jones
+    # At a detector, express the field in the DETECTOR's frame (derived from its surface
+    # normal sn, identical for every beam reaching it) rather than each beam's own
+    # transverse_basis(dir). transverse_basis is discontinuous in its argument, so two
+    # co-polarized beams arriving at slightly different angles would otherwise land in
+    # ~90-deg-rotated frames and fail to interfere. A shared frame fixes that.
+    if (j is not None and ray.evec is not None and sn is not None
+            and to_obj is not None and to_obj.optics.element_type in TERMINAL):
+        e1, e2 = physics.transverse_basis(sn)
+        ev = ray.evec
+        j = (ev[0] * e1[0] + ev[1] * e1[1] + ev[2] * e1[2],
+             ev[0] * e2[0] + ev[1] * e2[1] + ev[2] * e2[2])
     return {
         "p1": ray.p1.copy(), "p2": p2.copy(), "kind": ray.kind,
         "from": ray.from_obj.name if ray.from_obj else None,
@@ -284,7 +295,7 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
 
         t, E, H, sn = hit
         idx = len(segments)
-        segments.append(_seg(ray, H, E))
+        segments.append(_seg(ray, H, E, sn))
         et = E.optics.element_type
 
         if et in TERMINAL:

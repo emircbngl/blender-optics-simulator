@@ -311,16 +311,18 @@ def _sensor_field_mm(op):
 
 
 def _monitor_targets(scene, segs):
-    """Detectors whose recorded pattern belongs in the sensor window: those explicitly
-    flagged `is_monitor`, or - if none are - every terminal detector currently receiving a
-    beam. So the scene's "Sensor window" toggle works on its own; `is_monitor` is just an
-    explicit override (the per-detector button)."""
+    """Detectors whose recorded pattern belongs in the sensor window: the UNION of every
+    terminal currently receiving a beam (so the scene "Sensor window" toggle just works and
+    the active/lit detector always has a frame) plus any explicitly `is_monitor`-flagged
+    detector. A flag never starves the others, so one stale flag can't hijack the window."""
+    hit = {s["to"] for s in segs}
     terminals = [o for o in scene.objects if getattr(o, "optics", None) and o.optics.is_optical
                  and o.optics.element_type in tracer.TERMINAL]
-    flagged = [o for o in terminals if getattr(o.optics, "is_monitor", False)]
-    if flagged:
-        return flagged
-    return [o for o in terminals if any(s["to"] == o.name for s in segs)]
+    out = [o for o in terminals if o.name in hit]
+    for o in terminals:
+        if getattr(o.optics, "is_monitor", False) and o not in out:
+            out.append(o)
+    return out
 
 
 def live_fringe_update(scene):
@@ -337,10 +339,10 @@ def live_fringe_update(scene):
     for det in _monitor_targets(scene, segs):
         op = det.optics
         field, px = _sensor_field_mm(op)
-        arr, _used = _fringe_array(det, segs, field, px,
-                                   getattr(op, "sensor_exposure", 0.0),
-                                   getattr(op, "sensor_read_noise", 0.0),
-                                   getattr(op, "sensor_well_depth", 4000.0), norm='peak')
+        # Live preview is the IDEAL field (no camera noise) so it doesn't flicker / re-roll
+        # random noise on every redraw; the camera model (exposure/read-noise/saturation)
+        # is applied by Save Sensor Image and the one-shot Detector Fringe Image instead.
+        arr, _used = _fringe_array(det, segs, field, px, 0.0, 0.0, 4000.0, norm='peak')
         if arr is None:
             continue
         p, vis, _s = alignment.measure(segs, det.name, op.analyzer)
@@ -399,6 +401,12 @@ class OPTICS_OT_fringe(Operator):
         img.save()
         if self.to_material:
             _assign_fringe_material(det, img)
+        # Align the detector's live-window params to this operator's so that when the
+        # window refreshes (via the monitor_show toggle) it reproduces the same field of
+        # view / resolution rather than overwriting it with a differently-scaled image.
+        det.optics.sensor_px = self.px
+        if self.px > 0:
+            det.optics.pixel_size_um = self.size_mm * 1000.0 / self.px
         monitor.set_frame(det.name, arr, "fringe  (%d beams)" % used)
         _show_monitor(context)
         self.report({'INFO'}, "Fringe image (%d beams) on %s -> bottom-left window (+ %s)" % (used, det.name, out))

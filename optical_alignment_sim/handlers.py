@@ -38,6 +38,19 @@ def _tag_redraw():
                 a.tag_redraw()
 
 
+def _anchor_depth(o):
+    """Length of the anchor chain above o, so sorting ascending composes leaders before
+    followers (A anchored to B anchored to C resolves in a single pass)."""
+    d, cur, seen = 0, o, set()
+    while True:
+        op = getattr(cur, "optics", None)
+        a = getattr(op, "anchor", None) if op else None
+        if a is None or a in seen:
+            return d
+        seen.add(cur)
+        cur, d = a, d + 1
+
+
 def _deferred_trace():
     global _recomputing, _dirty, _last_sig
     _dirty = False
@@ -47,12 +60,17 @@ def _deferred_trace():
     _recomputing = True
     try:
         # Propagate relative placement first: a moved anchor / leader updates its
-        # followers BEFORE we snapshot the signature, so the change is detected.
+        # followers BEFORE we snapshot the signature, so the change is detected. Compose
+        # in leader-before-follower order so anchor chains (A->B->C) resolve in one pass,
+        # and skip entirely when nothing is anchored (keeps the cheap no-op path).
         try:
             from . import mounts
-            for o in scene.objects:
-                op = getattr(o, "optics", None)
-                if op and op.is_optical and getattr(op, "anchor", None) is not None:
+            anchored = [o for o in scene.objects
+                        if getattr(o, "optics", None) and o.optics.is_optical
+                        and getattr(o.optics, "anchor", None) is not None]
+            if anchored:
+                anchored.sort(key=_anchor_depth)
+                for o in anchored:
                     mounts.compose_pose(o)
         except Exception:
             pass
