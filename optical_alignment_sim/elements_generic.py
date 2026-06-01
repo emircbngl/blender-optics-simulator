@@ -331,6 +331,12 @@ def retroreflector(name, loc, in_dir, coll=None, size=25.0):
     return o
 
 
+def cavity(name, loc, axis, coll=None, spacing_mm=0.05, R=0.9, size=25.0):
+    """A Fabry-Perot etalon (two partial mirrors); wavelength-dependent Airy transmission."""
+    return _inline(name, loc, axis, coll, 'CAVITY', "bs", radius=size * 0.5, depth=8.0,
+                   cavity_spacing_mm=spacing_mm, reflectivity=R)
+
+
 def add_translation_dof(obj, axis_world, mm_min=-25.0, mm_max=25.0, current=0.0):
     """Give an element a linear translation knob (e.g. Michelson OPD stage)."""
     from . import mounts

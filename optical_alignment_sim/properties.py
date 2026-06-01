@@ -37,6 +37,7 @@ ELEMENT_TYPES = [
     ('PHOTODIODE',   "Photodiode",                 "Terminates the beam (point detector)"),
     ('POWER_METER',  "Power Meter",                "Terminates the beam (power sensor head)"),
     ('PASSTHROUGH',  "Pass-through",               "Generic transparent element"),
+    ('CAVITY',       "Fabry-Perot cavity",         "Two partial mirrors; Airy transmission"),
 ]
 
 PORT_ROLES = [
@@ -201,6 +202,7 @@ class OpticalElementProps(PropertyGroup):
         items=[('DIELECTRIC', "Dielectric (ideal)", ""), ('AL', "Aluminum", ""),
                ('AG', "Silver", ""), ('AU', "Gold", "")], default='DIELECTRIC')
     design_wl: FloatProperty(name="Design wavelength (nm)", default=633.0)  # waveplate/lens spec point
+    cavity_spacing_mm: FloatProperty(name="Cavity spacing (mm)", default=0.05, min=1e-4)
 
     is_source: BoolProperty(default=False)
     is_detector: BoolProperty(default=False)

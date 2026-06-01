@@ -342,6 +342,11 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             Tc = _clip_T(ray, E, t)
             stack.append(_child(ray, E, H, ray.dir, ray.power * Tc, 'TRANSMIT', idx, t,
                                 jones=physics.scale(J, math.sqrt(Tc)) if J else None))
+        elif et == 'CAVITY':
+            # Fabry-Perot etalon: wavelength-dependent Airy transmission
+            T = physics.airy_transmission(ray.wl, op.cavity_spacing_mm, op.reflectivity)
+            stack.append(_child(ray, E, H, ray.dir, ray.power * T, 'TRANSMIT', idx, t,
+                                jones=physics.scale(J, math.sqrt(T)) if J else None))
         elif et == 'ISOLATOR':
             # Faraday isolator: passes forward (IN->OUT), blocks back-reflections
             ipo, opo = _find_port(op, 'IN'), _find_port(op, 'OUT')

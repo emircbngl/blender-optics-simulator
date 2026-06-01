@@ -267,6 +267,30 @@ def coherence_length_mm(wavelength_nm, linewidth_nm):
     return lam * lam / (linewidth_nm * NM_TO_MM)
 
 
+def cavity_finesse(R):
+    """Fabry-Perot finesse from mirror (intensity) reflectivity R."""
+    R = max(0.0, min(R, 0.999999))
+    return math.pi * math.sqrt(R) / (1.0 - R)
+
+
+def cavity_fsr_nm(wl_nm, L_mm, n=1.0):
+    """Free spectral range in nm: FSR = lambda^2 / (2 n L)."""
+    lam_mm = wl_nm * NM_TO_MM
+    return (lam_mm * lam_mm / (2.0 * n * L_mm)) / NM_TO_MM
+
+
+def airy_transmission(wl_nm, L_mm, R, n=1.0, theta=0.0):
+    """Fabry-Perot Airy transmission: T = 1/(1 + F sin^2(delta/2)),
+    delta = 4 pi n L cos(theta) / lambda, F = 4R/(1-R)^2."""
+    R = max(0.0, min(R, 0.999999))
+    lam_mm = wl_nm * NM_TO_MM
+    if lam_mm <= 0.0:
+        return 1.0
+    delta = 4.0 * math.pi * n * L_mm * math.cos(theta) / lam_mm
+    F = 4.0 * R / (1.0 - R) ** 2
+    return 1.0 / (1.0 + F * math.sin(delta / 2.0) ** 2)
+
+
 def fringe_envelope(opd_mm, Lc_mm):
     """Visibility envelope vs optical path difference (Gaussian coherence decay)."""
     if Lc_mm == float('inf') or Lc_mm >= 1.0e12:
@@ -405,6 +429,15 @@ if __name__ == "__main__":
         fails.append("sellmeier n(587.6)=%.4f" % sellmeier_n(587.6, 'N-BK7'))
     if not (sellmeier_n(450.0) > sellmeier_n(650.0)):
         fails.append("sellmeier dispersion sign")
+
+    # Fabry-Perot: T=1 on resonance, small mid-FSR; finesse(R=0.9) ~ 29.8
+    Lc_fp = 0.05
+    t_res = airy_transmission(500.0, Lc_fp, 0.9)              # 500 nm, L=0.05 -> resonance
+    t_anti = airy_transmission(500.0 + cavity_fsr_nm(500.0, Lc_fp) / 2.0, Lc_fp, 0.9)
+    if not (close(t_res, 1.0, 1e-3) and t_anti < 0.05):
+        fails.append("airy t_res=%.3f t_anti=%.3f" % (t_res, t_anti))
+    if not close(cavity_finesse(0.9), math.pi * math.sqrt(0.9) / 0.1, 1e-6):
+        fails.append("finesse=%.2f" % cavity_finesse(0.9))
 
     if fails:
         print("PHYSICS SELFTEST FAILED:")

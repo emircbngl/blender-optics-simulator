@@ -120,6 +120,9 @@ class OPTICS_PT_tag(Panel):
             pcol.prop(props, "grating_order")
         elif et == 'ATTENUATOR':
             pcol.prop(props, "od")
+        elif et == 'CAVITY':
+            pcol.prop(props, "cavity_spacing_mm")
+            pcol.prop(props, "reflectivity")
         elif et in ('DETECTOR', 'PHOTODIODE', 'POWER_METER'):
             pcol.prop(props, "analyzer")
         if et in ('MIRROR', 'PRISM_MIRROR'):

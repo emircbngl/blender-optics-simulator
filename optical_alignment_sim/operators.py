@@ -31,7 +31,7 @@ def _default_specs_for_type(etype, obj):
     ax = geometry.longest_axis(obj)
     plus, minus = "+" + ax, "-" + ax
     if etype in ('LENS', 'WAVEPLATE', 'ATTENUATOR', 'PASSTHROUGH',
-                 'POLARIZER', 'FILTER', 'ISOLATOR', 'PINHOLE'):
+                 'POLARIZER', 'FILTER', 'ISOLATOR', 'PINHOLE', 'CAVITY'):
         return [("IN", "IN", minus), ("OUT", "OUT", plus)]
     if etype in ('SOURCE', 'FIBER_COLLIMATOR'):
         return [("OUT", "OUT", plus)]
