@@ -6,7 +6,8 @@ A Blender **4.2+ / 5.x** add-on for **designing, simulating, aligning, and rende
 optical setups** — lasers, mirrors, beam splitters, lenses, waveplates, polarizers,
 dichroics, gratings, retroreflectors, isolators, cavities, detectors — backed by a real
 **optical-physics engine**: polarization (Jones/Stokes), interference (live fringes),
-wavelength-selective optics, Gaussian-beam propagation, and analytic quantum readouts.
+wavelength-selective optics, Gaussian-beam propagation, wavefront sensing & adaptive optics,
+and analytic quantum readouts.
 
 Everything is driven from **View3D ▸ Sidebar ▸ Optics**. An optional Python API
 (`optics_api`) lets a script — or an AI agent (e.g. Claude via the Blender MCP) — drive
@@ -70,6 +71,12 @@ layer, and a render pipeline — all readable by both humans (the Optics panel) 
   co.) addressable by part number. Import your own CAD (STL/OBJ natively, **STEP/IGES via
   FreeCAD**), or let an entry fall back to correct **generic mesh-free geometry** when the
   CAD isn't on disk — so every catalog entry is usable immediately.
+- **Swappable parts** — fill or replace an element's mesh from the catalog or an imported file
+  while keeping its optical *slot* (ports, pose, mount, beam role); do it for one element or in
+  **bulk** (by type / mount / name prefix).
+- **Relative positioning & assemblies** — place an element a set distance from another along a
+  chosen axis or its outgoing beam, group parts under an **anchor** that moves them together, or
+  link "B follows A" so a dependent element tracks its reference live.
 - **Render helper** — one-click EEVEE preview / Cycles final, camera presets
   (Hero/Top/Front/Side), beam baking, and **background presets** (Dark / Black / White-paper
   / **Transparent** alpha-PNG for figures).
@@ -81,6 +88,9 @@ layer, and a render pipeline — all readable by both humans (the Optics panel) 
   an aberrator injects wavefront error, the sensor reconstructs it (false-color map + RMS in the
   bottom-left sensor window), and a closed-loop integrator drives the deformable mirror until the
   wavefront flattens (RMS → 0) — live, inside the single-ray model.
+- **Scriptable & agent-drivable** — every core action is exposed through `optics_api` (JSON-able
+  state in, structured results out) and a localhost **MCP bridge**, so a script or an AI agent can
+  build, align, swap, position, scan, and render a *running* scene headlessly.
 
 ### Physics layer
 
@@ -91,7 +101,7 @@ layer, and a render pipeline — all readable by both humans (the Optics panel) 
 | **Wavelength** | dichroic routing by cut-λ, filters (LP/SP/BP/ND), grating equation `mλ = d·Δsinθ`, **dispersion** n(λ) (Sellmeier) | grating angle, d-line n(587.6)=1.5168 |
 | **Gaussian beam** | complex q-parameter through free space + lenses (ABCD), spot size w(z), aperture clipping; **wavefront curvature R(z)** + **Gouy phase** rendered into the fringes (curvature → curved/ring fringes, exp(−ρ²/w²) **apodization**), plus a tilted-detector **cos θ** obliquity factor | focal spot λf/πw₀, Gouy→±90°, oracle 10/10 |
 | **Wavefront / adaptive optics** | modal Zernike wavefront error per beam (Noll j=1..15), aberrator / deformable mirror / wavefront sensor, closed-loop modal correction (integrator) | Zernike orthonormality + RMS (oracle), loop RMS 0.56→0 |
-| **Advanced** | Fresnel metal-mirror s/p phase (linear→elliptical), white-light fringe packets, detector **camera model** (shot/read noise, saturation), one-way **isolators**, **Fabry-Pérot** cavities (Airy/finesse/FSR) | Fresnel Brewster/normal, Airy comb, finesse |
+| **Advanced** | **exact vectorial (3-D)** Fresnel at an arbitrary mirror tilt (true s/p phase, linear→elliptical), white-light fringe packets, detector **camera model** (shot/read noise, saturation), one-way **isolators**, **Fabry-Pérot** cavities (Airy/finesse/FSR) | Fresnel Brewster/normal, Airy comb, finesse |
 | **Quantum (analytic)** | Hong-Ou-Mandel dip, Bell **CHSH** | R(0)=0, \|S\|=2√2 |
 
 Analysis tools — **Scan + Plot** (interferogram / Malus / spectrum), **Detector Fringe
@@ -126,7 +136,7 @@ blender --command extension validate optical_alignment_sim
 
 ## Quick start
 
-- **Examples ▸** pick *Michelson* (or any of the four) to spawn a full setup with the live
+- **Examples ▸** pick *Michelson* (or any of the six) to spawn a full setup with the live
   beam overlay.
 - **Element** — select an object, *Tag as Optical Element*, then *Auto-Detect Ports* (by
   name) or *Add Port from Face* (any mesh); *Normalize Imported CAD* fixes units/scale.
@@ -153,6 +163,10 @@ blender --command extension validate optical_alignment_sim
 5. Tilt a mirror and run **Detector Fringe Image** → the 2-D straight-fringe pattern, with an
    optional camera noise/exposure model.
 
+Try also **Examples ▸ Newton's Rings** (a lens vs. a flat reference → live concentric rings) and
+**Adaptive Optics** (run the loop from the *Adaptive Optics* panel to drive a wavefront's RMS to
+zero and watch the sensor's false-color map flatten).
+
 The same, headlessly, via the agent/script API:
 
 ```python
@@ -177,7 +191,7 @@ parameters). To use real parts:
 3. STL/OBJ import directly; for STEP/IGES, set the **FreeCAD command** (`freecadcmd`) in
    preferences and the add-on converts on import (`tools/freecad_convert.py` for CLI use).
 
-The built-in catalog (~40 real parts — lasers, mirrors, prism/corner-cube mirrors, beam
+The built-in catalog (38 real parts — lasers, mirrors, prism/corner-cube mirrors, beam
 splitters, dichroics, gratings, retroreflectors, lenses, waveplates, polarizers, filters,
 attenuators, isolators, apertures, pinholes, fiber collimators, photodiodes, power-meter
 heads) references meshes by filename. Without the CAD, **Add Component** still spawns a
@@ -203,11 +217,10 @@ Start MCP Bridge**) and run the server in [`mcp/`](mcp/README.md).
 - CAD-assisted DOF extraction from STEP geometry + datasheets
 - POV-Ray / Asymptote export for publication figures
 
-*Recently shipped:* a live **sensor window**, **swappable parts** (catalog/file, in bulk),
-**relative positioning** (assembly anchors + live links), exact **vectorial (3-D)
-polarization** for off-axis Fresnel, the **dedicated MCP server** above, a modal
-**adaptive-optics loop** (Zernike wavefront sensor + deformable mirror + closed-loop correction),
-and **Gaussian-wavefront fringes** (curvature + apodization + Gouy, with oblique-detector cos θ).
+*Recently shipped:* exact **vectorial (3-D) polarization** for off-axis Fresnel, the **MCP
+bridge** above, a modal **adaptive-optics loop** (Zernike wavefront sensor + deformable mirror +
+closed loop), **Gaussian-wavefront fringes** (curvature + apodization + Gouy + oblique-detector
+cos θ), and a **Newton's-rings** example that paints that curved wavefront as live concentric rings.
 
 ## License & credits
 
