@@ -87,7 +87,7 @@ layer, and a render pipeline — all readable by both humans (the Optics panel) 
 | **Polarization** | Jones vectors/matrices: source state, polarizer (Malus), waveplate (HWP/QWP + fast axis), PBS (s/p); Stokes/**DOP** for partial & unpolarized light | Malus cos²θ, QWP→circular, PBS 50/50 |
 | **Interference** | coherent recombination (OPL→phase), coherence envelope from linewidth, fringe **visibility**; complementary Mach-Zehnder outputs | V=1 at zero OPD, energy conservation |
 | **Wavelength** | dichroic routing by cut-λ, filters (LP/SP/BP/ND), grating equation `mλ = d·Δsinθ`, **dispersion** n(λ) (Sellmeier) | grating angle, d-line n(587.6)=1.5168 |
-| **Gaussian beam** | complex q-parameter through free space + lenses (ABCD), spot size w(z), aperture clipping | focal spot λf/πw₀ |
+| **Gaussian beam** | complex q-parameter through free space + lenses (ABCD), spot size w(z), aperture clipping; **wavefront curvature R(z)** + **Gouy phase** rendered into the fringes (curvature → curved/ring fringes, exp(−ρ²/w²) **apodization**), plus a tilted-detector **cos θ** obliquity factor | focal spot λf/πw₀, Gouy→±90°, oracle 10/10 |
 | **Wavefront / adaptive optics** | modal Zernike wavefront error per beam (Noll j=1..15), aberrator / deformable mirror / wavefront sensor, closed-loop modal correction (integrator) | Zernike orthonormality + RMS (oracle), loop RMS 0.56→0 |
 | **Advanced** | Fresnel metal-mirror s/p phase (linear→elliptical), white-light fringe packets, detector **camera model** (shot/read noise, saturation), one-way **isolators**, **Fabry-Pérot** cavities (Airy/finesse/FSR) | Fresnel Brewster/normal, Airy comb, finesse |
 | **Quantum (analytic)** | Hong-Ou-Mandel dip, Bell **CHSH** | R(0)=0, \|S\|=2√2 |
@@ -203,8 +203,9 @@ Start MCP Bridge**) and run the server in [`mcp/`](mcp/README.md).
 
 *Recently shipped:* a live **sensor window**, **swappable parts** (catalog/file, in bulk),
 **relative positioning** (assembly anchors + live links), exact **vectorial (3-D)
-polarization** for off-axis Fresnel, the **dedicated MCP server** above, and a modal
-**adaptive-optics loop** (Zernike wavefront sensor + deformable mirror + closed-loop correction).
+polarization** for off-axis Fresnel, the **dedicated MCP server** above, a modal
+**adaptive-optics loop** (Zernike wavefront sensor + deformable mirror + closed-loop correction),
+and **Gaussian-wavefront fringes** (curvature + apodization + Gouy, with oblique-detector cos θ).
 
 ## License & credits
 
