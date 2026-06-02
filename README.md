@@ -73,8 +73,12 @@ layer, and a render pipeline — all readable by both humans (the Optics panel) 
 - **Render helper** — one-click EEVEE preview / Cycles final, camera presets
   (Hero/Top/Front/Side), beam baking, and **background presets** (Dark / Black / White-paper
   / **Transparent** alpha-PNG for figures).
-- **Canonical examples** — one-click Mach-Zehnder, Michelson, Hong-Ou-Mandel, and
-  Bell/entanglement setups, built from portable generic components.
+- **Canonical examples** — one-click Mach-Zehnder, Michelson, Hong-Ou-Mandel,
+  Bell/entanglement, and **adaptive-optics** setups, built from portable generic components.
+- **Adaptive optics (closed loop)** — a modal (Zernike) wavefront sensor + deformable mirror:
+  an aberrator injects wavefront error, the sensor reconstructs it (false-color map + RMS in the
+  bottom-left sensor window), and a closed-loop integrator drives the deformable mirror until the
+  wavefront flattens (RMS → 0) — live, inside the single-ray model.
 
 ### Physics layer
 
@@ -84,6 +88,7 @@ layer, and a render pipeline — all readable by both humans (the Optics panel) 
 | **Interference** | coherent recombination (OPL→phase), coherence envelope from linewidth, fringe **visibility**; complementary Mach-Zehnder outputs | V=1 at zero OPD, energy conservation |
 | **Wavelength** | dichroic routing by cut-λ, filters (LP/SP/BP/ND), grating equation `mλ = d·Δsinθ`, **dispersion** n(λ) (Sellmeier) | grating angle, d-line n(587.6)=1.5168 |
 | **Gaussian beam** | complex q-parameter through free space + lenses (ABCD), spot size w(z), aperture clipping | focal spot λf/πw₀ |
+| **Wavefront / adaptive optics** | modal Zernike wavefront error per beam (Noll j=1..15), aberrator / deformable mirror / wavefront sensor, closed-loop modal correction (integrator) | Zernike orthonormality + RMS (oracle), loop RMS 0.56→0 |
 | **Advanced** | Fresnel metal-mirror s/p phase (linear→elliptical), white-light fringe packets, detector **camera model** (shot/read noise, saturation), one-way **isolators**, **Fabry-Pérot** cavities (Airy/finesse/FSR) | Fresnel Brewster/normal, Airy comb, finesse |
 | **Quantum (analytic)** | Hong-Ou-Mandel dip, Bell **CHSH** | R(0)=0, \|S\|=2√2 |
 
@@ -198,7 +203,8 @@ Start MCP Bridge**) and run the server in [`mcp/`](mcp/README.md).
 
 *Recently shipped:* a live **sensor window**, **swappable parts** (catalog/file, in bulk),
 **relative positioning** (assembly anchors + live links), exact **vectorial (3-D)
-polarization** for off-axis Fresnel, and the **dedicated MCP server** above.
+polarization** for off-axis Fresnel, the **dedicated MCP server** above, and a modal
+**adaptive-optics loop** (Zernike wavefront sensor + deformable mirror + closed-loop correction).
 
 ## License & credits
 
