@@ -151,6 +151,7 @@ def _seg(ray, p2, to_obj, sn=None):
         ev = ray.evec
         j = (ev[0] * e1[0] + ev[1] * e1[1] + ev[2] * e1[2],
              ev[0] * e2[0] + ev[1] * e2[1] + ev[2] * e2[2])
+    qd = physics.q_propagate(ray.q, physics.abcd_free(seg_len)) if ray.q is not None else None
     return {
         "p1": ray.p1.copy(), "p2": p2.copy(), "kind": ray.kind,
         "from": ray.from_obj.name if ray.from_obj else None,
@@ -158,7 +159,8 @@ def _seg(ray, p2, to_obj, sn=None):
         "power": round(ray.power, 4), "wavelength": ray.wl, "parent": ray.parent,
         "jones": [j[0].real, j[0].imag, j[1].real, j[1].imag] if j else None,
         "opl": opl, "phase": phase, "src_id": ray.src_id, "coh": ray.coh,
-        "w_mm": physics.beam_radius(physics.q_propagate(ray.q, physics.abcd_free(seg_len)), ray.wl) if ray.q else 0.0,
+        "w_mm": physics.beam_radius(qd, ray.wl) if qd is not None else 0.0,
+        "qd": [qd.real, qd.imag] if qd is not None else None,   # Gaussian q at the hit -> R, w, Gouy
         "aberr": list(ray.aberr) if ray.aberr else None,
     }
 

@@ -17,7 +17,7 @@ from bpy.props import EnumProperty, IntProperty, FloatProperty
 
 from bpy.props import BoolProperty, StringProperty
 
-from . import tracer, alignment, geometry, monitor
+from . import tracer, alignment, geometry, monitor, physics
 
 SCAN_ITEMS = [
     ('STAGE', "OPD stage (mm)", "Sweep the active element's translation knob"),
@@ -246,7 +246,7 @@ def _fringe_array(det, segs, size_mm, px, exposure=0.0, read_noise=0.0, well_dep
     beams = [s for s in segs if s["to"] == det.name]
     if not beams:
         return None, 0
-    _c, _n, u, v = _detector_plane(det)
+    c, n, u, v = _detector_plane(det)
     half = size_mm * 0.5
     ax = np.linspace(-half, half, px)
     uu, vv = np.meshgrid(ax, ax)
@@ -261,13 +261,37 @@ def _fringe_array(det, segs, size_mm, px, exposure=0.0, read_noise=0.0, well_dep
         if not j or d.length < 1e-9:
             continue
         d = d.normalized()
-        k = 2.0 * np.pi / (s.get("wavelength", 632.8) * 1.0e-6)
+        wl = s.get("wavelength", 632.8)
+        k = 2.0 * np.pi / (wl * 1.0e-6)
+        # plane-wave piston + transverse tilt (linear ramp -> straight fringes)
         phase = k * (s.get("opl", 0.0) - opl_ref) + (k * d.dot(u)) * uu + (k * d.dot(v)) * vv
-        wave = np.exp(1j * phase)
+        env = 1.0
+        # Gaussian wavefront from the q carried to this hit: quadratic curvature k*rho^2/(2R)
+        # (rho from the beam's chief-ray hit, NOT the detector center), the Gouy piston, and
+        # exp(-rho^2/w^2) amplitude apodization. A collimated beam / a waist has R=inf and a
+        # large w, so every term vanishes and the old straight-fringe pattern is recovered;
+        # two beams of different R give concentric (ring) fringes.
+        qd = s.get("qd")
+        if qd:
+            hit = Vector(s["p2"])
+            du = uu - (hit - c).dot(u)
+            dv = vv - (hit - c).dot(v)
+            rho2 = du * du + dv * dv
+            qz = complex(qd[0], qd[1])
+            R = physics.beam_roc(qz)
+            if np.isfinite(R) and abs(R) > 1.0e-9:
+                phase = phase + k * rho2 / (2.0 * R)
+            phase = phase - physics.gouy_phase(qz)
+            w = physics.beam_radius(qz, wl)
+            if w > 1.0e-9:
+                env = np.exp(-rho2 / (w * w))
+        # oblique detector: irradiance ~ |d.n| = cos(incidence) -> fold sqrt into the amplitude
+        env = env * np.sqrt(max(abs(d.dot(n)), 0.0))
+        wave = env * np.exp(1j * phase)
         jx, jy = complex(j[0], j[1]), complex(j[2], j[3])
         fx += jx * wave
         fy += jy * wave
-        amp_sum += (abs(jx) ** 2 + abs(jy) ** 2) ** 0.5     # max coherent amplitude
+        amp_sum += (abs(jx) ** 2 + abs(jy) ** 2) ** 0.5     # envelope-free constructive ceiling
         used += 1
     if used == 0:
         return None, 0

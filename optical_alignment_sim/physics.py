@@ -326,6 +326,15 @@ def beam_roc(q):
     return (1.0 / inv_real) if abs(inv_real) > 1e-12 else float('inf')
 
 
+def gouy_phase(q):
+    """Gouy phase psi(z) of a fundamental Gaussian beam, from q = z + i*zR (z measured from
+    the waist, zR = Im q > 0): psi = atan2(z, zR) = atan2(Re q, Im q). 0 at the waist,
+    -> +-pi/2 in the far field. It is a slowly-varying *piston* (no transverse dependence),
+    so within one beam it is invisible, but between two beams of different focal history it
+    shifts the interference fringes (the measurable Gouy effect)."""
+    return math.atan2(q.real, q.imag)
+
+
 # --- Zernike wavefront (modal adaptive optics) ------------------------------
 # Noll-indexed, RMS-normalized Zernike polynomials over the unit disk (j = 1..15:
 # piston, tip/tilt, defocus, astigmatism, coma, trefoil, spherical, secondary astig,
@@ -505,6 +514,23 @@ if __name__ == "__main__":
     w_expected = lam * NM_TO_MM * f / (math.pi * w0)   # diffraction-limited focal spot
     if not close(wf, w_expected, 1e-3):
         fails.append("ABCD focal spot %.5f != %.5f" % (wf, w_expected))
+
+    # Gaussian wavefront (G7): R -> inf at the waist; R(z) = z(1+(zR/z)^2); Gouy 0 at waist,
+    # -> +pi/2 far field; far-field divergence w(z) -> w0 z / zR.
+    qw = q_from_waist(w0, lam)                          # at the waist
+    zR = qw.imag
+    if not math.isinf(beam_roc(qw)):
+        fails.append("ROC at waist not inf: %.3f" % beam_roc(qw))
+    if not close(gouy_phase(qw), 0.0, 1e-9):
+        fails.append("Gouy at waist=%.4f" % gouy_phase(qw))
+    z = 2.0 * zR                                        # two Rayleigh ranges out
+    qz = q_propagate(qw, abcd_free(z))
+    if not close(beam_roc(qz), z * (1.0 + (zR / z) ** 2), 1e-6):
+        fails.append("ROC(z)=%.4f != %.4f" % (beam_roc(qz), z * (1.0 + (zR / z) ** 2)))
+    if not close(gouy_phase(qz), math.atan2(z, zR), 1e-9):
+        fails.append("Gouy(z)=%.4f" % gouy_phase(qz))
+    if not (gouy_phase(q_propagate(qw, abcd_free(1000.0 * zR))) > 1.56):   # ~pi/2 far field
+        fails.append("Gouy far field not ->pi/2")
 
     # Coherence: Lc for 632.8nm, 1pm linewidth ~ 0.4 m; envelope ~1 at 0 OPD
     Lc = coherence_length_mm(632.8, 1e-3)
