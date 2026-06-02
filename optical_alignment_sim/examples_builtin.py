@@ -89,11 +89,29 @@ def build_bell_entanglement(context):
     return "OpticsExample_Bell"
 
 
+def build_adaptive_optics(context):
+    """Adaptive optics: source -> aberrator (turbulence) -> deformable mirror -> wavefront
+    sensor. Run the AO loop (Adaptive Optics panel / optics.ao_close_loop) to drive the
+    residual wavefront RMS to zero and watch the sensor's wavefront map flatten."""
+    coll = G.example_collection("OpticsExample_AdaptiveOptics")
+    X, Y = Vector((1, 0, 0)), Vector((0, 1, 0))
+    G.source("AO_Laser", (-220, 0, 0), X, coll)
+    modes = [0.0] * 15
+    modes[3] = 0.4     # defocus (Noll j=4)
+    modes[5] = 0.3     # astigmatism (j=6)
+    modes[7] = 0.25    # coma (j=8)
+    G.aberrator("AO_Turbulence", (-90, 0, 0), X, coll, modes=modes)
+    G.deformable_mirror("AO_DM", (0, 0, 0), X, Y, coll)     # fold +X -> +Y
+    G.wavefront_sensor("AO_WFS", (0, 160, 0), Y, coll)      # faces the +Y beam
+    return "OpticsExample_AdaptiveOptics"
+
+
 EXAMPLES = {
     'mach_zehnder': ("Mach-Zehnder Interferometer", build_mach_zehnder),
     'michelson':    ("Michelson Interferometer", build_michelson),
     'hong_ou_mandel': ("Hong-Ou-Mandel", build_hong_ou_mandel),
     'bell':         ("Bell / Entanglement Source", build_bell_entanglement),
+    'adaptive_optics': ("Adaptive Optics (WFS + deformable mirror)", build_adaptive_optics),
 }
 
 

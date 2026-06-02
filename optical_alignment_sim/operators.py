@@ -45,6 +45,12 @@ def _default_specs_for_type(etype, obj):
         return [("IN_ref", "IN", "+X"), ("IN_sam", "IN", "-Y"), ("OUT", "OUT", "+Y")]
     if etype == 'APERTURE':
         return [("IN", "IN", minus), ("OUT", "OUT", plus)]
+    if etype == 'WAVEFRONT_SENSOR':
+        return [("IN", "IN", minus)]
+    if etype == 'DEFORMABLE_MIRROR':
+        return [("IN", "IN", "+Z"), ("REFLECT", "REFLECT", "+Z")]
+    if etype == 'ABERRATOR':
+        return [("IN", "IN", minus), ("OUT", "OUT", plus)]
     return []
 
 

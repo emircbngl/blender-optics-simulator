@@ -250,3 +250,42 @@ def scan(kind='STAGE', lo=0.0, hi=0.002, steps=120, element=None):
             bpy.context.view_layer.objects.active = obj
     res = bpy.ops.optics.scan(kind=kind, lo=lo, hi=hi, steps=steps)
     return {"ok": 'FINISHED' in res, "kind": kind, "steps": steps}
+
+
+def ao_measure(sensor):
+    """Read the residual Zernike wavefront error (waves) at a wavefront sensor. {zernike, rms}."""
+    from . import ao, physics
+    tracer.cached_segments = _trace(_scene())
+    c = ao._aberr_at(tracer.cached_segments, sensor)
+    if c is None:
+        return {"error": "no beam at wavefront sensor '%s'" % sensor}
+    return {"sensor": sensor, "zernike": [round(x, 4) for x in c],
+            "rms": round(physics.wavefront_rms(c), 4)}
+
+
+def get_wavefront(sensor):
+    """Alias of ao_measure: a wavefront sensor's reconstructed wavefront (Zernike + RMS)."""
+    return ao_measure(sensor)
+
+
+def ao_command(dm, coeffs):
+    """Set a deformable mirror's command (Zernike coeffs, in waves). {ok, dm, command}."""
+    obj = _scene().objects.get(dm)
+    if not obj:
+        return {"error": "object not found: %s" % dm}
+    cmd = list(obj.optics.dm_command)
+    for i in range(min(len(cmd), len(coeffs))):
+        cmd[i] = float(coeffs[i])
+    obj.optics.dm_command = cmd
+    return {"ok": True, "dm": dm, "command": cmd}
+
+
+def ao_close_loop(sensor, dm, gain=0.5, iters=15):
+    """Close the modal adaptive-optics loop (sensor -> deformable-mirror integrator). Returns
+    the RMS history in waves (open-loop first, corrected last)."""
+    from . import ao
+    hist = ao.close_loop(_scene(), sensor, dm, gain, iters)
+    if not hist:
+        return {"error": "need a wavefront sensor + deformable mirror with a beam between them"}
+    return {"ok": True, "rms_history": [round(x, 4) for x in hist],
+            "rms_initial": round(hist[0], 4), "rms_final": round(hist[-1], 4)}

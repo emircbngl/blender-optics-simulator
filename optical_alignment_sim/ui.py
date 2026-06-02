@@ -134,6 +134,19 @@ class OPTICS_PT_tag(Panel):
             if props.sensor_exposure > 0.0:
                 sbox.prop(props, "sensor_read_noise")
                 sbox.prop(props, "sensor_well_depth")
+        elif et == 'ABERRATOR':
+            abx = pcol.box()
+            abx.label(text="Injected aberration (waves)", icon='MOD_NOISE')
+            abx.prop(props, "aberr_spec", index=3, text="defocus")
+            abx.prop(props, "aberr_spec", index=5, text="astigmatism")
+            abx.prop(props, "aberr_spec", index=7, text="coma")
+            abx.prop(props, "aberr_spec", index=10, text="spherical")
+        elif et == 'DEFORMABLE_MIRROR':
+            pcol.prop(props, "reflectivity")
+            pcol.operator("optics.dm_flatten", icon='MOD_SMOOTH')
+        elif et == 'WAVEFRONT_SENSOR':
+            pcol.label(text="Wavefront RMS: %.3f waves" % props.wf_rms, icon='IMAGE_BACKGROUND')
+            pcol.operator("optics.ao_close_loop", icon='MOD_NOISE')
         if et in ('MIRROR', 'PRISM_MIRROR'):
             pcol.prop(props, "coating")
         pcol.prop(props, "clear_aperture")
@@ -399,6 +412,27 @@ class OPTICS_PT_assembly(Panel):
             layout.label(text="Anchored to: %s" % op.anchor.name, icon='LINKED')
 
 
+class OPTICS_PT_adaptive_optics(Panel):
+    bl_label = "Adaptive Optics"
+    bl_idname = "OPTICS_PT_adaptive_optics"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Optics"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    def draw(self, context):
+        layout = self.layout
+        layout.operator("optics.ao_close_loop", icon='MOD_NOISE')
+        layout.label(text="Sense wavefront -> drive deformable mirror -> flatten.")
+        ob = context.object
+        op = getattr(ob, "optics", None) if ob is not None else None
+        if op and op.is_optical:
+            if op.element_type == 'WAVEFRONT_SENSOR':
+                layout.label(text="WFS RMS: %.3f waves" % op.wf_rms, icon='IMAGE_BACKGROUND')
+            elif op.element_type == 'DEFORMABLE_MIRROR':
+                layout.operator("optics.dm_flatten", icon='MOD_SMOOTH')
+
+
 _classes = (
     OPTICS_UL_ports,
     OPTICS_PT_tag,
@@ -408,6 +442,7 @@ _classes = (
     OPTICS_PT_render,
     OPTICS_PT_library,
     OPTICS_PT_assembly,
+    OPTICS_PT_adaptive_optics,
     OPTICS_PT_examples,
 )
 

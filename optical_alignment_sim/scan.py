@@ -337,6 +337,11 @@ def live_fringe_update(scene):
     keep = set()
     for det in _monitor_targets(scene, segs):
         op = det.optics
+        if op.element_type == 'WAVEFRONT_SENSOR':            # show the reconstructed wavefront map
+            from . import ao
+            ao.publish_wavefront(det, segs)
+            keep.add(det.name)
+            continue
         field, px = _sensor_field_mm(op)
         # Live preview is the IDEAL field (no camera noise) so it doesn't flicker / re-roll
         # random noise on every redraw; the camera model (exposure/read-noise/saturation)

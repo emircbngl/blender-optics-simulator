@@ -326,6 +326,51 @@ def beam_roc(q):
     return (1.0 / inv_real) if abs(inv_real) > 1e-12 else float('inf')
 
 
+# --- Zernike wavefront (modal adaptive optics) ------------------------------
+# Noll-indexed, RMS-normalized Zernike polynomials over the unit disk (j = 1..15:
+# piston, tip/tilt, defocus, astigmatism, coma, trefoil, spherical, secondary astig,
+# tetrafoil). The AO subsystem carries a coefficient vector (in waves) on each beam: an
+# aberrator adds modes, a deformable mirror subtracts them, a wavefront sensor reads them.
+
+_NOLL = {1: (0, 0), 2: (1, 1), 3: (1, -1), 4: (2, 0), 5: (2, -2), 6: (2, 2),
+         7: (3, -1), 8: (3, 1), 9: (3, -3), 10: (3, 3), 11: (4, 0),
+         12: (4, 2), 13: (4, -2), 14: (4, 4), 15: (4, -4)}
+ZERNIKE_NAMES = {1: "piston", 2: "tip", 3: "tilt", 4: "defocus", 5: "astig45",
+                 6: "astig0", 7: "comaY", 8: "comaX", 9: "trefoilY", 10: "trefoilX",
+                 11: "spherical", 12: "2astig0", 13: "2astig45", 14: "tetra0", 15: "tetra45"}
+N_ZERNIKE = 15
+
+
+def _zernike_radial(n, m, rho):
+    m = abs(m)
+    s = 0.0
+    for k in range((n - m) // 2 + 1):
+        num = ((-1) ** k) * math.factorial(n - k)
+        den = (math.factorial(k) * math.factorial((n + m) // 2 - k)
+               * math.factorial((n - m) // 2 - k))
+        s += (num / den) * rho ** (n - 2 * k)
+    return s
+
+
+def zernike(j, rho, theta):
+    """Noll-indexed, RMS-normalized Zernike Z_j(rho, theta) on the unit disk."""
+    n, m = _NOLL[j]
+    norm = math.sqrt(n + 1) if m == 0 else math.sqrt(2.0 * (n + 1))
+    ang = math.cos(m * theta) if m >= 0 else math.sin(-m * theta)
+    return norm * _zernike_radial(n, m, rho) * ang
+
+
+def zernike_value(coeffs, rho, theta):
+    """Wavefront W(rho, theta) = sum_j coeffs[j-1] * Z_j (coeffs indexed from j=1)."""
+    return sum(c * zernike(i + 1, rho, theta) for i, c in enumerate(coeffs) if c)
+
+
+def wavefront_rms(coeffs):
+    """RMS wavefront error over the unit disk. RMS-normalized Zernikes are orthonormal, so
+    RMS = sqrt(sum of squares); piston (j=1, index 0) is excluded as it is not an aberration."""
+    return math.sqrt(sum(c * c for i, c in enumerate(coeffs) if i >= 1))
+
+
 # --- coherence --------------------------------------------------------------
 
 def coherence_length_mm(wavelength_nm, linewidth_nm):
@@ -554,6 +599,38 @@ if __name__ == "__main__":
     nn = sum(abs(evn[i]) ** 2 for i in range(3))
     if nn > 1e-12 and abs(ov - nn) / nn > 1e-6:
         fails.append("normal-incidence ideal didn't preserve field: %.4f vs %.4f" % (ov, nn))
+
+    # --- Zernike wavefront (adaptive optics) -------------------------------
+    if not close(zernike(4, 1.0, 0.0), math.sqrt(3.0), 1e-9):        # defocus at rho=1
+        fails.append("Zernike defocus(1)=%.4f" % zernike(4, 1.0, 0.0))
+    if not close(zernike(4, 0.0, 0.0), -math.sqrt(3.0), 1e-9):       # defocus at rho=0
+        fails.append("Zernike defocus(0)=%.4f" % zernike(4, 0.0, 0.0))
+    if not close(zernike(2, 1.0, 0.0), 2.0, 1e-9):                   # tip at rho=1,theta=0
+        fails.append("Zernike tip=%.4f" % zernike(2, 1.0, 0.0))
+    if not close(zernike(6, 1.0, 0.0), math.sqrt(6.0), 1e-9):        # astig0 at rho=1
+        fails.append("Zernike astig0=%.4f" % zernike(6, 1.0, 0.0))
+    if not close(zernike(11, 1.0, 0.0), math.sqrt(5.0), 1e-9):       # spherical at rho=1
+        fails.append("Zernike spherical=%.4f" % zernike(11, 1.0, 0.0))
+    if not close(wavefront_rms([0, 0, 0, 0, 0.3, 0, 0, 0.4]), 0.5, 1e-9):
+        fails.append("wavefront_rms != 0.5")
+
+    def _zdot(a, b, N=140):                          # disk-average <Z_a Z_b> ~ delta_ab
+        s = c = 0.0
+        for ii in range(N):
+            for jj in range(N):
+                x = (ii + 0.5) / N * 2.0 - 1.0
+                y = (jj + 0.5) / N * 2.0 - 1.0
+                r = math.hypot(x, y)
+                if r > 1.0:
+                    continue
+                th = math.atan2(y, x)
+                s += zernike(a, r, th) * zernike(b, r, th)
+                c += 1.0
+        return s / c
+    if not close(_zdot(4, 4), 1.0, 0.02):
+        fails.append("Zernike norm <Z4,Z4>=%.3f" % _zdot(4, 4))
+    if abs(_zdot(4, 6)) > 0.02 or abs(_zdot(2, 3)) > 0.02:
+        fails.append("Zernike orthogonality")
 
     if fails:
         print("PHYSICS SELFTEST FAILED:")

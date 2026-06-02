@@ -337,6 +337,43 @@ def cavity(name, loc, axis, coll=None, spacing_mm=0.05, R=0.9, size=25.0):
                    cavity_spacing_mm=spacing_mm, reflectivity=R)
 
 
+def _pad15(coeffs):
+    v = list(coeffs or [])[:15]
+    return v + [0.0] * (15 - len(v))
+
+
+def wavefront_sensor(name, loc, beam_dir, coll=None, size=22.0):
+    """A Shack-Hartmann-style modal wavefront sensor; reads the incoming beam's Zernike modes."""
+    o = _cube(name, (size, size, 8.0), coll)
+    o.data.materials.clear(); o.data.materials.append(MATS["det"]())
+    _tag(o, 'WAVEFRONT_SENSOR', clear_aperture=size * 0.5)
+    _add_port(o, "IN", 'IN', (0, 0, 4.0), (0, 0, 1), size * 0.5)
+    _set_matrix(o, Vector(loc), _z_to(-Vector(beam_dir).normalized()))   # IN faces the beam
+    return o
+
+
+def deformable_mirror(name, loc, in_dir, out_dir, coll=None, size=25.0, command=None):
+    """A deformable corrector mirror (folds in_dir -> out_dir); subtracts its commanded
+    Zernike modes (`command`, in waves) from the wavefront on reflection."""
+    n = (Vector(out_dir).normalized() - Vector(in_dir).normalized())
+    n = n.normalized() if n.length > 1e-6 else Vector((0, 0, 1))
+    o = _cube(name, (size, size, 4.0), coll)
+    o.data.materials.clear(); o.data.materials.append(MATS["mirror"]())
+    _tag(o, 'DEFORMABLE_MIRROR', clear_aperture=size * 0.5, reflectivity=1.0)
+    o.optics.dm_command = _pad15(command)
+    _add_port(o, "IN", 'IN', (0, 0, 2.0), (0, 0, 1), size * 0.5)
+    _add_port(o, "REFLECT", 'REFLECT', (0, 0, 0), (0, 0, 1), size * 0.5)
+    _set_matrix(o, Vector(loc), _z_to(n))     # local +Z (REFLECT normal) -> bisector n
+    return o
+
+
+def aberrator(name, loc, axis, coll=None, modes=None, radius=14.0):
+    """An aberrator / 'turbulence' plate that injects a Zernike wavefront error (`modes`, waves)."""
+    o = _inline(name, loc, axis, coll, 'ABERRATOR', "wp", radius=radius, depth=3.0)
+    o.optics.aberr_spec = _pad15(modes)
+    return o
+
+
 def add_translation_dof(obj, axis_world, mm_min=-25.0, mm_max=25.0, current=0.0):
     """Give an element a linear translation knob (e.g. Michelson OPD stage)."""
     from . import mounts

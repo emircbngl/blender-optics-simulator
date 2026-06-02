@@ -38,6 +38,9 @@ ELEMENT_TYPES = [
     ('POWER_METER',  "Power Meter",                "Terminates the beam (power sensor head)"),
     ('PASSTHROUGH',  "Pass-through",               "Generic transparent element"),
     ('CAVITY',       "Fabry-Perot cavity",         "Two partial mirrors; Airy transmission"),
+    ('WAVEFRONT_SENSOR', "Wavefront Sensor",        "Shack-Hartmann-style modal wavefront sensor (Zernike readout)"),
+    ('DEFORMABLE_MIRROR', "Deformable Mirror",      "Corrector mirror; subtracts its commanded Zernike modes"),
+    ('ABERRATOR',    "Aberrator / Turbulence",     "Injects a Zernike wavefront error (the disturbance to correct)"),
 ]
 
 PORT_ROLES = [
@@ -241,6 +244,11 @@ class OpticalElementProps(PropertyGroup):
     sensor_exposure: FloatProperty(name="Exposure (0 = ideal)", default=0.0, min=0.0)
     sensor_read_noise: FloatProperty(name="Read noise (counts)", default=5.0, min=0.0)
     sensor_well_depth: FloatProperty(name="Saturation (counts)", default=4000.0, min=1.0)
+    # adaptive optics (modal Zernike): aberrator injects, deformable mirror subtracts, sensor reads
+    aberr_spec: FloatVectorProperty(name="Aberration (waves)", size=15, default=[0.0] * 15)
+    dm_command: FloatVectorProperty(name="DM command (waves)", size=15, default=[0.0] * 15)
+    ao_gain: FloatProperty(name="Loop gain", default=0.5, min=0.0, max=1.0)
+    wf_rms: FloatProperty(name="Wavefront RMS (waves)", default=0.0)
     part_key: StringProperty(name="Part", default="")   # catalog key / filename currently filling this slot
     anchor: PointerProperty(name="Anchor", type=bpy.types.Object, poll=_anchor_poll,
                             update=_anchor_update,

@@ -27,17 +27,18 @@ EXTEND_MM = 150.0          # how far an escaping ray is drawn
 cached_segments = []
 
 # Elements whose beam interaction happens at the REFLECT port plane (not the IN plane).
-REFLECTIVE = ('MIRROR', 'PRISM_MIRROR', 'BEAMSPLITTER', 'DICHROIC', 'GRATING', 'RETROREFLECTOR')
+REFLECTIVE = ('MIRROR', 'PRISM_MIRROR', 'BEAMSPLITTER', 'DICHROIC', 'GRATING', 'RETROREFLECTOR',
+              'DEFORMABLE_MIRROR')
 # Elements that absorb the beam (no outgoing ray).
-TERMINAL = ('DETECTOR', 'PHOTODIODE', 'POWER_METER')
+TERMINAL = ('DETECTOR', 'PHOTODIODE', 'POWER_METER', 'WAVEFRONT_SENSOR')
 
 
 class _Ray:
     __slots__ = ('p1', 'dir', 'power', 'depth', 'from_obj', 'wl', 'kind', 'parent',
-                 'jones', 'opl', 'q', 'src_id', 'coh', 'evec')
+                 'jones', 'opl', 'q', 'src_id', 'coh', 'evec', 'aberr')
 
     def __init__(self, p1, d, power, depth, from_obj, wl, kind, parent,
-                 jones=None, opl=0.0, q=None, src_id=-1, coh=1.0e12, evec=None):
+                 jones=None, opl=0.0, q=None, src_id=-1, coh=1.0e12, evec=None, aberr=None):
         self.p1 = p1
         self.dir = d.normalized()
         self.power = power
@@ -52,6 +53,7 @@ class _Ray:
         self.src_id = src_id        # coherence group (which source this ray came from)
         self.coh = coh              # coherence length (mm) from the source linewidth
         self.evec = evec            # 3-D complex field (vectorial pol), transverse to dir
+        self.aberr = aberr          # Zernike wavefront-error coeffs (waves) or None (=flat)
 
 
 def _find_port(props, role):
@@ -157,10 +159,19 @@ def _seg(ray, p2, to_obj, sn=None):
         "jones": [j[0].real, j[0].imag, j[1].real, j[1].imag] if j else None,
         "opl": opl, "phase": phase, "src_id": ray.src_id, "coh": ray.coh,
         "w_mm": physics.beam_radius(physics.q_propagate(ray.q, physics.abcd_free(seg_len)), ray.wl) if ray.q else 0.0,
+        "aberr": list(ray.aberr) if ray.aberr else None,
     }
 
 
-def _child(ray, E, H, d, power, kind, idx, t, jones=None, q=None, evec=None):
+def _aberr_combine(base, vec, sign):
+    """base (or None=flat) +/- the element's Zernike vector -> a fresh 15-coeff list."""
+    out = list(base) if base else [0.0] * physics.N_ZERNIKE
+    for i in range(min(len(out), len(vec))):
+        out[i] = out[i] + sign * vec[i]
+    return out
+
+
+def _child(ray, E, H, d, power, kind, idx, t, jones=None, q=None, evec=None, aberr=None):
     """Construct a continuation ray: carry polarization/coherence, advance the optical
     path length, and propagate the Gaussian beam q through the free space to E (and
     through E's focal power when it is a lens).
@@ -187,7 +198,8 @@ def _child(ray, E, H, d, power, kind, idx, t, jones=None, q=None, evec=None):
         nev = physics.field_from_jones(nj, d) if nj is not None else None
     return _Ray(H, d, power, ray.depth + 1, E, ray.wl, kind, idx,
                 jones=nj, opl=ray.opl + t, q=q,
-                src_id=ray.src_id, coh=ray.coh, evec=nev)
+                src_id=ray.src_id, coh=ray.coh, evec=nev,
+                aberr=(aberr if aberr is not None else ray.aberr))
 
 
 def _clip_T(ray, E, t):
@@ -387,6 +399,22 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             if fwd is not None and ray.dir.dot(fwd) < 0.0:
                 continue                                  # backward -> absorbed
             stack.append(_child(ray, E, H, ray.dir, ray.power, 'TRANSMIT', idx, t))
+        elif et == 'ABERRATOR':
+            # injects a wavefront error (the "turbulence") onto the beam; pass-through
+            ab = _aberr_combine(ray.aberr, list(op.aberr_spec), 1.0)
+            stack.append(_child(ray, E, H, ray.dir, ray.power, 'TRANSMIT', idx, t, aberr=ab))
+        elif et == 'DEFORMABLE_MIRROR':
+            # a mirror that SUBTRACTS its commanded Zernike modes from the wavefront
+            nd = geometry.reflect(ray.dir, sn)
+            ab = _aberr_combine(ray.aberr, list(op.dm_command), -1.0)
+            a = math.sqrt(max(op.reflectivity, 0.0))
+            if ray.evec is not None:
+                ev, _do = physics.reflect_field(ray.evec, ray.dir, sn, a, -a)
+                stack.append(_child(ray, E, H, nd, ray.power * op.reflectivity, 'REFLECT', idx, t,
+                                    evec=ev, aberr=ab))
+            else:
+                stack.append(_child(ray, E, H, nd, ray.power * op.reflectivity, 'REFLECT', idx, t,
+                                    jones=None, aberr=ab))
         else:  # LENS / PASSTHROUGH
             stack.append(_child(ray, E, H, ray.dir, ray.power, 'TRANSMIT', idx, t))
 
