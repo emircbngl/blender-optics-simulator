@@ -28,16 +28,6 @@ def _signature(scene):
     return hash(tuple(vals))
 
 
-def _tag_redraw():
-    wm = bpy.context.window_manager
-    if not wm:
-        return
-    for w in wm.windows:
-        for a in w.screen.areas:
-            if a.type == 'VIEW_3D':
-                a.tag_redraw()
-
-
 def _anchor_depth(o):
     """Length of the anchor chain above o, so sorting ascending composes leaders before
     followers (A anchored to B anchored to C resolves in a single pass)."""
@@ -97,7 +87,7 @@ def _deferred_trace():
             scan.live_fringe_update(scene)      # refresh live sensor monitors
         except Exception:
             pass
-        _tag_redraw()
+        tracer._tag_redraw()
     finally:
         _recomputing = False
     return None                          # one-shot timer

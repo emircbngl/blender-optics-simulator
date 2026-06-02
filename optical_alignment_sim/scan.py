@@ -32,6 +32,13 @@ def _detectors(scene):
             and o.optics.element_type in tracer.TERMINAL]
 
 
+def _lit_detectors(scene, segs):
+    """Terminal detectors currently receiving at least one beam (the candidate set the
+    monitor, the fringe operator, and detector auto-resolution all share)."""
+    hit = {s["to"] for s in segs}
+    return [d for d in _detectors(scene) if d.name in hit]
+
+
 def _trace(scene):
     return tracer.trace_scene(scene, mode=scene.optics.trace_mode,
                               max_segments=scene.optics.max_segments,
@@ -101,12 +108,7 @@ def _show_monitor(context):
     monitor.enable()
     if getattr(context.scene, "optics", None):
         context.scene.optics.monitor_show = True
-    wm = context.window_manager
-    if wm:
-        for w in wm.windows:
-            for a in w.screen.areas:
-                if a.type == 'VIEW_3D':
-                    a.tag_redraw()
+    tracer._tag_redraw()
 
 
 class OPTICS_OT_scan(Operator):
@@ -315,13 +317,10 @@ def _monitor_targets(scene, segs):
     terminal currently receiving a beam (so the scene "Sensor window" toggle just works and
     the active/lit detector always has a frame) plus any explicitly `is_monitor`-flagged
     detector. A flag never starves the others, so one stale flag can't hijack the window."""
-    hit = {s["to"] for s in segs}
-    terminals = [o for o in scene.objects if getattr(o, "optics", None) and o.optics.is_optical
-                 and o.optics.element_type in tracer.TERMINAL]
-    out = [o for o in terminals if o.name in hit]
-    for o in terminals:
-        if getattr(o.optics, "is_monitor", False) and o not in out:
-            out.append(o)
+    out = _lit_detectors(scene, segs)
+    for d in _detectors(scene):
+        if getattr(d.optics, "is_monitor", False) and d not in out:
+            out.append(d)
     return out
 
 
@@ -379,8 +378,7 @@ class OPTICS_OT_fringe(Operator):
                                   max_segments=scene.optics.max_segments, max_depth=scene.optics.max_depth)
         det = context.object
         if det is None or det.optics.element_type not in tracer.TERMINAL or not [s for s in segs if s["to"] == det.name]:
-            ranked = [o for o in scene.objects if getattr(o, "optics", None) and o.optics.is_optical
-                      and o.optics.element_type in tracer.TERMINAL and any(s["to"] == o.name for s in segs)]
+            ranked = _lit_detectors(scene, segs)
             if not ranked:
                 self.report({'ERROR'}, "No detector with an incoming beam")
                 return {'CANCELLED'}
@@ -474,9 +472,9 @@ def _resolve_detector(scene, name):
             det = ob
     if det is None:
         segs = tracer.cached_segments or _trace(scene)
-        cand = [o for o in scene.objects if getattr(o, "optics", None) and o.optics.is_optical
-                and o.optics.element_type in tracer.TERMINAL]
-        det = next((o for o in cand if any(s["to"] == o.name for s in segs)), cand[0] if cand else None)
+        lit = _lit_detectors(scene, segs)
+        cand = _detectors(scene)
+        det = lit[0] if lit else (cand[0] if cand else None)
     return det
 
 

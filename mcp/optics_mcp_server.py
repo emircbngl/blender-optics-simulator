@@ -90,9 +90,9 @@ def set_param(name: str, key: str, value: float) -> str:
 
 
 @mcp.tool()
-def add_component(key: str, location: list = [0.0, 0.0, 0.0]) -> str:
+def add_component(key: str, location: list = None) -> str:
     """Spawn a catalog component by key (or its generic mesh-free fallback)."""
-    return _fmt(_call("add_component", key=key, location=location))
+    return _fmt(_call("add_component", key=key, location=location or [0.0, 0.0, 0.0]))
 
 
 @mcp.tool()

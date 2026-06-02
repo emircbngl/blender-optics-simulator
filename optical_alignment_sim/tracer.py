@@ -396,7 +396,12 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
 # --- operators --------------------------------------------------------------
 
 def _tag_redraw():
-    for w in bpy.context.window_manager.windows:
+    """Redraw every 3-D viewport. The single implementation reused across the add-on
+    (handlers, scan, assembly, properties, bridge) - see those callers."""
+    wm = bpy.context.window_manager
+    if not wm:
+        return
+    for w in wm.windows:
         for a in w.screen.areas:
             if a.type == 'VIEW_3D':
                 a.tag_redraw()

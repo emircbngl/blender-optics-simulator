@@ -30,10 +30,7 @@ def _retrace(context):
         tracer.cached_segments = tracer.trace_scene(
             context.scene, mode=sp.trace_mode,
             max_segments=sp.max_segments, max_depth=sp.max_depth)
-        for w in context.window_manager.windows:
-            for a in w.screen.areas:
-                if a.type == 'VIEW_3D':
-                    a.tag_redraw()
+        tracer._tag_redraw()
     except Exception:
         pass
 

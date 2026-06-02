@@ -136,12 +136,7 @@ def _monitor_update(self, context):
             if not tracer.cached_segments:
                 tracer.cached_segments = scan._trace(scn)
             scan.live_fringe_update(scn)
-        wm = context.window_manager if context else None
-        if wm:
-            for w in wm.windows:
-                for a in w.screen.areas:
-                    if a.type == 'VIEW_3D':
-                        a.tag_redraw()
+        tracer._tag_redraw()
     except Exception:
         pass
 

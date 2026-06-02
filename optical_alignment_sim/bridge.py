@@ -19,12 +19,6 @@ import threading
 import bpy
 
 # Whitelisted optics_api functions (defence in depth: the bridge never calls anything else).
-_ALLOWED = {
-    "get_state", "trace_beam", "tag_element", "set_mount", "align_element", "align_all",
-    "check_mechanics", "set_param", "bake_beams", "clear_beams", "render", "build_example",
-    "add_component", "swap_part", "place_relative", "scan",
-}
-
 _server = None              # _BridgeServer instance (or None)
 _jobs = queue.Queue()       # (fn, args, holder) handed to the main thread
 _TIMER_DT = 0.05
@@ -33,6 +27,16 @@ _TIMER_DT = 0.05
 def _api():
     import sys
     return sys.modules.get("optics_api")
+
+
+def _allowed():
+    """The callable surface of optics_api - derived, not hand-copied, so a new public
+    optics_api function is reachable (and a removed one drops) with no second edit here.
+    optics_api is a deliberately curated facade, so its whole public API is safe to expose."""
+    api = _api()
+    if api is None:
+        return set()
+    return {n for n in dir(api) if not n.startswith("_") and callable(getattr(api, n, None))}
 
 
 def _drain():
@@ -123,9 +127,10 @@ class _BridgeServer(threading.Thread):
         args = req.get("args") or {}
         if fn == "ping":
             return {"ok": True, "result": "pong"}
+        allowed = _allowed()
         if fn == "list":
-            return {"ok": True, "result": sorted(_ALLOWED)}
-        if fn not in _ALLOWED:
+            return {"ok": True, "result": sorted(allowed)}
+        if fn not in allowed:
             return {"ok": False, "error": "function '%s' not allowed" % fn}
         holder = {"event": threading.Event()}
         _jobs.put((fn, args, holder))
@@ -200,10 +205,8 @@ class OPTICS_OT_bridge_toggle(bpy.types.Operator):
     def execute(self, context):
         ok, msg = (stop() if is_running() else start())
         self.report({'INFO'} if ok else {'WARNING'}, msg)
-        for w in context.window_manager.windows:
-            for a in w.screen.areas:
-                if a.type == 'VIEW_3D':
-                    a.tag_redraw()
+        from . import tracer
+        tracer._tag_redraw()
         return {'FINISHED'}
 
 
