@@ -74,7 +74,9 @@ layer, and a render pipeline — all readable by both humans (the Optics panel) 
   (Hero/Top/Front/Side), beam baking, and **background presets** (Dark / Black / White-paper
   / **Transparent** alpha-PNG for figures).
 - **Canonical examples** — one-click Mach-Zehnder, Michelson, Hong-Ou-Mandel,
-  Bell/entanglement, and **adaptive-optics** setups, built from portable generic components.
+  Bell/entanglement, **adaptive-optics**, and **Newton's-rings** (a lens-vs-flat near-focus
+  interferometer whose curved wavefront paints concentric rings) setups, built from portable
+  generic components.
 - **Adaptive optics (closed loop)** — a modal (Zernike) wavefront sensor + deformable mirror:
   an aberrator injects wavefront error, the sensor reconstructs it (false-color map + RMS in the
   bottom-left sensor window), and a closed-loop integrator drives the deformable mirror until the

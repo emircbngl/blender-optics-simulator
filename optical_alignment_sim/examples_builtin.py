@@ -106,12 +106,36 @@ def build_adaptive_optics(context):
     return "OpticsExample_AdaptiveOptics"
 
 
+def build_newton_rings(context):
+    """Newton's rings: a collimated beam in a Mach-Zehnder with a converging LENS in one arm
+    and a flat reference in the other. The lensed arm arrives at the detector as a curved
+    (near-spherical) wavefront and the reference as a plane wave, so the two interfere as
+    concentric ring fringes -- the live showcase of the Gaussian-wavefront fringe model
+    (curvature + apodization). The detector sits *before* the lens focus, where the beam is
+    still wide but strongly curved, so many rings fit. A common lens would shift both arms'
+    curvature equally; only a lens in a *single* arm makes the ring-producing 1/R difference."""
+    coll = G.example_collection("OpticsExample_NewtonRings")
+    X, Y = Vector((1, 0, 0)), Vector((0, 1, 0))
+    L = 80.0
+    src = G.source("NR_Laser", (-110, 0, 0), X, coll)
+    src.optics.waist_um = 1500.0                          # wide + collimated -> flat reference
+    G.beamsplitter("NR_BS1", (0, 0, 0), X, Y, coll)
+    G.mirror("NR_M_ref", (0, L, 0), Y, X, coll)           # reference arm: +Y -> +X (flat)
+    G.mirror("NR_M_lens", (L, 0, 0), X, Y, coll)          # lensed arm: +X -> +Y
+    G.lens("NR_Lens", (L, L - 18.0, 0), Y, coll, focal=100.0, radius=16.0)   # near BS2, in arm A
+    G.beamsplitter("NR_BS2", (L, L, 0), X, Y, coll)
+    det = G.detector("NR_D", (L + 40.0, L, 0), X, coll)   # before the lens focus -> rings
+    det.optics.pixel_size_um = 4.0                        # zoom the sensor field onto the beam
+    return "OpticsExample_NewtonRings"
+
+
 EXAMPLES = {
     'mach_zehnder': ("Mach-Zehnder Interferometer", build_mach_zehnder),
     'michelson':    ("Michelson Interferometer", build_michelson),
     'hong_ou_mandel': ("Hong-Ou-Mandel", build_hong_ou_mandel),
     'bell':         ("Bell / Entanglement Source", build_bell_entanglement),
     'adaptive_optics': ("Adaptive Optics (WFS + deformable mirror)", build_adaptive_optics),
+    'newton_rings': ("Newton's Rings (lens vs flat)", build_newton_rings),
 }
 
 

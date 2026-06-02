@@ -354,6 +354,8 @@ class OPTICS_PT_examples(Panel):
         col.operator("optics.build_example", text="Michelson", icon='MOD_MIRROR').kind = 'michelson'
         col.operator("optics.build_example", text="Hong-Ou-Mandel", icon='PARTICLES').kind = 'hong_ou_mandel'
         col.operator("optics.build_example", text="Bell / Entanglement", icon='PARTICLE_DATA').kind = 'bell'
+        col.operator("optics.build_example", text="Adaptive Optics", icon='MOD_NOISE').kind = 'adaptive_optics'
+        col.operator("optics.build_example", text="Newton's Rings", icon='MESH_CIRCLE').kind = 'newton_rings'
 
 
 class OPTICS_PT_library(Panel):
