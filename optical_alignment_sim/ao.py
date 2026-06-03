@@ -45,26 +45,46 @@ def _radial_np(n, m, rho):
     return s
 
 
-def wavefront_image(coeffs, px=192, vmax=1.0):
-    """False-colour RGBA map (HxWx4 float32) of the wavefront W(x,y)=sum_j a_j Z_j over the
-    unit disk, on a FIXED diverging scale (+-vmax waves): blue (low) -> green (zero) -> red
-    (high). The fixed scale is deliberate - a corrected (flat) wavefront shows a uniform
-    mid-colour and a large aberration shows full colour, so the loop's flattening is visible
-    (per-frame auto-scaling would stretch even a ~0 residual to full contrast)."""
+_BASIS_CACHE = {}   # px -> (mask, {j: normalized Z_j basis image}); grid+basis are call-invariant
+
+
+def _zern_basis(px):
+    """Cached unit-disk pupil mask + per-mode normalized Zernike basis images for a px*px grid.
+    The grid and each Z_j image are constant across calls, so a wavefront map is just
+    sum_j coeff_j * basis_j -- no per-call meshgrid or radial-polynomial recompute."""
+    cached = _BASIS_CACHE.get(px)
+    if cached is not None:
+        return cached
     import numpy as np
     ax = np.linspace(-1.0, 1.0, px)
     xx, yy = np.meshgrid(ax, ax)
     rr = np.sqrt(xx * xx + yy * yy)
     th = np.arctan2(yy, xx)
-    W = np.zeros((px, px))
-    for j, c in enumerate(coeffs, start=1):
-        if abs(c) < 1e-12 or j not in physics._NOLL:
-            continue
-        n, m = physics._NOLL[j]
+    basis = {}
+    for j, (n, m) in physics._NOLL.items():
         norm = math.sqrt(n + 1) if m == 0 else math.sqrt(2.0 * (n + 1))
         ang = np.cos(m * th) if m >= 0 else np.sin(-m * th)
-        W += c * norm * _radial_np(n, m, rr) * ang
-    mask = rr <= 1.0
+        basis[j] = norm * _radial_np(n, m, rr) * ang
+    cached = (rr <= 1.0, basis)
+    _BASIS_CACHE[px] = cached
+    return cached
+
+
+def wavefront_image(coeffs, px=192, vmax=1.0):
+    """False-colour RGBA map (HxWx4 float32) of the wavefront W(x,y)=sum_j a_j Z_j over the
+    unit disk, on a FIXED diverging scale (+-vmax waves): blue (low) -> green (zero) -> red
+    (high). The fixed scale is deliberate - a corrected (flat) wavefront shows a uniform
+    mid-colour and a large aberration shows full colour, so the loop's flattening is visible
+    (per-frame auto-scaling would stretch even a ~0 residual to full contrast). The grid + the
+    per-mode Zernike basis are cached per px (see _zern_basis), so each call is a few
+    scalar-weighted array adds."""
+    import numpy as np
+    mask, basis = _zern_basis(px)
+    W = np.zeros((px, px))
+    for j, c in enumerate(coeffs, start=1):
+        if abs(c) < 1e-12 or j not in basis:
+            continue
+        W += c * basis[j]
     t = np.clip(0.5 + 0.5 * W / (vmax or 1.0), 0.0, 1.0)   # W=0 -> 0.5 (uniform mid-colour)
     arr = np.empty((px, px, 4), dtype='float32')
     arr[:] = (0.05, 0.05, 0.06, 1.0)                       # outside the pupil
@@ -83,31 +103,41 @@ def publish_wavefront(det, segs):
                       "wavefront RMS=%.3f waves" % det.optics.wf_rms)
 
 
-def close_loop(scene, sensor_name, dm_name, gain=0.5, iters=15):
-    """Modal AO integrator: each step trace -> read residual Zernike at the sensor ->
-    accumulate the DM command toward it (dm_command += gain*residual) -> repeat. Returns the
-    RMS history (waves), starting with the open-loop value and ending with the corrected one."""
+def close_loop(scene, sensor_name, dm_name, gain=0.5, iters=15, tol=1.0e-3):
+    """Modal AO integrator: each step trace -> read residual Zernike at the sensor -> accumulate
+    the DM command toward it (dm_command += gain*residual) -> repeat until the wavefront is flat
+    (residual RMS < tol) or stalls (|delta RMS| < tol) or `iters` is reached. Returns the RMS
+    history (waves), open-loop value first, corrected last. Stops early once converged, so a fast
+    loop costs a handful of traces instead of the full `iters` + a trailing trace."""
     from . import scan
     wfs = scene.objects.get(sensor_name)
     dm = scene.objects.get(dm_name)
     if wfs is None or dm is None:
         return None
     hist = []
+    converged = False
     for _ in range(max(1, int(iters))):
         tracer.cached_segments = scan._trace(scene)
         coeffs = _aberr_at(tracer.cached_segments, sensor_name)
         if coeffs is None:
+            converged = True
             break
-        hist.append(physics.wavefront_rms(coeffs))
+        rms = physics.wavefront_rms(coeffs)
+        hist.append(rms)                                   # this trace already reflects every command applied so far
+        if rms < tol or (len(hist) >= 2 and abs(hist[-2] - rms) < tol):
+            converged = True
+            break
         cmd = list(dm.optics.dm_command)
         for i in range(min(len(cmd), len(coeffs))):
             cmd[i] += gain * coeffs[i]
         dm.optics.dm_command = cmd
-    tracer.cached_segments = scan._trace(scene)        # final state after the last command
-    final = _aberr_at(tracer.cached_segments, sensor_name)
-    if final is not None:
-        hist.append(physics.wavefront_rms(final))
-        wfs.optics.wf_rms = physics.wavefront_rms(final)
+    if not converged:                                      # ran out of iters: measure the last applied command once
+        tracer.cached_segments = scan._trace(scene)
+        final = _aberr_at(tracer.cached_segments, sensor_name)
+        if final is not None:
+            hist.append(physics.wavefront_rms(final))
+    if hist:
+        wfs.optics.wf_rms = hist[-1]
     return hist
 
 
