@@ -81,12 +81,36 @@ def ensure_lighting(scene):
 # 3-softbox studio + graded world + glossy ground let the glass refract and the coatings reflect.
 # The viewport keeps its flat editing colours: the original material is stashed per object and
 # restored by clear_render_style().
-_GLASS = {'BEAMSPLITTER': (0.80, 0.90, 1.0), 'LENS': (0.85, 0.95, 1.0),
-          'DICHROIC': (0.95, 0.80, 0.95), 'WAVEPLATE': (1.0, 0.92, 0.60),
-          'POLARIZER': (0.70, 1.0, 0.85), 'CAVITY': (0.80, 0.90, 1.0)}
-_METAL = {'MIRROR': (0.95, 0.96, 0.98), 'DEFORMABLE_MIRROR': (0.95, 0.96, 0.98),
-          'RETROREFLECTOR': (0.90, 0.92, 0.96), 'GRATING': (0.70, 0.70, 0.80)}
-_DARKSET = {'DETECTOR', 'PHOTODIODE', 'POWER_METER', 'WAVEFRONT_SENSOR'}
+# One render-material descriptor per element type: kind (glass|metal|dark|emit) + tint. A single
+# table so a new element type can't silently fall through to its flat viewport material at render
+# time (it covers every optical type in properties.ELEMENT_TYPES). The viewport MATS in
+# elements_generic stay distinct/flat for editing clarity; this is render-only.
+RENDER_DESCRIPTORS = {
+    'MIRROR':            ('metal', (0.95, 0.96, 0.98)),
+    'PRISM_MIRROR':      ('metal', (0.95, 0.96, 0.98)),
+    'DEFORMABLE_MIRROR': ('metal', (0.95, 0.96, 0.98)),
+    'RETROREFLECTOR':    ('metal', (0.90, 0.92, 0.96)),
+    'GRATING':           ('metal', (0.70, 0.70, 0.80)),
+    'BEAMSPLITTER':      ('glass', (0.80, 0.90, 1.00)),
+    'LENS':              ('glass', (0.85, 0.95, 1.00)),
+    'DICHROIC':          ('glass', (0.95, 0.80, 0.95)),
+    'WAVEPLATE':         ('glass', (1.00, 0.92, 0.60)),
+    'ABERRATOR':         ('glass', (1.00, 0.92, 0.60)),
+    'POLARIZER':         ('glass', (0.70, 1.00, 0.85)),
+    'CAVITY':            ('glass', (0.80, 0.90, 1.00)),
+    'FILTER':            ('glass', (0.95, 0.55, 0.30)),
+    'ATTENUATOR':        ('glass', (0.55, 0.57, 0.62)),
+    'PASSTHROUGH':       ('glass', (0.85, 0.90, 0.95)),
+    'DETECTOR':          ('dark',  None),
+    'PHOTODIODE':        ('dark',  None),
+    'POWER_METER':       ('dark',  None),
+    'WAVEFRONT_SENSOR':  ('dark',  None),
+    'ISOLATOR':          ('dark',  (0.30, 0.30, 0.34)),
+    'APERTURE':          ('dark',  (0.05, 0.05, 0.06)),
+    'PINHOLE':           ('dark',  (0.05, 0.05, 0.06)),
+    'SOURCE':            ('emit',  (1.00, 0.10, 0.05)),
+    'FIBER_COLLIMATOR':  ('emit',  (1.00, 0.10, 0.05)),
+}
 
 
 def _setb(b, name, val):
@@ -109,18 +133,28 @@ def _principled(name):
 
 
 def _render_material(et):
-    if et in _GLASS:
+    desc = RENDER_DESCRIPTORS.get(et)
+    if desc is None:
+        return None
+    kind, tint = desc
+    if kind == 'glass':
         m, b = _principled("OAR_glass_" + et)
-        _setb(b, "Base Color", (*_GLASS[et], 1.0)); _setb(b, "Roughness", 0.02); _setb(b, "IOR", 1.52)
+        _setb(b, "Base Color", (*tint, 1.0)); _setb(b, "Roughness", 0.02); _setb(b, "IOR", 1.52)
         _setb(b, "Transmission Weight", 1.0); _setb(b, "Transmission", 1.0)
         return m
-    if et in _METAL:
+    if kind == 'metal':
         m, b = _principled("OAR_metal_" + et)
-        _setb(b, "Base Color", (*_METAL[et], 1.0)); _setb(b, "Metallic", 1.0); _setb(b, "Roughness", 0.04)
+        _setb(b, "Base Color", (*tint, 1.0)); _setb(b, "Metallic", 1.0); _setb(b, "Roughness", 0.04)
         return m
-    if et in _DARKSET:
-        m, b = _principled("OAR_dark")
-        _setb(b, "Base Color", (0.02, 0.02, 0.025, 1.0)); _setb(b, "Metallic", 0.6); _setb(b, "Roughness", 0.35)
+    if kind == 'dark':
+        m, b = _principled("OAR_dark_" + et)
+        _setb(b, "Base Color", (*(tint or (0.02, 0.02, 0.025)), 1.0))
+        _setb(b, "Metallic", 0.6); _setb(b, "Roughness", 0.35)
+        return m
+    if kind == 'emit':
+        m, b = _principled("OAR_emit_" + et)
+        _setb(b, "Emission Color", (*tint, 1.0)); _setb(b, "Emission Strength", 5.0)
+        _setb(b, "Base Color", (*tint, 1.0))
         return m
     return None
 
