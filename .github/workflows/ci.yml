@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      BLENDER_VERSION: "4.2.3"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System libraries for headless Blender
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libxxf86vm1 libxfixes3 libxi6 libxkbcommon0 libsm6 libgl1 libxrender1 xkb-data xvfb
+
+      - name: Cache Blender
+        id: cache-blender
+        uses: actions/cache@v4
+        with:
+          path: ~/blender
+          key: blender-${{ env.BLENDER_VERSION }}-linux-x64
+
+      - name: Download Blender ${{ env.BLENDER_VERSION }}
+        if: steps.cache-blender.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/blender
+          MAJ=$(echo "$BLENDER_VERSION" | cut -d. -f1,2)
+          curl -fL -o /tmp/blender.tar.xz \
+            "https://download.blender.org/release/Blender${MAJ}/blender-${BLENDER_VERSION}-linux-x64.tar.xz"
+          tar -xf /tmp/blender.tar.xz -C ~/blender --strip-components=1
+
+      - name: Blender version
+        run: ~/blender/blender --version
+
+      - name: Physics self-test (bare interpreter)
+        run: python3 optical_alignment_sim/physics.py
+
+      - name: Extension validate
+        run: ~/blender/blender --command extension validate optical_alignment_sim
+
+      - name: Headless regression
+        run: xvfb-run -a ~/blender/blender --background --factory-startup --python tests/test_optics.py

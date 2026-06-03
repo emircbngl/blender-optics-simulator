@@ -4,6 +4,29 @@ All notable changes to the **Blender Optics Simulator** (`optical_alignment_sim`
 here. The format follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 semantic versioning.
 
+## [0.3.0]
+
+### Added
+- **SVG schematic export.** A dependency-free, top-view 2-D vector export of the optical layout +
+  beam path — element glyphs sized by clear aperture and coloured by type, port ticks, and beams
+  coloured by wavelength (width/opacity by power, dashed for split-transmitted). For publication
+  figures: *Render ▸ Export SVG Schematic*, `optics_api.export_svg(filepath)`, and an MCP tool.
+- **Continuous integration.** A GitHub Actions workflow downloads Blender (4.2 LTS) and runs the
+  physics self-test, `extension validate`, and the headless regression on every push / PR.
+
+### Changed
+- **Faster adaptive-optics loop.** `close_loop` stops as soon as the residual RMS is flat (a handful
+  of traces instead of the full iteration count) and no longer double-traces or double-computes the
+  final RMS. `wavefront_image` caches the grid + per-mode Zernike basis per resolution, so the live
+  wavefront map is a few scalar-weighted array adds per redraw.
+- **Render materials cover every element type.** A single `RENDER_DESCRIPTORS` table
+  (glass / metal / dark / emit + tint) replaces the partial per-family tables, so a new element type
+  can no longer render with its flat editing material.
+
+### Verified
+- The consolidated regression grew to 35 checks (AO trace-count drop + wavefront-cache equivalence,
+  full render-material coverage, an MCP-vs-`optics_api` drift guard, and SVG well-formedness).
+
 ## [0.2.0]
 
 ### Added

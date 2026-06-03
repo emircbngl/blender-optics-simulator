@@ -134,6 +134,76 @@ for (n, m, r) in [(2, 0, 0.5), (4, 0, 0.7), (3, 1, 0.6), (4, 2, 0.8)]:
     b = physics._zernike_radial(n, m, r)
     check("zernike radial ao==physics (n%dm%d)" % (n, m), abs(a - b) < 1e-9, "%.6f vs %.6f" % (a, b))
 
+print("[perf + altitude + export]")
+# AO convergence break: far fewer full-scene traces than the old fixed loop (was iters+1 = 16)
+optics_api.build_example("adaptive_optics")
+_orig_trace = scan._trace
+_tcount = {"n": 0}
+def _counting_trace(s):
+    _tcount["n"] += 1
+    return _orig_trace(s)
+scan._trace = _counting_trace
+try:
+    r = optics_api.ao_close_loop("AO_WFS", "AO_DM", gain=0.5, iters=15)
+finally:
+    scan._trace = _orig_trace
+check("AO loop trace count < 15", _tcount["n"] < 15, "traces=%d" % _tcount["n"])
+check("AO loop still flattens", r.get("ok") and r["rms_final"] < 0.01, str(r.get("rms_final")))
+
+# wavefront_image cache equals a fresh un-cached reference (numerics unchanged)
+coeffs = [0.0] * 15
+coeffs[3], coeffs[5], coeffs[7] = 0.4, 0.3, 0.25
+img = ao.wavefront_image(coeffs, px=64)
+axr = np.linspace(-1.0, 1.0, 64)
+xr, yr = np.meshgrid(axr, axr)
+rrr = np.sqrt(xr * xr + yr * yr)
+thr = np.arctan2(yr, xr)
+Wref = np.zeros((64, 64))
+for j, c in enumerate(coeffs, start=1):
+    if abs(c) < 1e-12 or j not in physics._NOLL:
+        continue
+    n_, m_ = physics._NOLL[j]
+    nrm = math.sqrt(n_ + 1) if m_ == 0 else math.sqrt(2.0 * (n_ + 1))
+    angr = np.cos(m_ * thr) if m_ >= 0 else np.sin(-m_ * thr)
+    Wref += c * nrm * ao._radial_np(n_, m_, rrr) * angr
+tref = np.clip(0.5 + 0.5 * Wref, 0.0, 1.0)
+mref = rrr <= 1.0
+check("wavefront_image cache == reference", np.allclose(img[..., 0][mref], tref[mref], atol=1e-6))
+
+# render descriptors cover every optical element type (no flat fall-through)
+from optical_alignment_sim import properties
+missing = [t[0] for t in properties.ELEMENT_TYPES if t[0] != 'NONE' and t[0] not in render.RENDER_DESCRIPTORS]
+check("render descriptors cover all types", not missing, "missing: %s" % missing)
+
+# MCP drift-guard: the server's @mcp.tool names must equal the bridge's optics_api surface
+import ast
+from optical_alignment_sim import bridge
+src = open(os.path.join(REPO, "mcp", "optics_mcp_server.py")).read()
+tool_names = set()
+for node in ast.walk(ast.parse(src)):
+    if isinstance(node, ast.FunctionDef):
+        for d in node.decorator_list:
+            f = d.func if isinstance(d, ast.Call) else d
+            if isinstance(f, ast.Attribute) and f.attr == 'tool':
+                tool_names.add(node.name)
+allowed = bridge._allowed()
+check("MCP tools == optics_api surface", tool_names == allowed,
+      "MCP-only=%s API-only=%s" % (sorted(tool_names - allowed), sorted(allowed - tool_names)))
+
+# SVG export: well-formed XML with a glyph per element and a line per beam
+import xml.dom.minidom as minidom
+optics_api.build_example("michelson")
+svgres = optics_api.export_svg("/tmp/oas_regress.svg")
+svgtext = open("/tmp/oas_regress.svg").read()
+try:
+    minidom.parseString(svgtext)
+    wellformed = True
+except Exception:
+    wellformed = False
+check("export_svg ok (elements+beams)", svgres.get("ok") and svgres["elements"] >= 1 and svgres["beams"] >= 1, str(svgres))
+check("SVG well-formed XML", wellformed)
+check("SVG has glyphs + beam lines", "<circle" in svgtext and svgtext.count("<line") >= 1)
+
 oas.unregister()
 
 passed = sum(1 for _, ok in _checks if ok)
