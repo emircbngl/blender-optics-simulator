@@ -292,6 +292,13 @@ class OpticalSceneProps(PropertyGroup):
                ('WHITE',       "White / Paper", "White backdrop for light figures"),
                ('TRANSPARENT', "Transparent",   "Alpha (PNG) background for compositing onto paper/figures")],
         default='DARK', update=_bg_update)
+    realistic_optics: BoolProperty(
+        name="Realistic optics (render)",
+        description=("On render, give beam splitters/lenses/waveplates glass materials and mirrors "
+                     "reflective coatings, and add studio lighting + a ground, so the optics read "
+                     "as real glass. The viewport keeps its flat editing colours; use Reset Render "
+                     "Style to restore them"),
+        default=True)
     monitor_show: BoolProperty(name="Sensor window", default=False, update=_monitor_update)
     monitor_size: IntProperty(name="Sensor window size (px)", default=256, min=96, max=720)
     # alignment thresholds

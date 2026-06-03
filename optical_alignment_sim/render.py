@@ -76,12 +76,139 @@ def ensure_lighting(scene):
         sun.rotation_euler = (math.radians(52), math.radians(8), math.radians(40))
 
 
+# --- realistic optical materials + studio (render-time, reversible) ----------
+# Beam splitters / lenses become glass, mirrors become coated metal, sensors stay dark, and a
+# 3-softbox studio + graded world + glossy ground let the glass refract and the coatings reflect.
+# The viewport keeps its flat editing colours: the original material is stashed per object and
+# restored by clear_render_style().
+_GLASS = {'BEAMSPLITTER': (0.80, 0.90, 1.0), 'LENS': (0.85, 0.95, 1.0),
+          'DICHROIC': (0.95, 0.80, 0.95), 'WAVEPLATE': (1.0, 0.92, 0.60),
+          'POLARIZER': (0.70, 1.0, 0.85), 'CAVITY': (0.80, 0.90, 1.0)}
+_METAL = {'MIRROR': (0.95, 0.96, 0.98), 'DEFORMABLE_MIRROR': (0.95, 0.96, 0.98),
+          'RETROREFLECTOR': (0.90, 0.92, 0.96), 'GRATING': (0.70, 0.70, 0.80)}
+_DARKSET = {'DETECTOR', 'PHOTODIODE', 'POWER_METER', 'WAVEFRONT_SENSOR'}
+_STUDIO = ("OPTICS_Studio_key", "OPTICS_Studio_fill", "OPTICS_Studio_rim", "OPTICS_Studio_Ground")
+
+
+def _setb(b, name, val):
+    if b is not None and name in b.inputs:
+        b.inputs[name].default_value = val
+
+
+def _principled(name):
+    m = bpy.data.materials.get(name)
+    if m:
+        return m, None
+    m = bpy.data.materials.new(name)
+    m.use_nodes = True
+    nt = m.node_tree
+    nt.nodes.clear()
+    out = nt.nodes.new("ShaderNodeOutputMaterial")
+    b = nt.nodes.new("ShaderNodeBsdfPrincipled")
+    nt.links.new(b.outputs[0], out.inputs[0])
+    return m, b
+
+
+def _render_material(et):
+    if et in _GLASS:
+        m, b = _principled("OAR_glass_" + et)
+        _setb(b, "Base Color", (*_GLASS[et], 1.0)); _setb(b, "Roughness", 0.02); _setb(b, "IOR", 1.52)
+        _setb(b, "Transmission Weight", 1.0); _setb(b, "Transmission", 1.0)
+        return m
+    if et in _METAL:
+        m, b = _principled("OAR_metal_" + et)
+        _setb(b, "Base Color", (*_METAL[et], 1.0)); _setb(b, "Metallic", 1.0); _setb(b, "Roughness", 0.04)
+        return m
+    if et in _DARKSET:
+        m, b = _principled("OAR_dark")
+        _setb(b, "Base Color", (0.02, 0.02, 0.025, 1.0)); _setb(b, "Metallic", 0.6); _setb(b, "Roughness", 0.35)
+        return m
+    return None
+
+
+def apply_optical_materials(scene):
+    """Swap each optical element to a realistic render material, stashing the viewport material
+    name in a custom prop so clear_render_style() can restore it."""
+    for o in scene.objects:
+        op = getattr(o, "optics", None)
+        if not op or not op.is_optical or o.type != 'MESH' or not o.data.materials:
+            continue
+        mat = _render_material(op.element_type)
+        if mat is None:
+            continue
+        if "_oa_vp_mat" not in o:
+            o["_oa_vp_mat"] = o.data.materials[0].name if o.data.materials[0] else ""
+        o.data.materials[0] = mat
+
+
+def studio_lighting(scene):
+    """Sized-to-the-optics studio: graded dark world, 3 softboxes, glossy ground. Idempotent."""
+    center, size = _optical_bounds(scene)
+    _w, bg = _world_bg_node(scene)
+    _setb(bg, "Color", (0.05, 0.055, 0.07, 1.0))
+    if bg is not None and "Strength" in bg.inputs:
+        bg.inputs["Strength"].default_value = 0.8
+    scene.render.film_transparent = False
+    for nm, loc, en, sz in (("OPTICS_Studio_key", (0.8, -0.9, 1.4), 18.0, 1.4),
+                            ("OPTICS_Studio_fill", (-1.0, -0.6, 0.6), 6.0, 1.6),
+                            ("OPTICS_Studio_rim", (-0.3, 1.1, 1.0), 11.0, 1.0)):
+        o = bpy.data.objects.get(nm)
+        if o is None or o.type != 'LIGHT':
+            ld = bpy.data.lights.new(nm, 'AREA')
+            o = bpy.data.objects.new(nm, ld)
+            scene.collection.objects.link(o)
+        o.data.size = size * sz
+        o.data.energy = en * size * size
+        o.location = center + Vector(loc) * size
+        o.rotation_euler = (center - o.location).to_track_quat('-Z', 'Y').to_euler()
+    g = bpy.data.objects.get("OPTICS_Studio_Ground")
+    if g is None:
+        import bmesh
+        me = bpy.data.meshes.new("OPTICS_Studio_Ground")
+        bm = bmesh.new(); bmesh.ops.create_grid(bm, x_segments=1, y_segments=1, size=size * 7.0)
+        bm.to_mesh(me); bm.free()
+        gm, gb = _principled("OAR_ground")
+        _setb(gb, "Base Color", (0.015, 0.015, 0.02, 1.0)); _setb(gb, "Roughness", 0.45); _setb(gb, "Metallic", 0.2)
+        me.materials.append(gm)
+        g = bpy.data.objects.new("OPTICS_Studio_Ground", me)
+        scene.collection.objects.link(g)
+    g.location = (center.x, center.y, center.z - size * 0.42)
+
+
+def clear_render_style(scene):
+    """Reverse apply_optical_materials() + studio_lighting(): restore viewport materials and
+    remove the studio rig. Safe to call when nothing was applied."""
+    for o in scene.objects:
+        if "_oa_vp_mat" in o:
+            if o.type == 'MESH' and o.data.materials:
+                orig = bpy.data.materials.get(o["_oa_vp_mat"])
+                if orig:
+                    o.data.materials[0] = orig
+            del o["_oa_vp_mat"]
+    for nm in _STUDIO:
+        ob = bpy.data.objects.get(nm)
+        if ob:
+            data = ob.data
+            bpy.data.objects.remove(ob, do_unlink=True)
+    apply_background(scene)
+
+
+def _light_and_world(scene):
+    """Realistic studio (if optics.realistic_optics) else the simple sun + backdrop."""
+    if getattr(getattr(scene, "optics", None), "realistic_optics", False):
+        apply_optical_materials(scene)
+        studio_lighting(scene)
+    else:
+        clear_render_style(scene)
+        ensure_lighting(scene)
+        apply_background(scene)
+
+
 def setup_preview(scene):
     scene.render.engine = resolve_eevee_id()
     scene.render.resolution_x = 1280
     scene.render.resolution_y = 720
-    ensure_lighting(scene)
-    apply_background(scene)
+    _light_and_world(scene)
     return scene.render.engine
 
 
@@ -95,8 +222,9 @@ def setup_final(scene):
         scene.view_settings.view_transform = 'Filmic'
     except Exception:
         pass
-    ensure_lighting(scene)
-    apply_background(scene)
+    scene.cycles.transmission_bounces = 16          # let light pass through the glass elements
+    scene.cycles.max_bounces = max(scene.cycles.max_bounces, 16)
+    _light_and_world(scene)
     return scene.render.engine
 
 
@@ -194,10 +322,24 @@ class OPTICS_OT_render_final(Operator):
         return {'FINISHED'}
 
 
+class OPTICS_OT_reset_render_style(Operator):
+    bl_idname = "optics.reset_render_style"
+    bl_label = "Reset Render Style"
+    bl_description = ("Restore the flat editing materials and remove the studio lighting + ground "
+                      "that a realistic render added")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        clear_render_style(context.scene)
+        self.report({'INFO'}, "Restored viewport materials; removed studio rig")
+        return {'FINISHED'}
+
+
 _classes = (
     OPTICS_OT_set_camera,
     OPTICS_OT_render_preview,
     OPTICS_OT_render_final,
+    OPTICS_OT_reset_render_style,
 )
 
 

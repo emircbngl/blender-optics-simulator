@@ -333,9 +333,12 @@ class OPTICS_PT_render(Panel):
             grid.operator("optics.set_camera", text=pr.title()).preset = pr
         layout.label(text="Background")
         layout.prop(context.scene.optics, "bg_preset", text="")
+        layout.prop(context.scene.optics, "realistic_optics")
         col = layout.column(align=True)
         col.operator("optics.render_preview", icon='RENDER_STILL')
         col.operator("optics.render_final", icon='RENDER_RESULT')
+        if context.scene.optics.realistic_optics:
+            col.operator("optics.reset_render_style", icon='LOOP_BACK')
 
 
 class OPTICS_PT_examples(Panel):

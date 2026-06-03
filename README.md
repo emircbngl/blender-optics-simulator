@@ -199,6 +199,9 @@ blender --command extension validate optical_alignment_sim
   bottom-left.
 - **Adaptive Optics** — *Run AO Loop* to sense a wavefront and drive a deformable mirror flat.
 - **Render** — pick a camera + **Background** preset, then *EEVEE Preview* / *Cycles Final*.
+  *Cycles Final* gives the optics **glass materials + studio lighting** so beam splitters and
+  lenses read as real glass (toggle **Realistic optics**; **Reset Render Style** restores the flat
+  editing look — the viewport itself always keeps its distinct editing colours).
 
 ### Worked example: a Michelson interferometer
 
@@ -222,6 +225,15 @@ blender --command extension validate optical_alignment_sim
 Try also **Examples ▸ Newton's Rings** (a lens vs. a flat reference → live concentric rings) and
 **Adaptive Optics** (run the loop from the *Adaptive Optics* panel to drive a wavefront's RMS to
 zero and watch the sensor's false-color map flatten).
+
+<p align="center">
+  <img src="docs/img/newton-bench.png" width="49%" alt="Newton's rings bench: a converging lens in one arm vs a flat reference">
+  <img src="docs/img/bell-render.png" width="49%" alt="Bell entanglement source: pump, BBO, waveplates, PBS cubes, detectors">
+</p>
+
+*Two more one-click benches, rendered with the realistic-optics treatment described below: the
+Newton's-rings interferometer (left — note the glass lens) and the Bell entanglement source
+(right). The same one-click **Cycles Final** that produced the hero up top.*
 
 The same, headlessly, via the agent/script API:
 
