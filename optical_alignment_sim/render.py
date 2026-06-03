@@ -188,8 +188,15 @@ def clear_render_style(scene):
     for nm in _STUDIO:
         ob = bpy.data.objects.get(nm)
         if ob:
-            data = ob.data
+            d = ob.data
             bpy.data.objects.remove(ob, do_unlink=True)
+            try:                                    # drop the now-orphan light/mesh datablock
+                if isinstance(d, bpy.types.Light) and d.users == 0:
+                    bpy.data.lights.remove(d)
+                elif isinstance(d, bpy.types.Mesh) and d.users == 0:
+                    bpy.data.meshes.remove(d)
+            except Exception:
+                pass
     apply_background(scene)
 
 
