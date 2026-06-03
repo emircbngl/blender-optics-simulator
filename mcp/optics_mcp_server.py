@@ -61,7 +61,8 @@ def get_state() -> str:
 
 @mcp.tool()
 def build_example(kind: str = "michelson") -> str:
-    """Build a canonical setup: mach_zehnder | michelson | hong_ou_mandel | bell."""
+    """Build a canonical setup: mach_zehnder | michelson | hong_ou_mandel | bell |
+    adaptive_optics | newton_rings."""
     return _fmt(_call("build_example", kind=kind))
 
 
@@ -126,6 +127,66 @@ def render(preset: str = "preview", camera: str = "HERO", filepath: str = "") ->
     Pass filepath to write a still."""
     return _fmt(_call("render", preset=preset, camera=camera,
                       **({"filepath": filepath} if filepath else {})))
+
+
+@mcp.tool()
+def tag_element(name: str, element_type: str = "", auto_ports: bool = True) -> str:
+    """Mark object `name` as an optical element (optionally set its type) and auto-detect ports."""
+    args = {"name": name, "auto_ports": auto_ports}
+    if element_type:
+        args["element_type"] = element_type
+    return _fmt(_call("tag_element", **args))
+
+
+@mcp.tool()
+def align_element(name: str) -> str:
+    """Auto-align one element's kinematic knobs toward its target, then re-trace."""
+    return _fmt(_call("align_element", name=name))
+
+
+@mcp.tool()
+def check_mechanics() -> str:
+    """Report the worst opto-mechanical limit (post pull-out, cage-rod travel, ...)."""
+    return _fmt(_call("check_mechanics"))
+
+
+@mcp.tool()
+def bake_beams(radius: float = 0.6) -> str:
+    """Bake the traced beam path into emission-cylinder meshes (for rendering)."""
+    return _fmt(_call("bake_beams", radius=radius))
+
+
+@mcp.tool()
+def clear_beams() -> str:
+    """Remove all baked beam geometry."""
+    return _fmt(_call("clear_beams"))
+
+
+# --- adaptive optics (modal Zernike: wavefront sensor + deformable mirror) ----
+@mcp.tool()
+def ao_measure(sensor: str) -> str:
+    """Read the residual Zernike wavefront error (waves) at a wavefront sensor. {zernike, rms}."""
+    return _fmt(_call("ao_measure", sensor=sensor))
+
+
+@mcp.tool()
+def get_wavefront(sensor: str) -> str:
+    """Alias of ao_measure: a wavefront sensor's reconstructed wavefront (Zernike + RMS)."""
+    return _fmt(_call("get_wavefront", sensor=sensor))
+
+
+@mcp.tool()
+def ao_command(dm: str, coeffs: list) -> str:
+    """Set a deformable mirror's command (Zernike coefficients, in waves)."""
+    return _fmt(_call("ao_command", dm=dm, coeffs=coeffs))
+
+
+@mcp.tool()
+def ao_close_loop(sensor: str, dm: str, gain: float = 0.5, iters: int = 15) -> str:
+    """Close the modal adaptive-optics loop (wavefront sensor -> deformable-mirror integrator)
+    until the residual wavefront RMS flattens. Returns the RMS history (open-loop first,
+    corrected last)."""
+    return _fmt(_call("ao_close_loop", sensor=sensor, dm=dm, gain=gain, iters=iters))
 
 
 if __name__ == "__main__":

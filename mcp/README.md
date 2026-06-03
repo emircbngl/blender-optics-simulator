@@ -62,18 +62,27 @@ in that interpreter.)
 
 ## Tools
 
+The server mirrors the add-on's full `optics_api` surface — the bridge auto-derives its allow-list
+from `optics_api`'s public functions, so every tool below maps 1:1 to a core API call.
+
 | Tool | What it does |
 |------|--------------|
 | `get_state` | Full optical state: elements, ports (world pos + normal), mounts/DOFs, beam path, detector report |
-| `build_example` | Build `mach_zehnder` / `michelson` / `hong_ou_mandel` / `bell` |
+| `build_example` | Build `mach_zehnder` / `michelson` / `hong_ou_mandel` / `bell` / `adaptive_optics` / `newton_rings` |
 | `trace_beam` | Re-trace the beam path |
-| `align_all` | Auto-align every element's knobs toward its target |
+| `tag_element` | Mark an object as an optical element (set type) + auto-detect ports |
 | `set_mount` | Apply a kinematic-mount preset to an element |
 | `set_param` | Set an optical parameter (reflectivity, wavelength, pol_angle, …) |
+| `align_element` / `align_all` | Auto-align one element / every element's knobs toward its target |
+| `check_mechanics` | Report the worst opto-mechanical limit (post pull-out, cage-rod travel) |
 | `add_component` | Spawn a catalog component (or its generic fallback) |
 | `swap_part` | Replace an element's mesh from a file, keeping its optical slot |
 | `place_relative` | Place an element relative to another (along an axis or its beam), optionally linked |
 | `scan` | Sweep OPD / waveplate angle / wavelength → plot PNG + CSV |
+| `ao_measure` / `get_wavefront` | Read a wavefront sensor's residual Zernike modes + RMS |
+| `ao_command` | Set a deformable mirror's Zernike command (waves) |
+| `ao_close_loop` | Close the adaptive-optics loop (sensor → deformable mirror) until the wavefront flattens |
+| `bake_beams` / `clear_beams` | Bake the beam path into emission meshes / remove them |
 | `render` | Configure or render the scene (EEVEE preview / Cycles final) |
 
 ## Notes
