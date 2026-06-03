@@ -14,7 +14,7 @@ if "properties" in locals():
     import importlib
     for _m in ("prefs", "physics", "geometry", "properties", "operators", "mounts", "tracer",
                "overlay", "monitor", "handlers", "alignment", "scan", "bake", "render", "library",
-               "assembly", "ao", "bridge", "elements_generic", "examples_builtin", "ui", "optics_api"):
+               "assembly", "ao", "bridge", "elements_generic", "examples_builtin", "svg_export", "ui", "optics_api"):
         if _m in locals():
             importlib.reload(locals()[_m])
 
@@ -22,12 +22,12 @@ import sys
 
 from . import (prefs, physics, geometry, properties, operators, mounts, tracer, overlay,
                monitor, handlers, alignment, scan, bake, render, library, assembly, ao,
-               bridge, elements_generic, examples_builtin, ui, optics_api)
+               bridge, elements_generic, examples_builtin, svg_export, ui, optics_api)
 
 # Registration order matters: property groups + pointers first, then the operators, mount
 # logic, tracer/overlay/monitor/handlers/alignment/bake/render, library, assembly, ao, bridge, panels.
 _modules = (prefs, properties, operators, mounts, tracer, overlay, monitor,
-            handlers, alignment, scan, bake, render, library, assembly, ao, bridge, examples_builtin, ui)
+            handlers, alignment, scan, bake, render, library, assembly, ao, bridge, examples_builtin, svg_export, ui)
 
 
 def register():

@@ -289,3 +289,10 @@ def ao_close_loop(sensor, dm, gain=0.5, iters=15):
         return {"error": "need a wavefront sensor + deformable mirror with a beam between them"}
     return {"ok": True, "rms_history": [round(x, 4) for x in hist],
             "rms_initial": round(hist[0], 4), "rms_final": round(hist[-1], 4)}
+
+
+def export_svg(filepath):
+    """Export a top-view 2-D vector (SVG) schematic of the optical layout + beam path to filepath
+    (a publication figure: element glyphs, port ticks, wavelength-coloured beams). {ok, path, ...}."""
+    from . import svg_export
+    return svg_export.export_svg(filepath)

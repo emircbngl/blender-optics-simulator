@@ -338,6 +338,7 @@ class OPTICS_PT_render(Panel):
         col.operator("optics.render_preview", icon='RENDER_STILL')
         col.operator("optics.render_final", icon='RENDER_RESULT')
         col.operator("optics.reset_render_style", icon='LOOP_BACK')
+        layout.operator("optics.export_svg", icon='EXPORT')
 
 
 class OPTICS_PT_examples(Panel):

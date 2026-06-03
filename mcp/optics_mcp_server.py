@@ -189,5 +189,12 @@ def ao_close_loop(sensor: str, dm: str, gain: float = 0.5, iters: int = 15) -> s
     return _fmt(_call("ao_close_loop", sensor=sensor, dm=dm, gain=gain, iters=iters))
 
 
+@mcp.tool()
+def export_svg(filepath: str) -> str:
+    """Export a top-view 2-D vector (SVG) schematic of the optical layout + beam path to filepath
+    (element glyphs, port ticks, wavelength-coloured beams) -- a dependency-free publication figure."""
+    return _fmt(_call("export_svg", filepath=filepath))
+
+
 if __name__ == "__main__":
     mcp.run()
