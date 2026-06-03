@@ -241,6 +241,12 @@ def _fringe_array(det, segs, size_mm, px, exposure=0.0, read_noise=0.0, well_dep
     fringe image); norm='peak' rescales to the fully-constructive maximum so ABSOLUTE
     brightness is faithful (a dark fringe looks dark) - what the live sensor window wants.
     """
+    if getattr(det.optics, "element_type", "") == 'WAVEFRONT_SENSOR':
+        from . import ao                              # a WFS records its wavefront map, not fringes
+        coeffs = ao._aberr_at(segs, det.name)
+        if coeffs is None:
+            return None, 0
+        return ao.wavefront_image(coeffs, px), 1
     import numpy as np
     from mathutils import Vector
     beams = [s for s in segs if s["to"] == det.name]

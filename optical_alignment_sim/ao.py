@@ -19,14 +19,18 @@ from . import physics, tracer, monitor
 
 
 def _aberr_at(segs, sensor_name):
-    """Zernike coeffs (list of 15, waves) of the strongest beam reaching the named sensor,
-    or None if nothing reaches it."""
+    """Zernike coeffs (list of 15, waves) of the strongest beam (by power) reaching the named
+    sensor, or None if nothing reaches it. The strongest beam wins even when it is unaberrated, so
+    a strong flat reference is never shadowed by a weaker aberrated stray; a beam carrying no aberr
+    reads as a flat (zero) wavefront."""
     best = None
     for s in segs:
-        if s.get("to") == sensor_name and s.get("aberr"):
+        if s.get("to") == sensor_name:
             if best is None or s.get("power", 0.0) > best[0]:
-                best = (s.get("power", 0.0), s["aberr"])
-    return list(best[1]) if best else None
+                best = (s.get("power", 0.0), s.get("aberr"))
+    if best is None:
+        return None
+    return list(best[1]) if best[1] else [0.0] * physics.N_ZERNIKE
 
 
 def _radial_np(n, m, rho):

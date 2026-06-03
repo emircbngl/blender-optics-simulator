@@ -87,7 +87,6 @@ _GLASS = {'BEAMSPLITTER': (0.80, 0.90, 1.0), 'LENS': (0.85, 0.95, 1.0),
 _METAL = {'MIRROR': (0.95, 0.96, 0.98), 'DEFORMABLE_MIRROR': (0.95, 0.96, 0.98),
           'RETROREFLECTOR': (0.90, 0.92, 0.96), 'GRATING': (0.70, 0.70, 0.80)}
 _DARKSET = {'DETECTOR', 'PHOTODIODE', 'POWER_METER', 'WAVEFRONT_SENSOR'}
-_STUDIO = ("OPTICS_Studio_key", "OPTICS_Studio_fill", "OPTICS_Studio_rim", "OPTICS_Studio_Ground")
 
 
 def _setb(b, name, val):
@@ -128,41 +127,66 @@ def _render_material(et):
 
 def apply_optical_materials(scene):
     """Swap each optical element to a realistic render material, stashing the viewport material
-    name in a custom prop so clear_render_style() can restore it."""
+    name in a custom prop so clear_render_style() can restore it. Idempotent and shared-mesh safe:
+    an element whose slot 0 is already a render material ('OAR_*') is skipped, so a second object
+    sharing the mesh (linked duplicate / Tier-2 catalog) never stashes the swapped material as its
+    'original'."""
     for o in scene.objects:
         op = getattr(o, "optics", None)
         if not op or not op.is_optical or o.type != 'MESH' or not o.data.materials:
+            continue
+        cur = o.data.materials[0]
+        if cur is not None and cur.name.startswith("OAR_"):
             continue
         mat = _render_material(op.element_type)
         if mat is None:
             continue
         if "_oa_vp_mat" not in o:
-            o["_oa_vp_mat"] = o.data.materials[0].name if o.data.materials[0] else ""
+            o["_oa_vp_mat"] = cur.name if cur else ""
         o.data.materials[0] = mat
 
 
+def _remove_studio(scene):
+    """Delete the studio rig (objects tagged '_oa_studio') and their orphan datablocks. Tag-based,
+    so it never touches a user object that merely shares a name."""
+    for o in list(scene.objects):
+        if o.get("_oa_studio"):
+            d = o.data
+            bpy.data.objects.remove(o, do_unlink=True)
+            try:
+                if isinstance(d, bpy.types.Light) and d.users == 0:
+                    bpy.data.lights.remove(d)
+                elif isinstance(d, bpy.types.Mesh) and d.users == 0:
+                    bpy.data.meshes.remove(d)
+            except Exception:
+                pass
+
+
 def studio_lighting(scene):
-    """Sized-to-the-optics studio: graded dark world, 3 softboxes, glossy ground. Idempotent."""
+    """Sized-to-the-optics studio: 3 softboxes + a glossy ground, on the chosen background preset.
+    Rebuilt fresh each call (tag-based teardown), so it is collision-proof and idempotent. Honors
+    the bg_preset including TRANSPARENT (alpha render -> the ground is skipped so it can't block the
+    cutout)."""
+    _remove_studio(scene)
+    try:                                            # fresh bounds even after same-tick edits
+        if bpy.context and bpy.context.view_layer:
+            bpy.context.view_layer.update()
+    except Exception:
+        pass
     center, size = _optical_bounds(scene)
-    _w, bg = _world_bg_node(scene)
-    _setb(bg, "Color", (0.05, 0.055, 0.07, 1.0))
-    if bg is not None and "Strength" in bg.inputs:
-        bg.inputs["Strength"].default_value = 0.8
-    scene.render.film_transparent = False
+    apply_background(scene)                          # honor bg_preset + film_transparent
     for nm, loc, en, sz in (("OPTICS_Studio_key", (0.8, -0.9, 1.4), 18.0, 1.4),
                             ("OPTICS_Studio_fill", (-1.0, -0.6, 0.6), 6.0, 1.6),
                             ("OPTICS_Studio_rim", (-0.3, 1.1, 1.0), 11.0, 1.0)):
-        o = bpy.data.objects.get(nm)
-        if o is None or o.type != 'LIGHT':
-            ld = bpy.data.lights.new(nm, 'AREA')
-            o = bpy.data.objects.new(nm, ld)
-            scene.collection.objects.link(o)
+        ld = bpy.data.lights.new(nm, 'AREA')
+        o = bpy.data.objects.new(nm, ld)
+        scene.collection.objects.link(o)
+        o["_oa_studio"] = 1
         o.data.size = size * sz
         o.data.energy = en * size * size
         o.location = center + Vector(loc) * size
         o.rotation_euler = (center - o.location).to_track_quat('-Z', 'Y').to_euler()
-    g = bpy.data.objects.get("OPTICS_Studio_Ground")
-    if g is None:
+    if not scene.render.film_transparent:            # a ground would block an alpha cutout
         import bmesh
         me = bpy.data.meshes.new("OPTICS_Studio_Ground")
         bm = bmesh.new(); bmesh.ops.create_grid(bm, x_segments=1, y_segments=1, size=size * 7.0)
@@ -172,31 +196,29 @@ def studio_lighting(scene):
         me.materials.append(gm)
         g = bpy.data.objects.new("OPTICS_Studio_Ground", me)
         scene.collection.objects.link(g)
-    g.location = (center.x, center.y, center.z - size * 0.42)
+        g["_oa_studio"] = 1
+        g.location = (center.x, center.y, center.z - size * 0.42)
 
 
 def clear_render_style(scene):
-    """Reverse apply_optical_materials() + studio_lighting(): restore viewport materials and
-    remove the studio rig. Safe to call when nothing was applied."""
+    """Reverse apply_optical_materials() + studio_lighting() + the realistic Cycles bounce bump:
+    restore each element's viewport material (re-empties a slot whose original was empty or has
+    since been removed), remove the studio rig, restore transmission/max bounces, and re-apply the
+    background preset. Safe to call when nothing was applied."""
     for o in scene.objects:
         if "_oa_vp_mat" in o:
             if o.type == 'MESH' and o.data.materials:
-                orig = bpy.data.materials.get(o["_oa_vp_mat"])
-                if orig:
-                    o.data.materials[0] = orig
+                o.data.materials[0] = bpy.data.materials.get(o["_oa_vp_mat"])   # name/"" -> mat or None
             del o["_oa_vp_mat"]
-    for nm in _STUDIO:
-        ob = bpy.data.objects.get(nm)
-        if ob:
-            d = ob.data
-            bpy.data.objects.remove(ob, do_unlink=True)
-            try:                                    # drop the now-orphan light/mesh datablock
-                if isinstance(d, bpy.types.Light) and d.users == 0:
-                    bpy.data.lights.remove(d)
-                elif isinstance(d, bpy.types.Mesh) and d.users == 0:
-                    bpy.data.meshes.remove(d)
-            except Exception:
-                pass
+    _remove_studio(scene)
+    if "_oa_cyc" in scene:
+        try:
+            tb, mb = scene["_oa_cyc"]
+            scene.cycles.transmission_bounces = int(tb)
+            scene.cycles.max_bounces = int(mb)
+        except Exception:
+            pass
+        del scene["_oa_cyc"]
     apply_background(scene)
 
 
@@ -229,8 +251,11 @@ def setup_final(scene):
         scene.view_settings.view_transform = 'Filmic'
     except Exception:
         pass
-    scene.cycles.transmission_bounces = 16          # let light pass through the glass elements
-    scene.cycles.max_bounces = max(scene.cycles.max_bounces, 16)
+    if getattr(getattr(scene, "optics", None), "realistic_optics", False):
+        if "_oa_cyc" not in scene:                  # stash so clear_render_style can restore
+            scene["_oa_cyc"] = [scene.cycles.transmission_bounces, scene.cycles.max_bounces]
+        scene.cycles.transmission_bounces = 16       # let light pass through the glass elements
+        scene.cycles.max_bounces = max(scene.cycles.max_bounces, 16)
     _light_and_world(scene)
     return scene.render.engine
 
@@ -297,6 +322,27 @@ class OPTICS_OT_set_camera(Operator):
         return {'FINISHED'}
 
 
+def _restore_after_render(scene, *args):
+    """One-shot render-complete/-cancel handler: once the render is captured, revert the realistic
+    render style so the viewport returns to its flat editing look automatically (no stuck glass)."""
+    try:
+        clear_render_style(scene)
+    finally:
+        for h in (bpy.app.handlers.render_complete, bpy.app.handlers.render_cancel):
+            if _restore_after_render in h:
+                try:
+                    h.remove(_restore_after_render)
+                except Exception:
+                    pass
+
+
+def _arm_restore():
+    """Arm the one-shot auto-restore for the next render (idempotent)."""
+    for h in (bpy.app.handlers.render_complete, bpy.app.handlers.render_cancel):
+        if _restore_after_render not in h:
+            h.append(_restore_after_render)
+
+
 class OPTICS_OT_render_preview(Operator):
     bl_idname = "optics.render_preview"
     bl_label = "EEVEE Preview"
@@ -308,6 +354,8 @@ class OPTICS_OT_render_preview(Operator):
         eng = setup_preview(context.scene)
         if context.scene.camera is None:
             set_camera(context.scene, 'HERO')
+        if getattr(context.scene.optics, "realistic_optics", False):
+            _arm_restore()                           # auto-revert the style once the render is done
         self.report({'INFO'}, "EEVEE (%s) ready - rendering" % eng)
         bpy.ops.render.render('INVOKE_DEFAULT')
         return {'FINISHED'}
@@ -324,6 +372,8 @@ class OPTICS_OT_render_final(Operator):
         setup_final(context.scene)
         if context.scene.camera is None:
             set_camera(context.scene, 'HERO')
+        if getattr(context.scene.optics, "realistic_optics", False):
+            _arm_restore()                           # auto-revert the style once the render is done
         self.report({'INFO'}, "Cycles final ready - rendering")
         bpy.ops.render.render('INVOKE_DEFAULT')
         return {'FINISHED'}
@@ -356,5 +406,11 @@ def register():
 
 
 def unregister():
+    for h in (bpy.app.handlers.render_complete, bpy.app.handlers.render_cancel):
+        if _restore_after_render in h:
+            try:
+                h.remove(_restore_after_render)
+            except Exception:
+                pass
     for c in reversed(_classes):
         bpy.utils.unregister_class(c)

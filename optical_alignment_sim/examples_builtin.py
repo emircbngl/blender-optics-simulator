@@ -152,6 +152,11 @@ def _reset_examples():
         bake.clear_baked(bpy.context.scene)
     except Exception:
         pass
+    try:                                              # drop any realistic-render studio rig + swap
+        from . import render
+        render.clear_render_style(bpy.context.scene)
+    except Exception:
+        pass
     tracer.cached_segments = []
 
 

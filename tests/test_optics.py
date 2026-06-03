@@ -106,6 +106,34 @@ check("glass + studio applied", glass_ok)
 check("render produced a PNG", os.path.exists(out) and os.path.getsize(out) > 1500)
 check("render style restored", restored)
 
+print("[render-style fixes]")
+# #2: a TRANSPARENT background must survive the realistic render (the alpha-PNG workflow)
+sc.optics.bg_preset = 'TRANSPARENT'
+render.setup_final(sc)
+check("TRANSPARENT honored (film alpha)", sc.render.film_transparent is True)
+check("no ground under transparent", not bpy.data.objects.get("OPTICS_Studio_Ground"))
+render.clear_render_style(sc)
+sc.optics.bg_preset = 'DARK'
+
+# #1: shared-mesh (linked-duplicate) round-trip must restore the original material on BOTH objects
+optics_api.build_example("michelson")
+m1 = next(o for o in sc.objects if o.optics.element_type == 'MIRROR')
+vpname = m1.data.materials[0].name
+m2 = bpy.data.objects.new(m1.name + "_dup", m1.data)        # linked dup: shares the mesh datablock
+sc.collection.objects.link(m2)
+m2.optics.is_optical = True
+m2.optics.element_type = 'MIRROR'
+render.apply_optical_materials(sc)
+render.clear_render_style(sc)
+check("shared-mesh restored (not stuck glass)", m1.data.materials[0].name == vpname, m1.data.materials[0].name)
+bpy.data.objects.remove(m2, do_unlink=True)
+
+# #13 drift guard: ao.py's numpy Zernike radial must match physics.py's scalar one
+for (n, m, r) in [(2, 0, 0.5), (4, 0, 0.7), (3, 1, 0.6), (4, 2, 0.8)]:
+    a = float(ao._radial_np(n, m, np.array([r]))[0])
+    b = physics._zernike_radial(n, m, r)
+    check("zernike radial ao==physics (n%dm%d)" % (n, m), abs(a - b) < 1e-9, "%.6f vs %.6f" % (a, b))
+
 oas.unregister()
 
 passed = sum(1 for _, ok in _checks if ok)

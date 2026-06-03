@@ -337,8 +337,7 @@ class OPTICS_PT_render(Panel):
         col = layout.column(align=True)
         col.operator("optics.render_preview", icon='RENDER_STILL')
         col.operator("optics.render_final", icon='RENDER_RESULT')
-        if context.scene.optics.realistic_optics:
-            col.operator("optics.reset_render_style", icon='LOOP_BACK')
+        col.operator("optics.reset_render_style", icon='LOOP_BACK')
 
 
 class OPTICS_PT_examples(Panel):

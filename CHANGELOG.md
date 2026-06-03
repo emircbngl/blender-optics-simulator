@@ -31,6 +31,17 @@ semantic versioning.
   intensity / wavefront map), render-independent and savable to PNG.
 - A comprehensive README with a regenerated, add-on-produced visual gallery + a `CHANGELOG`.
 
+### Fixed
+- Realistic-render reversibility hardened (max-effort code review): shared-mesh / linked-duplicate
+  elements no longer lose their original material on reset; an empty or since-removed material
+  restores cleanly instead of sticking as glass; the studio rig is torn down by tag (never a
+  same-named user object); the TRANSPARENT background preset is honored under realistic optics
+  (alpha PNG, ground skipped); Cycles transmission/max bounces are stashed and restored; the style
+  auto-reverts after the render completes (and the Reset button is always available). A wavefront
+  sensor's Save/Detector-Fringe now records its wavefront map, not a meaningless interference
+  image; `ao._aberr_at` picks the strongest beam by power (a flat reference is no longer shadowed
+  by a weak aberrated stray); building an example clears any leftover studio rig.
+
 ### Verified
 - All physics formulas checked against an external symbolic + numerical oracle (`physics_verify`):
   Zernike basis + RMS, Gaussian ROC / Gouy, curvature phase, obliquity — on top of the existing
