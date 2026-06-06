@@ -23,6 +23,15 @@ semantic versioning.
   (glass / metal / dark / emit + tint) replaces the partial per-family tables, so a new element type
   can no longer render with its flat editing material.
 
+### Fixed
+- **Cross-platform beamsplitter unitarity** (caught by the new CI on Linux x86-64). The lossless
+  beamsplitter's π/2 reflection phase is now carried in the 3-D field via the physical plane of
+  incidence (`reflect_field`) instead of a 2-D Jones re-embedded through the float-sensitive
+  `transverse_basis` axis pick. Previously a Mach-Zehnder's complementary outputs could land on
+  opposite fringes on x86-64 vs arm64 (both ports bright → energy not conserved on x86-64); now
+  they are complementary and energy-conserving on every platform. The regression's MZ check now
+  asserts energy conservation (`0.9 < D0+D1 < 1.1`) explicitly.
+
 ### Verified
 - The consolidated regression grew to 35 checks (AO trace-count drop + wavefront-cache equivalence,
   full render-material coverage, an MCP-vs-`optics_api` drift guard, and SVG well-formedness).

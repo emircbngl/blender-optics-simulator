@@ -367,10 +367,25 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                                     physics.intensity(Jt), 'SPLIT_T', idx, t, jones=Jt))
             else:
                 r = op.split_ratio
-                stack.append(_child(ray, E, H, geometry.reflect(ray.dir, sn), ray.power * r, 'SPLIT_R', idx, t,
-                                    jones=physics.scale(J, 1j * math.sqrt(r)) if J else None))
-                stack.append(_child(ray, E, H, ray.dir, ray.power * (1.0 - r), 'SPLIT_T', idx, t,
-                                    jones=physics.scale(J, math.sqrt(max(1.0 - r, 0.0))) if J else None))
+                if ray.evec is not None:
+                    # Carry the unitary split in the 3-D field, frame-robustly: the reflected field
+                    # gets a pi/2 phase (r = i*sqrt(R)) via the physical plane of incidence
+                    # (reflect_field, continuous in geometry), the transmitted field a real sqrt(T)
+                    # scalar. Keeping the phase in evec -- not only in the 2-D jones -- means it
+                    # survives the detector-frame projection in _seg, so the two output ports stay
+                    # complementary and energy-conserving on every platform. (A jones-only phase was
+                    # rebuilt through transverse_basis, whose axis tie-break is float-sensitive, so
+                    # x86-64 vs arm64 could land the Mach-Zehnder on opposite fringes.)
+                    sr, st = math.sqrt(max(r, 0.0)), math.sqrt(max(1.0 - r, 0.0))
+                    ev_r, _ = physics.reflect_field(ray.evec, ray.dir, sn, 1j * sr, 1j * sr)
+                    ev_t = (ray.evec[0] * st, ray.evec[1] * st, ray.evec[2] * st)
+                    stack.append(_child(ray, E, H, geometry.reflect(ray.dir, sn), ray.power * r, 'SPLIT_R', idx, t, evec=ev_r))
+                    stack.append(_child(ray, E, H, ray.dir, ray.power * (1.0 - r), 'SPLIT_T', idx, t, evec=ev_t))
+                else:
+                    stack.append(_child(ray, E, H, geometry.reflect(ray.dir, sn), ray.power * r, 'SPLIT_R', idx, t,
+                                        jones=physics.scale(J, 1j * math.sqrt(r)) if J else None))
+                    stack.append(_child(ray, E, H, ray.dir, ray.power * (1.0 - r), 'SPLIT_T', idx, t,
+                                        jones=physics.scale(J, math.sqrt(max(1.0 - r, 0.0))) if J else None))
         elif et == 'POLARIZER' and J:
             Jp = physics.apply(physics.M_polarizer(op.pol_axis_deg, op.extinction), J)
             stack.append(_child(ray, E, H, ray.dir, physics.intensity(Jp), 'TRANSMIT', idx, t, jones=Jp))

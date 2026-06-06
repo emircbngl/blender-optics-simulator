@@ -60,7 +60,7 @@ optics_api.build_example("mach_zehnder")
 segs = scan._trace(sc)
 d0 = alignment.measure(segs, "MZ_D0", "NONE")[0]
 d1 = alignment.measure(segs, "MZ_D1", "NONE")[0]
-check("MZ complementary", (d0 + d1) > 0.9 and min(d0, d1) < 0.2, "D0=%.3f D1=%.3f" % (d0, d1))
+check("MZ complementary + energy", 0.9 < (d0 + d1) < 1.1 and min(d0, d1) < 0.2, "D0=%.3f D1=%.3f" % (d0, d1))
 
 print("[adaptive optics]")
 optics_api.build_example("adaptive_optics")
