@@ -4,6 +4,24 @@ All notable changes to the **Blender Optics Simulator** (`optical_alignment_sim`
 here. The format follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 semantic versioning.
 
+## [0.4.0]
+
+### Added
+- **Beam-profile plot w(z).** The core laser-bench design readout: the Gaussian spot radius
+  sampled continuously along the beam path from the source to a detector, with element positions
+  marked on the plot and the waist position/size reported. Built entirely from state the tracer
+  already carries (each segment's endpoint q), so there is no new physics: within a free-space
+  segment q(z) = q_end − (L − z) and w = `beam_radius(q)`. Answers "where is the waist", "does
+  the mode fit the apertures", and "what reaches the cavity" at a glance. Three entry points:
+  *Simulation ▸ Beam Profile w(z)* (plots into the sensor window + PNG + CSV),
+  `optics_api.beam_profile(detector="", samples=24)` (returns waist, element list, z/w arrays),
+  and an MCP `beam_profile` tool.
+
+### Verified
+- Regression grew to 45 checks: profile produced end-to-end on the Newton's-rings bench, the
+  lens demonstrably focuses (waist ≪ source spot), the profile's endpoint agrees with the
+  tracer's carried per-segment beam radius, and the CSV is written.
+
 ## [0.3.1]
 
 A bug-fix release driven by a multi-agent audit (every finding adversarially verified against the

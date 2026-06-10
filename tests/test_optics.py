@@ -253,6 +253,17 @@ check("export_svg ok (elements+beams)", svgres.get("ok") and svgres["elements"] 
 check("SVG well-formed XML", wellformed)
 check("SVG has glyphs + beam lines", "<circle" in svgtext and svgtext.count("<line") >= 1)
 
+print("[beam profile w(z)]")
+optics_api.build_example("newton_rings")
+bp = optics_api.beam_profile("NR_D")
+check("beam_profile ok", bool(bp.get("ok")) and len(bp.get("z", [])) > 50 and len(bp.get("elements", [])) >= 2,
+      str(bp.get("error", bp))[:80])
+check("lens focuses the beam (waist << w0)", bp["waist"]["w_mm"] < 0.5 * bp["w"][0],
+      "waist=%.5f w0=%.5f" % (bp["waist"]["w_mm"], bp["w"][0]))
+check("w(end) == carried segment w", abs(bp["w"][-1] - bp["elements"][-1]["w_mm"]) < 1e-4,
+      "%.6f vs %.6f" % (bp["w"][-1], bp["elements"][-1]["w_mm"]))
+check("profile CSV written", os.path.exists(bp["csv"]) and os.path.getsize(bp["csv"]) > 100)
+
 oas.unregister()
 
 passed = sum(1 for _, ok in _checks if ok)

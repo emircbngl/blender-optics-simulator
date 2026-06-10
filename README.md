@@ -256,8 +256,8 @@ optics_api.ao_close_loop("AO_WFS", "AO_DM", gain=0.5, iters=15)   # rms 0.559 ->
 ```
 
 Other API entry points: `trace_beam`, `tag_element`, `set_mount`, `set_param`, `add_component`,
-`swap_part`, `place_relative`, `scan`, `get_wavefront`, `ao_command`, `align_element`,
-`bake_beams`, `clear_beams`, `check_mechanics`, `export_svg`.
+`swap_part`, `place_relative`, `scan`, `beam_profile`, `get_wavefront`, `ao_command`,
+`align_element`, `bake_beams`, `clear_beams`, `check_mechanics`, `export_svg`.
 
 ---
 

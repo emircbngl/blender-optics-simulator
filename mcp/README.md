@@ -85,6 +85,7 @@ from `optics_api`'s public functions, so every tool below maps 1:1 to a core API
 | `bake_beams` / `clear_beams` | Bake the beam path into emission meshes / remove them |
 | `render` | Configure or render the scene (EEVEE preview / Cycles final) |
 | `export_svg` | Write a top-view SVG schematic of the layout + beam path (publication figures) |
+| `beam_profile` | Spot radius w(z) along the beam path: waist, element positions, plot PNG + CSV |
 
 ## Notes
 

@@ -129,6 +129,13 @@ def scan(kind: str = "STAGE", lo: float = 0.0, hi: float = 0.002, steps: int = 1
 
 
 @mcp.tool()
+def beam_profile(detector: str = "", samples: int = 24) -> str:
+    """Gaussian spot radius w(z) along the beam path source -> detector: waist position/size,
+    element positions + clear apertures, plus a plot PNG + CSV."""
+    return _fmt(_call("beam_profile", detector=detector, samples=samples))
+
+
+@mcp.tool()
 def render(preset: str = "preview", camera: str = "HERO", filepath: str = "") -> str:
     """Configure or render the scene. preset: preview | final; camera: HERO/TOP/FRONT/SIDE.
     Pass filepath to write a still."""

@@ -45,9 +45,10 @@ def _trace(scene):
                               max_depth=scene.optics.max_depth)
 
 
-def _render_plot(xs, series, out_path, W=720, H=440, title=""):
+def _render_plot(xs, series, out_path, W=720, H=440, title="", vlines=None):
     """Rasterize line plots of {label: y-values} vs xs to an RGBA PNG and return
     the Blender image. Pure numpy - dark background, grid, colored polylines.
+    ``vlines`` draws grey vertical markers (e.g. element positions along a beam).
     The same array is published to the bottom-left monitor overlay."""
     import numpy as np
     arr = np.empty((H, W, 4), dtype='float32')
@@ -71,6 +72,11 @@ def _render_plot(xs, series, out_path, W=720, H=440, title=""):
 
     def py(y):
         return mb + int(ph * (y - ymin) / (ymax - ymin))
+
+    for vx in (vlines or []):                            # element-position markers
+        gx = px(vx)
+        if ml < gx < ml + pw:
+            arr[mb:mb + ph, gx, :3] = 0.32
 
     colors = [(1.0, 0.35, 0.2), (0.3, 0.8, 1.0), (0.5, 1.0, 0.45), (1.0, 0.85, 0.25), (0.8, 0.45, 1.0)]
 
@@ -109,6 +115,102 @@ def _show_monitor(context):
     if getattr(context.scene, "optics", None):
         context.scene.optics.monitor_show = True
     tracer._tag_redraw()
+
+
+def _beam_chain(segs, det_name):
+    """Ordered segment chain source -> detector for the strongest beam reaching the named
+    detector (the same parent walk the power budget prints)."""
+    cur = max((s for s in segs if s.get("to") == det_name), key=lambda x: x.get("power", 0.0),
+              default=None)
+    chain, guard = [], 0
+    while cur is not None and guard < 128:
+        chain.append(cur)
+        p = cur.get("parent", -1)
+        cur = segs[p] if (p is not None and 0 <= p < len(segs)) else None
+        guard += 1
+    return list(reversed(chain))
+
+
+def beam_profile_data(scene, det_name="", samples=24):
+    """Gaussian spot radius w(z) along the beam path source -> detector. Within a free-space
+    segment q(z) = q_end - (L - z), so w(z) = beam_radius(q) sampled from each segment's
+    carried endpoint q ('qd'). Returns {detector, z, w, elements:[{name, z, aperture, w_mm}]}
+    or None when no Gaussian beam reaches a detector."""
+    from mathutils import Vector
+    segs = tracer.cached_segments or _trace(scene)
+    det = _resolve_detector(scene, det_name)
+    if det is None:
+        return None
+    chain = _beam_chain(segs, det.name)
+    if not chain:
+        return None
+    xs, ws = [], []
+    elems = []
+    z0 = 0.0
+    for s in chain:
+        L = (Vector(s["p2"]) - Vector(s["p1"])).length
+        qd = s.get("qd")
+        if qd and L > 1e-9:
+            q_end = complex(qd[0], qd[1])
+            wl = s.get("wavelength", 632.8)
+            for k in range(samples + 1):
+                f = k / samples
+                xs.append(z0 + f * L)
+                ws.append(physics.beam_radius(q_end - (1.0 - f) * L, wl))
+        z0 += L
+        to_obj = scene.objects.get(s["to"]) if s.get("to") else None
+        if to_obj is not None:
+            elems.append({"name": s["to"], "z_mm": round(z0, 3),
+                          "aperture_mm": round(float(getattr(to_obj.optics, "clear_aperture", 0.0)), 3),
+                          "w_mm": s.get("w_mm", 0.0)})
+    if not xs:
+        return None
+    return {"detector": det.name, "z": xs, "w": ws, "elements": elems}
+
+
+def beam_profile_plot(scene, det_name="", samples=24):
+    """beam_profile_data + the PNG/CSV/monitor outputs; adds the waist {z_mm, w_mm} and the
+    output paths to the returned dict. Shared by the operator and optics_api."""
+    data = beam_profile_data(scene, det_name, samples)
+    if data is None:
+        return None
+    base = os.path.join(tempfile.gettempdir(), "optics_beam_profile")
+    _render_plot(data["z"], {"w(z) (mm)": data["w"]}, base + ".png",
+                 title="Beam profile -> %s" % data["detector"],
+                 vlines=[e["z_mm"] for e in data["elements"]])
+    with open(base + ".csv", "w") as f:
+        f.write("z_mm,w_mm\n")
+        for z, w in zip(data["z"], data["w"]):
+            f.write("%.6g,%.6g\n" % (z, w))
+        f.write("# elements: " + "; ".join("%s @ %.1f mm (CA %.1f mm)"
+                % (e["name"], e["z_mm"], e["aperture_mm"]) for e in data["elements"]) + "\n")
+    i = min(range(len(data["w"])), key=lambda k: data["w"][k])
+    data["waist"] = {"z_mm": round(data["z"][i], 3), "w_mm": round(data["w"][i], 6)}
+    data["z"] = [round(z, 3) for z in data["z"]]
+    data["w"] = [round(w, 6) for w in data["w"]]
+    data["png"], data["csv"] = base + ".png", base + ".csv"
+    return data
+
+
+class OPTICS_OT_beam_profile(Operator):
+    bl_idname = "optics.beam_profile"
+    bl_label = "Beam Profile w(z)"
+    bl_description = ("Plot the Gaussian spot radius w(z) along the beam path from the source "
+                      "to a detector - waist position/size, element positions marked - "
+                      "to the sensor window + PNG + CSV")
+    bl_options = {'REGISTER'}
+
+    samples: IntProperty(name="Samples / segment", default=24, min=2, max=200)
+
+    def execute(self, context):
+        data = beam_profile_plot(context.scene, "", self.samples)
+        if data is None:
+            self.report({'ERROR'}, "No Gaussian beam reaches a detector")
+            return {'CANCELLED'}
+        _show_monitor(context)
+        self.report({'INFO'}, "Beam profile -> %s: waist w=%.4f mm at z=%.1f mm (+ %s)"
+                    % (data["detector"], data["waist"]["w_mm"], data["waist"]["z_mm"], data["png"]))
+        return {'FINISHED'}
 
 
 def _scan_range_for(self, context):
@@ -613,7 +715,7 @@ class OPTICS_OT_save_sensor(Operator):
 
 
 _classes = (OPTICS_OT_scan, OPTICS_OT_fringe, OPTICS_OT_quantum,
-            OPTICS_OT_sensor_monitor, OPTICS_OT_save_sensor)
+            OPTICS_OT_sensor_monitor, OPTICS_OT_save_sensor, OPTICS_OT_beam_profile)
 
 
 def register():

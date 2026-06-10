@@ -296,3 +296,16 @@ def export_svg(filepath):
     (a publication figure: element glyphs, port ticks, wavelength-coloured beams). {ok, path, ...}."""
     from . import svg_export
     return svg_export.export_svg(filepath)
+
+
+def beam_profile(detector="", samples=24):
+    """Gaussian spot radius w(z) along the beam path source -> `detector` (or the active/most-lit
+    one): waist {z_mm, w_mm}, element positions + clear apertures, sampled z/w arrays, and a plot
+    PNG + CSV in the temp dir. The core laser-bench design readout (where is the waist, does the
+    mode fit the apertures, mode-matching into a cavity)."""
+    from . import scan
+    data = scan.beam_profile_plot(_scene(), detector, samples)
+    if data is None:
+        return {"error": "no Gaussian beam reaches a detector"}
+    data["ok"] = True
+    return data

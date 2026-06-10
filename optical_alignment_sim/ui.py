@@ -267,7 +267,9 @@ class OPTICS_PT_report(Panel):
         srow.operator("optics.scan", icon='FCURVE')
         srow.operator("optics.fringe_image", icon='IMAGE_DATA')
         srow.operator("optics.power_budget", icon='TEXT')
-        layout.operator("optics.quantum", icon='EXPERIMENTAL')
+        srow2 = layout.row(align=True)
+        srow2.operator("optics.beam_profile", icon='IPO_EASE_IN_OUT')
+        srow2.operator("optics.quantum", icon='EXPERIMENTAL')
 
         wbox = layout.box()
         wr = wbox.row(align=True)
