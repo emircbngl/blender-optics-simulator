@@ -199,7 +199,7 @@ class OpticalElementProps(PropertyGroup):
     prism_angle: FloatProperty(name="Prism angle (deg)", default=45.0)
     clear_aperture: FloatProperty(name="Clear aperture (mm)", default=12.7, min=0.0)
     reflectivity: FloatProperty(name="Reflectivity", default=1.0, min=0.0, max=1.0)
-    wavelength: FloatProperty(name="Wavelength (nm)", default=632.8)
+    wavelength: FloatProperty(name="Wavelength (nm)", default=632.8, min=1.0)   # 0 nm would divide-by-zero the Gaussian q
     refractive_index: FloatProperty(name="Refractive index", default=1.5168)
 
     # --- physics-layer parameters (read by the polarization / wavelength engine) ---

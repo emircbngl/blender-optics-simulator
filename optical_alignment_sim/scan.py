@@ -111,6 +111,13 @@ def _show_monitor(context):
     tracer._tag_redraw()
 
 
+def _scan_range_for(self, context):
+    """Re-derive the sweep range whenever the kind changes (incl. INSIDE the dialog --
+    without this, switching to Wavelength kept the stage range and swept sources to 0 nm)."""
+    self.lo, self.hi = {'WAVEPLATE': (0.0, 180.0),
+                        'WAVELENGTH': (400.0, 700.0)}.get(self.kind, (0.0, 0.002))
+
+
 class OPTICS_OT_scan(Operator):
     bl_idname = "optics.scan"
     bl_label = "Scan + Plot"
@@ -118,14 +125,13 @@ class OPTICS_OT_scan(Operator):
                       "(interferogram / Malus curve / spectrum) to a PNG + CSV")
     bl_options = {'REGISTER'}
 
-    kind: EnumProperty(name="Scan", items=SCAN_ITEMS, default='STAGE')
+    kind: EnumProperty(name="Scan", items=SCAN_ITEMS, default='STAGE', update=_scan_range_for)
     lo: FloatProperty(name="From", default=0.0)
     hi: FloatProperty(name="To", default=0.002)
     steps: IntProperty(name="Steps", default=120, min=2, max=2000)
 
     def invoke(self, context, event):
-        self.lo, self.hi = {'WAVEPLATE': (0.0, 180.0),
-                            'WAVELENGTH': (400.0, 700.0)}.get(self.kind, (0.0, 0.002))
+        _scan_range_for(self, context)
         return context.window_manager.invoke_props_dialog(self)
 
     def execute(self, context):
@@ -172,19 +178,26 @@ class OPTICS_OT_scan(Operator):
         xs = []
         series = {d.name: [] for d in dets}
         n = max(self.steps, 2)
-        for i in range(n):
-            x = self.lo + (self.hi - self.lo) * i / (n - 1)
-            sweep_set(x)
+        try:
+            for i in range(n):
+                x = self.lo + (self.hi - self.lo) * i / (n - 1)
+                sweep_set(x)
+                context.view_layer.update()
+                segs = _trace(scene)
+                xs.append(x)
+                for d in dets:
+                    p, _v, _s = alignment.measure(segs, d.name, d.optics.analyzer)
+                    series[d.name].append(p if p >= 0.0 else 0.0)
+        except Exception as e:
+            self.report({'ERROR'}, "Scan failed at step %d: %s" % (len(xs), e))
+            return {'CANCELLED'}
+        finally:
+            # ALWAYS restore the swept parameter -- a mid-sweep exception must not leave
+            # the scene at the sweep value (e.g. every source at the last wavelength)
+            for fn in restore:
+                fn()
             context.view_layer.update()
-            segs = _trace(scene)
-            xs.append(x)
-            for d in dets:
-                p, _v, _s = alignment.measure(segs, d.name, d.optics.analyzer)
-                series[d.name].append(p if p >= 0.0 else 0.0)
-        for fn in restore:
-            fn()
-        context.view_layer.update()
-        tracer.cached_segments = _trace(scene)
+            tracer.cached_segments = _trace(scene)
 
         base = os.path.join(tempfile.gettempdir(), "optics_scan")
         _render_plot(xs, series, base + ".png", title="Scan: %s" % self.kind)
@@ -256,54 +269,72 @@ def _fringe_array(det, segs, size_mm, px, exposure=0.0, read_noise=0.0, well_dep
     half = size_mm * 0.5
     ax = np.linspace(-half, half, px)
     uu, vv = np.meshgrid(ax, ax)
-    fx = np.zeros((px, px), dtype=complex)
-    fy = np.zeros((px, px), dtype=complex)
     opl_ref = beams[0].get("opl", 0.0)
     used = 0
-    amp_sum = 0.0
+    peak = 0.0
+    inten = np.zeros((px, px))
+    # Group by src_id: only beams of the same coherence group interfere, and each
+    # intra-group cross term carries the coherence envelope (OPD vs coherence length).
+    # This mirrors alignment.measure, so the sensor window and the measured visibility
+    # agree: an UNPOL source's H/V halves and a broadband source's spectral lines add
+    # in intensity, and OPD >> Lc washes the window's fringes out too.
+    bygroup = {}
     for s in beams:
-        j = s.get("jones")
-        d = (Vector(s["p2"]) - Vector(s["p1"]))
-        if not j or d.length < 1e-9:
-            continue
-        d = d.normalized()
-        wl = s.get("wavelength", 632.8)
-        k = 2.0 * np.pi / (wl * 1.0e-6)
-        # plane-wave piston + transverse tilt (linear ramp -> straight fringes)
-        phase = k * (s.get("opl", 0.0) - opl_ref) + (k * d.dot(u)) * uu + (k * d.dot(v)) * vv
-        env = 1.0
-        # Gaussian wavefront from the q carried to this hit: quadratic curvature k*rho^2/(2R)
-        # (rho from the beam's chief-ray hit, NOT the detector center), the Gouy piston, and
-        # exp(-rho^2/w^2) amplitude apodization. A collimated beam / a waist has R=inf and a
-        # large w, so every term vanishes and the old straight-fringe pattern is recovered;
-        # two beams of different R give concentric (ring) fringes.
-        qd = s.get("qd")
-        if qd:
-            hit = Vector(s["p2"])
-            du = uu - (hit - c).dot(u)
-            dv = vv - (hit - c).dot(v)
-            rho2 = du * du + dv * dv
-            qz = complex(qd[0], qd[1])
-            R = physics.beam_roc(qz)
-            if np.isfinite(R) and abs(R) > 1.0e-9:
-                phase = phase + k * rho2 / (2.0 * R)
-            phase = phase - physics.gouy_phase(qz)
-            w = physics.beam_radius(qz, wl)
-            if w > 1.0e-9:
-                env = np.exp(-rho2 / (w * w))
-        # oblique detector: irradiance ~ |d.n| = cos(incidence) -> fold sqrt into the amplitude
-        env = env * np.sqrt(max(abs(d.dot(n)), 0.0))
-        wave = env * np.exp(1j * phase)
-        jx, jy = complex(j[0], j[1]), complex(j[2], j[3])
-        fx += jx * wave
-        fy += jy * wave
-        amp_sum += (abs(jx) ** 2 + abs(jy) ** 2) ** 0.5     # envelope-free constructive ceiling
-        used += 1
+        bygroup.setdefault(s.get("src_id", -1), []).append(s)
+    for members in bygroup.values():
+        fields = []
+        gamp = 0.0
+        for s in members:
+            j = s.get("jones")
+            d = (Vector(s["p2"]) - Vector(s["p1"]))
+            if not j or d.length < 1e-9:
+                continue
+            d = d.normalized()
+            wl = s.get("wavelength", 632.8)
+            k = 2.0 * np.pi / (wl * 1.0e-6)
+            # plane-wave piston + transverse tilt (linear ramp -> straight fringes)
+            phase = k * (s.get("opl", 0.0) - opl_ref) + (k * d.dot(u)) * uu + (k * d.dot(v)) * vv
+            env = 1.0
+            # Gaussian wavefront from the q carried to this hit: quadratic curvature k*rho^2/(2R)
+            # (rho from the beam's chief-ray hit, NOT the detector center), the Gouy piston, and
+            # exp(-rho^2/w^2) amplitude apodization. A collimated beam / a waist has R=inf and a
+            # large w, so every term vanishes and the old straight-fringe pattern is recovered;
+            # two beams of different R give concentric (ring) fringes.
+            qd = s.get("qd")
+            if qd:
+                hit = Vector(s["p2"])
+                du = uu - (hit - c).dot(u)
+                dv = vv - (hit - c).dot(v)
+                rho2 = du * du + dv * dv
+                qz = complex(qd[0], qd[1])
+                R = physics.beam_roc(qz)
+                if np.isfinite(R) and abs(R) > 1.0e-9:
+                    phase = phase + k * rho2 / (2.0 * R)
+                phase = phase - physics.gouy_phase(qz)
+                w = physics.beam_radius(qz, wl)
+                if w > 1.0e-9:
+                    env = np.exp(-rho2 / (w * w))
+            # oblique detector: irradiance ~ |d.n| = cos(incidence) -> fold sqrt into the amplitude
+            env = env * np.sqrt(max(abs(d.dot(n)), 0.0))
+            wave = env * np.exp(1j * phase)
+            jx, jy = complex(j[0], j[1]), complex(j[2], j[3])
+            fields.append((jx * wave, jy * wave, s.get("opl", 0.0), s.get("coh", 1.0e12)))
+            gamp += (abs(jx) ** 2 + abs(jy) ** 2) ** 0.5    # envelope-free constructive ceiling
+            used += 1
+        peak += gamp * gamp                  # incoherent groups: ceiling = sum of per-group peaks
+        for i in range(len(fields)):
+            fxi, fyi, oi, ci = fields[i]
+            inten += np.abs(fxi) ** 2 + np.abs(fyi) ** 2
+            for j2 in range(i + 1, len(fields)):
+                fxj, fyj, oj, cj = fields[j2]
+                g = physics.fringe_envelope(abs(oi - oj), min(ci, cj))
+                if g > 1e-9:
+                    inten += 2.0 * g * ((fxi * np.conj(fxj)).real + (fyi * np.conj(fyj)).real)
+        del fields
     if used == 0:
         return None, 0
-    inten = np.abs(fx) ** 2 + np.abs(fy) ** 2
-    if norm == 'peak' and amp_sum > 1e-12:
-        inten = np.clip(inten / (amp_sum ** 2), 0.0, 1.0)   # absolute: constructive=1, dark=0
+    if norm == 'peak' and peak > 1e-12:
+        inten = np.clip(inten / peak, 0.0, 1.0)             # absolute: constructive=1, dark=0
     else:
         mx = float(inten.max())
         if mx > 1e-12:
@@ -547,6 +578,7 @@ class OPTICS_OT_save_sensor(Operator):
 
     filepath: StringProperty(subtype='FILE_PATH', default="//sensor.png")
     filter_glob: StringProperty(default="*.png", options={'HIDDEN'})
+    name: StringProperty()      # set by per-detector UI rows so each row saves ITS detector
 
     def invoke(self, context, event):
         context.window_manager.fileselect_add(self)
@@ -554,7 +586,7 @@ class OPTICS_OT_save_sensor(Operator):
 
     def execute(self, context):
         scene = context.scene
-        det = _resolve_detector(scene, "")
+        det = _resolve_detector(scene, self.name)
         if det is None:
             self.report({'ERROR'}, "Select a detector / sensor")
             return {'CANCELLED'}

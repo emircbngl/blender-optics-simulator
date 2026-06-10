@@ -291,7 +291,7 @@ class OPTICS_PT_report(Panel):
                 mr = box.row(align=True)
                 mr.operator("optics.sensor_monitor", text="Live sensor window",
                             icon='IMAGE_BACKGROUND').name = obj.name
-                mr.operator("optics.save_sensor", text="", icon='FILE_TICK')
+                mr.operator("optics.save_sensor", text="", icon='FILE_TICK').name = obj.name
                 if op.meas_power >= 0.0:
                     box.label(text="power %.3f" % op.meas_power)
                     if op.meas_pol:
