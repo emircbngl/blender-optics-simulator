@@ -285,6 +285,8 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             P = geometry.world_port(src, op.local_position)
             D = geometry.world_normal(src, op.local_normal)
             for wl_i, sw in spectrum:
+                if wl_i <= 0.0:                  # broadband tail can cross zero for tiny center wl
+                    continue
                 q0 = physics.q_from_waist(max(sp.waist_um, 1.0) * 1.0e-3, wl_i)
                 coh0 = min(physics.coherence_length_mm(wl_i, sp.linewidth_nm), 1.0e12)
                 for jv, pw in emit:
@@ -321,7 +323,20 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             stack.append(_child(ray, E, H, ray.dir, ray.power * Tc, 'TRANSMIT', idx, t,
                                 jones=physics.scale(J, math.sqrt(Tc)) if J else None))
             continue
-        if et in ('MIRROR', 'PRISM_MIRROR', 'RETROREFLECTOR'):
+        if et == 'RETROREFLECTOR':
+            # Corner cube: angle-insensitive retroreflection d_out = -d_in. A flat-mirror
+            # reflect would deviate the return beam by 2*theta under tip/tilt -- a real
+            # corner cube does not, so a specular model reports misalignment that does not
+            # physically exist. Tier-1 polarization: ideal scalar reflectivity (a real cube
+            # rotates polarization per sextant; out of scope for the chief-ray model).
+            nd = (-ray.dir).normalized()
+            if ray.evec is not None:
+                a = math.sqrt(max(op.reflectivity, 0.0))
+                ev = (ray.evec[0] * a, ray.evec[1] * a, ray.evec[2] * a)
+                stack.append(_child(ray, E, H, nd, ray.power * op.reflectivity, 'REFLECT', idx, t, evec=ev))
+            else:
+                stack.append(_child(ray, E, H, nd, ray.power * op.reflectivity, 'REFLECT', idx, t, jones=None))
+        elif et in ('MIRROR', 'PRISM_MIRROR'):
             nd = geometry.reflect(ray.dir, sn)
             if ray.evec is not None and getattr(op, 'coating', 'DIELECTRIC') != 'DIELECTRIC':
                 # metal mirror: exact s/p Fresnel in the TRUE plane of incidence (d x n),
@@ -346,19 +361,44 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             if nd is None:
                 nd = geometry.reflect(ray.dir, sn)         # evanescent order -> specular
             a = math.sqrt(max(op.reflectivity, 0.0))
-            stack.append(_child(ray, E, H, nd, ray.power * op.reflectivity, 'REFLECT', idx, t,
-                                jones=physics.scale(J, a) if J else None))
+            if ray.evec is not None:
+                # carry s/p through the TRUE plane of incidence onto the diffracted
+                # direction (frame-robust), instead of rebuilding a 2-D Jones in the
+                # new direction's arbitrary transverse basis
+                ev = physics.redirect_field(ray.evec, ray.dir, nd, sn, a, -a)
+                stack.append(_child(ray, E, H, nd, ray.power * op.reflectivity, 'REFLECT', idx, t, evec=ev))
+            else:
+                stack.append(_child(ray, E, H, nd, ray.power * op.reflectivity, 'REFLECT', idx, t,
+                                    jones=physics.scale(J, a) if J else None))
         elif et == 'DICHROIC':
             transmit = (ray.wl >= op.cut_nm) if op.pass_type == 'LP' else (ray.wl <= op.cut_nm)
             if transmit:
                 stack.append(_child(ray, E, H, ray.dir, ray.power, 'TRANSMIT', idx, t))
+            elif ray.evec is not None:
+                # ideal-mirror s/p convention (rp = -rs) in the true plane of incidence,
+                # so the reflected polarization stays frame-robust like MIRROR's path
+                ev, _do = physics.reflect_field(ray.evec, ray.dir, sn, 1.0, -1.0)
+                stack.append(_child(ray, E, H, geometry.reflect(ray.dir, sn), ray.power, 'REFLECT', idx, t, evec=ev))
             else:
                 stack.append(_child(ray, E, H, geometry.reflect(ray.dir, sn), ray.power, 'REFLECT', idx, t))
         elif et == 'BEAMSPLITTER':
             # A lossless beam splitter is unitary: the reflected field carries a pi/2
             # phase (r = i*sqrt(R)) relative to the transmitted field. This makes the
             # two output ports complementary and conserves energy (e.g. Mach-Zehnder).
-            if op.is_pbs and J:                            # polarizing: reflect s (y), transmit p (x)
+            if op.is_pbs and ray.evec is not None:
+                # Polarizing split in the TRUE plane of incidence: s (field along d x n)
+                # reflects with the unitary pi/2 (rs = i), p transmits. The split lives in
+                # the 3-D field, so the phase survives the detector-frame projection and
+                # the s/p axes follow the cube's actual orientation -- the same
+                # platform-robustness fix the non-PBS branch got (dc78047); the old 2-D
+                # PBS_REFLECT/PBS_TRANSMIT acted on the beam-frame x/y, which is both
+                # orientation-blind and float-tie-break sensitive across architectures.
+                ev_r, ev_t = physics.pbs_split(ray.evec, ray.dir, sn)
+                pr = sum((c * c.conjugate()).real for c in ev_r)
+                pt = sum((c * c.conjugate()).real for c in ev_t)
+                stack.append(_child(ray, E, H, geometry.reflect(ray.dir, sn), pr, 'SPLIT_R', idx, t, evec=ev_r))
+                stack.append(_child(ray, E, H, ray.dir, pt, 'SPLIT_T', idx, t, evec=ev_t))
+            elif op.is_pbs and J:                          # no 3-D field: legacy beam-frame Jones split
                 Jr = physics.scale(physics.apply(physics.PBS_REFLECT, J), 1j)
                 Jt = physics.apply(physics.PBS_TRANSMIT, J)
                 stack.append(_child(ray, E, H, geometry.reflect(ray.dir, sn),

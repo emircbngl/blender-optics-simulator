@@ -274,6 +274,49 @@ def reflect_field(evec, d_in, n, rs, rp):
     return out, d_out
 
 
+def _s_hat(d_in, n):
+    """Unit s-axis (perp to the plane of incidence, d x n); transverse_basis fallback at
+    normal incidence where s/p degenerate. Shared by reflect-like field transforms."""
+    s_axis = _rcross(d_in, n)
+    smag = math.sqrt(_rdot(s_axis, s_axis))
+    if smag < 1e-9:
+        return transverse_basis(d_in)[0]
+    return (s_axis[0] / smag, s_axis[1] / smag, s_axis[2] / smag)
+
+
+def redirect_field(evec, d_in, d_out, n, rs, rp):
+    """Send a 3-D field from d_in to an arbitrary d_out lying in the SAME plane of
+    incidence (a grating diffraction order; specular d_out reproduces reflect_field):
+    decompose into true s (perp to the plane, d_in x n) and p (in-plane), apply rs/rp,
+    rebuild p transverse to d_out. Keeps polarization frame-independent for redirected
+    beams instead of rebuilding a 2-D Jones in an arbitrary transverse basis."""
+    d_in = _rnorm(d_in)
+    d_out = _rnorm(d_out)
+    n = _rnorm(n)
+    s_hat = _s_hat(d_in, n)
+    p_in = _rcross(d_in, s_hat)
+    p_out = _rcross(d_out, s_hat)
+    es = evec[0] * s_hat[0] + evec[1] * s_hat[1] + evec[2] * s_hat[2]
+    ep = evec[0] * p_in[0] + evec[1] * p_in[1] + evec[2] * p_in[2]
+    return (rs * es * s_hat[0] + rp * ep * p_out[0],
+            rs * es * s_hat[1] + rp * ep * p_out[1],
+            rs * es * s_hat[2] + rp * ep * p_out[2])
+
+
+def pbs_split(evec, d_in, n):
+    """Polarizing-beamsplitter split of a 3-D field in the TRUE plane of incidence:
+    the s component (field along d_in x n) REFLECTS with the unitary pi/2 phase
+    (rs = i), the p component TRANSMITS unchanged. Returns (evec_reflected,
+    evec_transmitted). Energy is conserved by construction: |es|^2 + |ep|^2 partitions
+    the field. Carrying the split in the 3-D field keeps the relative phase
+    frame-independent (platform-robust), mirroring the non-polarizing splitter."""
+    ev_r, _d_out = reflect_field(evec, d_in, n, 1j, 0.0)
+    s_hat = _s_hat(_rnorm(d_in), _rnorm(n))
+    es = evec[0] * s_hat[0] + evec[1] * s_hat[1] + evec[2] * s_hat[2]
+    ev_t = (evec[0] - es * s_hat[0], evec[1] - es * s_hat[1], evec[2] - es * s_hat[2])
+    return ev_r, ev_t
+
+
 # --- ABCD ray-transfer matrices + Gaussian beam q-parameter -----------------
 
 def abcd_free(d_mm):
@@ -626,6 +669,30 @@ if __name__ == "__main__":
     nn = sum(abs(evn[i]) ** 2 for i in range(3))
     if nn > 1e-12 and abs(ov - nn) / nn > 1e-6:
         fails.append("normal-incidence ideal didn't preserve field: %.4f vs %.4f" % (ov, nn))
+
+    # PBS split in the true plane of incidence: 45-deg fold, d along +x, normal in xy.
+    # s = d x n = +z (vertical) reflects with phase i; p (in-plane, -y) transmits.
+    dpb = _rnorm((1.0, 0.0, 0.0))
+    npb = _rnorm((-1.0, 1.0, 0.0))
+    powr = lambda e: sum((c * c.conjugate()).real for c in e)
+    rV, tV = pbs_split((0j, 0j, 1.0 + 0j), dpb, npb)
+    rH, tH = pbs_split((0j, -1.0 + 0j, 0j), dpb, npb)
+    if not (close(powr(rV), 1.0) and close(powr(tV), 0.0)
+            and close(powr(rH), 0.0) and close(powr(tH), 1.0)):
+        fails.append("pbs_split s/p routing: V r=%.3f t=%.3f  H r=%.3f t=%.3f"
+                     % (powr(rV), powr(tV), powr(rH), powr(tH)))
+    if not close(cmath.phase(rV[2]), math.pi / 2.0, 1e-9):       # the unitary i on reflection
+        fails.append("pbs_split reflect phase %.4f != pi/2" % cmath.phase(rV[2]))
+    r45, t45 = pbs_split((0j, complex(-math.sqrt(0.5)), complex(math.sqrt(0.5))), dpb, npb)
+    if not (close(powr(r45), 0.5) and close(powr(t45), 0.5)):    # 45 deg -> half/half, energy 1
+        fails.append("pbs_split 45deg r=%.3f t=%.3f" % (powr(r45), powr(t45)))
+
+    # redirect_field reproduces reflect_field exactly on the specular direction
+    evx = field_from_jones(jones_linear(30.0), (0.0, 0.0, 1.0))
+    refl, dofl = reflect_field(evx, (0.0, 0.0, 1.0), (0.0, 0.3, 1.0), 0.9, -0.9)
+    red = redirect_field(evx, (0.0, 0.0, 1.0), dofl, (0.0, 0.3, 1.0), 0.9, -0.9)
+    if not all(abs(refl[i] - red[i]) < 1e-9 for i in range(3)):
+        fails.append("redirect_field != reflect_field on specular")
 
     # --- Zernike wavefront (adaptive optics) -------------------------------
     if not close(zernike(4, 1.0, 0.0), math.sqrt(3.0), 1e-9):        # defocus at rho=1
