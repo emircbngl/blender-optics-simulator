@@ -4,6 +4,55 @@ All notable changes to the **Blender Optics Simulator** (`optical_alignment_sim`
 here. The format follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 semantic versioning.
 
+## [0.3.1]
+
+A bug-fix release driven by a multi-agent audit (every finding adversarially verified against the
+code before being accepted).
+
+### Fixed
+- **Retroreflector is now a corner cube, not a flat mirror.** `d_out = -d_in` regardless of
+  incidence, so tipping a retro on its mount no longer deviates the return beam by 2θ — the
+  simulator stops reporting a misalignment a real corner cube would not have.
+- **PBS split carried in the 3-D field** (`physics.pbs_split`): s (perpendicular to the true plane
+  of incidence, d×n) reflects with the unitary π/2, p transmits. The split now follows the cube's
+  actual orientation and survives the detector-frame projection on every platform — the same
+  frame-robustness fix the non-polarizing splitter received in 0.3.0. Dichroic reflections and
+  grating diffraction orders (`physics.redirect_field`) carry their polarization the same way.
+- **The 2-D sensor window now respects coherence.** Beams are grouped by coherence group
+  (`src_id`) and intra-group cross terms carry the coherence envelope, mirroring the measured
+  visibility: an unpolarized source's H/V halves and a broadband source's spectral lines add in
+  intensity, and OPD ≫ L_c washes the window's fringes out instead of showing full contrast that
+  contradicts the V≈0 readout.
+- **Scan dialog hardening.** Switching the scan kind inside the dialog now re-derives the range
+  (previously a Wavelength scan inherited the stage range and swept every source to 0 nm →
+  ZeroDivisionError with no restore); the sweep restores parameters in a `finally`; source
+  wavelength has a 1 nm floor; broadband spectral lines that cross 0 nm are skipped.
+- **Per-detector "Save Sensor" buttons save THEIR detector** (the operator now takes the row's
+  detector name instead of resolving to the active/brightest one).
+- **CI fails on a mid-run crash**: the headless regression runs with `--python-exit-code 1`
+  (without it Blender exits 0 on an unhandled exception, leaving CI green).
+- **Bridge timeout is per-request** (default 30 s, extendable to 600 s), so a final Cycles render
+  driven over MCP no longer reports a false "timeout" while the render completes anyway; the MCP
+  server passes long waits for `render` and `scan`.
+- SVG export reports filesystem errors via the operator instead of an uncaught traceback;
+  `presets.py` joins the dev Reload-Scripts list; the MCP server docstring's `uvx` one-liner now
+  uses the required `mcp[cli]` extra; the MCP `place_relative` tool gained the missing
+  `align_rotation` parameter.
+
+### Changed
+- **Manifest declares `[permissions]`** (`network` for the localhost bridge, `files` for mesh
+  import/conversion) as the Extensions platform requires, plus `website` and `tags`; the stale
+  "no network/disk" comment is gone.
+- README: CI + license badges, SVG export documented (features, quick start, API list), install
+  section leads with the build command (no release zip exists yet).
+
+### Verified
+- Regression grew to 41 checks: PBS physical s/p routing + 50/50 energy conservation through a
+  true half-wave plate, retroreflector tilt-insensitivity (vs. a flat mirror walking off), and
+  white-light packet behaviour in the sensor window (bright at OPD=0, washed out at OPD ≫ L_c).
+  `physics.py`'s bare-interpreter self-test covers `pbs_split` (s/p routing, the π/2 phase,
+  energy) and `redirect_field` (specular limit ≡ `reflect_field`).
+
 ## [0.3.0]
 
 ### Added

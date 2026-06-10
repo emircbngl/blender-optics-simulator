@@ -1,5 +1,8 @@
 # Blender Optics Simulator
 
+[![CI](https://github.com/emircbngl/blender-optics-simulator/actions/workflows/ci.yml/badge.svg)](https://github.com/emircbngl/blender-optics-simulator/actions/workflows/ci.yml)
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
+
 > *"See a need, fill a need."* — Bigweld, *Robots* (2005)
 
 A Blender **4.2+ / 5.x** add-on for **designing, simulating, aligning, and rendering optical
@@ -167,17 +170,16 @@ python3 optical_alignment_sim/physics.py   # -> PHYSICS SELFTEST PASSED
 
 ## Install
 
-1. Download `optical_alignment_sim-<version>.zip` (or build it, below).
+1. Build the extension zip from this repo (one command):
+
+   ```bash
+   blender --command extension build --source-dir optical_alignment_sim --output-dir .
+   blender --command extension validate optical_alignment_sim
+   ```
+
 2. In Blender: **drag the zip onto the window**, or *Edit ▸ Preferences ▸ Add-ons ▸ Install from
-   Disk…* and pick the zip.
+   Disk…* and pick `optical_alignment_sim-<version>.zip`.
 3. Open the **Optics** tab in the 3D viewport sidebar (press `N`).
-
-Build the zip yourself:
-
-```bash
-blender --command extension build --source-dir optical_alignment_sim --output-dir .
-blender --command extension validate optical_alignment_sim
-```
 
 ---
 
@@ -201,7 +203,9 @@ blender --command extension validate optical_alignment_sim
 - **Render** — pick a camera + **Background** preset, then *EEVEE Preview* / *Cycles Final*.
   *Cycles Final* gives the optics **glass materials + studio lighting** so beam splitters and
   lenses read as real glass (toggle **Realistic optics**; **Reset Render Style** restores the flat
-  editing look — the viewport itself always keeps its distinct editing colours).
+  editing look — the viewport itself always keeps its distinct editing colours). **Export SVG
+  Schematic** writes a publication-ready top-view vector schematic of the layout + beam path
+  (element glyphs by type, beams coloured by wavelength).
 
 ### Worked example: a Michelson interferometer
 
@@ -252,8 +256,8 @@ optics_api.ao_close_loop("AO_WFS", "AO_DM", gain=0.5, iters=15)   # rms 0.559 ->
 ```
 
 Other API entry points: `trace_beam`, `tag_element`, `set_mount`, `set_param`, `add_component`,
-`swap_part`, `place_relative`, `scan`, `get_wavefront`, `ao_command`, `bake_beams`, `clear_beams`,
-`check_mechanics`.
+`swap_part`, `place_relative`, `scan`, `get_wavefront`, `ao_command`, `align_element`,
+`bake_beams`, `clear_beams`, `check_mechanics`, `export_svg`.
 
 ---
 
@@ -308,11 +312,14 @@ blender --background --python examples/mach_zehnder.py
 - Larger adaptive-optics variants: a literal Shack-Hartmann lenslet sensor, a zonal
   actuator-influence deformable mirror, and surface-generated higher-order aberrations
 
-*Recently shipped:* exact **vectorial (3-D) polarization** for off-axis Fresnel, the **MCP
-bridge** above, a modal **adaptive-optics loop** (Zernike wavefront sensor + deformable mirror +
-closed loop), **Gaussian-wavefront fringes** (curvature + apodization + Gouy + oblique-detector
-cos θ), and a **Newton's-rings** example that paints that curved wavefront as live concentric
-rings.
+*Recently shipped:* **SVG schematic export** (publication-ready top-view vector figures: *Render ▸
+Export SVG Schematic*, `optics_api.export_svg`, MCP tool), **continuous integration** (every push
+runs the physics self-test, `extension validate`, and the headless regression on a real Blender —
+it has already caught a cross-platform beamsplitter-unitarity bug), exact **vectorial (3-D)
+polarization** for off-axis Fresnel, the **MCP bridge** above, a modal **adaptive-optics loop**
+(Zernike wavefront sensor + deformable mirror + closed loop), **Gaussian-wavefront fringes**
+(curvature + apodization + Gouy + oblique-detector cos θ), and a **Newton's-rings** example that
+paints that curved wavefront as live concentric rings.
 
 ---
 

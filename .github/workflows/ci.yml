@@ -46,4 +46,6 @@ jobs:
         run: ~/blender/blender --command extension validate optical_alignment_sim
 
       - name: Headless regression
-        run: xvfb-run -a ~/blender/blender --background --factory-startup --python tests/test_optics.py
+        # --python-exit-code 1: without it Blender exits 0 on an unhandled Python
+        # exception, so a mid-run crash would leave CI green
+        run: xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_optics.py

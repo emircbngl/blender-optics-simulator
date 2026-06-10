@@ -6,8 +6,9 @@ Lets an external process - a dedicated MCP server (see ../mcp/) - drive the add-
 (bpy is not thread-safe) via a queue drained by a ``bpy.app.timer``, replying with
 ``{"ok": true, "result": ...}`` or ``{"ok": false, "error": ...}``.
 
-Only the optics_api whitelist below is callable - never arbitrary code - and the socket
-binds to 127.0.0.1 only, so nothing off the local machine can reach it.
+Only optics_api's public functions are callable (the allow-list is derived in
+``_allowed()`` - never arbitrary code) and the socket binds to 127.0.0.1 only, so
+nothing off the local machine can reach it.
 """
 from __future__ import annotations
 
@@ -132,10 +133,16 @@ class _BridgeServer(threading.Thread):
             return {"ok": True, "result": sorted(allowed)}
         if fn not in allowed:
             return {"ok": False, "error": "function '%s' not allowed" % fn}
+        try:
+            # long operations (a final Cycles render, a large scan) legitimately exceed the
+            # 30 s default; the client may extend the main-thread wait per request
+            wait_s = min(max(float(req.get("timeout", 30.0)), 1.0), 600.0)
+        except (TypeError, ValueError):
+            wait_s = 30.0
         holder = {"event": threading.Event()}
         _jobs.put((fn, args, holder))
-        if not holder["event"].wait(timeout=30.0):
-            return {"ok": False, "error": "timeout waiting for Blender main thread"}
+        if not holder["event"].wait(timeout=wait_s):
+            return {"ok": False, "error": "timeout (%.0f s) waiting for Blender main thread" % wait_s}
         if "error" in holder:
             return {"ok": False, "error": holder["error"]}
         return {"ok": True, "result": holder.get("result")}

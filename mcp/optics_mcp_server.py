@@ -13,7 +13,8 @@ localhost.
 
 Run:
     OPTICS_BRIDGE_PORT=9765 python3 optics_mcp_server.py
-    # or via uv:  uvx --from mcp mcp run optics_mcp_server.py
+    # or via uv:  uvx --from "mcp[cli]" mcp run optics_mcp_server.py
+    # (the `mcp` console script needs the [cli] extra; bare `mcp` lacks typer)
 """
 from __future__ import annotations
 
@@ -29,11 +30,16 @@ PORT = int(os.environ.get("OPTICS_BRIDGE_PORT", "9765"))
 mcp = FastMCP("blender-optics")
 
 
-def _call(fn, **args):
-    """Send one request to the bridge and return its JSON reply (or an error dict)."""
+def _call(fn, _wait=60.0, **args):
+    """Send one request to the bridge and return its JSON reply (or an error dict).
+    `_wait` raises the socket timeout AND asks the bridge to hold the main-thread job
+    that long (long operations: a final Cycles render, a large scan)."""
     try:
-        with socket.create_connection((HOST, PORT), timeout=60.0) as s:
-            s.sendall((json.dumps({"fn": fn, "args": args}) + "\n").encode("utf-8"))
+        req = {"fn": fn, "args": args}
+        if _wait > 60.0:
+            req["timeout"] = _wait - 10.0
+        with socket.create_connection((HOST, PORT), timeout=_wait) as s:
+            s.sendall((json.dumps(req) + "\n").encode("utf-8"))
             buf = b""
             while not buf.endswith(b"\n"):
                 chunk = s.recv(65536)
@@ -105,11 +111,12 @@ def swap_part(name: str, filepath: str, refit_ports: bool = False) -> str:
 
 @mcp.tool()
 def place_relative(name: str, reference: str, axis: str = "BEAM", distance: float = 50.0,
-                   link: bool = True) -> str:
+                   link: bool = True, align_rotation: bool = True) -> str:
     """Place element `name` a distance (mm) from `reference` along an axis (BEAM / +X / -X /
-    +Y / -Y / +Z / -Z); link=True makes it follow the reference live."""
+    +Y / -Y / +Z / -Z); link=True makes it follow the reference live; align_rotation=False
+    keeps the element's current rotation instead of snapping it to the reference."""
     return _fmt(_call("place_relative", name=name, reference=reference, axis=axis,
-                      distance=distance, link=link))
+                      distance=distance, link=link, align_rotation=align_rotation))
 
 
 @mcp.tool()
@@ -117,7 +124,7 @@ def scan(kind: str = "STAGE", lo: float = 0.0, hi: float = 0.002, steps: int = 1
          element: str = "") -> str:
     """Sweep a parameter (STAGE OPD / WAVEPLATE angle / WAVELENGTH) and write a plot PNG +
     CSV; `element` names the swept part (e.g. the OPD-stage mirror)."""
-    return _fmt(_call("scan", kind=kind, lo=lo, hi=hi, steps=steps,
+    return _fmt(_call("scan", _wait=300.0, kind=kind, lo=lo, hi=hi, steps=steps,
                       **({"element": element} if element else {})))
 
 
@@ -125,7 +132,7 @@ def scan(kind: str = "STAGE", lo: float = 0.0, hi: float = 0.002, steps: int = 1
 def render(preset: str = "preview", camera: str = "HERO", filepath: str = "") -> str:
     """Configure or render the scene. preset: preview | final; camera: HERO/TOP/FRONT/SIDE.
     Pass filepath to write a still."""
-    return _fmt(_call("render", preset=preset, camera=camera,
+    return _fmt(_call("render", _wait=600.0, preset=preset, camera=camera,
                       **({"filepath": filepath} if filepath else {})))
 
 

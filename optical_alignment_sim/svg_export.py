@@ -135,7 +135,11 @@ class OPTICS_OT_export_svg(Operator):
         return {'RUNNING_MODAL'}
 
     def execute(self, context):
-        res = export_svg(self.filepath)
+        try:
+            res = export_svg(self.filepath)
+        except (OSError, RuntimeError) as e:
+            self.report({'ERROR'}, "SVG export failed: %s" % e)
+            return {'CANCELLED'}
         self.report({'INFO'}, "Exported SVG: %d elements, %d beams -> %s"
                     % (res["elements"], res["beams"], res["path"]))
         return {'FINISHED'}

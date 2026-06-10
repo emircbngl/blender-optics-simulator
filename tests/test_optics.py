@@ -62,6 +62,55 @@ d0 = alignment.measure(segs, "MZ_D0", "NONE")[0]
 d1 = alignment.measure(segs, "MZ_D1", "NONE")[0]
 check("MZ complementary + energy", 0.9 < (d0 + d1) < 1.1 and min(d0, d1) < 0.2, "D0=%.3f D1=%.3f" % (d0, d1))
 
+print("[PBS physical s/p routing]")
+optics_api.build_example("bell")
+segs = scan._trace(sc)
+pH = alignment.measure(segs, "Bell_S_H", "NONE")[0]
+pV = alignment.measure(segs, "Bell_S_V", "NONE")[0]
+check("PBS p transmits", pH > 0.9 and pV < 0.1, "H=%.3f V=%.3f" % (pH, pV))
+hwp = sc.objects["Bell_S_HWP"]
+hwp.optics.design_wl = 810.0                   # a true half-wave at the arm wavelength
+hwp.optics.fast_axis_deg = 22.5                # 0-deg linear -> 45 deg -> 50/50 split
+segs = scan._trace(sc)
+pH = alignment.measure(segs, "Bell_S_H", "NONE")[0]
+pV = alignment.measure(segs, "Bell_S_V", "NONE")[0]
+check("PBS 45deg 50/50 + energy", abs(pH - 0.5) < 0.05 and abs(pV - 0.5) < 0.05
+      and 0.95 < (pH + pV) < 1.05, "H=%.3f V=%.3f" % (pH, pV))
+
+print("[retroreflector tilt-insensitivity]")
+optics_api.build_example("michelson")
+mst = sc.objects["MI_M_stage"]
+mst.rotation_euler[2] += math.radians(2.0)     # tip the stage mirror 2 deg in-plane
+bpy.context.view_layer.update()
+segs = scan._trace(sc)
+p_flat, v_flat, _ = alignment.measure(segs, "MI_D", "NONE")
+mst.optics.element_type = 'RETROREFLECTOR'
+segs = scan._trace(sc)
+_pr, v_retro, _ = alignment.measure(segs, "MI_D", "NONE")
+check("tilted flat mirror walks off", p_flat < 0.35 and v_flat < 0.0,
+      "P=%.3f V=%.3f" % (p_flat, v_flat))      # one arm only -> no fringes at the detector
+check("tilted corner cube returns", v_retro > 0.9, "V=%.3f" % v_retro)
+
+print("[fringe-window coherence]")
+optics_api.build_example("michelson")
+_msave = sc.optics.max_segments
+sc.optics.max_segments = 256                   # 11 spectral lines need segment headroom
+sc.objects["MI_Laser"].optics.bandwidth_nm = 30.0
+det = sc.objects["MI_D"]
+segs = scan._trace(sc)
+field, wpx = scan._sensor_field_mm(det.optics)
+arr, _ = scan._fringe_array(det, segs, field, wpx, norm='peak')
+c0 = float(arr[wpx // 2, wpx // 2, 0])
+dof = next(d for d in sc.objects["MI_M_stage"].optics.dofs if d.kind.startswith('TRANS'))
+dof.current = 0.05                             # 0.1 mm OPD >> Lc(30 nm) ~ 13 um
+bpy.context.view_layer.update()
+segs = scan._trace(sc)
+arr, _ = scan._fringe_array(det, segs, field, wpx, norm='peak')
+c1 = float(arr[wpx // 2, wpx // 2, 0])
+check("white-light packet bright at OPD=0", c0 > 0.8, "c0=%.3f" % c0)
+check("window washes out at OPD>>Lc", 0.35 < c1 < 0.65, "c1=%.3f" % c1)   # incoherent lines -> 0.5
+sc.optics.max_segments = _msave
+
 print("[adaptive optics]")
 optics_api.build_example("adaptive_optics")
 m = optics_api.ao_measure("AO_WFS")
