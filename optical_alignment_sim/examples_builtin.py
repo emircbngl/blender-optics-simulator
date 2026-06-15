@@ -149,7 +149,7 @@ def _reset_examples():
     for c in list(bpy.data.collections):
         if c.name.startswith("OpticsExample_"):
             for o in list(c.objects):
-                bpy.data.objects.remove(o, do_unlink=True)
+                G.drop_example_object(o)            # frees the mesh + spares user-adopted objects
             bpy.data.collections.remove(c)
     try:
         bake.clear_baked(bpy.context.scene)

@@ -415,6 +415,13 @@ sc.collection.objects.link(fd2)
 _fimg = bpy.data.images.new("RT_fimg", 4, 4, alpha=True)
 scan._assign_fringe_material(fd1, _fimg)
 check("fringe copy-on-write spares the shared mesh", fd2.data is not fd1.data)
+# example rebuilds free their meshes instead of leaking a fresh orphan set each time
+optics_api.build_example("mach_zehnder")
+_em0 = len(bpy.data.meshes)
+for _ in range(3):
+    optics_api.build_example("mach_zehnder")
+check("example rebuild frees meshes (no orphan growth)", len(bpy.data.meshes) <= _em0 + 2,
+      "delta=%d" % (len(bpy.data.meshes) - _em0))
 
 oas.unregister()
 

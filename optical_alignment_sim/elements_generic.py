@@ -397,12 +397,27 @@ def add_translation_dof(obj, axis_world, mm_min=-25.0, mm_max=25.0, current=0.0)
     return d
 
 
+def drop_example_object(o):
+    """Tear down an example object cleanly: if the user adopted it into a non-example collection,
+    just unlink it from the example collection(s); otherwise delete it AND free its mesh datablock
+    (do_unlink alone leaves a 0-user orphan mesh that bloats the .blend on every rebuild)."""
+    if any(not c.name.startswith("OpticsExample_") for c in o.users_collection):
+        for c in list(o.users_collection):
+            if c.name.startswith("OpticsExample_"):
+                c.objects.unlink(o)
+        return
+    mesh = o.data if o.type == 'MESH' else None
+    bpy.data.objects.remove(o, do_unlink=True)
+    if mesh is not None and mesh.users == 0:
+        bpy.data.meshes.remove(mesh)
+
+
 def example_collection(name):
     """Fresh collection for an example (removes any prior build of the same name)."""
     c = bpy.data.collections.get(name)
     if c:
         for o in list(c.objects):
-            bpy.data.objects.remove(o, do_unlink=True)
+            drop_example_object(o)
         bpy.data.collections.remove(c)
     c = bpy.data.collections.new(name)
     bpy.context.scene.collection.children.link(c)
