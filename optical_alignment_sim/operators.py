@@ -13,6 +13,12 @@ from bpy.props import EnumProperty, StringProperty, BoolProperty, FloatProperty
 from . import geometry, presets
 from .properties import PORT_ROLES
 
+# Which element types count as a source / a (terminal) detector for is_source / is_detector.
+# The catalog grew past the two canonical types, so flag the whole family or these flags get
+# reset to False on auto-detect and the elements drop out of get_state()'s source/detector lists.
+SOURCE_TYPES = {'SOURCE', 'FIBER_COLLIMATOR'}
+DETECTOR_TYPES = {'DETECTOR', 'PHOTODIODE', 'POWER_METER', 'WAVEFRONT_SENSOR'}
+
 
 # --- shared port helpers ----------------------------------------------------
 
@@ -88,8 +94,8 @@ def do_auto_detect(obj):
         specs = _default_specs_for_type(props.element_type, obj)
     if specs:
         _populate_ports_from_specs(obj, props, specs)
-    props.is_source = (props.element_type == 'SOURCE')
-    props.is_detector = (props.element_type == 'DETECTOR')
+    props.is_source = props.element_type in SOURCE_TYPES
+    props.is_detector = props.element_type in DETECTOR_TYPES
     return len(props.ports)
 
 
@@ -115,8 +121,8 @@ class OPTICS_OT_tag_element(Operator):
             etype, _ = presets.match_prefix(obj.name)
             if etype:
                 props.element_type = etype
-        props.is_source = (props.element_type == 'SOURCE')
-        props.is_detector = (props.element_type == 'DETECTOR')
+        props.is_source = props.element_type in SOURCE_TYPES
+        props.is_detector = props.element_type in DETECTOR_TYPES
         if self.auto_ports and len(props.ports) == 0:
             do_auto_detect(obj)
         self.report({'INFO'}, "Tagged '%s' as %s (%d ports)"

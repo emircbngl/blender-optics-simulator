@@ -14,10 +14,25 @@ _recomputing = False
 _dirty = False
 _last_sig = None
 
+# Physics-affecting INPUT properties the tracer/physics read. They MUST be in the live
+# signature so editing e.g. a wavelength or reflectivity re-traces -- without this the live
+# overlay/readouts only updated on a transform/knob move. Deliberately EXCLUDES computed
+# OUTPUTS (meas_*, wf_rms, misalign_*, align_state/detail, mech_state): hashing those would
+# make every trace change the signature and spin an infinite recompute loop.
+_SIG_PROPS = (
+    "element_type", "is_pbs", "is_source", "is_detector",
+    "wavelength", "split_ratio", "reflectivity", "clear_aperture", "focal_length",
+    "refractive_index", "pol_type", "pol_angle", "handedness", "linewidth_nm",
+    "bandwidth_nm", "waist_um", "retardance_deg", "fast_axis_deg", "pol_axis_deg",
+    "extinction", "design_wl", "pass_type", "cut_nm", "filt_type", "cut_lo_nm",
+    "cut_hi_nm", "od", "lines_per_mm", "grating_order", "coating", "cavity_spacing_mm",
+    "analyzer",
+)
+
 
 def _signature(scene):
-    """Cheap hash of optical objects' world transforms + knob values. Used to
-    skip recompute when only our own (non-transform) props changed."""
+    """Cheap hash of optical objects' world transforms + knob values + physics input params.
+    Used to skip recompute only when nothing the tracer reads changed."""
     vals = []
     for o in scene.objects:
         op = getattr(o, "optics", None)
@@ -25,6 +40,11 @@ def _signature(scene):
             m = o.matrix_world
             vals += [round(m[r][c], 4) for r in range(3) for c in range(4)]   # full rotation + position
             vals += [round(d.current, 4) for d in op.dofs]
+            for name in _SIG_PROPS:
+                v = getattr(op, name, None)
+                vals.append(round(v, 6) if isinstance(v, float) else v)
+            vals += [round(x, 6) for x in op.aberr_spec]      # Zernike inject (FloatVectorProperty)
+            vals += [round(x, 6) for x in op.dm_command]      # DM correction command
     return hash(tuple(vals))
 
 

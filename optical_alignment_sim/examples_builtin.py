@@ -75,14 +75,17 @@ def build_bell_entanglement(context):
 
     # signal arm
     G.source("Bell_S_src", (0, 0, 0), dS, coll, wavelength=810.0, length=18, radius=4)
-    G.waveplate("Bell_S_HWP", 60.0 * dS, dS, coll, kind='HWP')
+    # HWP at 22.5 deg (specced at the arm wavelength) rotates the H-polarized source to 45 deg
+    # so the PBS splits ~50/50 into BOTH the H and V detectors. With the default 0-deg fast axis
+    # a HWP on H light is a no-op and the V-output detectors stay dark.
+    G.waveplate("Bell_S_HWP", 60.0 * dS, dS, coll, kind='HWP', fast_axis=22.5, design_wl=810.0)
     G.beamsplitter("Bell_S_PBS", 120.0 * dS, dS, rS, coll, pbs=True)
     G.detector("Bell_S_H", 210.0 * dS, dS, coll)
     G.detector("Bell_S_V", 120.0 * dS + 80.0 * rS, rS, coll)
 
     # idler arm
     G.source("Bell_I_src", (0, 0, 0), dI, coll, wavelength=810.0, length=18, radius=4)
-    G.waveplate("Bell_I_HWP", 60.0 * dI, dI, coll, kind='HWP')
+    G.waveplate("Bell_I_HWP", 60.0 * dI, dI, coll, kind='HWP', fast_axis=22.5, design_wl=810.0)
     G.beamsplitter("Bell_I_PBS", 120.0 * dI, dI, rI, coll, pbs=True)
     G.detector("Bell_I_H", 210.0 * dI, dI, coll)
     G.detector("Bell_I_V", 120.0 * dI + 80.0 * rI, rI, coll)

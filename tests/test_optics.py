@@ -16,7 +16,7 @@ sys.path.insert(0, REPO)
 import optical_alignment_sim as oas
 oas.register()
 import optics_api
-from optical_alignment_sim import scan, alignment, ao, physics, render
+from optical_alignment_sim import scan, alignment, ao, physics, render, handlers, operators, elements_generic
 
 _checks = []
 
@@ -64,18 +64,21 @@ check("MZ complementary + energy", 0.9 < (d0 + d1) < 1.1 and min(d0, d1) < 0.2, 
 
 print("[PBS physical s/p routing]")
 optics_api.build_example("bell")
+# As shipped the HWP sits at 22.5 deg (specced at 810 nm), so the PBS splits ~50/50 into
+# BOTH detectors -- the V-output arms must no longer be dark.
+segs = scan._trace(sc)
+sH = alignment.measure(segs, "Bell_S_H", "NONE")[0]
+sV = alignment.measure(segs, "Bell_S_V", "NONE")[0]
+iV = alignment.measure(segs, "Bell_I_V", "NONE")[0]
+check("Bell ships with both arms lit", sV > 0.05 and iV > 0.05, "S_V=%.3f I_V=%.3f" % (sV, iV))
+check("PBS 50/50 + energy (shipped HWP)", abs(sH - 0.5) < 0.06 and abs(sV - 0.5) < 0.06
+      and 0.95 < (sH + sV) < 1.05, "H=%.3f V=%.3f" % (sH, sV))
+# Rotate the HWP back to 0 deg -> the H source stays H -> the PBS sends all power to the p/H port.
+sc.objects["Bell_S_HWP"].optics.fast_axis_deg = 0.0
 segs = scan._trace(sc)
 pH = alignment.measure(segs, "Bell_S_H", "NONE")[0]
 pV = alignment.measure(segs, "Bell_S_V", "NONE")[0]
-check("PBS p transmits", pH > 0.9 and pV < 0.1, "H=%.3f V=%.3f" % (pH, pV))
-hwp = sc.objects["Bell_S_HWP"]
-hwp.optics.design_wl = 810.0                   # a true half-wave at the arm wavelength
-hwp.optics.fast_axis_deg = 22.5                # 0-deg linear -> 45 deg -> 50/50 split
-segs = scan._trace(sc)
-pH = alignment.measure(segs, "Bell_S_H", "NONE")[0]
-pV = alignment.measure(segs, "Bell_S_V", "NONE")[0]
-check("PBS 45deg 50/50 + energy", abs(pH - 0.5) < 0.05 and abs(pV - 0.5) < 0.05
-      and 0.95 < (pH + pV) < 1.05, "H=%.3f V=%.3f" % (pH, pV))
+check("PBS p transmits (HWP@0)", pH > 0.9 and pV < 0.1, "H=%.3f V=%.3f" % (pH, pV))
 
 print("[retroreflector tilt-insensitivity]")
 optics_api.build_example("michelson")
@@ -263,6 +266,28 @@ check("lens focuses the beam (waist << w0)", bp["waist"]["w_mm"] < 0.5 * bp["w"]
 check("w(end) == carried segment w", abs(bp["w"][-1] - bp["elements"][-1]["w_mm"]) < 1e-4,
       "%.6f vs %.6f" % (bp["w"][-1], bp["elements"][-1]["w_mm"]))
 check("profile CSV written", os.path.exists(bp["csv"]) and os.path.getsize(bp["csv"]) > 100)
+
+print("[live signature tracks physics params]")
+optics_api.build_example("mach_zehnder")
+sig0 = handlers._signature(sc)
+src = next(o for o in sc.objects if o.optics.element_type == 'SOURCE')
+src.optics.wavelength += 50.0                       # a pure physics-param edit (no transform move)
+check("signature reacts to wavelength", handlers._signature(sc) != sig0)
+sig1 = handlers._signature(sc)
+bs = next(o for o in sc.objects if o.optics.element_type == 'BEAMSPLITTER')
+bs.optics.split_ratio = 0.3
+check("signature reacts to split_ratio", handlers._signature(sc) != sig1)
+
+print("[auto-detect keeps source/detector family flags]")
+fc = elements_generic.fiber_collimator("RT_FC", (0, 0, 0), (1, 0, 0))
+operators.do_auto_detect(fc)
+check("fiber collimator stays is_source", fc.optics.is_source and not fc.optics.is_detector)
+for et, nm in (('PHOTODIODE', 'RT_PD'), ('POWER_METER', 'RT_PM'), ('WAVEFRONT_SENSOR', 'RT_WFS')):
+    d = elements_generic._cube(nm, (10, 10, 4), None)
+    d.optics.is_optical = True
+    d.optics.element_type = et
+    operators.do_auto_detect(d)
+    check("auto-detect keeps %s is_detector" % et, d.optics.is_detector and not d.optics.is_source, et)
 
 oas.unregister()
 

@@ -206,9 +206,12 @@ def lens(name, loc, axis, coll=None, focal=100.0, radius=14.0):
     return _inline(name, loc, axis, coll, 'LENS', "lens", radius=radius, depth=5.0, focal_length=focal)
 
 
-def waveplate(name, loc, axis, coll=None, kind='HWP'):
+def waveplate(name, loc, axis, coll=None, kind='HWP', fast_axis=0.0, design_wl=None):
     ret = 90.0 if str(kind).upper() == 'QWP' else 180.0      # QWP=90deg, HWP=180deg retardance
-    o = _inline(name, loc, axis, coll, 'WAVEPLATE', "wp", radius=12.0, depth=3.0, retardance_deg=ret)
+    kw = {"retardance_deg": ret, "fast_axis_deg": fast_axis}
+    if design_wl is not None:                                # spec the retarder at its arm wavelength
+        kw["design_wl"] = design_wl
+    o = _inline(name, loc, axis, coll, 'WAVEPLATE', "wp", radius=12.0, depth=3.0, **kw)
     o.optics.mount_preset = kind
     return o
 
