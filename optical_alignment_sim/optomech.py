@@ -27,7 +27,7 @@ _MATS = {
     "post":   lambda: _bench_mat("OB_post", (0.05, 0.05, 0.06), 0.9, 0.35),    # black anodized alu
     "holder": lambda: _bench_mat("OB_holder", (0.10, 0.10, 0.12), 0.85, 0.40),
     "mount":  lambda: _bench_mat("OB_mount", (0.12, 0.12, 0.14), 0.85, 0.45),
-    "board":  lambda: _bench_mat("OB_board", (0.02, 0.02, 0.025), 0.6, 0.55),   # matte breadboard
+    "board":  lambda: _bench_mat("OB_board", (0.10, 0.10, 0.115), 0.35, 0.55),  # dark-grey anodized breadboard
 }
 
 

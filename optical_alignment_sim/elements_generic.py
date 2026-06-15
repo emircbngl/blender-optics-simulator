@@ -96,6 +96,21 @@ def _disc(name, radius, depth, coll):
     return o
 
 
+def _lozenge(name, radius, depth, coll):
+    """A smooth biconvex (lens) solid: a UV sphere flattened along the optical (+Z) axis, so it
+    reads as real curved glass. Its z-extent is +/-depth/2, matching the inline disc's port
+    planes, so swapping it in does not move any port."""
+    bpy.ops.mesh.primitive_uv_sphere_add(radius=radius, location=(0, 0, 0), segments=48, ring_count=24)
+    o = bpy.context.active_object
+    o.name = name
+    o.scale = (1.0, 1.0, (depth * 0.5) / radius)
+    bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
+    for p in o.data.polygons:
+        p.use_smooth = True
+    _link_only(o, coll)
+    return o
+
+
 def _add_port(obj, nm, role, pos, nrm, ca):
     p = obj.optics.ports.add()
     p.name = nm
@@ -203,7 +218,14 @@ def _inline(name, loc, axis, coll, element_type, matkey, radius=14.0, depth=6.0,
 
 
 def lens(name, loc, axis, coll=None, focal=100.0, radius=14.0):
-    return _inline(name, loc, axis, coll, 'LENS', "lens", radius=radius, depth=5.0, focal_length=focal)
+    depth = 5.0
+    o = _lozenge(name, radius, depth, coll)          # biconvex glass solid (ports unchanged vs the disc)
+    o.data.materials.clear(); o.data.materials.append(MATS["lens"]())
+    _tag(o, 'LENS', clear_aperture=radius, focal_length=focal)
+    _add_port(o, "IN", 'IN', (0, 0, -depth * 0.5), (0, 0, -1), radius)
+    _add_port(o, "OUT", 'OUT', (0, 0, depth * 0.5), (0, 0, 1), radius)
+    _set_matrix(o, Vector(loc), _z_to(axis))         # optical axis = local +Z -> world axis
+    return o
 
 
 def waveplate(name, loc, axis, coll=None, kind='HWP', fast_axis=0.0, design_wl=None):
