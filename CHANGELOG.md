@@ -4,6 +4,27 @@ All notable changes to the **Blender Optics Simulator** (`optical_alignment_sim`
 here. The format follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 semantic versioning.
 
+## [0.6.0]
+
+### Added
+- **Mechanically-correct breadboard hole grid.** *Dress Bench* now lays the optics on a real
+  tapped-hole array on a fixed pitch instead of a blank slab — the board reads like an actual
+  optical breadboard. Each optic gets a post seated in a wider post-holder base (PH-style),
+  clamped to the board directly beneath it, plus its mount ring. The grid pitch is a scene
+  setting: **metric (25 mm / M6, default)** or **imperial (1″ / 1/4-20)**, switchable in the
+  Render panel or via MCP `set_grid`.
+- **The grid is a data model, not just geometry — MCP/agent-knowable.** `get_state()` now returns
+  a `bench` block: pitch, standard/thread, world origin, extent (cols × rows) and the occupied
+  holes (which `(col,row)` each optic sits over, with both the hole and the element world XY). So
+  an AI agent or a person driving the bench knows exactly where parts can seat and what is already
+  placed.
+- **`place_on_grid(name, col, row)`** (optics_api + MCP) — grid-aware placement: snap an element
+  over a named hole, keeping its height and orientation, for building a layout that lands on the
+  grid. (`dress_bench` and `set_grid` are also exposed as first-class MCP tools.)
+- Trace-safe by construction: dressing never moves the optics (the post clamps to the board under
+  the part), so the beam path is byte-for-byte identical before and after dressing; only the
+  deliberate `place_on_grid` moves a part. Regression grows 90 → 104 checks (14 new grid checks).
+
 ## [0.5.1]
 
 ### Added

@@ -13,6 +13,7 @@ from __future__ import annotations
 import bpy
 
 from . import tracer, alignment, mounts, geometry
+from . import optomech as _optomech
 from . import operators as _ops
 from . import bake as _bake
 from . import render as _render
@@ -91,6 +92,9 @@ def get_state():
         "engine_eevee_id": _render.resolve_eevee_id(),
         "elements": elements, "sources": sources, "detectors": detectors,
         "beam_path": _beam_path_json(tracer.cached_segments), "report": report,
+        # Bench breadboard grid (pitch/origin/extent + occupied holes) so an MCP agent or a
+        # human knows exactly where parts seat. None when the bench is not dressed.
+        "bench": _optomech.grid_info(scene),
     }
 
 
@@ -256,6 +260,79 @@ def place_relative(name, reference, axis='BEAM', distance=50.0, link=True, align
     if 'FINISHED' not in res:
         return {"error": "place_relative cancelled (BEAM axis needs an OUT port on the reference?)"}
     return {"ok": True, "name": name, "reference": reference}
+
+
+def set_grid(pitch_mm=None, standard=None):
+    """Set the breadboard hole-grid standard/pitch. `standard` in {METRIC (25 mm/M6),
+    IMPERIAL (1"/1/4-20), CUSTOM}; `pitch_mm` sets a custom pitch (implies CUSTOM). Re-dresses
+    the bench if it is currently dressed so the new grid takes effect. Returns the active grid."""
+    scene = _scene()
+    op = scene.optics
+    if standard is not None:
+        std = str(standard).upper()
+        if std not in ('METRIC', 'IMPERIAL', 'CUSTOM'):
+            return {"error": "standard must be METRIC, IMPERIAL or CUSTOM (got %r)" % standard}
+        op.bench_grid_units = std
+    if pitch_mm is not None:
+        try:
+            p = float(pitch_mm)
+        except (TypeError, ValueError):
+            return {"error": "pitch_mm must be a number (got %r)" % pitch_mm}
+        if p < 1.0:
+            return {"error": "pitch_mm must be >= 1.0 mm (got %s)" % pitch_mm}
+        op.bench_grid_units = 'CUSTOM'
+        op.bench_grid_mm = p
+    if _optomech.is_dressed(scene):
+        _optomech.dress(scene)
+    return {"ok": True, "standard": op.bench_grid_units, "pitch_mm": round(op.bench_grid_mm, 4),
+            "bench": _optomech.grid_info(scene)}
+
+
+def dress_bench(enable=True):
+    """Spawn (enable=True) or remove (enable=False) the procedural breadboard + posts + pedestals
+    + mount rings. The grid is then exposed via get_state()['bench']. Trace is unaffected (optics
+    are not moved). Returns the object count and the grid."""
+    scene = _scene()
+    if enable:
+        n = _optomech.dress(scene)
+        if n == 0:
+            return {"error": "no optical elements to dress (build or tag elements first)"}
+        return {"ok": True, "dressed": True, "objects": n, "bench": _optomech.grid_info(scene)}
+    _optomech.strip(scene)
+    return {"ok": True, "dressed": False}
+
+
+def place_on_grid(name, col, row, link_drop=True):
+    """Move optical element `name` so it sits over breadboard hole (col, row), keeping its z
+    height and orientation. This is grid-aware placement for building a layout (it DOES move the
+    part, so the trace updates). The bench must be dressed first (the grid origin comes from the
+    current dressing). Use get_state()['bench'] to read available holes. Returns the new center."""
+    scene = _scene()
+    obj = scene.objects.get(name)
+    if not obj:
+        return {"error": "object not found: %s" % name}
+    if not (getattr(obj, "optics", None) and obj.optics.is_optical):
+        return {"error": "'%s' is not an optical element (tag it first)" % name}
+    if not _optomech.is_dressed(scene):
+        return {"error": "bench is not dressed -- call dress_bench() first so the grid is defined"}
+    try:
+        col = int(col); row = int(row)
+    except (TypeError, ValueError):
+        return {"error": "col and row must be integers"}
+    xy = _optomech.hole_world_xy(scene, col, row)
+    if xy is None:
+        gi = _optomech.grid_info(scene)
+        return {"error": "hole (%d,%d) out of range 0..%d x 0..%d" % (col, row, gi["cols"] - 1, gi["rows"] - 1)}
+    # capture the element's mount base if it has one, then move XY (preserve z + orientation)
+    obj.location.x += xy[0] - obj.matrix_world.translation.x
+    obj.location.y += xy[1] - obj.matrix_world.translation.y
+    bpy.context.view_layer.update()
+    if link_drop:
+        _optomech.dress(scene)   # re-seat posts/pedestals under the moved part
+    tracer.cached_segments = _trace(scene)
+    m = obj.matrix_world
+    return {"ok": True, "name": name, "hole": [col, row],
+            "world_center": [round(x, 4) for x in m.translation]}
 
 
 def scan(kind='STAGE', lo=0.0, hi=0.002, steps=120, element=None):

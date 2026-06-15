@@ -337,8 +337,13 @@ class OPTICS_PT_render(Panel):
         layout.prop(context.scene.optics, "bg_preset", text="")
         layout.prop(context.scene.optics, "realistic_optics")
         from . import optomech
+        _g = context.scene.optics
+        row = layout.row(align=True)
+        row.prop(_g, "bench_grid_units", text="Grid")
+        if _g.bench_grid_units == 'CUSTOM':
+            row.prop(_g, "bench_grid_mm", text="mm")
         layout.operator("optics.dress_bench", icon='SNAP_FACE',
-                        text="Strip Bench Dressing" if optomech.is_dressed(context.scene) else "Dress Bench (posts + table)")
+                        text="Strip Bench Dressing" if optomech.is_dressed(context.scene) else "Dress Bench (hole grid + posts)")
         col = layout.column(align=True)
         col.operator("optics.render_preview", icon='RENDER_STILL')
         col.operator("optics.render_final", icon='RENDER_RESULT')

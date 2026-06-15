@@ -281,8 +281,27 @@ class OpticalElementProps(PropertyGroup):
     meas_text: StringProperty(default="")          # freeform extra (spot size, budget, ...)
 
 
+def _grid_units_update(self, context):
+    """Preset the breadboard pitch from the chosen standard (CUSTOM leaves it untouched)."""
+    if self.bench_grid_units == 'METRIC':
+        self.bench_grid_mm = 25.0
+    elif self.bench_grid_units == 'IMPERIAL':
+        self.bench_grid_mm = 25.4
+
+
 class OpticalSceneProps(PropertyGroup):
     live_enabled: BoolProperty(name="Live simulation", default=False, update=_live_update)
+    # Bench breadboard grid (mechanically-correct hole array; metric default, both standards)
+    bench_grid_units: EnumProperty(
+        name="Grid standard",
+        items=[('METRIC',   "Metric (25 mm / M6)",     "25 mm hole pitch, M6 tapped holes"),
+               ('IMPERIAL', "Imperial (1\" / 1/4-20)", "25.4 mm (1 in) hole pitch, 1/4-20 holes"),
+               ('CUSTOM',   "Custom",                  "Use the pitch field verbatim")],
+        default='METRIC', update=_grid_units_update)
+    bench_grid_mm: FloatProperty(
+        name="Grid pitch (mm)", default=25.0, min=1.0,
+        description="Breadboard hole pitch in mm (metric 25, imperial 25.4). Posts clamp to the "
+                    "board under each optic; the grid is exposed to MCP/agents via get_state")
     trace_mode: EnumProperty(
         name="Trace mode",
         items=[('AUTO', "Auto-follow", "Follow nearest in-port ahead of the beam"),

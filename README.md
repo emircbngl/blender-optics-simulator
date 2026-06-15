@@ -39,11 +39,14 @@ to PNG. No external plotting or compositing.
 | a lens vs. a flat reference → concentric rings (the Gaussian-wavefront model) | adaptive-optics sensor: injected defocus + astigmatism + coma (RMS 0.56 λ) | after the closed loop → flat (RMS 0.00 λ) |
 
 <p align="center">
-  <img src="docs/img/dressed-bench.png" width="62%" alt="A Michelson interferometer dressed with posts, post-holders and a breadboard so it reads like a real optical table">
+  <img src="docs/img/dressed-bench.png" width="62%" alt="A Michelson interferometer dressed with posts in post-holders on a tapped-hole breadboard so it reads like a real optical table">
 </p>
 
-*One-click **Dress Bench** (Render panel) drops the optics onto posts + a breadboard — decoration
-only, never traced — so a Cycles render reads like a real optical table.*
+*One-click **Dress Bench** (Render panel) drops the optics onto posts + post-holders on a real
+tapped-hole breadboard (metric 25 mm or imperial 1″, a scene setting) — decoration only, never
+traced — so a Cycles render reads like a real optical table. The hole grid is also a data model:
+`get_state()['bench']` reports the pitch, extent and which hole each optic sits on, and MCP
+`place_on_grid` snaps parts to named holes, so an AI agent knows exactly where things go.*
 
 ---
 
@@ -211,8 +214,11 @@ python3 optical_alignment_sim/physics.py   # -> PHYSICS SELFTEST PASSED
   *Cycles Final* gives the optics **glass materials + studio lighting** so beam splitters and
   lenses read as real glass (toggle **Realistic optics**; **Reset Render Style** restores the flat
   editing look — the viewport itself always keeps its distinct editing colours). **Dress Bench**
-  adds posts, post-holders and a breadboard under the optics so a render reads like a real optical
-  table (decoration only — never traced; toggles back off to strip it). **Export SVG Schematic**
+  seats each optic on a post + post-holder over a real **tapped-hole breadboard** (pitch is a
+  scene setting — metric 25 mm / M6 or imperial 1″ / 1/4-20) so a render reads like a real optical
+  table (decoration only — never traced; toggles back off to strip it). The hole grid is exposed
+  as data (`get_state()['bench']`) and an agent can `place_on_grid` parts on named holes.
+  **Export SVG Schematic**
   writes a publication-ready top-view vector schematic of the layout + beam path (element glyphs by
   type, beams coloured by wavelength).
 

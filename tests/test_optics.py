@@ -435,6 +435,42 @@ check("bench objects are non-optical (never traced)",
 optomech.strip(sc)
 check("strip removes all bench objects", not optomech.is_dressed(sc))
 
+print("[bench grid: hole array + MCP-knowable data model + trace-safe]")
+optics_api.build_example("michelson")
+_nseg = len(scan._trace(sc))
+optomech.strip(sc)
+check("get_state bench None when bare", optics_api.get_state().get("bench") is None)
+_r = optics_api.dress_bench(True)
+check("dress_bench builds hole grid", _r.get("ok") and _r.get("objects", 0) > 0, str(_r))
+check("dressing still leaves trace identical", len(scan._trace(sc)) == _nseg)
+_holes = bpy.data.objects.get("BENCH_Holes")
+check("hole-grid mesh has geometry", _holes is not None and len(_holes.data.vertices) > 10)
+_b = optics_api.get_state().get("bench")
+check("get_state exposes bench grid (pitch/origin/extent)",
+      isinstance(_b, dict) and _b["cols"] >= 2 and _b["rows"] >= 2 and len(_b["origin"]) == 2, str(_b and _b.get("cols")))
+check("default grid is metric 25 mm / M6",
+      abs(_b["pitch_mm"] - 25.0) < 1e-6 and _b["standard"] == "metric" and _b["thread"] == "M6", str(_b.get("pitch_mm")))
+check("bench lists an occupied hole per optic", len(_b["occupied"]) >= 4)
+_worst = max(max(abs(o["hole_xy"][0] - o["element_xy"][0]), abs(o["hole_xy"][1] - o["element_xy"][1])) for o in _b["occupied"])
+check("each optic within half a pitch of its hole", _worst <= _b["pitch_mm"] * 0.5 + 1e-6, "worst=%.3f" % _worst)
+_hw = optomech.hole_world_xy(sc, _b["occupied"][0]["col"], _b["occupied"][0]["row"])
+check("hole_world_xy round-trips grid_info", _hw is not None and abs(_hw[0] - _b["occupied"][0]["hole_xy"][0]) < 1e-6)
+_ri = optics_api.set_grid(standard="IMPERIAL")
+check("set_grid IMPERIAL -> 25.4 mm / 1/4-20",
+      _ri.get("ok") and abs(_ri["pitch_mm"] - 25.4) < 1e-6 and _ri["bench"]["thread"] == "1/4-20", str(_ri.get("pitch_mm")))
+optics_api.set_grid(standard="METRIC")
+_col, _row = _b["cols"] // 2, _b["rows"] // 2
+_hx, _hy = optomech.hole_world_xy(sc, _col, _row)
+_rp = optics_api.place_on_grid(_b["occupied"][0]["element"], _col, _row)
+check("place_on_grid lands the part on the hole",
+      _rp.get("ok") and abs(_rp["world_center"][0] - _hx) < 1e-3 and abs(_rp["world_center"][1] - _hy) < 1e-3, str(_rp.get("world_center")))
+check("place_on_grid rejects a non-optical target", "error" in optics_api.place_on_grid("BENCH_Holes", 0, 0))
+check("set_grid rejects sub-mm pitch", "error" in optics_api.set_grid(pitch_mm=0.1))
+optomech.strip(sc)
+_optic = _b["occupied"][0]["element"]   # a real optical element; only the bench was stripped
+_nd = optics_api.place_on_grid(_optic, 0, 0)
+check("place_on_grid needs a dressed bench", "error" in _nd and "dress" in _nd["error"], str(_nd))
+
 oas.unregister()
 
 passed = sum(1 for _, ok in _checks if ok)

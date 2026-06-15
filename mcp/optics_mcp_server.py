@@ -212,5 +212,36 @@ def export_svg(filepath: str) -> str:
     return _fmt(_call("export_svg", filepath=filepath))
 
 
+@mcp.tool()
+def dress_bench(enable: bool = True) -> str:
+    """Spawn (enable=True) or remove (enable=False) the procedural opto-mechanics: a hole-grid
+    breadboard, a post + pedestal under each optic, and a mount ring framing it. Optics are NOT
+    moved, so the trace is unchanged. After dressing, get_state()['bench'] reports the grid
+    (pitch, origin, extent) and the occupied holes -- read that to know where parts can seat."""
+    return _fmt(_call("dress_bench", enable=enable))
+
+
+@mcp.tool()
+def set_grid(standard: str = "", pitch_mm: float = 0.0) -> str:
+    """Set the breadboard hole-grid standard. standard in {METRIC (25 mm/M6), IMPERIAL (1"/1/4-20),
+    CUSTOM}; pitch_mm sets a custom pitch in mm (implies CUSTOM). Default is metric. Re-dresses the
+    bench if dressed. Returns the active grid (also visible in get_state()['bench'])."""
+    args = {}
+    if standard:
+        args["standard"] = standard
+    if pitch_mm and pitch_mm > 0.0:
+        args["pitch_mm"] = pitch_mm
+    return _fmt(_call("set_grid", **args))
+
+
+@mcp.tool()
+def place_on_grid(name: str, col: int, row: int) -> str:
+    """Move optical element `name` over breadboard hole (col, row), keeping its height and
+    orientation -- grid-aware placement for building a layout. The bench must be dressed first
+    (call dress_bench). Read get_state()['bench'] for grid extent (cols x rows) and occupied
+    holes. Unlike dress_bench this DOES move the part, so the trace updates."""
+    return _fmt(_call("place_on_grid", name=name, col=col, row=row))
+
+
 if __name__ == "__main__":
     mcp.run()
