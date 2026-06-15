@@ -186,6 +186,18 @@ def beamsplitter(name, loc, in_dir, reflect_dir, coll=None, split=0.5, pbs=False
     """50/50 (or PBS) cube: transmits along in_dir, reflects toward reflect_dir."""
     o = _cube(name, (size, size, size), coll)
     o.data.materials.clear(); o.data.materials.append(MATS["pbs" if pbs else "bs"]())
+    # the characteristic coated 45-deg diagonal: a plane through the cube whose normal is the
+    # REFLECT direction (-1,1,0)/sqrt2, merged into the cube mesh so glass shows the split surface
+    bpy.ops.mesh.primitive_plane_add(size=size * 1.40, location=(0, 0, 0))
+    _pl = bpy.context.active_object
+    _pl.matrix_world = _z_to(Vector((-1.0, 1.0, 0.0))).to_4x4()
+    _plmesh = _pl.data
+    bpy.ops.object.select_all(action='DESELECT')
+    _pl.select_set(True); o.select_set(True)
+    bpy.context.view_layer.objects.active = o
+    bpy.ops.object.join()                        # coating plane -> cube mesh (inherits slot-0 glass)
+    if _plmesh.users == 0:                        # join orphans the plane's own mesh datablock
+        bpy.data.meshes.remove(_plmesh)
     _tag(o, 'BEAMSPLITTER', split_ratio=split, clear_aperture=size * 0.55, is_pbs=pbs)
     o.optics.mount_preset = "PBS" if pbs else ""
     h = size * 0.5

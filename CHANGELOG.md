@@ -4,6 +4,16 @@ All notable changes to the **Blender Optics Simulator** (`optical_alignment_sim`
 here. The format follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 semantic versioning.
 
+## [0.5.1]
+
+### Added
+- **Mount rings + cube-splitter coating plane.** *Dress Bench* now also frames each optic with a
+  mount ring (a torus in the optic's transverse plane), so elements read as held in real mounts;
+  and a beamsplitter cube carries its characteristic internal 45° coated diagonal. Both are
+  trace-safe (the ring is non-optical decoration; the BS plane is merged into the cube's glass mesh
+  with the ports unchanged) and orphan-free (the merged plane's datablock is released). The README
+  hero is re-rendered to show the dressed bench with mounts.
+
 ## [0.5.0]
 
 ### Added

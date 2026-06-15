@@ -11,7 +11,7 @@ Built on demand (a render-prep step), re-runnable, fully reversible. GPL-clean o
 from __future__ import annotations
 
 import bpy
-from mathutils import Vector
+from mathutils import Vector, Matrix
 
 from . import elements_generic as eg
 
@@ -59,6 +59,19 @@ def _box(name, size, loc, coll, matkey):
     return o
 
 
+def _ring(name, major, minor, mw, coll, matkey="mount"):
+    """A mount ring (torus) framing an optic, placed in the optic's transverse plane via mw."""
+    bpy.ops.mesh.primitive_torus_add(major_radius=major, minor_radius=minor, location=(0, 0, 0))
+    o = bpy.context.active_object
+    o.name = name
+    o.matrix_world = mw
+    for p in o.data.polygons:
+        p.use_smooth = True
+    o.data.materials.clear(); o.data.materials.append(_MATS[matkey]())
+    eg._link_only(o, coll)
+    return o
+
+
 def _optical_objects(scene):
     return [o for o in scene.objects
             if getattr(o, "optics", None) and o.optics.is_optical
@@ -97,7 +110,11 @@ def dress(scene, post_radius=3.0, clearance=55.0):
         h = max(bottom - board_z, 1.0)
         _cyl(BENCH_PREFIX + "Post_%02d" % i, post_radius, h, (p.x, p.y, bottom - h * 0.5), coll, "post")
         _box(BENCH_PREFIX + "Holder_%02d" % i, (16.0, 16.0, 14.0), (p.x, p.y, board_z + 7.0), coll, "holder")
-        n += 2
+        # a mount ring framing the optic, in its own transverse plane (orientation from its matrix)
+        ca = max(getattr(o.optics, "clear_aperture", 10.0), 6.0)
+        mw = Matrix.Translation(p) @ o.matrix_world.to_3x3().to_4x4()
+        _ring(BENCH_PREFIX + "Mount_%02d" % i, ca * 1.18, ca * 0.16, mw, coll)
+        n += 3
     return n
 
 
