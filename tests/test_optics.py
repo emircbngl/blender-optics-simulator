@@ -16,7 +16,7 @@ sys.path.insert(0, REPO)
 import optical_alignment_sim as oas
 oas.register()
 import optics_api
-from optical_alignment_sim import scan, alignment, ao, physics, render, handlers, operators, elements_generic, mounts, bridge
+from optical_alignment_sim import scan, alignment, ao, physics, render, handlers, operators, elements_generic, mounts, bridge, tracer
 
 _checks = []
 
@@ -383,6 +383,25 @@ nd = library.add_component("NE10A", (0, 0, 0))[0]
 check("NE10A fallback is a real ND", nd.optics.filt_type == 'ND' and abs(nd.optics.od - 1.0) < 1e-3)
 pbs = library.add_component("PBS251", (0, 0, 0))[0]
 check("PBS251 fallback is polarizing", bool(pbs.optics.is_pbs))
+
+print("[auto-detect: element_type wins over a mismatched name prefix]")
+mo = elements_generic._cube("MO_5", (12, 12, 4), None)   # 'MO' matches the LENS prefix
+mo.optics.is_optical = True
+mo.optics.element_type = 'MIRROR'                         # but the user said MIRROR
+operators.do_auto_detect(mo)
+# the bug: the LENS prefix's antiparallel IN/OUT normals collapse the REFLECT plane to a bogus +Z.
+# With the fix the MIRROR type's own specs are used, so REFLECT is a real ~45deg fold (nonzero Y).
+_refl = next(p for p in mo.optics.ports if p.role == 'REFLECT')
+check("name-prefix doesn't corrupt the mirror REFLECT plane", abs(_refl.local_normal.y) > 0.3,
+      str(tuple(round(c, 2) for c in _refl.local_normal)))
+
+print("[live deferred-trace bails when live mode is off]")
+optics_api.build_example("michelson")
+sc.optics.live_enabled = False
+handlers._pending_scene = sc
+tracer.cached_segments = ["__SENTINEL__"]
+handlers._deferred_trace()                               # must NOT trace/overwrite with live off
+check("deferred trace no-op when live off", tracer.cached_segments == ["__SENTINEL__"])
 
 oas.unregister()
 

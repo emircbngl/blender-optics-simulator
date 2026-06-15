@@ -90,7 +90,9 @@ def do_auto_detect(obj):
     etype, specs = presets.match_prefix(obj.name)
     if props.element_type == 'NONE' and etype:
         props.element_type = etype
-    if specs is None:
+    # The element_type wins over the name prefix: if a user set MIRROR but the name matches a LENS
+    # prefix, use the type's default ports, not the lens layout (which builds a bogus REFLECT plane).
+    if specs is None or (etype and etype != props.element_type):
         specs = _default_specs_for_type(props.element_type, obj)
     if specs:
         _populate_ports_from_specs(obj, props, specs)

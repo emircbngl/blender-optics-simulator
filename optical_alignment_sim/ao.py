@@ -128,7 +128,10 @@ def close_loop(scene, sensor_name, dm_name, gain=0.5, iters=15, tol=1.0e-3):
         # Reusing `tol` for the step-delta declared "converged" far above tol at low gain, because a
         # modal integrator shrinks the residual geometrically (delta ~ gain*residual), so the delta
         # drops below tol while the residual is still ~tol/gain.
-        stalled = len(hist) >= 2 and (hist[-2] - rms) < 1.0e-3 * max(hist[-2], 1.0e-12)
+        # plateau = tiny but NON-NEGATIVE progress; a negative delta means the residual GREW
+        # (divergence) and must keep correcting, not be mistaken for a converged plateau
+        delta = (hist[-2] - rms) if len(hist) >= 2 else None
+        stalled = delta is not None and 0.0 <= delta < 1.0e-3 * max(hist[-2], 1.0e-12)
         if rms < tol or stalled:
             converged = True
             break

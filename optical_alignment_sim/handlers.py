@@ -13,6 +13,7 @@ from . import tracer
 _recomputing = False
 _dirty = False
 _last_sig = None
+_pending_scene = None       # the scene whose depsgraph update armed the deferred trace
 
 # Physics-affecting INPUT properties the tracer/physics read. They MUST be in the live
 # signature so editing e.g. a wavelength or reflectivity re-traces -- without this the live
@@ -64,8 +65,10 @@ def _anchor_depth(o):
 def _deferred_trace():
     global _recomputing, _dirty, _last_sig
     _dirty = False
-    scene = bpy.context.scene
+    scene = _pending_scene or bpy.context.scene        # the scene that actually changed, not just the active one
     if scene is None or not getattr(scene, "optics", None):
+        return None
+    if not scene.optics.live_enabled:                  # live mode was toggled off after this was armed
         return None
     _recomputing = True
     try:
@@ -86,12 +89,17 @@ def _deferred_trace():
             pass
         sig = _signature(scene)
         if sig == _last_sig:
-            return None                 # nothing geometric changed -> no work
-        _last_sig = sig
-        tracer.cached_segments = tracer.trace_scene(
-            scene, mode=scene.optics.trace_mode,
-            max_segments=scene.optics.max_segments,
-            max_depth=scene.optics.max_depth)
+            return None                 # nothing the tracer reads changed -> no work
+        try:
+            segs = tracer.trace_scene(
+                scene, mode=scene.optics.trace_mode,
+                max_segments=scene.optics.max_segments,
+                max_depth=scene.optics.max_depth)
+        except Exception as e:          # a transient/degenerate trace must not kill the live timer
+            print("[optics] live trace error:", e)     # leave _last_sig unchanged -> retried on next edit
+            return None
+        tracer.cached_segments = segs
+        _last_sig = sig                 # commit the signature only AFTER a successful trace
         try:
             from . import alignment
             alignment.refresh_report(scene)
@@ -115,12 +123,13 @@ def _deferred_trace():
 
 @persistent
 def on_depsgraph_update(scene, depsgraph=None):
-    global _dirty
+    global _dirty, _pending_scene
     if _recomputing:                     # guard: our own writes must not re-trigger
         return
     if not getattr(scene, "optics", None) or not scene.optics.live_enabled:
         return
     _dirty = True
+    _pending_scene = scene               # recompute THIS scene, not whatever is active when the timer fires
     if not bpy.app.timers.is_registered(_deferred_trace):
         bpy.app.timers.register(_deferred_trace, first_interval=0.03)   # debounce
 
@@ -139,6 +148,11 @@ def set_live(enabled):
     else:
         if on_depsgraph_update in bpy.app.handlers.depsgraph_update_post:
             bpy.app.handlers.depsgraph_update_post.remove(on_depsgraph_update)
+        if bpy.app.timers.is_registered(_deferred_trace):   # cancel a pending debounce so it can't
+            try:                                             # fire (and mutate the scene) after disable
+                bpy.app.timers.unregister(_deferred_trace)
+            except Exception:
+                pass
         overlay.disable()
 
 
