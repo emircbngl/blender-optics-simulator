@@ -95,8 +95,18 @@ def _dof_update(self, context):
 
 
 def _anchor_poll(self, obj):
-    """An element may only be anchored to a different object (not itself)."""
-    return obj is not self.id_data
+    """An element may be anchored only to a different object and only if it does not create a
+    cycle (anchoring A->B while B->A never converges and freezes the pair)."""
+    if obj is self.id_data:
+        return False
+    me, cur, seen = self.id_data, obj, set()
+    while cur is not None and id(cur) not in seen:
+        if cur is me:
+            return False
+        seen.add(id(cur))
+        op = getattr(cur, "optics", None)
+        cur = getattr(op, "anchor", None) if op else None
+    return True
 
 
 def _anchor_update(self, context):

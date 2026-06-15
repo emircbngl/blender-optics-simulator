@@ -39,6 +39,38 @@ def store_base_matrix(props, M: Matrix):
     props.base_pose_set = True
 
 
+def _effective_base(props) -> Matrix:
+    """The element's base pose in WORLD space: base_pose is anchor-relative when an anchor is
+    set, so fold the anchor's world matrix back in (compose_pose / dof_world map through this)."""
+    B = base_matrix(props)
+    anchor = getattr(props, "anchor", None)
+    if anchor is not None and anchor is not props.id_data:
+        B = anchor.matrix_world @ B
+    return B
+
+
+def store_world_base(props, world_matrix: Matrix):
+    """Store a WORLD-space pose as base_pose, re-expressed into the anchor's frame when anchored.
+    base_pose is contractually anchor-relative whenever props.anchor is set, so storing a raw
+    world matrix on an anchored element makes compose_pose double-apply the anchor (element jumps)."""
+    anchor = getattr(props, "anchor", None)
+    if anchor is not None and anchor is not props.id_data:
+        world_matrix = anchor.matrix_world.inverted() @ world_matrix
+    store_base_matrix(props, world_matrix)
+
+
+def anchor_would_cycle(obj, anchor) -> bool:
+    """True if anchoring obj -> anchor would create a cycle (anchor's chain reaches obj)."""
+    cur, seen = anchor, set()
+    while cur is not None and id(cur) not in seen:
+        if cur is obj:
+            return True
+        seen.add(id(cur))
+        op = getattr(cur, "optics", None)
+        cur = getattr(op, "anchor", None) if op else None
+    return False
+
+
 def dof_world(B: Matrix, dof):
     """World-space pivot point and unit axis for a DOF, in the base frame B."""
     pivot_w = B @ Vector(dof.pivot_local)
@@ -85,7 +117,7 @@ def capture_base_pose(obj):
     props.base_pose_set = False           # make _dof_update compose a no-op
     for d in props.dofs:
         d.current = 0.0
-    store_base_matrix(props, obj.matrix_world.copy())
+    store_world_base(props, obj.matrix_world.copy())   # anchor-aware (no jump on anchored elements)
 
 
 def set_anchor(obj, anchor):
@@ -94,10 +126,12 @@ def set_anchor(obj, anchor):
     props = obj.optics
     if anchor is None or anchor is obj:
         return False
+    if anchor_would_cycle(obj, anchor):              # reject A->B->A (would never converge)
+        return False
     if not props.base_pose_set:
         store_base_matrix(props, obj.matrix_world.copy())
-    Bw = base_matrix(props)                          # current world base (knobs zero)
-    rel = anchor.matrix_world.inverted() @ Bw        # express it in the anchor's frame
+    Bw = _effective_base(props)                      # current WORLD base (folds any EXISTING anchor)
+    rel = anchor.matrix_world.inverted() @ Bw        # express it in the NEW anchor's frame
     store_base_matrix(props, rel)
     props.anchor = anchor
     compose_pose(obj)
@@ -198,7 +232,7 @@ def apply_preset(obj, key):
         nd.min_val = d.get("min", -4.0)
         nd.max_val = d.get("max", 4.0)
         nd.current = 0.0
-    store_base_matrix(props, obj.matrix_world.copy())
+    store_world_base(props, obj.matrix_world.copy())   # anchor-aware: don't double-apply an anchor
     return True, "applied '%s' (%d DOFs)" % (key, len(props.dofs))
 
 
@@ -417,7 +451,9 @@ class OPTICS_OT_pick_pivot(Operator):
     def execute(self, context):
         obj = context.object
         props = obj.optics
-        B = base_matrix(props) if props.base_pose_set else obj.matrix_world.copy()
+        # effective WORLD base (folds the anchor frame); compose_pose maps pivot_local through
+        # the same effective base, so a world point must invert through it, not the stored base
+        B = _effective_base(props) if props.base_pose_set else obj.matrix_world.copy()
         if self.source == 'OPTIC_CENTER':
             _, _, ctr = geometry.local_bounds(obj)
             pivot_local = ctr

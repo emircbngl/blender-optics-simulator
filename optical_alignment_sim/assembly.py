@@ -289,7 +289,8 @@ class OPTICS_OT_place_relative(Operator):
         rot = (ref.matrix_world.to_quaternion() if self.align_rotation
                else act.matrix_world.to_quaternion())
         Mw = Matrix.LocRotScale(target, rot, scl)
-        mounts.store_base_matrix(act.optics, Mw)
+        act.optics.anchor = None                      # Mw is a WORLD pose; drop any stale anchor
+        mounts.store_base_matrix(act.optics, Mw)      # so set_anchor re-bases it from world cleanly
         if self.link:
             mounts.set_anchor(act, ref)               # re-base into ref frame + live follow
             how = "linked to %s" % ref.name

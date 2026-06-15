@@ -16,7 +16,7 @@ sys.path.insert(0, REPO)
 import optical_alignment_sim as oas
 oas.register()
 import optics_api
-from optical_alignment_sim import scan, alignment, ao, physics, render, handlers, operators, elements_generic
+from optical_alignment_sim import scan, alignment, ao, physics, render, handlers, operators, elements_generic, mounts
 
 _checks = []
 
@@ -288,6 +288,25 @@ for et, nm in (('PHOTODIODE', 'RT_PD'), ('POWER_METER', 'RT_PM'), ('WAVEFRONT_SE
     d.optics.element_type = et
     operators.do_auto_detect(d)
     check("auto-detect keeps %s is_detector" % et, d.optics.is_detector and not d.optics.is_source, et)
+
+print("[anchor / mount base-pose: no jump, no cycle]")
+def _mk(nm, loc):
+    o = bpy.data.objects.new(nm, None); o.location = loc
+    sc.collection.objects.link(o); return o
+elem = _mk("RT_anc_elem", (5, 0, 0)); elem.optics.is_optical = True
+e1 = _mk("RT_anc_E1", (100, 0, 0)); e2 = _mk("RT_anc_E2", (0, 50, 0))
+bpy.context.view_layer.update()
+mounts.set_anchor(elem, e1); mounts.compose_pose(elem)
+w0 = elem.matrix_world.translation.copy()
+mounts.capture_base_pose(elem); mounts.compose_pose(elem)
+check("capture_base_pose anchored: no jump", (elem.matrix_world.translation - w0).length < 1e-4,
+      "d=%.3f" % (elem.matrix_world.translation - w0).length)
+mounts.set_anchor(elem, e2); mounts.compose_pose(elem)
+check("re-anchor A1->A2: no jump", (elem.matrix_world.translation - w0).length < 1e-4,
+      "d=%.3f" % (elem.matrix_world.translation - w0).length)
+other = _mk("RT_anc_other", (8, 0, 0)); other.optics.is_optical = True
+mounts.set_anchor(elem, other)
+check("anchor cycle rejected", (not mounts.set_anchor(other, elem)) and mounts.anchor_would_cycle(other, elem))
 
 oas.unregister()
 
