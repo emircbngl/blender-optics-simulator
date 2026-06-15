@@ -99,12 +99,46 @@ def _world_zmin(o):
 GRID_DEFAULT_MM = 25.0          # metric breadboard pitch (M6)
 GRID_IMPERIAL_MM = 25.4         # imperial breadboard pitch (1", 1/4-20)
 
+# Mechanical standards (mm). A Ø1/2" / Thorlabs-metric post is precision-ground to Ø12.7 mm and
+# shares holders across both unit systems, so we use one diameter for both (only the thread label,
+# which we don't model as geometry, differs). See docs/OPTOMECH_SYSTEMS_PLAN.md.
+POST_RADIUS = 6.35              # Ø12.7 mm optical post (TR/RS 1/2" workhorse)
+BOARD_THICKNESS = 12.7          # 1/2" solid breadboard slab
+MOUNT_DROP = 15.0               # optical axis -> post top: the mount body bridges this gap
+HOLDER_H = 50.0                 # fixed post-holder body length (PH2-class); insertion varies, not the body
+BASE_H = 9.0                    # post-holder/base foot thickness on the board
+BEAM_HEIGHT_DEFAULT = 100.0     # optical-axis height above the board top (the layout datum)
+
 
 def bench_pitch(scene):
     """The active grid pitch in mm (scene setting; default metric 25 mm)."""
     op = getattr(scene, "optics", None)
     p = float(getattr(op, "bench_grid_mm", GRID_DEFAULT_MM)) if op else GRID_DEFAULT_MM
     return p if p > 1e-3 else GRID_DEFAULT_MM
+
+
+def beam_height(scene):
+    """The bench beam height in mm (optical axis above the board top; scene datum, default 100)."""
+    op = getattr(scene, "optics", None)
+    h = float(getattr(op, "beam_height_mm", BEAM_HEIGHT_DEFAULT)) if op else BEAM_HEIGHT_DEFAULT
+    return h if h > 1e-3 else BEAM_HEIGHT_DEFAULT
+
+
+def _thread_hole_r(pitch):
+    """Counterbore radius for the breadboard tapped hole, sized to the declared thread:
+    M6 clearance ~Ø6.5 (metric grid) / 1/4-20 clearance ~Ø6.8 (imperial grid)."""
+    return 3.4 if abs(pitch - GRID_IMPERIAL_MM) < 0.05 else 3.25
+
+
+def _vertical_chain(scene, elems):
+    """The shared vertical datum so dress() geometry and grid_info() data report the SAME numbers.
+    Returns (beam_height, ref_axis_z, board_top_z). board_top_z is derived from the beam height and
+    a robust reference axis (median optic-centre z), NOT from min(bbox), so it is stable under
+    incremental edits — adding one tall optic never moves the table or re-cuts standing posts."""
+    bh = beam_height(scene)
+    zs = sorted((o.matrix_world.translation.z for o in elems))
+    ref_z = zs[len(zs) // 2] if zs else 0.0          # median optic-axis height
+    return bh, ref_z, ref_z - bh
 
 
 def _snap(v, pitch):
@@ -122,6 +156,7 @@ def grid_info(scene):
     if not elems:
         return None
     pitch = bench_pitch(scene)
+    bh, ref_z, board_top_z = _vertical_chain(scene, elems)
     centers = [o.matrix_world.translation for o in elems]
     xs = [c.x for c in centers]; ys = [c.y for c in centers]
     pad = 2.0 * pitch
@@ -135,11 +170,20 @@ def grid_info(scene):
         row = max(0, min(ny - 1, int(round((c.y - y0) / pitch))))
         occupied.append({"element": o.name, "col": col, "row": row,
                          "hole_xy": [round(x0 + col * pitch, 3), round(y0 + row * pitch, 3)],
-                         "element_xy": [round(c.x, 3), round(c.y, 3)]})
+                         "element_xy": [round(c.x, 3), round(c.y, 3)],
+                         # the vertical chain (same numbers dress() builds): the other half of the BOM
+                         "optic_z_mm": round(c.z, 3),
+                         "post_length_mm": round(max(c.z - MOUNT_DROP - board_top_z, 1.0), 2),
+                         "post_dia_mm": round(2.0 * POST_RADIUS, 3),
+                         "holder_length_mm": round(HOLDER_H, 2),
+                         "support_system": "POST"})
     return {
         "pitch_mm": round(pitch, 4),
         "standard": "imperial" if abs(pitch - GRID_IMPERIAL_MM) < 0.05 else "metric",
         "thread": "1/4-20" if abs(pitch - GRID_IMPERIAL_MM) < 0.05 else "M6",
+        "beam_height_mm": round(bh, 3),
+        "board_top_z_mm": round(board_top_z, 3),
+        "board_thickness_mm": round(BOARD_THICKNESS, 3),
         "origin": [round(x0, 3), round(y0, 3)],
         "cols": nx, "rows": ny,
         "extent": [[round(x0, 3), round(y0, 3)], [round(x0 + (nx - 1) * pitch, 3),
@@ -180,11 +224,13 @@ def _hole_grid(name, x0, y0, nx, ny, pitch, top_z, coll, hole_r=None):
     return o
 
 
-def dress(scene, post_radius=3.0, clearance=55.0):
-    """Spawn a hole-grid breadboard under the optics, then a grid-aligned post + pedestal clamp
-    under each element and a mount ring framing the optic. The board's hole array sits on the
-    active grid pitch (``bench_grid_mm``); optics keep their exact positions (the post clamps to
-    the board directly beneath them) so dressing never perturbs the trace. Idempotent: strips any
+def dress(scene, post_radius=POST_RADIUS):
+    """Spawn a hole-grid breadboard under the optics, then a beam-height-driven post + post-holder
+    base under each element and a mount ring framing the optic. The board top sits one beam height
+    (``beam_height_mm``) below the optical axis, so every optic at that height gets an identical
+    post length (the holder/mount absorb the small per-element offset) — the real-bench convention.
+    The board datum is independent of the optics' bounding boxes, so it is stable under edits.
+    Optics keep their exact positions, so dressing never perturbs the trace. Idempotent: strips any
     prior dressing first. Returns the object count."""
     strip(scene)
     elems = _optical_objects(scene)
@@ -192,8 +238,8 @@ def dress(scene, post_radius=3.0, clearance=55.0):
         return 0
     coll = bench_collection(scene)
     pitch = bench_pitch(scene)
+    bh, ref_z, board_top_z = _vertical_chain(scene, elems)
     centers = [o.matrix_world.translation for o in elems]
-    board_z = min(_world_zmin(o) for o in elems) - clearance
     xs = [c.x for c in centers]; ys = [c.y for c in centers]
     pad = 2.0 * pitch
     # snap the board extent to the grid so every hole lands on an integer grid point
@@ -201,30 +247,34 @@ def dress(scene, post_radius=3.0, clearance=55.0):
     y0 = _snap(min(ys) - pad, pitch); y1 = _snap(max(ys) + pad, pitch)
     nx = min(int(round((x1 - x0) / pitch)) + 1, 80)
     ny = min(int(round((y1 - y0) / pitch)) + 1, 80)
-    th = 12.0
+    th = BOARD_THICKNESS
     margin = pitch * 0.6  # board overhang past the outermost holes
     _box(BENCH_PREFIX + "Breadboard",
          (x1 - x0 + 2 * margin, y1 - y0 + 2 * margin, th),
-         ((x0 + x1) * 0.5, (y0 + y1) * 0.5, board_z - th * 0.5),
+         ((x0 + x1) * 0.5, (y0 + y1) * 0.5, board_top_z - th * 0.5),
          coll, "board")
-    _hole_grid(BENCH_PREFIX + "Holes", x0, y0, nx, ny, pitch, board_z, coll)
+    _hole_grid(BENCH_PREFIX + "Holes", x0, y0, nx, ny, pitch, board_top_z, coll,
+               hole_r=_thread_hole_r(pitch))
     n = 2
     for i, o in enumerate(elems):
         p = o.matrix_world.translation
-        bottom = _world_zmin(o)
-        h = max(bottom - board_z, 1.0)
-        # post-holder base: a wider short cylinder bolted to the board (PH-series style), the post
-        # slides into it -- mechanically real and reads as opto-mech rather than a bare stick
-        hold_h = min(max(h * 0.45, 14.0), 28.0)
-        _cyl(BENCH_PREFIX + "Holder_%02d" % i, post_radius * 2.3, hold_h,
-             (p.x, p.y, board_z + hold_h * 0.5), coll, "clamp")
-        # post rises from the board top to the optic underside, clamped directly beneath the optic
-        _cyl(BENCH_PREFIX + "Post_%02d" % i, post_radius, h, (p.x, p.y, bottom - h * 0.5), coll, "post")
+        # post top sits MOUNT_DROP below the optical axis; post length = beam_height - MOUNT_DROP
+        # for any optic at the reference height, so equal-height optics share one standard post.
+        post_top_z = p.z - MOUNT_DROP
+        h = max(post_top_z - board_top_z, 1.0)
+        # base foot bolted to the board (BA-style), then a fixed-length post-holder body; the post
+        # slides through and is clamped -- body length is constant, only the insertion varies.
+        _cyl(BENCH_PREFIX + "Base_%02d" % i, post_radius * 2.6, BASE_H,
+             (p.x, p.y, board_top_z + BASE_H * 0.5), coll, "clamp")
+        _cyl(BENCH_PREFIX + "Holder_%02d" % i, post_radius * 1.8, HOLDER_H,
+             (p.x, p.y, board_top_z + BASE_H + HOLDER_H * 0.5), coll, "holder")
+        _cyl(BENCH_PREFIX + "Post_%02d" % i, post_radius, h,
+             (p.x, p.y, board_top_z + h * 0.5), coll, "post")
         # mount ring framing the optic, in its own transverse plane (orientation from its matrix)
         ca = max(getattr(o.optics, "clear_aperture", 10.0), 6.0)
         mw = Matrix.Translation(p) @ o.matrix_world.to_3x3().to_4x4()
         _ring(BENCH_PREFIX + "Mount_%02d" % i, ca * 1.18, ca * 0.16, mw, coll)
-        n += 3
+        n += 4
     return n
 
 
