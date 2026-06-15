@@ -23,8 +23,14 @@ semantic versioning.
   an agent knows not just *which hole* but *how tall the post* under each optic is.
 - Trace-safe: optics are never moved (only the decoration's Z follows the datum), so the beam path
   is byte-identical before/after dressing and across beam-height changes. Regression 104 → 114.
-
-## [0.6.0]
+- **Mount-type-specific geometry (Phase 1).** *Dress Bench* now draws a different mount silhouette
+  per element/mount type instead of one generic ring: mirrors get a **kinematic back-plate + two
+  adjuster screws**, waveplates/polarizers a **knurled rotation collar + index nub**, lenses/filters
+  a **threaded retaining ring in a lens cell**, beamsplitters/prism cubes a **cube platform mount**
+  (fixing the old bug where a cube was wrapped by a horizontal hoop framing nothing), and
+  lasers/cameras/detectors a **bracket** instead of an optic retaining ring clipping their body. A
+  physicist now reads the bench by mount silhouette, as on a real table. Still pure decoration,
+  oriented in each optic's own frame; trace byte-identical. Regression 114 → 119.
 
 ### Added
 - **Mechanically-correct breadboard hole grid.** *Dress Bench* now lays the optics on a real

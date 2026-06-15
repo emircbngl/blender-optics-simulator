@@ -10,6 +10,8 @@ Built on demand (a render-prep step), re-runnable, fully reversible. GPL-clean o
 """
 from __future__ import annotations
 
+import math
+
 import bpy
 from mathutils import Vector, Matrix
 
@@ -224,6 +226,83 @@ def _hole_grid(name, x0, y0, nx, ny, pitch, top_z, coll, hole_r=None):
     return o
 
 
+# ---------------------------------------------------------------------------
+# Mount-type-specific geometry (a real bench reads by mount silhouette)
+# ---------------------------------------------------------------------------
+# A physicist tells a steering mirror (kinematic mount, adjuster screws) from a waveplate
+# (rotation collar with a scale) from a lens (threaded retaining ring) from a beamsplitter (cube
+# platform) at a glance. dress() used to draw the same torus for all of them; _build_mount() gives
+# each its own silhouette, oriented in the optic's own frame so it frames the actual optical face
+# (fixing the old beamsplitter "horizontal hoop" bug — a cube gets a platform, not a ring).
+
+_SOURCE_DET = {'SOURCE', 'FIBER_COLLIMATOR', 'DETECTOR', 'PHOTODIODE', 'POWER_METER', 'WAVEFRONT_SENSOR'}
+
+
+def _obox(name, size, mw, off, coll, matkey):
+    o = eg._cube(name, Vector(size), coll)
+    o.matrix_world = mw @ Matrix.Translation(Vector(off))
+    o.data.materials.clear(); o.data.materials.append(_MATS[matkey]())
+    return o
+
+
+def _ocyl(name, r, depth, mw, off, coll, matkey, axis='Z'):
+    bpy.ops.mesh.primitive_cylinder_add(radius=r, depth=depth, location=(0, 0, 0), vertices=24)
+    o = bpy.context.active_object
+    o.name = name
+    rot = Matrix.Identity(4)
+    if axis == 'X':
+        rot = Matrix.Rotation(math.radians(90), 4, 'Y')
+    elif axis == 'Y':
+        rot = Matrix.Rotation(math.radians(90), 4, 'X')
+    o.matrix_world = (mw @ Matrix.Translation(Vector(off))) @ rot
+    o.data.materials.clear(); o.data.materials.append(_MATS[matkey]())
+    eg._link_only(o, coll)
+    return o
+
+
+def _build_mount(o, coll, idx):
+    """Build the mount silhouette that matches the element's mount/element type, oriented in the
+    optic's local frame (local +Z is the optical axis for inline parts; the cube body for splitters).
+    Returns the number of objects created. All decoration: no ports, never traced."""
+    op = o.optics
+    et = op.element_type
+    mt = getattr(op, "mount_type", 'FIXED')
+    ca = max(getattr(op, "clear_aperture", 10.0), 6.0)
+    p = o.matrix_world.translation
+    mw = Matrix.Translation(p) @ o.matrix_world.to_3x3().to_4x4()
+    pre = BENCH_PREFIX
+    nm = "%02d" % idx
+
+    if et in _SOURCE_DET:
+        # self-contained body (laser/camera/crystal): a saddle bracket toward the post, no optic ring
+        _obox(pre + "Bracket_" + nm, (ca * 1.0, ca * 1.0, 6.0), mw, (0, 0, -ca * 0.9), coll, "clamp")
+        return 1
+    if et in {'BEAMSPLITTER', 'PRISM_MIRROR'}:
+        # cube mount: a platform plate under the cube + a back plate, aligned to the cube faces
+        s = ca * 1.25
+        _obox(pre + "CubeBase_" + nm, (s, s, 5.0), mw, (0, 0, -s * 0.62), coll, "mount")
+        _obox(pre + "CubeBack_" + nm, (s, 5.0, s), mw, (0, -s * 0.62, 0), coll, "mount")
+        return 2
+    if mt == 'ROTATION' or et in {'WAVEPLATE', 'POLARIZER'}:
+        # rotation mount: optic ring + a wider knurled collar + a radial index nub (reads "rotates")
+        _ring(pre + "Mount_" + nm, ca * 1.18, ca * 0.16, mw, coll)
+        _ocyl(pre + "Collar_" + nm, ca * 1.5, 6.0, mw, (0, 0, 0), coll, "mount")
+        _obox(pre + "Index_" + nm, (2.5, 2.5, 4.0), mw, (ca * 1.5, 0, 0), coll, "post")
+        return 3
+    if mt == 'KINEMATIC_2AXIS' or et == 'MIRROR':
+        # kinematic mount: square back-plate behind the optic + retaining ring + two adjuster screws
+        plate = ca * 1.5
+        _obox(pre + "KMplate_" + nm, (plate, plate, 6.0), mw, (0, 0, -6.0), coll, "mount")
+        _ring(pre + "Mount_" + nm, ca * 1.18, ca * 0.16, mw, coll)
+        _ocyl(pre + "Adj1_" + nm, 1.6, 11.0, mw, (plate * 0.32, plate * 0.32, -8.5), coll, "post")
+        _ocyl(pre + "Adj2_" + nm, 1.6, 11.0, mw, (-plate * 0.32, -plate * 0.32, -8.5), coll, "post")
+        return 4
+    # threaded lens / filter / window / generic: a retaining ring inside a short lens-cell wall
+    _ring(pre + "Mount_" + nm, ca * 1.18, ca * 0.16, mw, coll)
+    _ocyl(pre + "Cell_" + nm, ca * 1.28, 5.0, mw, (0, 0, 0), coll, "mount")
+    return 2
+
+
 def dress(scene, post_radius=POST_RADIUS):
     """Spawn a hole-grid breadboard under the optics, then a beam-height-driven post + post-holder
     base under each element and a mount ring framing the optic. The board top sits one beam height
@@ -270,11 +349,8 @@ def dress(scene, post_radius=POST_RADIUS):
              (p.x, p.y, board_top_z + BASE_H + HOLDER_H * 0.5), coll, "holder")
         _cyl(BENCH_PREFIX + "Post_%02d" % i, post_radius, h,
              (p.x, p.y, board_top_z + h * 0.5), coll, "post")
-        # mount ring framing the optic, in its own transverse plane (orientation from its matrix)
-        ca = max(getattr(o.optics, "clear_aperture", 10.0), 6.0)
-        mw = Matrix.Translation(p) @ o.matrix_world.to_3x3().to_4x4()
-        _ring(BENCH_PREFIX + "Mount_%02d" % i, ca * 1.18, ca * 0.16, mw, coll)
-        n += 4
+        # mount silhouette matched to the element/mount type (kinematic / rotation / cube / lens...)
+        n += 3 + _build_mount(o, coll, i)
     return n
 
 
