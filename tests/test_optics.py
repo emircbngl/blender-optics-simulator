@@ -372,6 +372,18 @@ render._restore_after_render(sc)                     # the armed scene rendered 
 check("render restore fires for armed scene", render._armed_scene is None
       and render._restore_after_render not in bpy.app.handlers.render_complete)
 
+print("[catalog generic fallback: right type + real params]")
+from optical_alignment_sim import library
+for et in ('CAVITY', 'WAVEFRONT_SENSOR', 'DEFORMABLE_MIRROR', 'ABERRATOR', 'PASSTHROUGH'):
+    o = library._generic_fallback(et, "RT_fb_%s" % et, (0, 0, 0), {})
+    check("fallback %s not misrouted to aperture" % et, o.optics.element_type == et, o.optics.element_type)
+fes = library.add_component("FES0700", (0, 0, 0))[0]      # no vendor mesh -> generic fallback
+check("FES0700 fallback is a real shortpass", fes.optics.filt_type == 'SP' and abs(fes.optics.cut_hi_nm - 700.0) < 1e-3)
+nd = library.add_component("NE10A", (0, 0, 0))[0]
+check("NE10A fallback is a real ND", nd.optics.filt_type == 'ND' and abs(nd.optics.od - 1.0) < 1e-3)
+pbs = library.add_component("PBS251", (0, 0, 0))[0]
+check("PBS251 fallback is polarizing", bool(pbs.optics.is_pbs))
+
 oas.unregister()
 
 passed = sum(1 for _, ok in _checks if ok)

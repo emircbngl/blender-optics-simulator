@@ -38,7 +38,7 @@ BUILTIN = {
     # beamsplitters
     "C6WR": {"label": "Beamsplitter Combiner (C6WR)", "vendor": "Thorlabs", "part_number": "C6WR", "mesh": "C6WR.stl", "format": "stl", "name": "BS_C6WR", "element_type": "BEAMSPLITTER", "specs": "wedged plate combiner", "generic": {"split": 0.5}},
     "BS013": {"label": "50:50 Non-Pol. Beamsplitter Cube (BS013)", "vendor": "Thorlabs", "part_number": "BS013", "mesh": "BS013.stl", "format": "stl", "name": "BS_BS013", "element_type": "BEAMSPLITTER", "specs": "1in cube, 400-700 nm, 50:50", "generic": {"split": 0.5, "size": 25.4}},
-    "PBS251": {"label": "Polarizing Beamsplitter Cube (PBS251)", "vendor": "Thorlabs", "part_number": "PBS251", "mesh": "PBS251.stl", "format": "stl", "name": "BS_PBS251", "element_type": "BEAMSPLITTER", "specs": "1in PBS cube, 420-680 nm", "generic": {"split": 0.5, "size": 25.4}},
+    "PBS251": {"label": "Polarizing Beamsplitter Cube (PBS251)", "vendor": "Thorlabs", "part_number": "PBS251", "mesh": "PBS251.stl", "format": "stl", "name": "BS_PBS251", "element_type": "BEAMSPLITTER", "specs": "1in PBS cube, 420-680 nm", "generic": {"split": 0.5, "size": 25.4, "pbs": True}},
     "BSW10": {"label": "50:50 Plate Beamsplitter (BSW10)", "vendor": "Thorlabs", "part_number": "BSW10", "mesh": "BSW10.stl", "format": "stl", "name": "BS_BSW10", "element_type": "BEAMSPLITTER", "specs": "1in UVFS plate, 400-700 nm, 50:50", "generic": {"split": 0.5, "size": 25.4}},
     # dichroics
     "DMLP650": {"label": "Longpass Dichroic Mirror (DMLP650)", "vendor": "Thorlabs", "part_number": "DMLP650", "mesh": "DMLP650.stl", "format": "stl", "name": "DM_DMLP650", "element_type": "DICHROIC", "mount": "KM100", "specs": "1in, 650 nm cut-on longpass", "generic": {"split": 0.5}},
@@ -57,10 +57,10 @@ BUILTIN = {
     "WPQ10M_633": {"label": "1in Zero-Order Quarter-Wave Plate (WPQ10M-633)", "vendor": "Thorlabs", "part_number": "WPQ10M-633", "mesh": "WPQ10M-633.stl", "format": "stl", "name": "PRM_QWP633", "element_type": "WAVEPLATE", "specs": "633 nm zero-order QWP, SM1 mount", "generic": {"kind": "QWP"}},
     "LPVISE100_A": {"label": "1in Linear Polarizer (LPVISE100-A)", "vendor": "Thorlabs", "part_number": "LPVISE100-A", "mesh": "LPVISE100-A.stl", "format": "stl", "name": "POL_LPVISE", "element_type": "POLARIZER", "specs": "400-700 nm, N-BK7 windows", "generic": {"radius": 12.5}},
     # filters / attenuators
-    "FEL0600": {"label": "1in Longpass Filter 600 nm (FEL0600)", "vendor": "Thorlabs", "part_number": "FEL0600", "mesh": "FEL0600.stl", "format": "stl", "name": "FILT_FEL0600", "element_type": "FILTER", "specs": "600 nm cut-on longpass", "generic": {"radius": 12.5}},
-    "FES0700": {"label": "1in Shortpass Filter 700 nm (FES0700)", "vendor": "Thorlabs", "part_number": "FES0700", "mesh": "FES0700.stl", "format": "stl", "name": "FILT_FES0700", "element_type": "FILTER", "specs": "700 nm cut-off shortpass", "generic": {"radius": 12.5}},
-    "FB633_10": {"label": "1in Bandpass Filter 633 nm (FB633-10)", "vendor": "Thorlabs", "part_number": "FB633-10", "mesh": "FB633-10.stl", "format": "stl", "name": "FILT_FB633", "element_type": "FILTER", "specs": "CWL 633 nm, FWHM 10 nm", "generic": {"radius": 12.5}},
-    "NE10A": {"label": "1in Absorptive ND Filter OD 1.0 (NE10A)", "vendor": "Thorlabs", "part_number": "NE10A", "mesh": "NE10A.stl", "format": "stl", "name": "FILT_NE10A", "element_type": "FILTER", "specs": "OD 1.0, 400-650 nm absorptive ND", "generic": {"radius": 12.5}},
+    "FEL0600": {"label": "1in Longpass Filter 600 nm (FEL0600)", "vendor": "Thorlabs", "part_number": "FEL0600", "mesh": "FEL0600.stl", "format": "stl", "name": "FILT_FEL0600", "element_type": "FILTER", "specs": "600 nm cut-on longpass", "generic": {"radius": 12.5, "filt_type": "LP", "cut_lo_nm": 600.0}},
+    "FES0700": {"label": "1in Shortpass Filter 700 nm (FES0700)", "vendor": "Thorlabs", "part_number": "FES0700", "mesh": "FES0700.stl", "format": "stl", "name": "FILT_FES0700", "element_type": "FILTER", "specs": "700 nm cut-off shortpass", "generic": {"radius": 12.5, "filt_type": "SP", "cut_hi_nm": 700.0}},
+    "FB633_10": {"label": "1in Bandpass Filter 633 nm (FB633-10)", "vendor": "Thorlabs", "part_number": "FB633-10", "mesh": "FB633-10.stl", "format": "stl", "name": "FILT_FB633", "element_type": "FILTER", "specs": "CWL 633 nm, FWHM 10 nm", "generic": {"radius": 12.5, "filt_type": "BP", "cut_lo_nm": 628.0, "cut_hi_nm": 638.0}},
+    "NE10A": {"label": "1in Absorptive ND Filter OD 1.0 (NE10A)", "vendor": "Thorlabs", "part_number": "NE10A", "mesh": "NE10A.stl", "format": "stl", "name": "FILT_NE10A", "element_type": "FILTER", "specs": "OD 1.0, 400-650 nm absorptive ND", "generic": {"radius": 12.5, "filt_type": "ND", "od": 1.0}},
     "VA5": {"label": "Variable Attenuator (VA5-633)", "vendor": "Thorlabs", "part_number": "VA5-633", "mesh": "VA5-633_M.stl", "format": "stl", "name": "VA5_attenuator", "element_type": "ATTENUATOR", "specs": "633 nm variable attenuator"},
     "NDC_50C_2M": {"label": "Continuously Variable ND Wheel (NDC-50C-2M)", "vendor": "Thorlabs", "part_number": "NDC-50C-2M", "mesh": "NDC-50C-2M.stl", "format": "stl", "name": "VA_NDC50C", "element_type": "ATTENUATOR", "specs": "OD 0-2.0 reflective ND wheel"},
     # isolator / apertures / pinhole
@@ -127,7 +127,15 @@ def get_components():
                     loaded = json.load(f)
                 for k, v in loaded.items():
                     if isinstance(v, dict) and isinstance(comps.get(k), dict):
-                        comps[k].update(v)            # merge per key (keep mesh/type if omitted)
+                        base = comps[k]
+                        for kk, vv in v.items():
+                            # deep-merge the nested 'generic' dict so a JSON entry that omits
+                            # (e.g.) filt_type/pbs doesn't wipe the built-in defaults -- only the
+                            # leaves it actually specifies override
+                            if kk == "generic" and isinstance(vv, dict) and isinstance(base.get("generic"), dict):
+                                base["generic"] = {**base["generic"], **vv}
+                            else:
+                                base[kk] = vv
                     else:
                         comps[k] = v
             except Exception:
@@ -240,7 +248,8 @@ def _generic_fallback(element_type, name, location, hints):
         o.optics.element_type = 'PRISM_MIRROR'
         return o
     if et == 'BEAMSPLITTER':
-        return eg.beamsplitter(name, loc, DIR, TURN, split=h.get("split", 0.5), size=h.get("size", 25.0))
+        return eg.beamsplitter(name, loc, DIR, TURN, split=h.get("split", 0.5),
+                               pbs=bool(h.get("pbs", False)), size=h.get("size", 25.0))
     if et == 'DICHROIC':
         return eg.dichroic(name, loc, DIR, TURN, split=h.get("split", 0.5), size=h.get("size", 25.0))
     if et == 'GRATING':
@@ -254,7 +263,10 @@ def _generic_fallback(element_type, name, location, hints):
     if et == 'POLARIZER':
         return eg.polarizer(name, loc, DIR, radius=h.get("radius", 12.5))
     if et == 'FILTER':
-        return eg.optical_filter(name, loc, DIR, radius=h.get("radius", 12.5))
+        return eg.optical_filter(name, loc, DIR, radius=h.get("radius", 12.5),
+                                 filt_type=h.get("filt_type", 'BP'),
+                                 cut_lo_nm=h.get("cut_lo_nm", 600.0),
+                                 cut_hi_nm=h.get("cut_hi_nm", 700.0), od=h.get("od", 1.0))
     if et == 'ATTENUATOR':
         o = eg.optical_filter(name, loc, DIR, radius=h.get("radius", 12.5))
         o.optics.element_type = 'ATTENUATOR'
@@ -271,6 +283,19 @@ def _generic_fallback(element_type, name, location, hints):
         return eg.photodiode(name, loc, DIR, size=h.get("size", 14.0))
     if et == 'POWER_METER':
         return eg.power_meter(name, loc, DIR, size=h.get("size", 20.0))
+    if et == 'CAVITY':
+        return eg.cavity(name, loc, DIR, spacing_mm=h.get("spacing_mm", 0.05),
+                         R=h.get("R", 0.9), size=h.get("size", 25.0))
+    if et == 'WAVEFRONT_SENSOR':
+        return eg.wavefront_sensor(name, loc, DIR, size=h.get("size", 22.0))
+    if et == 'DEFORMABLE_MIRROR':
+        return eg.deformable_mirror(name, loc, DIR, TURN, size=h.get("size", 25.0))
+    if et == 'ABERRATOR':
+        return eg.aberrator(name, loc, DIR, radius=h.get("radius", 14.0))
+    if et == 'PASSTHROUGH':                                  # free transmit, NOT an aperture (no clip)
+        o = eg.aperture(name, loc, DIR, radius=h.get("radius", 14.0))
+        o.optics.element_type = 'PASSTHROUGH'
+        return o
     # last resort: a transparent inline placeholder
     return eg.aperture(name, loc, DIR, radius=h.get("radius", 14.0))
 
