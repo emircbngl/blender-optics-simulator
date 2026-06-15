@@ -178,7 +178,7 @@ def grid_info(scene):
                          "post_length_mm": round(max(c.z - MOUNT_DROP - board_top_z, 1.0), 2),
                          "post_dia_mm": round(2.0 * POST_RADIUS, 3),
                          "holder_length_mm": round(HOLDER_H, 2),
-                         "support_system": "POST"})
+                         "support_system": getattr(o.optics, "support_system", 'POST')})
     return {
         "pitch_mm": round(pitch, 4),
         "standard": "imperial" if abs(pitch - GRID_IMPERIAL_MM) < 0.05 else "metric",
@@ -303,6 +303,121 @@ def _build_mount(o, coll, idx):
     return 2
 
 
+# ---------------------------------------------------------------------------
+# Cage systems (16/30/60 mm): 4 shared rods + a plate per member + one post
+# ---------------------------------------------------------------------------
+# A cage holds several collinear optics on 4 parallel rods (the rods, not per-element posts, set
+# coaxiality), and the whole assembly mounts to the table on one post. Members are grouped by
+# (support_system, cage_id). Rod diameter and the square spacing are the published standards.
+_CAGE_SPEC = {'CAGE_16': (2.0, 16.0), 'CAGE_30': (3.0, 30.0), 'CAGE_60': (3.0, 60.0)}
+
+
+def cage_groups(scene):
+    """Map (support_system, cage_id) -> [member optics] for every cage-mounted element."""
+    groups = {}
+    for o in _optical_objects(scene):
+        ss = getattr(o.optics, "support_system", 'POST')
+        if ss in _CAGE_SPEC:
+            groups.setdefault((ss, getattr(o.optics, "cage_id", "") or ""), []).append(o)
+    return groups
+
+
+def _transverse_basis(axis):
+    """Two orthonormal vectors spanning the plane transverse to ``axis``."""
+    a = axis.normalized()
+    up = Vector((0.0, 0.0, 1.0)) if abs(a.z) < 0.9 else Vector((1.0, 0.0, 0.0))
+    u = a.cross(up).normalized()
+    v = a.cross(u).normalized()
+    return u, v
+
+
+def _cage_axis(members):
+    """The shared cage axis: the member-to-member line (collinear assumption), or a lone member's
+    optical axis (local +Z)."""
+    cs = [m.matrix_world.translation for m in members]
+    if len(cs) >= 2 and (cs[-1] - cs[0]).length > 1e-6:
+        return (cs[-1] - cs[0]).normalized()
+    return (members[0].matrix_world.to_3x3() @ Vector((0.0, 0.0, 1.0))).normalized()
+
+
+def _rod(name, p0, p1, r, coll, matkey):
+    """A cylinder spanning p0 -> p1 (a cage rod)."""
+    p0 = Vector(p0); p1 = Vector(p1)
+    d = p1 - p0
+    L = max(d.length, 1e-6)
+    bpy.ops.mesh.primitive_cylinder_add(radius=r, depth=L, location=(0, 0, 0), vertices=16)
+    o = bpy.context.active_object
+    o.name = name
+    q = Vector((0.0, 0.0, 1.0)).rotation_difference(d.normalized())
+    o.matrix_world = Matrix.Translation((p0 + p1) * 0.5) @ q.to_matrix().to_4x4()
+    o.data.materials.clear(); o.data.materials.append(_MATS[matkey]())
+    eg._link_only(o, coll)
+    return o
+
+
+def _cage_geom(members):
+    """Shared cage geometry (axis, transverse basis, centroid, member projections, rod span) so the
+    builder and cage_info() agree."""
+    rod_r, sep = _CAGE_SPEC[members[0].optics.support_system]
+    axis = _cage_axis(members)
+    u, v = _transverse_basis(axis)
+    cs = [m.matrix_world.translation for m in members]
+    centroid = sum(cs, Vector((0.0, 0.0, 0.0))) / len(cs)
+    ts = [(c - centroid).dot(axis) for c in cs]
+    margin = sep * 0.9
+    return rod_r, sep, axis, u, v, centroid, min(ts) - margin, max(ts) + margin
+
+
+def _build_cage(scene, members, board_top_z, coll, post_radius, tag):
+    """Build one cage: 4 rods on the size-mm square + a plate per member + one centre post."""
+    rod_r, sep, axis, u, v, centroid, t0, t1 = _cage_geom(members)
+    half = sep * 0.5
+    n = 0
+    for k, off in enumerate((u * half + v * half, u * half - v * half,
+                             -u * half + v * half, -u * half - v * half)):
+        base = centroid + off
+        _rod("%sCageRod_%s_%d" % (BENCH_PREFIX, tag, k),
+             base + axis * t0, base + axis * t1, rod_r, coll, "post")
+        n += 1
+    # a cage plate at each member (square plate transverse to the axis, framing the optic)
+    rot = Matrix(((u.x, v.x, axis.x, 0.0), (u.y, v.y, axis.y, 0.0),
+                  (u.z, v.z, axis.z, 0.0), (0.0, 0.0, 0.0, 1.0)))
+    for j, m in enumerate(members):
+        plate = eg._cube("%sCagePlate_%s_%d" % (BENCH_PREFIX, tag, j),
+                         Vector((sep * 1.15, sep * 1.15, 8.9)), coll)
+        plate.matrix_world = Matrix.Translation(m.matrix_world.translation) @ rot
+        plate.data.materials.clear(); plate.data.materials.append(_MATS["mount"]())
+        n += 1
+    # one post under the cage centroid, to beam height
+    post_top_z = centroid.z - MOUNT_DROP
+    h = max(post_top_z - board_top_z, 1.0)
+    _cyl("%sCageBase_%s" % (BENCH_PREFIX, tag), post_radius * 2.6, BASE_H,
+         (centroid.x, centroid.y, board_top_z + BASE_H * 0.5), coll, "clamp")
+    _cyl("%sCageHolder_%s" % (BENCH_PREFIX, tag), post_radius * 1.8, HOLDER_H,
+         (centroid.x, centroid.y, board_top_z + BASE_H + HOLDER_H * 0.5), coll, "holder")
+    _cyl("%sCagePost_%s" % (BENCH_PREFIX, tag), post_radius, h,
+         (centroid.x, centroid.y, board_top_z + h * 0.5), coll, "post")
+    return n + 3
+
+
+def cage_info(scene):
+    """Cage assemblies as data for get_state: id, size, rod dia/length/count, axis, members.
+    Empty list when the bench is not dressed."""
+    if not is_dressed(scene):
+        return []
+    out = []
+    for (ss, cid), members in cage_groups(scene).items():
+        rod_r, sep, axis, u, v, centroid, t0, t1 = _cage_geom(members)
+        out.append({
+            "id": cid or ss.lower(),
+            "size_mm": int(sep), "rod_dia_mm": round(2.0 * rod_r, 3), "rod_count": 4,
+            "rod_length_mm": round(t1 - t0, 2),
+            "axis": [round(axis.x, 4), round(axis.y, 4), round(axis.z, 4)],
+            "members": [m.name for m in members],
+        })
+    return out
+
+
 def dress(scene, post_radius=POST_RADIUS):
     """Spawn a hole-grid breadboard under the optics, then a beam-height-driven post + post-holder
     base under each element and a mount ring framing the optic. The board top sits one beam height
@@ -335,7 +450,12 @@ def dress(scene, post_radius=POST_RADIUS):
     _hole_grid(BENCH_PREFIX + "Holes", x0, y0, nx, ny, pitch, board_top_z, coll,
                hole_r=_thread_hole_r(pitch))
     n = 2
+    # cage-mounted optics ride shared rods + one cage post; everything else gets its own post.
+    groups = cage_groups(scene)
+    caged = {m.name for members in groups.values() for m in members}
     for i, o in enumerate(elems):
+        if o.name in caged:
+            continue
         p = o.matrix_world.translation
         # post top sits MOUNT_DROP below the optical axis; post length = beam_height - MOUNT_DROP
         # for any optic at the reference height, so equal-height optics share one standard post.
@@ -351,6 +471,8 @@ def dress(scene, post_radius=POST_RADIUS):
              (p.x, p.y, board_top_z + h * 0.5), coll, "post")
         # mount silhouette matched to the element/mount type (kinematic / rotation / cube / lens...)
         n += 3 + _build_mount(o, coll, i)
+    for gi, members in enumerate(groups.values()):
+        n += _build_cage(scene, members, board_top_z, coll, post_radius, "%02d" % gi)
     return n
 
 

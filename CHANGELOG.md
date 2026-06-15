@@ -31,6 +31,14 @@ semantic versioning.
   lasers/cameras/detectors a **bracket** instead of an optic retaining ring clipping their body. A
   physicist now reads the bench by mount silhouette, as on a real table. Still pure decoration,
   oriented in each optic's own frame; trace byte-identical. Regression 114 → 119.
+- **Cage systems — 16 / 30 / 60 mm (Phase 2).** Collinear optics can now be grouped into a real
+  cage assembly: four shared rods (Ø4 mm @ 16 mm, Ø6 mm @ 30/60 mm, the published standard) carry a
+  cage plate per member and mount on **one** cage post, instead of an individual post per optic.
+  New `make_cage(members, size_mm)` (optics_api + MCP) and a per-element `support_system`
+  (POST / CAGE_16 / CAGE_30 / CAGE_60 / RAIL) on the data model. `get_state()` gains a top-level
+  `cages` block (id, size, rod dia/length/count, axis, members) and each occupied hole reports its
+  `support_system`, so an agent knows which optics share rods. Caging never moves the optics →
+  trace byte-identical. Regression 119 → 126.
 
 ### Added
 - **Mechanically-correct breadboard hole grid.** *Dress Bench* now lays the optics on a real
