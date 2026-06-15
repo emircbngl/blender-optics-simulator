@@ -336,6 +336,9 @@ class OPTICS_PT_render(Panel):
         layout.label(text="Background")
         layout.prop(context.scene.optics, "bg_preset", text="")
         layout.prop(context.scene.optics, "realistic_optics")
+        from . import optomech
+        layout.operator("optics.dress_bench", icon='SNAP_FACE',
+                        text="Strip Bench Dressing" if optomech.is_dressed(context.scene) else "Dress Bench (posts + table)")
         col = layout.column(align=True)
         col.operator("optics.render_preview", icon='RENDER_STILL')
         col.operator("optics.render_final", icon='RENDER_RESULT')

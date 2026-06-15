@@ -423,6 +423,18 @@ for _ in range(3):
 check("example rebuild frees meshes (no orphan growth)", len(bpy.data.meshes) <= _em0 + 2,
       "delta=%d" % (len(bpy.data.meshes) - _em0))
 
+print("[bench dressing: additive, not traced, reversible]")
+from optical_alignment_sim import optomech
+optics_api.build_example("michelson")
+_nseg = len(scan._trace(sc))
+_k = optomech.dress(sc)
+check("dress spawns posts + board", _k >= 3 and optomech.is_dressed(sc), "k=%d" % _k)
+check("dressing leaves the trace identical", len(scan._trace(sc)) == _nseg)   # ports untouched
+check("bench objects are non-optical (never traced)",
+      all(not o.optics.is_optical for o in sc.objects if o.name.startswith("BENCH_")))
+optomech.strip(sc)
+check("strip removes all bench objects", not optomech.is_dressed(sc))
+
 oas.unregister()
 
 passed = sum(1 for _, ok in _checks if ok)
