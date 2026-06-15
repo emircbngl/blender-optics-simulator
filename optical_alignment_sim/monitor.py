@@ -131,6 +131,12 @@ def _draw():
             blf.position(fid, x0 + 8, y0 + S // 2 - 12, 0)
             blf.draw(fid, "move optics / pick a detector")
     except Exception as e:                       # never raise inside a draw handler
+        # restore blend state even if we raised inside the ALPHA region, or every overlay drawn
+        # after this POST_PIXEL handler in the frame (gizmos, grid, beam overlay) blends wrong
+        try:
+            gpu.state.blend_set('NONE')
+        except Exception:
+            pass
         print("[optics monitor] draw error:", e)
 
 

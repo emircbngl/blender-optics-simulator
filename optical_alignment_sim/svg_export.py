@@ -73,7 +73,10 @@ def build_svg(state, width=900, margin=64):
     minx, miny = min(xs), min(ys)
     span_x = max(max(xs) - minx, 1.0)
     span_y = max(max(ys) - miny, 1.0)
-    scale = (width - 2 * margin) / span_x
+    # fit BOTH axes: scaling off X alone made a Y-dominant (vertical) beamline explode the canvas
+    # to ~200k px tall (span_x collapses to the 1.0 floor). Cap the height to a square-ish budget.
+    max_h = width
+    scale = min((width - 2 * margin) / span_x, (max_h - 2 * margin) / span_y)
     height = int(span_y * scale + 2 * margin)
 
     def X(x):

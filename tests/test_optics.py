@@ -120,6 +120,11 @@ m = optics_api.ao_measure("AO_WFS")
 check("AO open-loop RMS~0.559", abs(m["rms"] - math.sqrt(0.4 ** 2 + 0.3 ** 2 + 0.25 ** 2)) < 1e-2, str(m.get("rms")))
 rr = optics_api.ao_close_loop("AO_WFS", "AO_DM", gain=0.5, iters=15)
 check("AO closed-loop RMS->0", rr.get("ok") and rr["rms_final"] < 0.01, str(rr.get("rms_final")))
+# a LOW gain must keep converging to ~tol, not declare 'converged' ~tol/gain above it (stall-tol fix)
+optics_api.build_example("adaptive_optics")
+rr_lo = optics_api.ao_close_loop("AO_WFS", "AO_DM", gain=0.05, iters=160)
+check("AO low-gain converges (not early-stalled)", rr_lo.get("ok") and rr_lo["rms_final"] < 0.01,
+      str(rr_lo.get("rms_final")))
 cmd = list(sc.objects["AO_DM"].optics.dm_command)
 check("AO DM -> injected modes", abs(cmd[3] - 0.4) < 0.02 and abs(cmd[5] - 0.3) < 0.02 and abs(cmd[7] - 0.25) < 0.02,
       str([round(cmd[i], 3) for i in (3, 5, 7)]))
@@ -345,6 +350,27 @@ check("ensure_beams re-bakes on path change", bake._baked_sig != sig_a)
 bake.clear_baked(sc)
 check("no BEAM_ objects after clear", not any(o.name.startswith("BEAM_") for o in sc.objects))
 check("clear_baked frees beam meshes (no orphan leak)", len(bpy.data.meshes) <= m0)
+
+print("[medium-severity tail]")
+# SVG: a Y-dominant (vertical) beamline must not explode the canvas height
+from optical_alignment_sim import svg_export
+import re as _re
+_vstate = {"elements": [{"world_center": [0, 0, 0], "type": "SOURCE", "name": "S", "params": {}},
+                        {"world_center": [0, 300, 0], "type": "MIRROR", "name": "M", "params": {}}],
+           "beam_path": [{"p1": [0, 0, 0], "p2": [0, 300, 0], "wavelength": 633.0, "power": 1.0, "kind": "SOURCE"}]}
+_svgh = int(_re.search(r'height="(\d+)"', svg_export.build_svg(_vstate)).group(1))
+check("SVG height bounded for vertical bench", _svgh <= 1000, "h=%d" % _svgh)
+
+# render auto-restore handler only fires for the scene it was armed for (multi-scene safety)
+render._arm_restore(sc)
+class _OtherScene:
+    name = "RT_other_scene_xyz"
+render._restore_after_render(_OtherScene())          # a different scene rendered -> stay armed
+check("render restore ignores other scene", render._armed_scene == sc.name
+      and render._restore_after_render in bpy.app.handlers.render_complete)
+render._restore_after_render(sc)                     # the armed scene rendered -> clear + disarm
+check("render restore fires for armed scene", render._armed_scene is None
+      and render._restore_after_render not in bpy.app.handlers.render_complete)
 
 oas.unregister()
 

@@ -356,12 +356,21 @@ class OPTICS_OT_set_camera(Operator):
         return {'FINISHED'}
 
 
+_armed_scene = None     # name of the scene whose render style is armed for auto-restore
+
+
 def _restore_after_render(scene, *args):
     """One-shot render-complete/-cancel handler: once the render is captured, revert the realistic
-    render style so the viewport returns to its flat editing look automatically (no stuck glass)."""
+    render style so the viewport returns to its flat editing look automatically (no stuck glass).
+    Only fires for the scene that was armed -- if a DIFFERENT scene renders first, stay armed so the
+    armed scene's materials aren't reverted before its own render (and aren't left stuck after)."""
+    global _armed_scene
+    if _armed_scene is not None and scene is not None and scene.name != _armed_scene:
+        return                                   # not our scene; keep waiting for the armed one
     try:
         clear_render_style(scene)
     finally:
+        _armed_scene = None
         for h in (bpy.app.handlers.render_complete, bpy.app.handlers.render_cancel):
             if _restore_after_render in h:
                 try:
@@ -370,8 +379,11 @@ def _restore_after_render(scene, *args):
                     pass
 
 
-def _arm_restore():
-    """Arm the one-shot auto-restore for the next render (idempotent)."""
+def _arm_restore(scene=None):
+    """Arm the one-shot auto-restore for the next render of `scene` (idempotent)."""
+    global _armed_scene
+    if scene is not None:
+        _armed_scene = scene.name
     for h in (bpy.app.handlers.render_complete, bpy.app.handlers.render_cancel):
         if _restore_after_render not in h:
             h.append(_restore_after_render)
@@ -389,7 +401,7 @@ class OPTICS_OT_render_preview(Operator):
         if context.scene.camera is None:
             set_camera(context.scene, 'HERO')
         if getattr(context.scene.optics, "realistic_optics", False):
-            _arm_restore()                           # auto-revert the style once the render is done
+            _arm_restore(context.scene)              # auto-revert the style once THIS scene renders
         self.report({'INFO'}, "EEVEE (%s) ready - rendering" % eng)
         bpy.ops.render.render('INVOKE_DEFAULT')
         return {'FINISHED'}
@@ -407,7 +419,7 @@ class OPTICS_OT_render_final(Operator):
         if context.scene.camera is None:
             set_camera(context.scene, 'HERO')
         if getattr(context.scene.optics, "realistic_optics", False):
-            _arm_restore()                           # auto-revert the style once the render is done
+            _arm_restore(context.scene)              # auto-revert the style once THIS scene renders
         self.report({'INFO'}, "Cycles final ready - rendering")
         bpy.ops.render.render('INVOKE_DEFAULT')
         return {'FINISHED'}

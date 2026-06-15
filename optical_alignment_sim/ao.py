@@ -106,9 +106,9 @@ def publish_wavefront(det, segs):
 def close_loop(scene, sensor_name, dm_name, gain=0.5, iters=15, tol=1.0e-3):
     """Modal AO integrator: each step trace -> read residual Zernike at the sensor -> accumulate
     the DM command toward it (dm_command += gain*residual) -> repeat until the wavefront is flat
-    (residual RMS < tol) or stalls (|delta RMS| < tol) or `iters` is reached. Returns the RMS
-    history (waves), open-loop value first, corrected last. Stops early once converged, so a fast
-    loop costs a handful of traces instead of the full `iters` + a trailing trace."""
+    (residual RMS < tol) or genuinely STALLS (<0.1% relative improvement per step) or `iters` is
+    reached. Returns the RMS history (waves), open-loop value first, corrected last. Stops early
+    once converged, so a fast loop costs a handful of traces instead of the full `iters`."""
     from . import scan
     wfs = scene.objects.get(sensor_name)
     dm = scene.objects.get(dm_name)
@@ -124,7 +124,12 @@ def close_loop(scene, sensor_name, dm_name, gain=0.5, iters=15, tol=1.0e-3):
             break
         rms = physics.wavefront_rms(coeffs)
         hist.append(rms)                                   # this trace already reflects every command applied so far
-        if rms < tol or (len(hist) >= 2 and abs(hist[-2] - rms) < tol):
+        # Converge on the absolute residual; stall ONLY on a relative plateau (no real progress).
+        # Reusing `tol` for the step-delta declared "converged" far above tol at low gain, because a
+        # modal integrator shrinks the residual geometrically (delta ~ gain*residual), so the delta
+        # drops below tol while the residual is still ~tol/gain.
+        stalled = len(hist) >= 2 and (hist[-2] - rms) < 1.0e-3 * max(hist[-2], 1.0e-12)
+        if rms < tol or stalled:
             converged = True
             break
         cmd = list(dm.optics.dm_command)
