@@ -95,6 +95,8 @@ def get_state():
         # Bench breadboard grid (pitch/origin/extent + occupied holes) so an MCP agent or a
         # human knows exactly where parts seat. None when the bench is not dressed.
         "bench": _optomech.grid_info(scene),
+        # Cage assemblies (16/30/60 mm): which optics share rods, the cage axis + rod length.
+        "cages": _optomech.cage_info(scene),
     }
 
 
@@ -333,6 +335,38 @@ def place_on_grid(name, col, row, link_drop=True):
     m = obj.matrix_world
     return {"ok": True, "name": name, "hole": [col, row],
             "world_center": [round(x, 4) for x in m.translation]}
+
+
+def make_cage(members, size_mm=30, cage_id=None):
+    """Group collinear optical elements into a cage assembly: they share 4 rods (Ø6 mm on a 30 mm
+    square for SM1, etc.) and one cage post instead of an individual post each. `members` is a list
+    of element names; `size_mm` in {16, 30, 60}. Re-dresses if the bench is dressed. The cage
+    layout is exposed in get_state()['cages']. Does NOT move the optics, so the trace is unchanged."""
+    scene = _scene()
+    sysmap = {16: 'CAGE_16', 30: 'CAGE_30', 60: 'CAGE_60'}
+    try:
+        size = int(size_mm)
+    except (TypeError, ValueError):
+        return {"error": "size_mm must be 16, 30 or 60"}
+    if size not in sysmap:
+        return {"error": "size_mm must be 16, 30 or 60 (got %s)" % size_mm}
+    if not isinstance(members, (list, tuple)) or len(members) < 1:
+        return {"error": "members must be a non-empty list of element names"}
+    objs = []
+    for nm in members:
+        o = scene.objects.get(nm)
+        if not o or not (getattr(o, "optics", None) and o.optics.is_optical):
+            return {"error": "not an optical element: %s" % nm}
+        objs.append(o)
+    cid = cage_id or ("cage_%s" % objs[0].name)
+    for o in objs:
+        o.optics.support_system = sysmap[size]
+        o.optics.cage_id = cid
+    if _optomech.is_dressed(scene):
+        _optomech.dress(scene)
+    tracer.cached_segments = _trace(scene)
+    return {"ok": True, "cage_id": cid, "size_mm": size, "members": [o.name for o in objs],
+            "cages": _optomech.cage_info(scene)}
 
 
 def scan(kind='STAGE', lo=0.0, hi=0.002, steps=120, element=None):

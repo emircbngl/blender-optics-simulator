@@ -243,5 +243,14 @@ def place_on_grid(name: str, col: int, row: int) -> str:
     return _fmt(_call("place_on_grid", name=name, col=col, row=row))
 
 
+@mcp.tool()
+def make_cage(members: list, size_mm: int = 30, cage_id: str = "") -> str:
+    """Group collinear optical elements into a cage assembly: they share 4 rods (e.g. Ø6 mm on a
+    30 mm square for SM1/Ø1") and one cage post instead of an individual post each. `members` is a
+    list of element names; `size_mm` in {16, 30, 60} (companion optic Ø1/2"/Ø1"/Ø2"). The cage is
+    reported in get_state()['cages']. Optics are not moved, so the trace is unchanged."""
+    return _fmt(_call("make_cage", members=members, size_mm=size_mm, cage_id=cage_id or None))
+
+
 if __name__ == "__main__":
     mcp.run()

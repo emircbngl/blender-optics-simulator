@@ -513,6 +513,29 @@ if _bs is not None:
     check("no Mount ring on the beamsplitter", not _has("Mount_%02d" % _bi), _bs.name)
 optomech.strip(sc)
 
+print("[bench cage system: shared rods, trace-safe, MCP-knowable]")
+optics_api.build_example("michelson")
+_segc = scan._trace(sc)
+_nc = len(_segc); _pc, _vc, _ = alignment.measure(_segc, "MI_D", "NONE")
+_cand = [e["name"] for e in optics_api.get_state()["elements"]
+         if e["name"].startswith("MI_") and e["type"] not in ("SOURCE", "DETECTOR")]
+optics_api.dress_bench(True)
+_posts0 = len([o for o in sc.objects if o.name.startswith("BENCH_Post_")])
+_rc = optics_api.make_cage([_cand[0], _cand[1]], 30)
+check("make_cage groups two members @30 mm", _rc.get("ok") and _rc.get("size_mm") == 30 and set(_rc.get("members", [])) == {_cand[0], _cand[1]}, str(_rc))
+_segc2 = scan._trace(sc); _pc2, _vc2, _ = alignment.measure(_segc2, "MI_D", "NONE")
+check("cage does not move the optics (trace identical)", len(_segc2) == _nc and abs(_pc2 - _pc) < 1e-9 and abs(_vc2 - _vc) < 1e-9)
+_cg = optics_api.get_state()["cages"]
+check("get_state exposes the cage", isinstance(_cg, list) and len(_cg) == 1 and _cg[0]["rod_count"] == 4 and _cg[0]["rod_dia_mm"] == 6.0, str(_cg))
+check("four cage rods + a plate per member built",
+      len([o for o in sc.objects if o.name.startswith("BENCH_CageRod_")]) == 4 and
+      len([o for o in sc.objects if o.name.startswith("BENCH_CagePlate_")]) == 2)
+check("individual posts suppressed for caged members",
+      len([o for o in sc.objects if o.name.startswith("BENCH_Post_")]) == _posts0 - 2)
+check("cage gets its own post", any(o.name.startswith("BENCH_CagePost_") for o in sc.objects))
+optomech.strip(sc)
+check("strip removes the cage too", not any(o.name.startswith("BENCH_CageRod_") for o in sc.objects))
+
 oas.unregister()
 
 passed = sum(1 for _, ok in _checks if ok)

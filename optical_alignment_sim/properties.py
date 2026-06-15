@@ -193,6 +193,17 @@ class OpticalElementProps(PropertyGroup):
 
     mount_type: EnumProperty(name="Mount", items=MOUNT_TYPES, default='FIXED')
     mount_preset: StringProperty(name="Mount preset", default="")
+    # which support SYSTEM holds the optic (distinct from mount_type, the adjuster kinematics):
+    # a single post, a 16/30/60 mm cage train, or a rail carrier. Members sharing a cage system +
+    # cage_id form one cage assembly (4 shared rods + a plate per member) — see optomech.dress().
+    support_system: EnumProperty(
+        name="Support", default='POST',
+        items=[('POST',    "Post",      "Own post + post-holder on the breadboard"),
+               ('CAGE_16', "16 mm cage", "Ø4 mm rods on a 16 mm square (SM05 / Ø1/2\")"),
+               ('CAGE_30', "30 mm cage", "Ø6 mm rods on a 30 mm square (SM1 / Ø1\")"),
+               ('CAGE_60', "60 mm cage", "Ø6 mm rods on a 60 mm square (SM2 / Ø2\")"),
+               ('RAIL',    "Rail",      "Carrier on a dovetail/construction rail")])
+    cage_id: StringProperty(name="Cage group", default="")
     base_pose: FloatVectorProperty(
         name="Base pose", size=16,
         default=(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
