@@ -496,6 +496,23 @@ check("posts still equal at new height", max(o["post_length_mm"] for o in _bh2["
 optomech.strip(sc)
 sc.optics.beam_height_mm = 100.0
 
+print("[bench mount silhouettes: type-specific, trace-safe]")
+optics_api.build_example("michelson")
+_nseg = len(scan._trace(sc))
+optomech.dress(sc)
+check("mount geometry leaves trace identical", len(scan._trace(sc)) == _nseg)
+_names = [o.name for o in sc.objects if o.name.startswith("BENCH_")]
+_has = lambda pre: any(n.startswith("BENCH_" + pre) for n in _names)
+check("mirrors get a kinematic back-plate", _has("KMplate"))
+check("beamsplitter gets a cube platform (not a hoop)", _has("CubeBase"))
+check("sources/detectors get a bracket, not an optic ring", _has("Bracket"))
+# the beamsplitter must NOT be wrapped by a torus Mount ring (the old horizontal-hoop bug)
+_bs = next((o for o in sc.objects if getattr(o.optics, "is_optical", False) and o.optics.element_type == 'BEAMSPLITTER'), None)
+if _bs is not None:
+    _bi = [o.name for o in sc.objects if getattr(o.optics, "is_optical", False) and o.optics.element_type not in ('NONE',)].index(_bs.name)
+    check("no Mount ring on the beamsplitter", not _has("Mount_%02d" % _bi), _bs.name)
+optomech.strip(sc)
+
 oas.unregister()
 
 passed = sum(1 for _, ok in _checks if ok)
