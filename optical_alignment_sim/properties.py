@@ -246,7 +246,7 @@ class OpticalElementProps(PropertyGroup):
     coating: EnumProperty(name="Mirror coating",
         items=[('DIELECTRIC', "Dielectric (ideal)", ""), ('AL', "Aluminum", ""),
                ('AG', "Silver", ""), ('AU', "Gold", "")], default='DIELECTRIC')
-    design_wl: FloatProperty(name="Design wavelength (nm)", default=633.0)  # waveplate/lens spec point
+    design_wl: FloatProperty(name="Design wavelength (nm)", default=633.0, min=1.0)  # spec point; 0 would null a waveplate
     cavity_spacing_mm: FloatProperty(name="Cavity spacing (mm)", default=0.05, min=1e-4)
     is_monitor: BoolProperty(default=False)        # live sensor-monitor target (fringe recomputed live)
     sensor_px: IntProperty(name="Sensor resolution (px)", default=256, min=16, max=1024)

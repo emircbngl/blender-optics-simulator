@@ -506,7 +506,11 @@ class OPTICS_OT_save_mount_preset(Operator):
         if not self.key.strip():
             self.report({'ERROR'}, "Enter a preset name")
             return {'CANCELLED'}
-        path = save_preset(self.key.strip(), serialize_mount(context.object))
+        try:
+            path = save_preset(self.key.strip(), serialize_mount(context.object))
+        except OSError as e:                        # read-only profile dir / full disk -> clean report
+            self.report({'ERROR'}, "Could not write mount preset: %s" % e)
+            return {'CANCELLED'}
         context.object.optics.mount_preset = self.key.strip()
         self.report({'INFO'}, "Saved preset '%s' -> %s" % (self.key.strip(), path))
         return {'FINISHED'}

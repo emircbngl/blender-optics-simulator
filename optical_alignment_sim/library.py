@@ -466,7 +466,11 @@ class OPTICS_OT_save_to_library(Operator):
         if not self.key.strip():
             self.report({'ERROR'}, "Enter a key")
             return {'CANCELLED'}
-        path = save_component(context.object, self.key.strip(), self.label.strip())
+        try:
+            path = save_component(context.object, self.key.strip(), self.label.strip())
+        except OSError as e:                        # read-only config dir / full disk -> clean report
+            self.report({'ERROR'}, "Could not write library file: %s" % e)
+            return {'CANCELLED'}
         self.report({'INFO'}, "Saved '%s' -> %s" % (self.key.strip(), path))
         return {'FINISHED'}
 

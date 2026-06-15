@@ -150,9 +150,11 @@ def polarization_state_from_stokes(s0, s1, s2, s3):
     mixed/unpolarized light; the incoherent sum of beams' Stokes is partial."""
     if s0 < 1e-12:
         return {"kind": "none", "azimuth_deg": 0.0, "ellipticity_deg": 0.0, "dop": 0.0}
-    dop = math.sqrt(s1 * s1 + s2 * s2 + s3 * s3) / s0
+    spol = math.sqrt(s1 * s1 + s2 * s2 + s3 * s3)               # polarized-intensity (S_pol)
+    dop = spol / s0
     azimuth = 0.5 * math.degrees(math.atan2(s2, s1))
-    ellipticity = 0.5 * math.degrees(math.asin(max(-1.0, min(1.0, s3 / s0))))
+    # ellipticity of the POLARIZED fraction -> normalize by S_pol, not S0 (they differ for DOP<1)
+    ellipticity = 0.5 * math.degrees(math.asin(max(-1.0, min(1.0, s3 / spol)))) if spol > 1e-12 else 0.0
     frac_circ = abs(s3) / s0
     if dop < 0.3:
         kind = "unpolarized"

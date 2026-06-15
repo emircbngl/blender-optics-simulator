@@ -277,16 +277,17 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 Nw = 11
                 sigma = bw / 2.355
                 wls = [sp.wavelength + bw * (i / (Nw - 1) - 0.5) for i in range(Nw)]
-                wts = [math.exp(-0.5 * ((w - sp.wavelength) / sigma) ** 2) for w in wls]
-                tw = sum(wts) or 1.0
-                spectrum = [(wls[i], wts[i] / tw) for i in range(Nw)]
+                # drop non-physical (<=0) lines FIRST, then normalize over the survivors, so a wide
+                # band around a small center wavelength doesn't silently lose the clipped lines'
+                # power (the source would emit < its nominal unit power)
+                pairs = [(w, math.exp(-0.5 * ((w - sp.wavelength) / sigma) ** 2)) for w in wls if w > 0.0]
+                tw = sum(wt for _w, wt in pairs) or 1.0
+                spectrum = [(w, wt / tw) for w, wt in pairs]
             else:
                 spectrum = [(sp.wavelength, 1.0)]
             P = geometry.world_port(src, op.local_position)
             D = geometry.world_normal(src, op.local_normal)
             for wl_i, sw in spectrum:
-                if wl_i <= 0.0:                  # broadband tail can cross zero for tiny center wl
-                    continue
                 q0 = physics.q_from_waist(max(sp.waist_um, 1.0) * 1.0e-3, wl_i)
                 coh0 = min(physics.coherence_length_mm(wl_i, sp.linewidth_nm), 1.0e12)
                 for jv, pw in emit:

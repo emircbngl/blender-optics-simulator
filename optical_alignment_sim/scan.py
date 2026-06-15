@@ -303,10 +303,12 @@ class OPTICS_OT_scan(Operator):
 
         base = os.path.join(tempfile.gettempdir(), "optics_scan")
         _render_plot(xs, series, base + ".png", title="Scan: %s" % self.kind)
-        with open(base + ".csv", "w") as f:
-            f.write("x," + ",".join(series.keys()) + "\n")
+        import csv
+        with open(base + ".csv", "w", newline="") as f:
+            w = csv.writer(f)                                  # quote names with commas (detector 'D, main')
+            w.writerow(["x"] + list(series.keys()))
             for i, x in enumerate(xs):
-                f.write(("%.6g," % x) + ",".join("%.6g" % series[k][i] for k in series) + "\n")
+                w.writerow(["%.6g" % x] + ["%.6g" % series[k][i] for k in series])
         _show_monitor(context)
         self.report({'INFO'}, "Scan %s: %d steps -> bottom-left window (+ %s.png/.csv)" % (self.kind, n, base))
         return {'FINISHED'}
@@ -564,7 +566,11 @@ class OPTICS_OT_fringe(Operator):
         img.pixels.foreach_set(arr.reshape(-1))
         img.filepath_raw = out
         img.file_format = 'PNG'
-        img.save()
+        try:
+            img.save()
+        except (OSError, RuntimeError) as e:        # non-writable temp dir -> clean report, not a popup
+            self.report({'ERROR'}, "Could not write fringe image: %s" % e)
+            return {'CANCELLED'}
         if self.to_material:
             _assign_fringe_material(det, img)
         # Align the detector's live-window params to this operator's so that when the
@@ -708,6 +714,9 @@ class OPTICS_OT_save_sensor(Operator):
             img.filepath_raw = bpy.path.abspath(self.filepath)
             img.file_format = 'PNG'
             img.save()
+        except (OSError, RuntimeError) as e:        # unwritable path / unsaved // base -> clean report
+            self.report({'ERROR'}, "Could not save sensor image: %s" % e)
+            return {'CANCELLED'}
         finally:
             bpy.data.images.remove(img)
         self.report({'INFO'}, "Saved %s sensor image -> %s" % (det.name, self.filepath))

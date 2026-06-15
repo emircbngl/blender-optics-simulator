@@ -42,6 +42,8 @@ sc = bpy.context.scene
 print("[physics]")
 check("zernike defocus = sqrt3", abs(physics.zernike(4, 1.0, 0.0) - math.sqrt(3.0)) < 1e-9)
 check("wavefront_rms = 0.5", abs(physics.wavefront_rms([0, 0, 0, 0, 0.3, 0, 0, 0.4]) - 0.5) < 1e-9)
+_es = physics.polarization_state_from_stokes(2.0, 0.0, 0.0, 1.0)   # circular + equal unpolarized (DOP=0.5)
+check("ellipticity uses S_pol (45deg, not 15)", abs(_es["ellipticity_deg"] - 45.0) < 1e-6, str(_es["ellipticity_deg"]))
 check("beam_roc(waist) = inf", math.isinf(physics.beam_roc(physics.q_from_waist(0.5, 632.8))))
 check("gouy(waist) = 0", abs(physics.gouy_phase(physics.q_from_waist(0.5, 632.8))) < 1e-9)
 
