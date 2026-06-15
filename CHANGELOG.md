@@ -4,6 +4,26 @@ All notable changes to the **Blender Optics Simulator** (`optical_alignment_sim`
 here. The format follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 semantic versioning.
 
+## [Unreleased]
+
+### Added — opto-mechanical systems arc (Phase 2.6)
+- **Beam-height datum (Phase 0).** The bench now has a single optical-axis-height datum
+  (`beam_height_mm`, default 100 mm, a scene setting). *Dress Bench* derives the breadboard plane
+  from it (board top one beam height below the axis) and sizes every post so optics at that height
+  get the **same standard post length** — the real-bench convention — instead of a bespoke length
+  cut from each element's bounding box. The datum is independent of the optics' bounding boxes, so
+  adding or removing an optic no longer shifts the table or re-cuts standing posts.
+- **Correct opto-mechanical dimensions.** Posts are now the Ø12.7 mm (½″ / Thorlabs-metric) standard
+  (were a non-existent Ø6 mm); each post seats in a fixed-length post-holder body on a wider base
+  foot (PH/BA-style), and the breadboard counterbores are sized to the declared thread (~Ø6.5 mm M6
+  / Ø6.8 mm ¼-20) instead of oversized generic dots.
+- **Vertical chain exposed to MCP/agents.** `get_state()['bench']` now reports `beam_height_mm`,
+  `board_top_z_mm`, `board_thickness_mm`, and per occupied hole `optic_z_mm`, `post_length_mm`,
+  `post_dia_mm`, `holder_length_mm`, `support_system` — the other half of the bill of materials, so
+  an agent knows not just *which hole* but *how tall the post* under each optic is.
+- Trace-safe: optics are never moved (only the decoration's Z follows the datum), so the beam path
+  is byte-identical before/after dressing and across beam-height changes. Regression 104 → 114.
+
 ## [0.6.0]
 
 ### Added

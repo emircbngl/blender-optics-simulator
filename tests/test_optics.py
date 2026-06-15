@@ -471,6 +471,31 @@ _optic = _b["occupied"][0]["element"]   # a real optical element; only the bench
 _nd = optics_api.place_on_grid(_optic, 0, 0)
 check("place_on_grid needs a dressed bench", "error" in _nd and "dress" in _nd["error"], str(_nd))
 
+print("[bench beam-height datum: equal posts, stable board, vertical chain exposed]")
+optics_api.build_example("michelson")
+_nseg = len(scan._trace(sc))
+sc.optics.beam_height_mm = 100.0
+optomech.dress(sc)
+check("dressing (datum) leaves trace identical", len(scan._trace(sc)) == _nseg)
+_bh = optics_api.get_state()["bench"]
+check("get_state exposes beam_height_mm = 100", abs(_bh["beam_height_mm"] - 100.0) < 1e-6, str(_bh.get("beam_height_mm")))
+check("board top one beam-height below the optical axis", abs(_bh["board_top_z_mm"] + 100.0) < 0.6, str(_bh.get("board_top_z_mm")))
+_plen = [o["post_length_mm"] for o in _bh["occupied"]]
+check("equal post lengths for equal-height optics", max(_plen) - min(_plen) < 1e-6, str(_plen))
+check("post length = beam_height - mount_drop", abs(_plen[0] - (100.0 - optomech.MOUNT_DROP)) < 1e-6, str(_plen[0]))
+check("post diameter is the Ø12.7 standard", all(abs(o["post_dia_mm"] - 12.7) < 1e-6 for o in _bh["occupied"]))
+check("vertical chain reports optic_z + holder", all("optic_z_mm" in o and "holder_length_mm" in o for o in _bh["occupied"]))
+# raising the beam height must not move the optics (trace identical), only the board/posts in Z
+sc.optics.beam_height_mm = 125.0
+optomech.dress(sc)
+check("changing beam height keeps trace identical", len(scan._trace(sc)) == _nseg)
+_bh2 = optics_api.get_state()["bench"]
+check("board datum follows beam height", abs(_bh2["board_top_z_mm"] + 125.0) < 0.6, str(_bh2.get("board_top_z_mm")))
+# datum is stable: occupied post lengths stay equal regardless of which optics are present
+check("posts still equal at new height", max(o["post_length_mm"] for o in _bh2["occupied"]) - min(o["post_length_mm"] for o in _bh2["occupied"]) < 1e-6)
+optomech.strip(sc)
+sc.optics.beam_height_mm = 100.0
+
 oas.unregister()
 
 passed = sum(1 for _, ok in _checks if ok)

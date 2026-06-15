@@ -302,6 +302,12 @@ class OpticalSceneProps(PropertyGroup):
         name="Grid pitch (mm)", default=25.0, min=1.0,
         description="Breadboard hole pitch in mm (metric 25, imperial 25.4). Posts clamp to the "
                     "board under each optic; the grid is exposed to MCP/agents via get_state")
+    beam_height_mm: FloatProperty(
+        name="Beam height (mm)", default=100.0, min=5.0,
+        description="Optical-axis height above the breadboard top — the bench's single layout "
+                    "datum. Dressing sizes posts so every optic at this height gets the same post "
+                    "length; exposed in get_state()['bench']. Common values: 75/100/125 mm "
+                    "(metric) or 76.2/101.6/127 mm (3/4/5 in)")
     trace_mode: EnumProperty(
         name="Trace mode",
         items=[('AUTO', "Auto-follow", "Follow nearest in-port ahead of the beam"),

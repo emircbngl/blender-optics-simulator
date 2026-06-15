@@ -342,6 +342,7 @@ class OPTICS_PT_render(Panel):
         row.prop(_g, "bench_grid_units", text="Grid")
         if _g.bench_grid_units == 'CUSTOM':
             row.prop(_g, "bench_grid_mm", text="mm")
+        layout.prop(_g, "beam_height_mm", text="Beam height (mm)")
         layout.operator("optics.dress_bench", icon='SNAP_FACE',
                         text="Strip Bench Dressing" if optomech.is_dressed(context.scene) else "Dress Bench (hole grid + posts)")
         col = layout.column(align=True)
