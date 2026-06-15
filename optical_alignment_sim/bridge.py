@@ -48,6 +48,8 @@ def _drain():
             fn, args, holder = _jobs.get_nowait()
         except queue.Empty:
             break
+        if holder.get("cancelled"):       # client already timed out -> do NOT apply behind its back
+            continue
         try:
             if api is None or not hasattr(api, fn):
                 holder["error"] = "optics_api.%s unavailable" % fn
@@ -95,11 +97,14 @@ class _BridgeServer(threading.Thread):
         print("[optics bridge] stopped")
 
     def _serve(self, conn):
-        conn.settimeout(120.0)
+        conn.settimeout(30.0)
         rf = conn.makefile("rb")
         try:
             while not self._stop.is_set():
-                raw = rf.readline()             # readline (not iteration) avoids buffering hangs
+                try:
+                    raw = rf.readline(1 << 20)  # cap at 1 MB: a newline-less flood can't grow memory unbounded
+                except socket.timeout:
+                    continue                    # idle: re-check _stop so the worker drains promptly on stop
                 if not raw:
                     break                       # client closed
                 line = raw.strip()
@@ -142,6 +147,9 @@ class _BridgeServer(threading.Thread):
         holder = {"event": threading.Event()}
         _jobs.put((fn, args, holder))
         if not holder["event"].wait(timeout=wait_s):
+            # Mark the job so _drain skips it instead of mutating the scene AFTER we gave up
+            # (otherwise a client retry double-applies set_param/swap_part/build_example/...).
+            holder["cancelled"] = True
             return {"ok": False, "error": "timeout (%.0f s) waiting for Blender main thread" % wait_s}
         if "error" in holder:
             return {"ok": False, "error": holder["error"]}
@@ -175,8 +183,10 @@ def start(port=None):
 def stop():
     global _server
     if _server is not None:
-        _server.stop()
-        _server = None
+        srv = _server
+        srv.stop()
+        srv.join(timeout=1.0)         # wait for the accept loop to release the listening socket,
+        _server = None                # so a fast disable->re-enable doesn't double-bind the port
     try:
         if bpy.app.timers.is_registered(_drain):
             bpy.app.timers.unregister(_drain)

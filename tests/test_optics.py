@@ -16,7 +16,7 @@ sys.path.insert(0, REPO)
 import optical_alignment_sim as oas
 oas.register()
 import optics_api
-from optical_alignment_sim import scan, alignment, ao, physics, render, handlers, operators, elements_generic, mounts
+from optical_alignment_sim import scan, alignment, ao, physics, render, handlers, operators, elements_generic, mounts, bridge
 
 _checks = []
 
@@ -307,6 +307,18 @@ check("re-anchor A1->A2: no jump", (elem.matrix_world.translation - w0).length <
 other = _mk("RT_anc_other", (8, 0, 0)); other.optics.is_optical = True
 mounts.set_anchor(elem, other)
 check("anchor cycle rejected", (not mounts.set_anchor(other, elem)) and mounts.anchor_would_cycle(other, elem))
+
+print("[bridge dispatch + cancelled-job guard]")
+import threading as _thr
+hc = {"event": _thr.Event(), "cancelled": True}      # a request the client already timed out on
+bridge._jobs.put(("get_state", {}, hc))
+bridge._drain()                                       # main thread: must SKIP it, not apply behind the client
+check("bridge skips cancelled job (no double-apply)", "result" not in hc and "error" not in hc)
+_srv = bridge._BridgeServer(0)                         # not started; exercise _dispatch directly
+check("bridge ping", _srv._dispatch(b'{"fn":"ping"}').get("result") == "pong")
+_rej = _srv._dispatch(b'{"fn":"__import__","args":{}}')
+check("bridge rejects non-allowlisted fn", not _rej.get("ok") and "not allowed" in _rej.get("error", ""))
+check("bridge rejects bad json", "bad json" in _srv._dispatch(b'not json').get("error", ""))
 
 oas.unregister()
 
