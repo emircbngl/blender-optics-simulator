@@ -91,8 +91,10 @@ def set_mount(name: str, preset: str) -> str:
 
 
 @mcp.tool()
-def set_param(name: str, key: str, value: float) -> str:
-    """Set an optical parameter (reflectivity, wavelength, pol_angle, ...) on element `name`."""
+def set_param(name: str, key: str, value: float | int | str | bool) -> str:
+    """Set an optical parameter on element `name`. Accepts numbers (reflectivity, wavelength,
+    pol_angle, ...), strings (element_type, analyzer, pol_type, coating, ...), or booleans
+    (is_pbs, ...) -- optics_api.set_param takes any scalar; a float-only type blocked the rest."""
     return _fmt(_call("set_param", name=name, key=key, value=value))
 
 

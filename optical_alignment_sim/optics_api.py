@@ -97,7 +97,10 @@ def get_state():
 def trace_beam(mode=None):
     scene = _scene()
     if mode:
-        scene.optics.trace_mode = mode
+        try:
+            scene.optics.trace_mode = mode      # EnumProperty: a bad string would raise a TypeError
+        except (TypeError, ValueError) as e:
+            return {"error": "invalid trace mode '%s': %s" % (mode, e)}
     tracer.cached_segments = _trace(scene)
     return {"segments": len(tracer.cached_segments),
             "beam_path": _beam_path_json(tracer.cached_segments)}
@@ -206,7 +209,9 @@ def add_component(key, location=(0.0, 0.0, 0.0)):
     """Spawn a catalog component by key (or its generic mesh-free fallback). {name, msg}."""
     from . import library
     obj, msg = library.add_component(key, tuple(location))
-    return {"name": obj.name if obj else None, "msg": msg}
+    if obj is None:                             # unknown key -> a real error, not a {name: None} success
+        return {"error": msg}
+    return {"name": obj.name, "msg": msg}
 
 
 def swap_part(name, filepath, refit_ports=False):
@@ -221,7 +226,10 @@ def swap_part(name, filepath, refit_ports=False):
         mesh_path, _entry = assembly._importable_path('FILE', "", filepath)
     except Exception as e:
         return {"error": str(e)}
-    ok, msg = assembly.swap_mesh_on(obj, mesh_path, refit=refit_ports)
+    try:                                        # import is the failure-prone step (corrupt/empty file)
+        ok, msg = assembly.swap_mesh_on(obj, mesh_path, refit=refit_ports)
+    except (RuntimeError, OSError) as e:
+        return {"error": "swap failed: %s" % e}
     if ok:
         obj.optics.part_key = os.path.basename(filepath)
         tracer.cached_segments = _trace(_scene())
@@ -234,11 +242,20 @@ def place_relative(name, reference, axis='BEAM', distance=50.0, link=True, align
     obj = _scene().objects.get(name)
     if not obj:
         return {"error": "object not found: %s" % name}
+    if not (getattr(obj, "optics", None) and obj.optics.is_optical):
+        return {"error": "'%s' is not an optical element (tag it first)" % name}
+    if _scene().objects.get(reference) is None:
+        return {"error": "reference not found: %s" % reference}
     bpy.context.view_layer.objects.active = obj
-    res = bpy.ops.optics.place_relative(reference=reference, axis=axis, distance=distance,
-                                        link=link, align_rotation=align_rotation, frame='REFERENCE')
+    try:
+        res = bpy.ops.optics.place_relative(reference=reference, axis=axis, distance=distance,
+                                            link=link, align_rotation=align_rotation, frame='REFERENCE')
+    except (RuntimeError, TypeError) as e:     # bad axis enum / poll failure -> structured error
+        return {"error": "place_relative: %s" % e}
     tracer.cached_segments = _trace(_scene())
-    return {"ok": 'FINISHED' in res, "name": name, "reference": reference}
+    if 'FINISHED' not in res:
+        return {"error": "place_relative cancelled (BEAM axis needs an OUT port on the reference?)"}
+    return {"ok": True, "name": name, "reference": reference}
 
 
 def scan(kind='STAGE', lo=0.0, hi=0.002, steps=120, element=None):
@@ -246,10 +263,16 @@ def scan(kind='STAGE', lo=0.0, hi=0.002, steps=120, element=None):
     CSV to the temp dir and into the sensor window. Set `element` to the swept part."""
     if element:
         obj = _scene().objects.get(element)
-        if obj:
-            bpy.context.view_layer.objects.active = obj
-    res = bpy.ops.optics.scan(kind=kind, lo=lo, hi=hi, steps=steps)
-    return {"ok": 'FINISHED' in res, "kind": kind, "steps": steps}
+        if obj is None:
+            return {"error": "element not found: %s" % element}
+        bpy.context.view_layer.objects.active = obj
+    try:
+        res = bpy.ops.optics.scan(kind=kind, lo=lo, hi=hi, steps=steps)
+    except (RuntimeError, TypeError) as e:     # bad kind enum / poll failure -> structured error
+        return {"error": "scan: %s" % e}
+    if 'FINISHED' not in res:
+        return {"error": "scan cancelled (no detectors, or the active element lacks the swept knob?)"}
+    return {"ok": True, "kind": kind, "steps": steps}
 
 
 def ao_measure(sensor):
@@ -273,9 +296,13 @@ def ao_command(dm, coeffs):
     obj = _scene().objects.get(dm)
     if not obj:
         return {"error": "object not found: %s" % dm}
+    try:
+        coeffs = [float(c) for c in coeffs]    # reject non-numeric / non-sequence cleanly
+    except (TypeError, ValueError) as e:
+        return {"error": "coeffs must be a numeric sequence: %s" % e}
     cmd = list(obj.optics.dm_command)
     for i in range(min(len(cmd), len(coeffs))):
-        cmd[i] = float(coeffs[i])
+        cmd[i] = coeffs[i]
     obj.optics.dm_command = cmd
     return {"ok": True, "dm": dm, "command": cmd}
 
@@ -295,7 +322,10 @@ def export_svg(filepath):
     """Export a top-view 2-D vector (SVG) schematic of the optical layout + beam path to filepath
     (a publication figure: element glyphs, port ticks, wavelength-coloured beams). {ok, path, ...}."""
     from . import svg_export
-    return svg_export.export_svg(filepath)
+    try:
+        return svg_export.export_svg(filepath)
+    except (OSError, RuntimeError) as e:        # match the operator's clean error shape
+        return {"error": "svg export failed: %s" % e}
 
 
 def beam_profile(detector="", samples=24):

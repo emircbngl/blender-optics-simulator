@@ -320,6 +320,15 @@ _rej = _srv._dispatch(b'{"fn":"__import__","args":{}}')
 check("bridge rejects non-allowlisted fn", not _rej.get("ok") and "not allowed" in _rej.get("error", ""))
 check("bridge rejects bad json", "bad json" in _srv._dispatch(b'not json').get("error", ""))
 
+print("[API error-shape: structured {error}, never a raw traceback]")
+check("add_component unknown -> error", "error" in optics_api.add_component("RT_NO_SUCH_KEY"))
+check("trace_beam bad mode -> error", "error" in optics_api.trace_beam(mode="bogus"))
+_mk("RT_plain_a", (0, 0, 0)); _mk("RT_plain_b", (10, 0, 0))      # non-optical objects
+check("place_relative non-optical -> error", "error" in optics_api.place_relative("RT_plain_a", "RT_plain_b"))
+check("scan bad kind -> error", "error" in optics_api.scan(kind="bogus"))
+_dm = _mk("RT_dm_api", (0, 0, 0)); _dm.optics.is_optical = True; _dm.optics.element_type = 'DEFORMABLE_MIRROR'
+check("ao_command bad coeffs -> error", "error" in optics_api.ao_command("RT_dm_api", ["x", 1.0]))
+
 oas.unregister()
 
 passed = sum(1 for _, ok in _checks if ok)
