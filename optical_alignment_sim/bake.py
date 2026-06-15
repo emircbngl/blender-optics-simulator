@@ -17,12 +17,24 @@ from . import tracer
 BEAM_COLL = "COL_BEAMS"
 BEAM_MAT = "OPTICS_BEAM"
 
+_baked_sig = None       # signature of the segments currently baked (so renders never use a stale bake)
+
+
+def _segments_sig(segs):
+    """Cheap hash of the baked beam geometry (segment endpoints)."""
+    return hash(tuple(round(c, 3) for s in segs
+                      for pt in (s["p1"], s["p2"]) for c in pt))
+
 
 def beam_collection(scene):
     c = bpy.data.collections.get(BEAM_COLL)
     if c is None:
         c = bpy.data.collections.new(BEAM_COLL)
-        scene.collection.children.link(c)
+    if c.name not in scene.collection.children:     # may exist but be linked to a DIFFERENT scene
+        try:
+            scene.collection.children.link(c)
+        except RuntimeError:
+            pass
     return c
 
 
@@ -43,14 +55,24 @@ def beam_material():
 
 
 def clear_baked(scene):
+    # collect BEAM_* both in COL_BEAMS and anywhere in the scene (renamed/moved collections),
+    # and free the per-segment Mesh datablock too (do_unlink leaves it a 0-user orphan otherwise)
+    targets = {}
     c = bpy.data.collections.get(BEAM_COLL)
-    if not c:
-        return 0
-    n = 0
-    for ob in list(c.objects):
+    if c:
+        for ob in c.objects:
+            if ob.name.startswith("BEAM_"):
+                targets[ob.name] = ob
+    for ob in scene.objects:
         if ob.name.startswith("BEAM_"):
-            bpy.data.objects.remove(ob, do_unlink=True)
-            n += 1
+            targets[ob.name] = ob
+    n = 0
+    for ob in list(targets.values()):
+        mesh = ob.data if ob.type == 'MESH' else None
+        bpy.data.objects.remove(ob, do_unlink=True)
+        if mesh is not None and mesh.users == 0:
+            bpy.data.meshes.remove(mesh)
+        n += 1
     return n
 
 
@@ -77,11 +99,13 @@ def _make_cylinder(context, name, p1, p2, r, mat, coll):
 
 
 def bake_beams(context, radius=0.6):
+    global _baked_sig
     scene = context.scene
-    if not tracer.cached_segments:
-        tracer.cached_segments = tracer.trace_scene(
-            scene, mode=scene.optics.trace_mode,
-            max_segments=scene.optics.max_segments, max_depth=scene.optics.max_depth)
+    # always re-trace: baking the current geometry (not a possibly-stale cache from before the
+    # last edit, e.g. with live mode off) is the whole point of a fresh bake
+    tracer.cached_segments = tracer.trace_scene(
+        scene, mode=scene.optics.trace_mode,
+        max_segments=scene.optics.max_segments, max_depth=scene.optics.max_depth)
     if context.object and context.object.mode != 'OBJECT':
         bpy.ops.object.mode_set(mode='OBJECT')
     clear_baked(scene)
@@ -93,15 +117,23 @@ def bake_beams(context, radius=0.6):
         r = radius * (0.6 if s["kind"] == 'SPLIT_T' else 1.0)
         if _make_cylinder(context, "BEAM_%02d" % i, Vector(s["p1"]), Vector(s["p2"]), r, mat, coll):
             n += 1
+    _baked_sig = _segments_sig(tracer.cached_segments)
     return n
 
 
 def ensure_beams(context):
-    """Make sure baked beams exist before a render."""
+    """Make sure baked beams exist AND match the current beam path before a render. Re-bakes
+    when the path has changed since the last bake (the old bake would otherwise render stale
+    beams over the moved optics)."""
+    scene = context.scene
+    segs = tracer.trace_scene(scene, mode=scene.optics.trace_mode,
+                              max_segments=scene.optics.max_segments, max_depth=scene.optics.max_depth)
+    tracer.cached_segments = segs
     c = bpy.data.collections.get(BEAM_COLL)
-    if c is None or not any(o.name.startswith("BEAM_") for o in c.objects):
-        return bake_beams(context)
-    return len(c.objects)
+    have = c is not None and any(o.name.startswith("BEAM_") for o in c.objects)
+    if have and _segments_sig(segs) == _baked_sig:
+        return len(c.objects)
+    return bake_beams(context)
 
 
 class OPTICS_OT_bake_beams(Operator):

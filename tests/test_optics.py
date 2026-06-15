@@ -329,6 +329,23 @@ check("scan bad kind -> error", "error" in optics_api.scan(kind="bogus"))
 _dm = _mk("RT_dm_api", (0, 0, 0)); _dm.optics.is_optical = True; _dm.optics.element_type = 'DEFORMABLE_MIRROR'
 check("ao_command bad coeffs -> error", "error" in optics_api.ao_command("RT_dm_api", ["x", 1.0]))
 
+print("[bake: re-bake on path change + no mesh leak]")
+from optical_alignment_sim import bake
+optics_api.build_example("michelson")
+bpy.context.view_layer.update()
+m0 = len(bpy.data.meshes)
+bake.bake_beams(bpy.context)
+check("bake created beam objects", any(o.name.startswith("BEAM_") for o in sc.objects))
+sig_a = bake._baked_sig
+bsrc = next(o for o in sc.objects if o.optics.element_type == 'SOURCE')
+bsrc.location.y += 30.0                                # move the source -> beam path changes
+bpy.context.view_layer.update()
+bake.ensure_beams(bpy.context)
+check("ensure_beams re-bakes on path change", bake._baked_sig != sig_a)
+bake.clear_baked(sc)
+check("no BEAM_ objects after clear", not any(o.name.startswith("BEAM_") for o in sc.objects))
+check("clear_baked frees beam meshes (no orphan leak)", len(bpy.data.meshes) <= m0)
+
 oas.unregister()
 
 passed = sum(1 for _, ok in _checks if ok)
