@@ -355,6 +355,26 @@ def _rod(name, p0, p1, r, coll, matkey):
     return o
 
 
+def _bored_plate(name, side, thick, bore_r, mw, coll, matkey):
+    """A square cage plate with a central bore along its thin (axis) direction, so the optic shows
+    through it instead of being hidden behind a solid slab. Oriented by ``mw`` (local +Z = axis)."""
+    plate = eg._cube(name, Vector((side, side, thick)), coll)
+    plate.matrix_world = mw
+    bpy.ops.mesh.primitive_cylinder_add(radius=bore_r, depth=thick * 3.0, location=(0, 0, 0), vertices=24)
+    bore = bpy.context.active_object
+    bore.matrix_world = mw
+    m = plate.modifiers.new("bore", 'BOOLEAN')
+    m.operation = 'DIFFERENCE'; m.object = bore   # default solver (enum names vary across 4.2/5.x)
+    bpy.context.view_layer.objects.active = plate
+    bpy.ops.object.modifier_apply(modifier=m.name)
+    _bm = bore.data
+    bpy.data.objects.remove(bore, do_unlink=True)
+    if _bm.users == 0:
+        bpy.data.meshes.remove(_bm)
+    plate.data.materials.clear(); plate.data.materials.append(_MATS[matkey]())
+    return plate
+
+
 def _cage_geom(members):
     """Shared cage geometry (axis, transverse basis, centroid, member projections, rod span) so the
     builder and cage_info() agree."""
@@ -379,14 +399,16 @@ def _build_cage(scene, members, board_top_z, coll, post_radius, tag):
         _rod("%sCageRod_%s_%d" % (BENCH_PREFIX, tag, k),
              base + axis * t0, base + axis * t1, rod_r, coll, "post")
         n += 1
-    # a cage plate at each member (square plate transverse to the axis, framing the optic)
+    # a bored cage plate at each member: square frame transverse to the axis with a central
+    # aperture so the optic shows through (a real cage plate, not a solid slab). Rods pass through
+    # the frame material at the corners.
     rot = Matrix(((u.x, v.x, axis.x, 0.0), (u.y, v.y, axis.y, 0.0),
                   (u.z, v.z, axis.z, 0.0), (0.0, 0.0, 0.0, 1.0)))
     for j, m in enumerate(members):
-        plate = eg._cube("%sCagePlate_%s_%d" % (BENCH_PREFIX, tag, j),
-                         Vector((sep * 1.15, sep * 1.15, 8.9)), coll)
-        plate.matrix_world = Matrix.Translation(m.matrix_world.translation) @ rot
-        plate.data.materials.clear(); plate.data.materials.append(_MATS["mount"]())
+        ca = max(getattr(m.optics, "clear_aperture", 10.0), 6.0)
+        _bored_plate("%sCagePlate_%s_%d" % (BENCH_PREFIX, tag, j),
+                     sep * 1.3, 8.9, ca, Matrix.Translation(m.matrix_world.translation) @ rot,
+                     coll, "mount")
         n += 1
     # one post under the cage centroid, to beam height
     post_top_z = centroid.z - MOUNT_DROP
