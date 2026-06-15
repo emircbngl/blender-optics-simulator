@@ -4,6 +4,36 @@ All notable changes to the **Blender Optics Simulator** (`optical_alignment_sim`
 here. The format follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 semantic versioning.
 
+## [0.5.0]
+
+### Added
+- **Procedural bench dressing.** *Render ▸ Dress Bench* spawns posts + post-holders under each
+  element and a breadboard slab below the optics footprint, so a render reads like a real optical
+  table instead of parts floating in space. Pure decoration: the objects carry no optics ports, so
+  the tracer ignores them; they live in a `BENCH_` name space + `COL_BENCH` collection and are not
+  parented or fed into the mount/anchor math, so dressing never perturbs alignment or the trace.
+  Toggles dress ↔ strip; fully reversible (frees its meshes). Original GPL-clean geometry — no
+  vendor CAD.
+- **Real biconvex lens geometry.** A lens is now a smooth curved glass solid (was a flat disc), so
+  it reads as real optics under the Cycles glass material; ports are unchanged so the trace is
+  byte-identical.
+
+### Fixed
+- This release also lands the deep multi-agent bug-sweep (≈30 verified bugs across 11 commits):
+  the Bell example's V-output arms (HWP fast axis), live re-trace on physics-parameter edits,
+  source/detector family flags, anchor-relative base-pose jumps + anchor-cycle guard, the bridge
+  timed-out-job double-apply, a consistent `{error}` shape across `optics_api`, stale baked-beam
+  geometry, the AO low-gain/divergence stall criterion, the catalog generic-fallback element
+  routing (CAVITY/WFS/DM/FILTER/PBS), GPU-blend restore, the SVG canvas blow-up, multi-scene render
+  restore, save-operator IO guards, broadband power renormalization, ellipticity normalization
+  (S_pol, oracle-verified), the Sellmeier deep-UV guard, and the detector-fringe shared-mesh
+  copy-on-write. See the commit log for the per-fix detail + regression check.
+
+### Verified
+- The regression grew from 45 to 90 checks (all green headless on Blender 5.1.1 and on the Linux
+  CI), including a bench-dressing invariant: dressing leaves the trace byte-identical, its objects
+  are non-optical, and strip removes them all.
+
 ## [0.4.0]
 
 ### Added

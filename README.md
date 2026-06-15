@@ -38,6 +38,13 @@ to PNG. No external plotting or compositing.
 | ![Newton's rings](docs/img/newton-rings.png) | ![aberrated wavefront](docs/img/wavefront-aberrated.png) | ![flattened wavefront](docs/img/wavefront-flattened.png) |
 | a lens vs. a flat reference → concentric rings (the Gaussian-wavefront model) | adaptive-optics sensor: injected defocus + astigmatism + coma (RMS 0.56 λ) | after the closed loop → flat (RMS 0.00 λ) |
 
+<p align="center">
+  <img src="docs/img/dressed-bench.png" width="62%" alt="A Michelson interferometer dressed with posts, post-holders and a breadboard so it reads like a real optical table">
+</p>
+
+*One-click **Dress Bench** (Render panel) drops the optics onto posts + a breadboard — decoration
+only, never traced — so a Cycles render reads like a real optical table.*
+
 ---
 
 ## Why this exists
@@ -203,9 +210,11 @@ python3 optical_alignment_sim/physics.py   # -> PHYSICS SELFTEST PASSED
 - **Render** — pick a camera + **Background** preset, then *EEVEE Preview* / *Cycles Final*.
   *Cycles Final* gives the optics **glass materials + studio lighting** so beam splitters and
   lenses read as real glass (toggle **Realistic optics**; **Reset Render Style** restores the flat
-  editing look — the viewport itself always keeps its distinct editing colours). **Export SVG
-  Schematic** writes a publication-ready top-view vector schematic of the layout + beam path
-  (element glyphs by type, beams coloured by wavelength).
+  editing look — the viewport itself always keeps its distinct editing colours). **Dress Bench**
+  adds posts, post-holders and a breadboard under the optics so a render reads like a real optical
+  table (decoration only — never traced; toggles back off to strip it). **Export SVG Schematic**
+  writes a publication-ready top-view vector schematic of the layout + beam path (element glyphs by
+  type, beams coloured by wavelength).
 
 ### Worked example: a Michelson interferometer
 
