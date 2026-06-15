@@ -344,6 +344,11 @@ def _assign_fringe_material(det, img):
     tex.image = img
     nt.links.new(tex.outputs[0], em.inputs[0])
     nt.links.new(em.outputs[0], out.inputs[0])
+    # copy-on-write: the fringe material is written to the MESH, so a mesh shared via swap_part /
+    # linked-duplicate would otherwise show this detector's fringe on its siblings AND clobber any
+    # realistic-render material render.py stashed. Give a shared mesh its own copy first.
+    if det.data.users > 1:
+        det.data = det.data.copy()
     det.data.materials.clear()
     det.data.materials.append(m)
 

@@ -405,6 +405,17 @@ tracer.cached_segments = ["__SENTINEL__"]
 handlers._deferred_trace()                               # must NOT trace/overwrite with live off
 check("deferred trace no-op when live off", tracer.cached_segments == ["__SENTINEL__"])
 
+print("[low-severity correctness tail]")
+# Sellmeier stays physical in the deep UV (was returning 1.0 or n~9 between poles)
+check("sellmeier UV index stays physical", all(1.0 <= physics.sellmeier_n(w) <= 4.0 for w in (60.0, 78.0, 100.0, 142.0)))
+# Detector fringe material copy-on-writes a shared mesh (no sibling cross-talk)
+fd1 = elements_generic.detector("RT_fd1", (0, 0, 0), (1, 0, 0))
+fd2 = bpy.data.objects.new("RT_fd2", fd1.data)       # linked-duplicate: shares the mesh datablock
+sc.collection.objects.link(fd2)
+_fimg = bpy.data.images.new("RT_fimg", 4, 4, alpha=True)
+scan._assign_fringe_material(fd1, _fimg)
+check("fringe copy-on-write spares the shared mesh", fd2.data is not fd1.data)
+
 oas.unregister()
 
 passed = sum(1 for _, ok in _checks if ok)

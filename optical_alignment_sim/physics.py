@@ -186,7 +186,12 @@ def sellmeier_n(wl_nm, glass='N-BK7'):
     b1, b2, b3, c1, c2, c3 = GLASSES.get(glass, GLASSES['N-BK7'])
     L2 = (wl_nm * 1.0e-3) ** 2          # lambda^2 in micron^2
     n2 = 1.0 + b1 * L2 / (L2 - c1) + b2 * L2 / (L2 - c2) + b3 * L2 / (L2 - c3)
-    return math.sqrt(n2) if n2 > 0.0 else 1.0
+    # The Sellmeier fit is only valid across its transparency window (~0.3-2.5 um for N-BK7).
+    # Below the longest pole it swings (n2<0 between poles, or absurd just past one); clamp to the
+    # nearest physical bound so a deep-UV sweep step yields a sane index, not 1.0 or n~30.
+    if not (0.0 < n2 < 16.0):           # n in (1, 4): covers all common optical glasses
+        return 1.0 if n2 <= 1.0 else 4.0
+    return math.sqrt(n2)
 
 
 # --- Fresnel reflection (s/p amplitude + phase) -----------------------------
