@@ -359,9 +359,19 @@ def _build_mount(o, coll, idx):
                         (p.x, p.y, (top_z + cam_bot) * 0.5), coll, "mount"), 0.5, 1)
         return 3
     if et in _SOURCE_DET:
-        # source/laser/crystal: a self-contained body on a saddle clamp to the post
-        _bevel(_obox(pre + "Bracket_" + nm, (ca * 1.4, ca * 1.05, 8.0), mw, (0, 0, -ca * 0.95), coll, "clamp"), 0.8, 2)
-        return 1
+        # source/laser/collimator: a saddle clamp cradling the (often horizontal) body from BELOW + a
+        # WORLD-vertical stem down to the post top -- so it is actually held by its post, not a bracket
+        # floating beside it. (The old bracket sat at local -Z, which for a horizontal laser is BEHIND
+        # the body.) The saddle top is keyed off the body's REAL world underside, not clear_aperture.
+        body_bottom = min((o.matrix_world @ Vector(c)).z for c in o.bound_box)
+        top_z = p.z - MOUNT_DROP                          # the post top dress() leaves under the optic
+        sh = 6.0
+        saddle_z = body_bottom + 1.0 - sh * 0.5            # saddle top ~1 mm into the body underside
+        _bevel(_box(pre + "Saddle_" + nm, (ca * 1.6, ca * 1.2, sh), (p.x, p.y, saddle_z), coll, "clamp"), 0.8, 2)
+        sb = saddle_z - sh * 0.5
+        if sb - top_z > 0.5:
+            _bevel(_cyl(pre + "Stem_" + nm, 4.0, sb - top_z, (p.x, p.y, (top_z + sb) * 0.5), coll, "mount"), 0.5, 1)
+        return 2
     if et in {'BEAMSPLITTER', 'PRISM_MIRROR'}:
         # 30 mm cage-cube housing: a closed block the beam TUNNELS through, with large SM1 port
         # apertures on the beam faces (so the cube optic shows through) + four cage-rod bores at the
