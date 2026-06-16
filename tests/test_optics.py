@@ -554,6 +554,32 @@ check("individual posts suppressed for tubed members",
 optomech.strip(sc)
 check("strip removes the tube too", not any(o.name.startswith("BENCH_Tube_") for o in sc.objects))
 
+print("[bench rail system: shared dovetail track + carriers, trace-safe, place_on_rail]")
+optics_api.build_example("michelson")
+_segr = scan._trace(sc); _nr = len(_segr); _pr, _vr, _ = alignment.measure(_segr, "MI_D", "NONE")
+_cmr = [e["name"] for e in optics_api.get_state()["elements"] if e["name"].startswith("MI_") and e["type"] not in ("SOURCE", "DETECTOR")]
+optics_api.dress_bench(True)
+_posts0r = len([o for o in sc.objects if o.name.startswith("BENCH_Post_")])
+_rr = optics_api.make_rail([_cmr[0], _cmr[1]])
+check("make_rail groups two members", _rr.get("ok") and set(_rr.get("members", [])) == {_cmr[0], _cmr[1]}, str(_rr))
+_segr2 = scan._trace(sc); _pr2, _vr2, _ = alignment.measure(_segr2, "MI_D", "NONE")
+check("make_rail does not move the optics (trace identical)", len(_segr2) == _nr and abs(_pr2 - _pr) < 1e-9 and abs(_vr2 - _vr) < 1e-9)
+_rg = optics_api.get_state()["rails"]
+check("get_state exposes the rail + carrier positions", isinstance(_rg, list) and len(_rg) == 1 and len(_rg[0]["carriers"]) == 2 and _rg[0]["width_mm"] == 19.1, str(_rg))
+check("a rail bar + carriers + rail-posts built",
+      any(o.name.startswith("BENCH_Rail_") for o in sc.objects) and
+      len([o for o in sc.objects if o.name.startswith("BENCH_Carrier_")]) == 2 and
+      any(o.name.startswith("BENCH_RailPost_") for o in sc.objects))
+check("rail members get no board post", len([o for o in sc.objects if o.name.startswith("BENCH_Post_")]) == _posts0r - 2)
+# place_on_rail slides the part along the rail axis -> moves it (trace updates)
+_before = list(sc.objects[_cmr[0]].matrix_world.translation)
+_rp = optics_api.place_on_rail(_cmr[0], 12.0)
+_after = list(sc.objects[_cmr[0]].matrix_world.translation)
+check("place_on_rail moves the part along the rail", _rp.get("ok") and (abs(_after[0]-_before[0]) > 1e-4 or abs(_after[1]-_before[1]) > 1e-4), str(_rp))
+check("place_on_rail rejects a non-rail element", "error" in optics_api.place_on_rail("MI_D", 5.0))
+optomech.strip(sc)
+check("strip removes the rail too", not any(o.name.startswith("BENCH_Rail_") for o in sc.objects))
+
 oas.unregister()
 
 passed = sum(1 for _, ok in _checks if ok)

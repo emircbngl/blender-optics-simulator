@@ -46,6 +46,17 @@ semantic versioning.
   TUBE_SM05/TUBE_SM1/TUBE_SM2 + a `tube_id`. `get_state()` gains a top-level `tubes` block (id,
   thread, inner/outer Ø, length, axis, members). Optics are not moved → trace byte-identical.
   Regression 126 → 132.
+- **Rail systems — dovetail track + carriers (Phase 3 / A2).** Collinear optics can ride one
+  **dovetail rail**: a continuous track on the board with a **carrier** under each optic (its post
+  rises from the carrier, not the board) — a continuous 1-D mount vs the discrete hole grid. New
+  `make_rail(members)` + **`place_on_rail(name, s_mm)`** (slide a part continuously along the rail)
+  (optics_api + MCP), `support_system='RAIL'` + `rail_id`, and `get_state()['rails']` (id, family,
+  width, length, axis, each carrier's `s_mm`). Trace byte-identical except the deliberate
+  place_on_rail. Regression 132 → 140.
+- **Board feet + MCP mount-chain data.** The breadboard now stands on **four corner feet** instead
+  of floating. `get_state()` exposes each element's `support_system` (POST/CAGE/TUBE/RAIL), its
+  `anchor` (the "follows another element" edge from place_relative), and `base_pose_set` — so an
+  agent can read the full mounting topology, not just hole occupancy.
 - **Opto-mech realism pass (owner review).** Post-holders now carry a **side locking thumbscrew**
   and the base foot shows a **cap screw** fastening it to the table (was a bare floating cylinder);
   kinematic mirror mounts are rebuilt KM100-style with a back-plate and **two knurled actuator

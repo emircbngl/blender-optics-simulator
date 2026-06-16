@@ -209,6 +209,7 @@ class OpticalElementProps(PropertyGroup):
                ('RAIL',      "Rail",       "Carrier on a dovetail/construction rail")])
     cage_id: StringProperty(name="Cage group", default="")
     tube_id: StringProperty(name="Tube group", default="")
+    rail_id: StringProperty(name="Rail group", default="")
     base_pose: FloatVectorProperty(
         name="Base pose", size=16,
         default=(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,

@@ -261,5 +261,21 @@ def make_tube(members: list, thread: str = "SM1", tube_id: str = "") -> str:
     return _fmt(_call("make_tube", members=members, thread=thread, tube_id=tube_id or None))
 
 
+@mcp.tool()
+def make_rail(members: list, rail_id: str = "") -> str:
+    """Put collinear elements on one dovetail rail: each rides a carrier on the shared rail instead
+    of a bare post, so they translate along one straight track. `members` is a list of element names.
+    Reported in get_state()['rails'] (carrier s_mm). Optics are not moved -> trace unchanged."""
+    return _fmt(_call("make_rail", members=members, rail_id=rail_id or None))
+
+
+@mcp.tool()
+def place_on_rail(name: str, s_mm: float) -> str:
+    """Slide rail-mounted element `name` to position s_mm along its rail (s=0 at the rail start).
+    Moves the optic along the rail axis only, so the trace updates. The element must be on a rail
+    (call make_rail first)."""
+    return _fmt(_call("place_on_rail", name=name, s_mm=s_mm))
+
+
 if __name__ == "__main__":
     mcp.run()
