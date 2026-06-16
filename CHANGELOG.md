@@ -13,6 +13,11 @@ semantic versioning.
   "spider-arm" on a slip-fit holder. The beam still folds up beside the post in clear air; the
   `beam_through_post` validator stays clean and the trace is unchanged.
 
+### Docs
+- Regenerated every 3-D README render with the new realistic elements + opto-mech (hero, dressed
+  Michelson, Newton's-rings bench, Bell source, cage/tube/rail systems, kinematic-mount closeup) and
+  added a **component-library gallery** (`components.png`) plus an **RS99 periscope** showcase render.
+
 ## [0.8.0]
 
 ### Added — realistic optical-element geometry

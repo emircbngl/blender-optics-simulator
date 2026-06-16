@@ -59,6 +59,14 @@ chain and which hole/system each optic uses, so an AI agent knows exactly where 
 dimensions (Thorlabs SM threads, ER cage rods, RLA rail) — vendor CAD is never bundled. Grouping
 optics into a cage/tube/rail never moves them, so the beam path is byte-identical.*
 
+<p align="center">
+  <img src="docs/img/periscope-render.png" width="55%" alt="An RS99-style periscope: two 45-degree mirrors on post-clamp collars share one 1-inch post, folding the beam up to a second deck">
+</p>
+
+*A **periscope** raises the beam to a second height: two 45° fold mirrors share one Ø1″ post on 360°
+post-clamp collars (the real **RS99** assembly), and the beam runs up beside the post in clear air. A
+geometric **validator** guarantees no support post ever sits in a beam path.*
+
 ---
 
 ## Why this exists
@@ -298,6 +306,17 @@ Other API entry points: `trace_beam`, `tag_element`, `set_mount`, `set_param`, `
 ---
 
 ## Component library & meshes
+
+<p align="center">
+  <img src="docs/img/components.png" width="82%" alt="The procedural element library: lasers, mirrors, beamsplitter/PBS cubes, biconvex and biconcave lenses, irises, pinholes, gratings, corner-cube retroreflectors, dichroics, etalons, isolators, fibre collimators, detectors, photodiodes, power meters, a Shack-Hartmann sensor and a deformable mirror">
+</p>
+
+*Every element is **original GPL-clean procedural geometry** — a lens curves by the **sign of its
+focal length** (converging biconvex vs diverging biconcave), an iris has a real opening, a pinhole a
+real bore, a grating is ruled, a retroreflector is a trihedral corner cube, beam-splitter/dichroic
+faces are coated, detectors carry a recessed active area (the wavefront sensor a Shack-Hartmann
+lenslet grid). The beam tracer reads only each element's **ports**, so the geometry can look real
+without ever perturbing the physics — every example trace is byte-identical before and after.*
 
 Vendor 3-D models (Thorlabs, Edmund, …) are **not bundled** — they are the vendors' intellectual
 property. The add-on ships only metadata (element type, port geometry, mount parameters). To use
