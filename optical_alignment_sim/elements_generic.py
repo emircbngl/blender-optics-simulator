@@ -63,6 +63,15 @@ MATS = {
     "grating": lambda: _mat("OG_grating", (0.55, 0.45, 0.65), metal=0.9, rough=0.20),
     "retro":  lambda: _mat("OG_retro", (0.75, 0.78, 0.85), metal=1.0, rough=0.10),
     "fiber":  lambda: _mat("OG_fiber", (0.40, 0.42, 0.48), metal=0.85, rough=0.30),
+    # accent materials (slot 1+): keep their colour in realistic renders (only slot 0 is theme-swapped)
+    "subglass":  lambda: _mat("OG_substrate", (0.28, 0.31, 0.37), metal=0.0, rough=0.22),
+    "coatbs":    lambda: _mat("OG_coat_bs", (0.55, 0.78, 1.00), metal=0.4, rough=0.08),
+    "coatpbs":   lambda: _mat("OG_coat_pbs", (0.72, 0.60, 0.98), metal=0.4, rough=0.08),
+    "coatdich":  lambda: _mat("OG_coat_dich", (0.95, 0.55, 0.85), metal=0.4, rough=0.08),
+    "sensor":    lambda: _mat("OG_sensor", (0.02, 0.03, 0.07), metal=0.2, rough=0.45),
+    "bezel":     lambda: _mat("OG_bezel", (0.48, 0.49, 0.54), metal=0.9, rough=0.30),
+    "arrow":     lambda: _mat("OG_arrow", (0.90, 0.90, 0.92), metal=0.5, rough=0.30),
+    "index":     lambda: _mat("OG_index", (0.92, 0.86, 0.45), metal=0.3, rough=0.30),
 }
 
 
@@ -157,12 +166,228 @@ def _z_to(n):
     return Vector((0.0, 0.0, 1.0)).rotation_difference(Vector(n).normalized()).to_matrix()
 
 
+# --- procedural optic-mesh helpers ------------------------------------------
+# These build realistic optic meshes (curved lenses, real bores, corner-cube facets, ruled grating,
+# etc.) as a SINGLE object centred at the origin with +Z as the optical/face axis -- exactly the frame
+# the old primitives used -- so each builder can keep its ports + _set_matrix untouched and the tracer
+# sees identical inputs (trace stays byte-identical). Accent detail lives in material slot 1+, which the
+# realistic-render pass leaves alone (it only theme-swaps slot 0).
+import bmesh  # noqa: E402
+
+
+def _bm_obj(name, bm, coll, smooth=False):
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-4)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    if smooth:
+        for f in bm.faces:
+            f.smooth = True
+    me = bpy.data.meshes.new(name)
+    bm.to_mesh(me); bm.free()
+    o = bpy.data.objects.new(name, me)
+    bpy.context.scene.collection.objects.link(o)
+    _link_only(o, coll)
+    return o
+
+
+def _join(o, other):
+    """Merge `other` into `o` (single object/mesh), freeing the orphaned datablock."""
+    bpy.ops.object.select_all(action='DESELECT')
+    other.select_set(True); o.select_set(True)
+    bpy.context.view_layer.objects.active = o
+    md = other.data
+    bpy.ops.object.join()
+    if md.users == 0:
+        bpy.data.meshes.remove(md)
+    return o
+
+
+def _accent(o, matkey, pred):
+    """Append an accent material as a new slot and reassign every face where pred(center, normal)."""
+    idx = len(o.data.materials)
+    o.data.materials.append(MATS[matkey]())
+    for p in o.data.polygons:
+        if pred(p.center, p.normal):
+            p.material_index = idx
+    return idx
+
+
+def _revolve(name, profile, coll, seg=64, smooth=True):
+    """Solid of revolution about +Z from profile=[(r,z),...] whose endpoints sit on the axis."""
+    bm = bmesh.new()
+    vs = [bm.verts.new((r, 0.0, z)) for (r, z) in profile]
+    eds = [bm.edges.new((vs[i], vs[i + 1])) for i in range(len(vs) - 1)]
+    bmesh.ops.spin(bm, geom=vs + eds, cent=(0, 0, 0), axis=(0, 0, 1), dvec=(0, 0, 0),
+                   angle=2.0 * 3.141592653589793, steps=seg, use_duplicate=False)
+    return _bm_obj(name, bm, coll, smooth)
+
+
+def _lens_profile(radius, focal, edge=1.6):
+    """Half cross-section of a spherical lens: biconvex for focal>=0 (thick centre), biconcave for
+    focal<0 (thin centre). The curvature is a cosmetic spherical cap -- the tracer uses the ABCD focal
+    length, not the mesh -- but the SIGN and a focal-scaled sag make converging vs diverging obvious."""
+    import math
+    R = radius; N = 20
+    sag = max(0.6, min(2.4, 170.0 / max(abs(focal), 12.0)))
+    if focal >= 0:
+        zc, ze = edge * 0.5 + sag, edge * 0.5
+    else:
+        zc, ze = edge * 0.5, edge * 0.5 + sag
+
+    def zf(r):
+        return ze + (zc - ze) * math.sqrt(max(0.0, 1.0 - (r / R) ** 2))
+    front = [(R * i / N, zf(R * i / N)) for i in range(N + 1)]          # axis -> edge
+    back = [(R * i / N, -zf(R * i / N)) for i in range(N, -1, -1)]      # edge -> axis
+    return front + back
+
+
+def _cyl_bm(bm, radius, depth, seg=56):
+    bmesh.ops.create_cone(bm, cap_ends=True, segments=seg, radius1=radius, radius2=radius, depth=depth)
+
+
+def _bored_disc(name, radius, depth, bore, coll, seg=56):
+    """A disc of `radius`/`depth` with a central through-bore of `bore` (boolean DIFFERENCE)."""
+    bm = bmesh.new(); _cyl_bm(bm, radius, depth, seg)
+    o = _bm_obj(name, bm, coll)
+    cb = bmesh.new(); _cyl_bm(cb, bore, depth + 2.0, max(16, seg // 2))
+    cutter = _bm_obj(name + "_bore", cb, coll)
+    m = o.modifiers.new("bore", 'BOOLEAN'); m.operation = 'DIFFERENCE'; m.object = cutter
+    bpy.context.view_layer.objects.active = o
+    bpy.ops.object.modifier_apply(modifier=m.name)
+    cmesh = cutter.data
+    bpy.data.objects.remove(cutter, do_unlink=True)
+    if cmesh.users == 0:                              # free the orphaned cutter mesh (no .blend bloat)
+        bpy.data.meshes.remove(cmesh)
+    return o
+
+
+def _iris(name, r_open, coll, depth=3.6):
+    """An iris-diaphragm ring: black housing (outer = opening + 5 mm) with a central opening + a small
+    side adjustment lever, so it reads as an aperture stop instead of a solid puck."""
+    o = _bored_disc(name, r_open + 5.0, depth, r_open, coll)
+    lb = bmesh.new()
+    bmesh.ops.create_cube(lb, size=1.0)
+    for v in lb.verts:
+        v.co = Vector((v.co.x * 8.0, v.co.y * 2.6, v.co.z * 2.0)) + Vector((r_open + 7.0, 0.0, 0.0))
+    lev = _bm_obj(name + "_lever", lb, coll)
+    return _join(o, lev)
+
+
+def _corner_cube(name, size, coll):
+    """A trihedral corner-cube retroreflector: three facets meeting at a rear apex behind a triangular
+    front aperture (the optical/diagonal axis is +Z). Cosmetic -- the tracer returns d_out=-d_in."""
+    import math
+    h = size * 0.5; depth = size * 0.6
+    bm = bmesh.new()
+    F = [bm.verts.new((h * math.cos(a), h * math.sin(a), 0.0))
+         for a in (math.radians(90), math.radians(210), math.radians(330))]
+    apex = bm.verts.new((0.0, 0.0, -depth))
+    for i in range(3):
+        bm.faces.new((apex, F[i], F[(i + 1) % 3]))
+    rim = [bm.verts.new((v.co.x, v.co.y, 1.4)) for v in F]              # short front rim for body
+    for i in range(3):
+        j = (i + 1) % 3
+        bm.faces.new((F[i], F[j], rim[j], rim[i]))
+    bm.faces.new((rim[0], rim[1], rim[2]))
+    return _bm_obj(name, bm, coll, smooth=False)
+
+
+def _grooved_plate(name, size, depth, coll, n=34):
+    """A reflective grating: a square plate with `n` parallel ruled ridges on its +Z face (a groove
+    hint -- real line density is a parameter, not meshable, so this is a visual cue of the ruling)."""
+    bm = bmesh.new(); bmesh.ops.create_cube(bm, size=1.0)
+    for v in bm.verts:
+        v.co = Vector((v.co.x * size, v.co.y * size, v.co.z * depth))
+    o = _bm_obj(name, bm, coll)
+    for k in range(n):
+        x = -size * 0.5 + size * (k + 0.5) / n
+        rb = bmesh.new(); bmesh.ops.create_cube(rb, size=1.0)
+        for v in rb.verts:
+            v.co = (Vector((v.co.x * (size / n * 0.45), v.co.y * size * 0.92, v.co.z * 0.5))
+                    + Vector((x, 0.0, depth * 0.5 + 0.22)))
+        _join(o, _bm_obj(name + "_r%d" % k, rb, coll))
+    return o
+
+
+def _sensor_box(name, size, depth, coll, active=0.55, lenslets=0):
+    """A detector head: a dark body box (slot 0) with a recessed active-area inset on its +Z (sensor)
+    face in slot 1. With lenslets>0 the inset carries an NxN micro-lens grid (Shack-Hartmann look)."""
+    import math
+    bm = bmesh.new(); bmesh.ops.create_cube(bm, size=1.0)
+    for v in bm.verts:
+        v.co = Vector((v.co.x * size, v.co.y * size, v.co.z * depth))
+    o = _bm_obj(name, bm, coll)
+    o.data.materials.append(MATS["det"]())               # slot 0: body (caller may overwrite)
+    o.data.materials.append(MATS["sensor"]())            # slot 1: active area / lenslets
+    a = size * active
+
+    def _add_detail(builder):                            # join a slot-1 sub-mesh by face range
+        sub = builder()
+        base = len(o.data.polygons); _join(o, sub)
+        for p in o.data.polygons[base:]:
+            p.material_index = 1
+
+    def _inset():
+        ab = bmesh.new(); bmesh.ops.create_cube(ab, size=1.0)
+        for v in ab.verts:
+            v.co = Vector((v.co.x * a, v.co.y * a, v.co.z * 1.2)) + Vector((0.0, 0.0, depth * 0.5 - 0.3))
+        return _bm_obj(name + "_act", ab, coll)
+    _add_detail(_inset)
+
+    if lenslets:
+        zc = depth * 0.5 + 0.7
+        step = (a * 1.6) / lenslets
+        for ix in range(lenslets):
+            for iy in range(lenslets):
+                cx = (ix - (lenslets - 1) / 2.0) * step
+                cy = (iy - (lenslets - 1) / 2.0) * step
+                if math.hypot(cx, cy) > a * 0.85:
+                    continue
+                def _ll(cx=cx, cy=cy):
+                    lb = bmesh.new()
+                    bmesh.ops.create_uvsphere(lb, u_segments=8, v_segments=4, radius=step * 0.42)
+                    for v in lb.verts:
+                        v.co = Vector((v.co.x, v.co.y, v.co.z * 0.4)) + Vector((cx, cy, zc))
+                    return _bm_obj(name + "_ll", lb, coll)
+                _add_detail(_ll)
+    return o
+
+
+def _bevel(o, width=0.4, seg=2):
+    """Chamfer hard edges (machined-glass/metal look). Applied, so the result is plain mesh."""
+    m = o.modifiers.new("bevel", 'BEVEL'); m.width = width; m.segments = seg; m.limit_method = 'ANGLE'
+    bpy.context.view_layer.objects.active = o
+    bpy.ops.object.modifier_apply(modifier=m.name)
+    return o
+
+
+def _etalon(name, radius, half_gap, coll):
+    """A Fabry-Perot etalon: two parallel partial-mirror plates separated by an air gap, held by a thin
+    spacer wall at the rim -- the defining two-surface structure (vs. a single solid puck)."""
+    a = bmesh.new(); _cyl_bm(a, radius, 1.2)
+    o = _bm_obj(name, a, coll)
+    for v in o.data.vertices:
+        v.co.z += half_gap
+    b = bmesh.new(); _cyl_bm(b, radius, 1.2)
+    back = _bm_obj(name + "_back", b, coll)
+    for v in back.data.vertices:
+        v.co.z -= half_gap
+    _join(o, back)
+    wall = _bored_disc(name + "_wall", radius, 2.0 * half_gap, radius - 1.6, coll)
+    return _join(o, wall)
+
+
 # --- component placement helpers --------------------------------------------
 
 def source(name, loc, direction, coll=None, wavelength=632.8, length=40.0, radius=7.0):
     """A laser/source emitting along `direction` from its front face."""
     o = _disc(name, radius, length, coll)
     o.data.materials.clear(); o.data.materials.append(MATS["laser"]())
+    # metal exit bezel ring at the front aperture, so it reads as a laser head, not a uniform glowing can
+    bz = _bored_disc(name + "_bezel", radius + 1.5, 3.0, radius * 0.55, coll)
+    for v in bz.data.vertices:
+        v.co.z += length * 0.5
+    bz.data.materials.append(MATS["bezel"]())
+    _join(o, bz)
     _tag(o, 'SOURCE', is_source=True, wavelength=wavelength)
     _add_port(o, "OUT", 'OUT', (0, 0, length * 0.5), (0, 0, 1), radius)
     _set_matrix(o, Vector(loc), _z_to(direction))
@@ -173,8 +398,11 @@ def mirror(name, loc, in_dir, out_dir, coll=None, size=25.0):
     """A flat fold mirror that turns a beam from in_dir to out_dir."""
     n = (Vector(out_dir).normalized() - Vector(in_dir).normalized())
     n = n.normalized() if n.length > 1e-6 else Vector((0, 0, 1))
-    o = _disc(name, size * 0.5, 4.0, coll)        # round mirror substrate (Ø1" look), normal = +Z
+    o = _disc(name, size * 0.5, 6.0, coll)        # Ø1" substrate, 6 mm thick; +Z = coated front face
+    _bevel(o, 0.5, 2)
     o.data.materials.clear(); o.data.materials.append(MATS["mirror"]())
+    # only the +Z front is the reflective coating; the back + ground edge read as bare glass substrate
+    _accent(o, "subglass", lambda c, nrm: nrm.z < 0.55)
     _tag(o, 'MIRROR', clear_aperture=size * 0.5, reflectivity=1.0)
     _add_port(o, "IN", 'IN', (0, 0, 2.0), (0, 0, 1), size * 0.5)
     _add_port(o, "REFLECT", 'REFLECT', (0, 0, 0), (0, 0, 1), size * 0.5)
@@ -185,11 +413,14 @@ def mirror(name, loc, in_dir, out_dir, coll=None, size=25.0):
 def beamsplitter(name, loc, in_dir, reflect_dir, coll=None, split=0.5, pbs=False, size=25.0):
     """50/50 (or PBS) cube: transmits along in_dir, reflects toward reflect_dir."""
     o = _cube(name, (size, size, size), coll)
+    _bevel(o, 0.8, 1)                            # chamfered cube edges (cemented-prism look)
     o.data.materials.clear(); o.data.materials.append(MATS["pbs" if pbs else "bs"]())
     # the characteristic coated 45-deg diagonal: a thin slab whose normal is the REFLECT direction
     # (-1,1,0)/sqrt2, CLIPPED to the cube interior (boolean intersect) so it never pokes out of the
-    # faces, then merged into the cube mesh so the glass shows the internal split surface.
+    # faces, then merged in. It carries its OWN tinted coating material (slot 1) so the partial-reflector
+    # hypotenuse is visibly distinct through the glass (and PBS vs 50/50 differ by tint, not just colour).
     _coat = _cube(name + "_coat", (size * 1.55, size * 1.55, 0.5), coll)
+    _coat.data.materials.append(MATS["coatpbs" if pbs else "coatbs"]())
     _coat.matrix_world = _z_to(Vector((-1.0, 1.0, 0.0))).to_4x4()
     _clip = _coat.modifiers.new("clip", 'BOOLEAN'); _clip.operation = 'INTERSECT'; _clip.object = o
     bpy.context.view_layer.objects.active = _coat
@@ -198,7 +429,7 @@ def beamsplitter(name, loc, in_dir, reflect_dir, coll=None, split=0.5, pbs=False
     bpy.ops.object.select_all(action='DESELECT')
     _coat.select_set(True); o.select_set(True)
     bpy.context.view_layer.objects.active = o
-    bpy.ops.object.join()                        # clipped coating -> cube mesh (inherits slot-0 glass)
+    bpy.ops.object.join()                        # clipped coating -> cube mesh (coating keeps slot-1 tint)
     if _coatmesh.users == 0:                      # join orphans the coating's mesh datablock
         bpy.data.meshes.remove(_coatmesh)
     _tag(o, 'BEAMSPLITTER', split_ratio=split, clear_aperture=size * 0.55, is_pbs=pbs)
@@ -213,8 +444,8 @@ def beamsplitter(name, loc, in_dir, reflect_dir, coll=None, split=0.5, pbs=False
 
 def detector(name, loc, beam_dir, coll=None, size=22.0):
     """A detector/camera whose sensor faces the incoming beam."""
-    o = _cube(name, (size, size, 8.0), coll)
-    o.data.materials.clear(); o.data.materials.append(MATS["det"]())
+    o = _sensor_box(name, size, 8.0, coll, active=0.5)    # body + recessed active-area on +Z
+    o.data.materials[0] = MATS["det"]()
     _tag(o, 'DETECTOR', is_detector=True, clear_aperture=size * 0.5)
     facing = -Vector(beam_dir).normalized()
     _add_port(o, "IN", 'IN', (0, 0, 4.0), (0, 0, 1), size * 0.5)
@@ -234,7 +465,9 @@ def _inline(name, loc, axis, coll, element_type, matkey, radius=14.0, depth=6.0,
 
 def lens(name, loc, axis, coll=None, focal=100.0, radius=14.0):
     depth = 5.0
-    o = _lozenge(name, radius, depth, coll)          # biconvex glass solid (ports unchanged vs the disc)
+    # real spherical lens: biconvex for focal>=0, biconcave for focal<0, with a finite edge land.
+    # Curvature is cosmetic (the tracer uses the ABCD focal length), but the SIGN now reads correctly.
+    o = _revolve(name, _lens_profile(radius, focal), coll, seg=64, smooth=True)
     o.data.materials.clear(); o.data.materials.append(MATS["lens"]())
     _tag(o, 'LENS', clear_aperture=radius, focal_length=focal)
     _add_port(o, "IN", 'IN', (0, 0, -depth * 0.5), (0, 0, -1), radius)
@@ -254,7 +487,15 @@ def waveplate(name, loc, axis, coll=None, kind='HWP', fast_axis=0.0, design_wl=N
 
 
 def aperture(name, loc, axis, coll=None, radius=14.0):
-    return _inline(name, loc, axis, coll, 'APERTURE', "ap", radius=radius, depth=3.0)
+    """An iris/aperture stop: a black ring housing with a real central opening + a side lever (ports
+    unchanged vs the old solid puck: IN/OUT at +/-depth/2 on the optical axis)."""
+    o = _iris(name, radius, coll, depth=3.0)
+    o.data.materials.clear(); o.data.materials.append(MATS["ap"]())
+    _tag(o, 'APERTURE', clear_aperture=radius)
+    _add_port(o, "IN", 'IN', (0, 0, -1.5), (0, 0, -1), radius)
+    _add_port(o, "OUT", 'OUT', (0, 0, 1.5), (0, 0, 1), radius)
+    _set_matrix(o, Vector(loc), _z_to(axis))
+    return o
 
 
 def crystal(name, loc, beam_dir, coll=None, size=14.0):
@@ -286,19 +527,60 @@ def optical_filter(name, loc, axis, coll=None, radius=12.5,
 
 
 def pinhole(name, loc, axis, coll=None, radius=12.5):
-    """A spatial-filter pinhole; the beam passes through the bore."""
-    return _inline(name, loc, axis, coll, 'PINHOLE', "ap", radius=radius, depth=2.0)
+    """A spatial-filter pinhole: a thin plate with a real tiny central bore (ports unchanged)."""
+    o = _bored_disc(name, radius, 2.0, 0.6, coll)
+    o.data.materials.clear(); o.data.materials.append(MATS["ap"]())
+    _tag(o, 'PINHOLE', clear_aperture=radius)
+    _add_port(o, "IN", 'IN', (0, 0, -1.0), (0, 0, -1), radius)
+    _add_port(o, "OUT", 'OUT', (0, 0, 1.0), (0, 0, 1), radius)
+    _set_matrix(o, Vector(loc), _z_to(axis))
+    return o
 
 
 def isolator(name, loc, axis, coll=None, radius=9.0, length=40.0):
-    """A Faraday optical isolator; a tube the beam passes through one way."""
-    return _inline(name, loc, axis, coll, 'ISOLATOR', "iso", radius=radius, depth=length)
+    """A Faraday optical isolator: a barrel with input/output bezels and a raised directional ARROW
+    marking the forward (transmission) direction -- the one feature that matters for an isolator."""
+    o = _disc(name, radius, length, coll)
+    o.data.materials.clear(); o.data.materials.append(MATS["iso"]())
+    for sgn in (+1.0, -1.0):                              # input/output aperture bezels
+        bz = _bored_disc(name + "_bz%d" % (sgn > 0), radius + 1.2, 2.5, radius * 0.6, coll)
+        for v in bz.data.vertices:
+            v.co.z += sgn * length * 0.5
+        bz.data.materials.append(MATS["bezel"]())
+        _join(o, bz)
+    ar = bmesh.new()                                     # forward-pointing arrow on the +X flank
+    xo, xi = radius + 0.2, radius - 0.8
+    tip = ar.verts.new((xo, 0.0, length * 0.24)); bl = ar.verts.new((xo, 4.0, -length * 0.04))
+    br = ar.verts.new((xo, -4.0, -length * 0.04))
+    tip2 = ar.verts.new((xi, 0.0, length * 0.24)); bl2 = ar.verts.new((xi, 4.0, -length * 0.04))
+    br2 = ar.verts.new((xi, -4.0, -length * 0.04))
+    ar.faces.new((tip, bl, br)); ar.faces.new((tip2, br2, bl2))
+    ar.faces.new((tip, br, br2, tip2)); ar.faces.new((br, bl, bl2, br2)); ar.faces.new((bl, tip, tip2, bl2))
+    arrow = _bm_obj(name + "_arr", ar, coll); arrow.data.materials.append(MATS["arrow"]())
+    _join(o, arrow)
+    _tag(o, 'ISOLATOR', clear_aperture=radius)
+    _add_port(o, "IN", 'IN', (0, 0, -length * 0.5), (0, 0, -1), radius)
+    _add_port(o, "OUT", 'OUT', (0, 0, length * 0.5), (0, 0, 1), radius)
+    _set_matrix(o, Vector(loc), _z_to(axis))
+    return o
 
 
 def fiber_collimator(name, loc, direction, coll=None, wavelength=632.8, length=30.0, radius=6.0):
     """A fiber-coupled collimator that launches a beam along `direction` (source-like)."""
     o = _disc(name, radius, length, coll)
     o.data.materials.clear(); o.data.materials.append(MATS["fiber"]())
+    # front output bezel + a rear FC connector stub (the defining fiber-input end)
+    bz = _bored_disc(name + "_bezel", radius + 1.0, 2.5, radius * 0.5, coll)
+    for v in bz.data.vertices:
+        v.co.z += length * 0.5
+    bz.data.materials.append(MATS["bezel"]())
+    _join(o, bz)
+    cb = bmesh.new(); _cyl_bm(cb, radius * 0.55, 9.0, 24)
+    conn = _bm_obj(name + "_fc", cb, coll)
+    for v in conn.data.vertices:
+        v.co.z -= length * 0.5 + 4.5
+    conn.data.materials.append(MATS["bezel"]())
+    _join(o, conn)
     _tag(o, 'FIBER_COLLIMATOR', is_source=True, wavelength=wavelength)
     _add_port(o, "OUT", 'OUT', (0, 0, length * 0.5), (0, 0, 1), radius)
     _set_matrix(o, Vector(loc), _z_to(direction))
@@ -307,8 +589,8 @@ def fiber_collimator(name, loc, direction, coll=None, wavelength=632.8, length=3
 
 def photodiode(name, loc, beam_dir, coll=None, size=14.0):
     """A point photodiode whose sensor faces the incoming beam; terminates it."""
-    o = _cube(name, (size, size, 6.0), coll)
-    o.data.materials.clear(); o.data.materials.append(MATS["det"]())
+    o = _sensor_box(name, size, 6.0, coll, active=0.4)   # small round-ish active chip on +Z
+    o.data.materials[0] = MATS["det"]()
     _tag(o, 'PHOTODIODE', is_detector=True, clear_aperture=size * 0.5)
     _add_port(o, "IN", 'IN', (0, 0, 3.0), (0, 0, 1), size * 0.5)
     _set_matrix(o, Vector(loc), _z_to(-Vector(beam_dir).normalized()))
@@ -317,8 +599,8 @@ def photodiode(name, loc, beam_dir, coll=None, size=14.0):
 
 def power_meter(name, loc, beam_dir, coll=None, size=20.0):
     """A power-meter sensor head facing the incoming beam; terminates it."""
-    o = _cube(name, (size, size, 10.0), coll)
-    o.data.materials.clear(); o.data.materials.append(MATS["det"]())
+    o = _sensor_box(name, size, 10.0, coll, active=0.62)   # broad thermopile-style active disc
+    o.data.materials[0] = MATS["det"]()
     _tag(o, 'POWER_METER', is_detector=True, clear_aperture=size * 0.5)
     _add_port(o, "IN", 'IN', (0, 0, 5.0), (0, 0, 1), size * 0.5)
     _set_matrix(o, Vector(loc), _z_to(-Vector(beam_dir).normalized()))
@@ -332,7 +614,9 @@ def dichroic(name, loc, in_dir, reflect_dir, coll=None, split=0.5, size=25.0,
     n = (Vector(reflect_dir).normalized() - Vector(in_dir).normalized())
     n = n.normalized() if n.length > 1e-6 else Vector((0, 0, 1))
     o = _cube(name, (size, size, 3.0), coll)
+    _bevel(o, 0.4, 1)
     o.data.materials.clear(); o.data.materials.append(MATS["dichroic"]())
+    _accent(o, "coatdich", lambda c, nrm: nrm.z > 0.7)   # the wavelength-selective coated +Z face
     _tag(o, 'DICHROIC', split_ratio=split, clear_aperture=size * 0.5, reflectivity=1.0,
          pass_type=pass_type, cut_nm=cut_nm)
     _add_port(o, "IN", 'IN', (0, 0, 1.5), (0, 0, 1), size * 0.5)
@@ -347,7 +631,7 @@ def grating(name, loc, in_dir, out_dir, coll=None, size=25.0, lines_per_mm=1200.
     it by the grating equation."""
     n = (Vector(out_dir).normalized() - Vector(in_dir).normalized())
     n = n.normalized() if n.length > 1e-6 else Vector((0, 0, 1))
-    o = _cube(name, (size, size, 5.0), coll)
+    o = _grooved_plate(name, size, 5.0, coll)     # ruled ridges on +Z (visible groove hint)
     o.data.materials.clear(); o.data.materials.append(MATS["grating"]())
     _tag(o, 'GRATING', clear_aperture=size * 0.5, reflectivity=0.8,
          lines_per_mm=lines_per_mm, grating_order=order)
@@ -362,7 +646,7 @@ def retroreflector(name, loc, in_dir, coll=None, size=25.0):
     The REFLECT normal is set anti-parallel to the incoming beam so the specular
     reflection sends it straight back."""
     d = Vector(in_dir).normalized()
-    o = _cube(name, (size, size, size * 0.8), coll)
+    o = _corner_cube(name, size, coll)            # trihedral facets meeting at a rear apex (+Z = axis)
     o.data.materials.clear(); o.data.materials.append(MATS["retro"]())
     _tag(o, 'RETROREFLECTOR', clear_aperture=size * 0.5, reflectivity=0.95)
     _add_port(o, "IN", 'IN', (0, 0, size * 0.4), (0, 0, 1), size * 0.5)
@@ -372,9 +656,15 @@ def retroreflector(name, loc, in_dir, coll=None, size=25.0):
 
 
 def cavity(name, loc, axis, coll=None, spacing_mm=0.05, R=0.9, size=25.0):
-    """A Fabry-Perot etalon (two partial mirrors); wavelength-dependent Airy transmission."""
-    return _inline(name, loc, axis, coll, 'CAVITY', "bs", radius=size * 0.5, depth=8.0,
-                   cavity_spacing_mm=spacing_mm, reflectivity=R)
+    """A Fabry-Perot etalon: two parallel partial-mirror plates + rim spacer (ports unchanged vs the
+    old single puck: IN/OUT at +/-4 on the optical axis)."""
+    o = _etalon(name, size * 0.5, 2.5, coll)
+    o.data.materials.clear(); o.data.materials.append(MATS["bs"]())
+    _tag(o, 'CAVITY', clear_aperture=size * 0.5, cavity_spacing_mm=spacing_mm, reflectivity=R)
+    _add_port(o, "IN", 'IN', (0, 0, -4.0), (0, 0, -1), size * 0.5)
+    _add_port(o, "OUT", 'OUT', (0, 0, 4.0), (0, 0, 1), size * 0.5)
+    _set_matrix(o, Vector(loc), _z_to(axis))
+    return o
 
 
 def _pad15(coeffs):
@@ -384,8 +674,8 @@ def _pad15(coeffs):
 
 def wavefront_sensor(name, loc, beam_dir, coll=None, size=22.0):
     """A Shack-Hartmann-style modal wavefront sensor; reads the incoming beam's Zernike modes."""
-    o = _cube(name, (size, size, 8.0), coll)
-    o.data.materials.clear(); o.data.materials.append(MATS["det"]())
+    o = _sensor_box(name, size, 8.0, coll, active=0.62, lenslets=6)   # micro-lens grid on the sensor
+    o.data.materials[0] = MATS["det"]()
     _tag(o, 'WAVEFRONT_SENSOR', clear_aperture=size * 0.5)
     _add_port(o, "IN", 'IN', (0, 0, 4.0), (0, 0, 1), size * 0.5)
     _set_matrix(o, Vector(loc), _z_to(-Vector(beam_dir).normalized()))   # IN faces the beam
@@ -397,8 +687,15 @@ def deformable_mirror(name, loc, in_dir, out_dir, coll=None, size=25.0, command=
     Zernike modes (`command`, in waves) from the wavefront on reflection."""
     n = (Vector(out_dir).normalized() - Vector(in_dir).normalized())
     n = n.normalized() if n.length > 1e-6 else Vector((0, 0, 1))
-    o = _cube(name, (size, size, 4.0), coll)
+    o = _disc(name, size * 0.5, 4.0, coll)        # round corrector face (Ø1" look)
+    _bevel(o, 0.4, 1)
     o.data.materials.clear(); o.data.materials.append(MATS["mirror"]())
+    hb = bmesh.new(); _cyl_bm(hb, size * 0.44, 8.0, 40)      # actuator backplane housing
+    housing = _bm_obj(name + "_act", hb, coll)
+    for v in housing.data.vertices:
+        v.co.z -= 6.0
+    housing.data.materials.append(MATS["subglass"]())
+    _join(o, housing)
     _tag(o, 'DEFORMABLE_MIRROR', clear_aperture=size * 0.5, reflectivity=1.0)
     o.optics.dm_command = _pad15(command)
     _add_port(o, "IN", 'IN', (0, 0, 2.0), (0, 0, 1), size * 0.5)

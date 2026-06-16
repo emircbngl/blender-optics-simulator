@@ -110,6 +110,48 @@ if _stacked and _tall is not None:
           any(i["kind"] == "beam_through_post" for i in optomech.validate(sc)))
 optics_api.dress_bench(False)
 
+print("[element geometry realism]")
+from optical_alignment_sim import elements_generic as eg
+import bmesh as _bm
+_gc = bpy.data.collections.new("ELEMTEST"); sc.collection.children.link(_gc)
+
+
+def _nonman(o):
+    b = _bm.new(); b.from_mesh(o.data)
+    k = sum(1 for e in b.edges if not e.is_manifold); b.free(); return k
+
+
+def _axis_clear(o):          # does a ray straight down the optical axis pass through (a real bore)?
+    hit = o.ray_cast((0.0, 0.0, -50.0), (0.0, 0.0, 1.0))[0]
+    return not hit
+
+
+def _polez(o):           # z of the vertex nearest the optical axis on the +Z side (lens centre apex)
+    best = 0.0
+    for v in o.data.vertices:
+        if (v.co.x ** 2 + v.co.y ** 2) ** 0.5 < 1.0 and v.co.z > best:
+            best = v.co.z
+    return best
+
+
+_lp = eg.lens("ETL_p", (0, 0, 0), (0, 0, 1), coll=_gc, focal=60)
+_ln = eg.lens("ETL_n", (40, 0, 0), (0, 0, 1), coll=_gc, focal=-60)
+_ap = eg.aperture("ETL_ap", (80, 0, 0), (0, 0, 1), coll=_gc, radius=12.0)
+_ph = eg.pinhole("ETL_ph", (120, 0, 0), (0, 0, 1), coll=_gc, radius=12.0)
+_rr = eg.retroreflector("ETL_rr", (160, 0, 0), (0, 0, 1), coll=_gc, size=24.0)
+_gr = eg.grating("ETL_gr", (200, 0, 0), (1, 0, 0), (0, 1, 0), coll=_gc, size=24.0)
+check("converging lens bulges more at centre than diverging (focal SIGN reads in geometry)",
+      _polez(_lp) > _polez(_ln) + 0.4, "%.2f vs %.2f" % (_polez(_lp), _polez(_ln)))
+check("aperture is a real ring (axis ray passes through the opening)", _axis_clear(_ap))
+check("pinhole has a real through-bore (axis ray passes)", _axis_clear(_ph))
+check("grating carries ruled groove geometry (not a bare plate)", len(_gr.data.polygons) > 200,
+      str(len(_gr.data.polygons)))
+for _nm, _o in (("lens+", _lp), ("lens-", _ln), ("aperture", _ap), ("pinhole", _ph), ("retro", _rr)):
+    check("%s mesh is manifold" % _nm, _nonman(_o) == 0, "%d nonmanifold edges" % _nonman(_o))
+for _o in list(_gc.objects):
+    eg.drop_example_object(_o)
+bpy.data.collections.remove(_gc)
+
 print("[interference invariants]")
 optics_api.build_example("michelson")
 segs = scan._trace(sc)

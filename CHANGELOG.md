@@ -4,6 +4,32 @@ All notable changes to the **Blender Optics Simulator** (`optical_alignment_sim`
 here. The format follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 semantic versioning.
 
+## [0.8.0]
+
+### Added — realistic optical-element geometry
+- Every optical element mesh was rebuilt from crude disc/cube/box placeholders to real, recognisable
+  procedural geometry (own meshes, GPL-clean), while keeping each element's **ports and placement
+  byte-identical** so the beam trace through all built-in examples is unchanged:
+  - **Lens** is now a true spherical solid of revolution that reflects the focal SIGN — biconvex for a
+    converging lens, biconcave for a diverging one — with a finite edge land (was a fixed flattened
+    sphere that could only look equi-biconvex). Curvature is cosmetic; the tracer still uses the ABCD
+    focal length.
+  - **Aperture/iris** is a real ring with a central opening and a side adjustment lever; **pinhole** has
+    a real tiny through-bore (both were solid pucks with no hole at all).
+  - **Grating** carries ruled groove geometry; **retroreflector** is a trihedral corner-cube (facets
+    meeting at a rear apex) instead of a plain block.
+  - **Mirror** distinguishes its coated front face from the bare-glass substrate + bevelled edge;
+    **beamsplitter** shows its tinted 45° coated diagonal through the glass + chamfered edges (PBS vs
+    50/50 differ by coating tint); **dichroic** has a coated front face.
+  - **Detector / photodiode / power-meter** have a recessed active-area inset; the **wavefront sensor**
+    carries a Shack–Hartmann micro-lens grid; the **Fabry–Pérot cavity** is two parallel plates + rim
+    spacer (was a single puck).
+  - **Laser / fibre collimator / isolator** are proper barrels with exit bezels, an FC connector stub,
+    and a directional forward arrow (isolator); the **deformable mirror** has an actuator backplane.
+- Realistic-render materials still theme-swap only mesh slot 0, so accent detail (coatings, sensors,
+  grooves, bezels) keeps its colour. Regression grows to 164 checks (lens focal-sign reads in geometry,
+  apertures/pinholes pass an axis ray-cast, new meshes are manifold).
+
 ## [0.7.0]
 
 ### Added — opto-mechanical systems arc (Phase 2.6)
