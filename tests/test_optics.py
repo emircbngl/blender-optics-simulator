@@ -48,9 +48,21 @@ check("beam_roc(waist) = inf", math.isinf(physics.beam_roc(physics.q_from_waist(
 check("gouy(waist) = 0", abs(physics.gouy_phase(physics.q_from_waist(0.5, 632.8))) < 1e-9)
 
 print("[examples build + trace]")
-for kind in ("mach_zehnder", "michelson", "hong_ou_mandel", "bell", "adaptive_optics", "newton_rings", "periscope"):
+for kind in ("mach_zehnder", "michelson", "hong_ou_mandel", "bell", "adaptive_optics", "newton_rings",
+             "periscope", "cage_system", "tube_system", "rail_system", "hybrid_system"):
     r = optics_api.build_example(kind)
     check("build %s" % kind, isinstance(r, dict) and r.get("segments", 0) >= 1, str(r))
+
+print("[full systems: cage / tube / rail / hybrid dress trace-safe + valid]")
+for kind in ("cage_system", "tube_system", "rail_system", "hybrid_system"):
+    optics_api.build_example(kind)
+    _n0 = len(scan._trace(sc))
+    optomech.dress(sc)
+    _n1 = len(scan._trace(sc))
+    check("%s dressing leaves the trace identical" % kind, _n0 == _n1, "%d vs %d" % (_n0, _n1))
+    check("%s dressing is geometrically valid" % kind, optomech.validate(sc) == [],
+          str(optomech.validate(sc)))
+    optics_api.dress_bench(False)
 
 print("[periscope: out-of-plane vertical fold]")
 optics_api.build_example("periscope")

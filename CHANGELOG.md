@@ -4,6 +4,30 @@ All notable changes to the **Blender Optics Simulator** (`optical_alignment_sim`
 here. The format follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 semantic versioning.
 
+## [0.9.0]
+
+### Added — complete-system showcases
+- Four new built-in examples that compose whole mounting subsystems (each `build_example(...)`),
+  grounded in real Thorlabs/Newport layouts (multi-agent reference research):
+  - **`cage_system`** — a full 30 mm cage relay: fibre launcher → collimating lens → clean-up
+    polarizer → PBS share four ER rods + one post; PBS transmits to a 90° turning mirror → camera and
+    reflects to a beam dump.
+  - **`tube_system`** — an SM1 lens-tube 4f relay (fibre + two f = 50 mm lenses in one Ø1.2″ barrel) →
+    C-mount camera.
+  - **`rail_system`** — a Galilean beam-expander beamline (diverging + converging lens, iris, fold
+    mirror) with every optic on a carrier riding one dovetail rail.
+  - **`hybrid_system`** — all three combined: a cage launcher → a free-space post mirror → a
+    rail-mounted analyzer train → camera.
+- Each dresses trace-identically and passes the geometric validator (regression 164 → 176).
+
+### Fixed — render polish (owner feedback)
+- **Laser/source holder** rebuilt: a saddle clamp keyed to the body's real underside + a world-vertical
+  stem to the post top — the source no longer floats beside a disconnected post (old bracket sat at
+  local −Z = behind a horizontal laser).
+- **Mirror reflections** read correctly: a perfect mirror reflects its surroundings, so in a dark world
+  it went black. Crisper metal roughness (0.04 → 0.025) + a dark semi-glossy optical-table ground give
+  the mirrors a real floor + softbox highlights to reflect.
+
 ## [0.8.2]
 
 ### Fixed — render polish (owner feedback)

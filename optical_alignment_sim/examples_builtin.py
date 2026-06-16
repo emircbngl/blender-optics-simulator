@@ -147,6 +147,87 @@ def build_periscope(context):
     return "OpticsExample_Periscope"
 
 
+def _group(elems, system, gid):
+    """Tag a collinear run of optics into one support system (cage/tube/rail). Dress Bench then builds
+    the shared hardware (4 rods + plates + one post / one barrel + post / a rail + carriers) instead of
+    a post under each -- and never moves the optics, so the trace stays identical."""
+    for o in elems:
+        o.optics.support_system = system
+        if system.startswith('CAGE'):
+            o.optics.cage_id = gid
+        elif system.startswith('TUBE'):
+            o.optics.tube_id = gid
+        elif system == 'RAIL':
+            o.optics.rail_id = gid
+
+
+def build_cage_system(context):
+    """A complete 30 mm CAGE relay (Thorlabs-style): a fibre launcher, a collimating lens, a clean-up
+    polarizer and a polarizing beamsplitter all share four ER cage rods + one post; the PBS transmits
+    p-pol straight to a 90 deg turning mirror -> camera, and reflects s-pol out the side to a beam dump.
+    Dress Bench to see the cage. Showcases an in-line cage subsystem feeding free-space post mounts."""
+    coll = G.example_collection("OpticsExample_CageSystem")
+    X, Y = Vector((1, 0, 0)), Vector((0, 1, 0))
+    f = G.fiber_collimator("CG_Fiber", (-105, 0, 0), X, coll)
+    l1 = G.lens("CG_Collimate", (-55, 0, 0), X, coll, focal=50.0, radius=12.0)
+    pol = G.polarizer("CG_CleanPol", (-15, 0, 0), X, coll)
+    pbs = G.beamsplitter("CG_PBS", (25, 0, 0), X, Y, coll, pbs=True)
+    _group([f, l1, pol, pbs], 'CAGE_30', 'cage_main')          # the 30 mm cage train
+    G.mirror("CG_Turn", (95, 0, 0), X, Y, coll)                # transmitted p-pol: +X -> +Y
+    G.detector("CG_Cam", (95, 80, 0), Y, coll)
+    G.detector("CG_Dump", (25, 70, 0), Y, coll)                # reflected s-pol side port -> dump
+    return "OpticsExample_CageSystem"
+
+
+def build_tube_system(context):
+    """A complete SM1 LENS-TUBE imaging stack: a fibre input and two f = 50 mm relay lenses share one
+    Ø1.2" lens-tube barrel (a 4f relay), delivering the image to a C-mount camera at the end. Dress
+    Bench to see the tube. Showcases an entire in-line system built inside lens tubes (no open posts)."""
+    coll = G.example_collection("OpticsExample_TubeSystem")
+    X = Vector((1, 0, 0))
+    f = G.fiber_collimator("TB_Fiber", (-75, 0, 0), X, coll)
+    l1 = G.lens("TB_L1", (-25, 0, 0), X, coll, focal=50.0, radius=12.0)
+    l2 = G.lens("TB_L2", (75, 0, 0), X, coll, focal=50.0, radius=12.0)        # 2f = 100 mm relay gap
+    _group([f, l1, l2], 'TUBE_SM1', 'tube_relay')              # one SM1 barrel holds the whole relay
+    G.detector("TB_Cam", (125, 0, 0), X, coll)                 # image plane (f after L2)
+    return "OpticsExample_TubeSystem"
+
+
+def build_rail_system(context):
+    """A complete RAIL beamline: a Galilean beam-expander (diverging f = -25 mm + converging f = +75 mm,
+    separation 50 mm -> 3x), an alignment iris and a fold mirror each ride a carrier on ONE dovetail
+    rail, so every optic slides along a common track. Dress Bench to see the rail + carriers."""
+    coll = G.example_collection("OpticsExample_RailSystem")
+    X, Y = Vector((1, 0, 0)), Vector((0, 1, 0))
+    G.source("RL_Laser", (-130, 0, 0), X, coll)
+    l1 = G.lens("RL_L1_div", (-40, 0, 0), X, coll, focal=-25.0, radius=10.0)
+    iris = G.aperture("RL_Iris", (-12, 0, 0), X, coll, radius=14.0)
+    l2 = G.lens("RL_L2_conv", (10, 0, 0), X, coll, focal=75.0, radius=16.0)   # Galilean: sep = 75-25 = 50
+    m = G.mirror("RL_Fold", (70, 0, 0), X, Y, coll)            # send the expanded beam off-rail
+    _group([l1, iris, l2, m], 'RAIL', 'rail_main')             # all four on one dovetail rail
+    G.detector("RL_Cam", (70, 80, 0), Y, coll)
+    return "OpticsExample_RailSystem"
+
+
+def build_hybrid_system(context):
+    """A HYBRID bench combining all three systems: a 30 mm CAGE launcher (fibre + collimator + polarizer)
+    hands a beam to a free-space POST-mounted 90 deg turning mirror, which feeds a RAIL-mounted analyzer
+    train (focusing lens + analyzer polarizer) into a camera. Dress Bench to see cage + post + rail
+    on one breadboard -- the showcase of mixing mounting systems."""
+    coll = G.example_collection("OpticsExample_HybridSystem")
+    X, Y = Vector((1, 0, 0)), Vector((0, 1, 0))
+    f = G.fiber_collimator("HY_Fiber", (-110, 0, 0), X, coll)
+    l1 = G.lens("HY_Collimate", (-65, 0, 0), X, coll, focal=45.0, radius=12.0)
+    pol = G.polarizer("HY_Pol", (-30, 0, 0), X, coll)
+    _group([f, l1, pol], 'CAGE_30', 'hy_cage')                 # CAGE launcher
+    G.mirror("HY_Turn", (20, 0, 0), X, Y, coll)                # free-space POST turning mirror: +X -> +Y
+    l2 = G.lens("HY_Focus", (20, 60, 0), Y, coll, focal=75.0, radius=14.0)
+    an = G.polarizer("HY_Analyzer", (20, 100, 0), Y, coll)
+    _group([l2, an], 'RAIL', 'hy_rail')                        # RAIL analyzer train
+    G.detector("HY_Cam", (20, 140, 0), Y, coll)
+    return "OpticsExample_HybridSystem"
+
+
 EXAMPLES = {
     'mach_zehnder': ("Mach-Zehnder Interferometer", build_mach_zehnder),
     'michelson':    ("Michelson Interferometer", build_michelson),
@@ -155,6 +236,10 @@ EXAMPLES = {
     'adaptive_optics': ("Adaptive Optics (WFS + deformable mirror)", build_adaptive_optics),
     'newton_rings': ("Newton's Rings (lens vs flat)", build_newton_rings),
     'periscope':    ("Periscope (vertical beam raise)", build_periscope),
+    'cage_system':  ("Cage System (full 30 mm relay)", build_cage_system),
+    'tube_system':  ("Lens-Tube System (4f relay -> camera)", build_tube_system),
+    'rail_system':  ("Rail System (beam expander beamline)", build_rail_system),
+    'hybrid_system': ("Hybrid (cage + post + rail)", build_hybrid_system),
 }
 
 
