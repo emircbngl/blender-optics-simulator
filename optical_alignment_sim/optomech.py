@@ -32,6 +32,8 @@ _MATS = {
     "board":  lambda: _bench_mat("OB_board", (0.10, 0.10, 0.115), 0.35, 0.55),  # dark-grey anodized breadboard
     "hole":   lambda: _bench_mat("OB_hole", (0.012, 0.012, 0.015), 0.7, 0.5),    # tapped-hole counterbore (near-black)
     "clamp":  lambda: _bench_mat("OB_clamp", (0.16, 0.16, 0.18), 0.8, 0.45),     # post-base clamp / pedestal foot
+    "steel":  lambda: _bench_mat("OB_steel", (0.55, 0.55, 0.58), 1.0, 0.28),     # bright screws / springs / adjusters
+    "alu":    lambda: _bench_mat("OB_alu", (0.78, 0.78, 0.80), 1.0, 0.34),       # bare 6061 aluminium (LMR lens mounts)
 }
 
 
@@ -271,6 +273,23 @@ def _bevel(o, width=0.5, segments=2):
     return o
 
 
+def _diff(obj, cutter):
+    """Boolean-subtract ``cutter`` from ``obj`` and free the cutter (the _bored_plate idiom, shared)."""
+    m = obj.modifiers.new("cut", 'BOOLEAN'); m.operation = 'DIFFERENCE'; m.object = cutter
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.modifier_apply(modifier=m.name)
+    cm = cutter.data
+    bpy.data.objects.remove(cutter, do_unlink=True)
+    if cm.users == 0:
+        bpy.data.meshes.remove(cm)
+
+
+def _bore(obj, loc, r, depth, seg=24):
+    """Subtract a vertical cylindrical hole of radius ``r`` / ``depth`` centred at world ``loc``."""
+    bpy.ops.mesh.primitive_cylinder_add(radius=r, depth=depth, location=loc, vertices=seg)
+    _diff(obj, bpy.context.active_object)
+
+
 def _build_mount(o, coll, idx):
     """Build the mount silhouette that matches the element's mount/element type, oriented in the
     optic's local frame (local +Z is the optical axis for inline parts; the cube body for splitters).
@@ -305,24 +324,31 @@ def _build_mount(o, coll, idx):
         _obox(pre + "Index_" + nm, (2.5, 2.5, 4.0), mw, (ca * 1.5, 0, 0), coll, "post")
         return 3
     if mt in ('KINEMATIC_2AXIS', 'KINEMATIC_3AXIS', 'GIMBAL') or et == 'MIRROR':
-        # kinematic mount: a bevelled square front plate, bored and positioned so the round optic
-        # seats FLUSH in the aperture (the optic is visibly held, not an empty holder); a back-plate;
-        # and actuator screws (shaft + knurled knob) -- TWO at adjacent corners for KM100-style
-        # tip/tilt, or THREE in a triangle for a KS1-style 3-adjuster mount.
+        # KM100/KS1-style kinematic mount: TWIN same-outline plates floating on a visible air gap;
+        # the round optic seats flush in the bored front plate; long fine adjuster screws project out
+        # the BACK through bushings to a knurled knob; a fixed pivot ball sits at the third corner
+        # (the asymmetric 3-point that makes it "kinematic"); standoff springs bridge the gap.
         plate = ca * 2.6
+        hp = plate * 0.5
         _bevel(_bored_plate(pre + "KMplate_" + nm, plate, 6.0, ca * 0.95,
                             mw @ Matrix.Translation((0.0, 0.0, -1.0)), coll, "mount"), 0.7, 2)
-        _bevel(_obox(pre + "KMback_" + nm, (plate * 0.86, plate * 0.86, 6.0),
-                     mw, (0, 0, -13.0), coll, "mount"), 0.7, 2)
-        # the two tip/tilt adjusters keep their corners; the 3-adjuster (KS1) variant just ADDS a
-        # third screw at a third corner -- the existing two never move.
-        adj = [("A0", (plate * 0.30, -plate * 0.30)), ("A1", (-plate * 0.30, plate * 0.30))]
+        _bevel(_obox(pre + "KMback_" + nm, (plate, plate, 7.0), mw, (0, 0, -14.0), coll, "mount"), 0.7, 2)
+        adj = [("A0", (0.30, -0.30)), ("A1", (-0.30, 0.30))]      # adjacent corners (tip + tilt)
         if mt in ('KINEMATIC_3AXIS', 'GIMBAL'):
-            adj.append(("A2", (-plate * 0.30, -plate * 0.30)))
-        for an, (sx, sy) in adj:
-            _ocyl(pre + an + "s_" + nm, 1.5, 16.0, mw, (sx, sy, -13.0), coll, "post")            # shaft
-            _bevel(_ocyl(pre + an + "k_" + nm, 3.4, 5.0, mw, (sx, sy, -22.0), coll, "mount"), 0.8, 2)  # knob
-        return 2 + 2 * len(adj)
+            adj.append(("A2", (-0.30, -0.30)))                   # KS1 adds a third at a corner
+        for an, (fx, fy) in adj:
+            sx, sy = hp * fx * 0.82, hp * fy * 0.82
+            _ocyl(pre + an + "s_" + nm, 1.5, 34.0, mw, (sx, sy, -16.0), coll, "steel")              # long shaft, out the back
+            _ocyl(pre + an + "b_" + nm, 3.2, 5.0, mw, (sx, sy, -14.0), coll, "mount")               # bushing at the rear plate
+            _bevel(_ocyl(pre + an + "k_" + nm, 4.2, 6.0, mw, (sx, sy, -33.0), coll, "steel"), 0.9, 2)  # rear knurled knob
+        bpy.ops.mesh.primitive_uv_sphere_add(radius=2.2, location=(0.0, 0.0, 0.0))
+        _pv = bpy.context.active_object; _pv.name = pre + "KMpivot_" + nm
+        _pv.matrix_world = mw @ Matrix.Translation((-hp * 0.30 * 0.82, -hp * 0.30 * 0.82, -8.0))
+        _pv.data.materials.clear(); _pv.data.materials.append(_MATS["steel"]())
+        eg._link_only(_pv, coll)
+        for an, (fx, fy) in (("S0", (0.20, 0.34)), ("S1", (-0.34, -0.06))):     # standoff springs (gap bridge)
+            _ocyl(pre + an + "_" + nm, 1.4, 8.0, mw, (hp * fx, hp * fy, -7.5), coll, "steel")
+        return 5 + 3 * len(adj)
     # threaded lens / filter / window / generic: a retaining ring inside a short lens-cell wall
     _ring(pre + "Mount_" + nm, ca * 1.18, ca * 0.16, mw, coll)
     _ocyl(pre + "Cell_" + nm, ca * 1.28, 5.0, mw, (0, 0, 0), coll, "mount")
@@ -334,20 +360,30 @@ def _post_holder(tag, x, y, board_top_z, post_radius, coll):
     it is fastened, not floating) + a fixed-length post-holder body with a side locking thumbscrew
     (the post slides in and is clamped). The post itself is built by the caller. Returns the count."""
     hr = post_radius * 1.8
-    _bevel(_cyl(BENCH_PREFIX + "Base_" + tag, post_radius * 2.6, BASE_H,
-                (x, y, board_top_z + BASE_H * 0.5), coll, "clamp"), 0.8, 2)
-    # cap screw fastening the foot to the table (offset from the central post bore)
-    _bevel(_cyl(BENCH_PREFIX + "Bolt_" + tag, post_radius * 0.55, 3.5,
-                (x + post_radius * 2.0, y, board_top_z + BASE_H + 0.8), coll, "post"), 0.5, 1)
-    _bevel(_cyl(BENCH_PREFIX + "Holder_" + tag, hr, HOLDER_H,
-                (x, y, board_top_z + BASE_H + HOLDER_H * 0.5), coll, "holder"), 0.8, 2)
-    # side locking thumbscrew: a thin shaft + a wider knurled head (the knob you grip), protruding
-    mw = Matrix.Translation((x, y, board_top_z + BASE_H + HOLDER_H * 0.72))
-    _ocyl(BENCH_PREFIX + "Locks_" + tag, post_radius * 0.32, post_radius * 1.1,
-          mw, (hr + post_radius * 0.45, 0.0, 0.0), coll, "post", axis='X')
-    _bevel(_ocyl(BENCH_PREFIX + "Lockh_" + tag, post_radius * 0.72, post_radius * 0.7,
-                 mw, (hr + post_radius * 1.05, 0.0, 0.0), coll, "mount", axis='X'), 0.45, 2)
-    return 5
+    foot, foot_h = 26.0, 12.0
+    # rectangular pedestal foot (real PH foot is a chunky block, not a thin disc), bolted DOWN
+    # through a counterbored clearance hole (no proud bolt head)
+    ft = eg._cube(BENCH_PREFIX + "Base_" + tag, Vector((foot, foot, foot_h)), coll)
+    ft.location = (x, y, board_top_z + foot_h * 0.5)
+    ft.data.materials.clear(); ft.data.materials.append(_MATS["clamp"]())
+    _bore(ft, (x, y, board_top_z + foot_h * 0.5), 3.4, foot_h * 2.5)                  # clearance through-hole
+    _bore(ft, (x, y, board_top_z + foot_h - 1.0), 5.6, 4.0)                           # counterbore on the top face
+    _bevel(ft, 1.0, 2)
+    # bored, slit post-holder tube (a split-tube clamp, not a solid peg): the post slides into the bore
+    z_body = board_top_z + foot_h + HOLDER_H * 0.5
+    body = _cyl(BENCH_PREFIX + "Holder_" + tag, hr, HOLDER_H, (x, y, z_body), coll, "holder")
+    _bore(body, (x, y, z_body + 4.0), post_radius + 0.25, HOLDER_H)                   # coaxial bore, open top
+    slit = eg._cube(BENCH_PREFIX + "_slit_" + tag, Vector((1.6, hr * 2.3, HOLDER_H * 0.86)), coll)
+    slit.location = (x + hr * 0.55, y, z_body + HOLDER_H * 0.07)
+    _diff(body, slit)
+    _bevel(body, 0.6, 1)
+    # side locking thumbscrew (shaft + knurled head) crossing the slit, clamping the post
+    mw = Matrix.Translation((x, y, board_top_z + foot_h + HOLDER_H * 0.70))
+    _ocyl(BENCH_PREFIX + "Locks_" + tag, post_radius * 0.3, post_radius * 1.1,
+          mw, (hr + post_radius * 0.4, 0.0, 0.0), coll, "steel", axis='X')
+    _bevel(_ocyl(BENCH_PREFIX + "Lockh_" + tag, post_radius * 0.7, post_radius * 0.7,
+                 mw, (hr + post_radius * 1.05, 0.0, 0.0), coll, "steel", axis='X'), 0.45, 2)
+    return 4
 
 
 # ---------------------------------------------------------------------------
