@@ -4,7 +4,7 @@ All notable changes to the **Blender Optics Simulator** (`optical_alignment_sim`
 here. The format follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 semantic versioning.
 
-## [Unreleased]
+## [0.7.0]
 
 ### Added — opto-mechanical systems arc (Phase 2.6)
 - **Beam-height datum (Phase 0).** The bench now has a single optical-axis-height datum
