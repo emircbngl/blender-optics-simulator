@@ -285,8 +285,12 @@ def _build_mount(o, coll, idx):
     nm = "%02d" % idx
 
     if et in _SOURCE_DET:
-        # self-contained body (laser/camera/crystal): a saddle bracket toward the post, no optic ring
-        _obox(pre + "Bracket_" + nm, (ca * 1.0, ca * 1.0, 6.0), mw, (0, 0, -ca * 0.9), coll, "clamp")
+        # self-contained body (laser/camera/crystal): a bevelled saddle clamp to the post; a
+        # detector/camera also gets a C-mount adapter nose on its sensor face (local +Z = beam side).
+        _bevel(_obox(pre + "Bracket_" + nm, (ca * 1.4, ca * 1.05, 7.0), mw, (0, 0, -ca * 0.95), coll, "clamp"), 0.8, 2)
+        if et in {'DETECTOR', 'PHOTODIODE', 'POWER_METER', 'WAVEFRONT_SENSOR'}:
+            _bevel(_ocyl(pre + "Cmount_" + nm, ca * 0.62, 9.0, mw, (0, 0, ca * 0.72), coll, "mount"), 0.7, 2)
+            return 2
         return 1
     if et in {'BEAMSPLITTER', 'PRISM_MIRROR'}:
         # cube mount: a platform plate under the cube + a back plate, aligned to the cube faces
@@ -300,20 +304,26 @@ def _build_mount(o, coll, idx):
         _ocyl(pre + "Collar_" + nm, ca * 1.5, 6.0, mw, (0, 0, 0), coll, "mount")
         _obox(pre + "Index_" + nm, (2.5, 2.5, 4.0), mw, (ca * 1.5, 0, 0), coll, "post")
         return 3
-    if mt == 'KINEMATIC_2AXIS' or et == 'MIRROR':
-        # kinematic mount (KM100-style): a bevelled square front plate with a bored aperture that
-        # frames the (round) optic, a smaller back-plate, and two actuator screws (shaft + knurled
-        # knob) at adjacent corners (tip + tilt). KMplate name kept for the regression.
+    if mt in ('KINEMATIC_2AXIS', 'KINEMATIC_3AXIS', 'GIMBAL') or et == 'MIRROR':
+        # kinematic mount: a bevelled square front plate, bored and positioned so the round optic
+        # seats FLUSH in the aperture (the optic is visibly held, not an empty holder); a back-plate;
+        # and actuator screws (shaft + knurled knob) -- TWO at adjacent corners for KM100-style
+        # tip/tilt, or THREE in a triangle for a KS1-style 3-adjuster mount.
         plate = ca * 2.6
-        _bevel(_bored_plate(pre + "KMplate_" + nm, plate, 9.0, ca * 0.95,
-                            mw @ Matrix.Translation((0.0, 0.0, 1.0)), coll, "mount"), 0.7, 2)
+        _bevel(_bored_plate(pre + "KMplate_" + nm, plate, 6.0, ca * 0.95,
+                            mw @ Matrix.Translation((0.0, 0.0, -1.0)), coll, "mount"), 0.7, 2)
         _bevel(_obox(pre + "KMback_" + nm, (plate * 0.86, plate * 0.86, 6.0),
-                     mw, (0, 0, -12.0), coll, "mount"), 0.7, 2)
-        for an, (sx, sy) in (("Adj1", (plate * 0.30, -plate * 0.30)),
-                             ("Adj2", (-plate * 0.30, plate * 0.30))):
+                     mw, (0, 0, -13.0), coll, "mount"), 0.7, 2)
+        if mt in ('KINEMATIC_3AXIS', 'GIMBAL'):
+            rr = plate * 0.34
+            adj = [("A%d" % k, (rr * math.cos(math.radians(a)), rr * math.sin(math.radians(a))))
+                   for k, a in enumerate((90.0, 210.0, 330.0))]    # triangular 3-adjuster
+        else:
+            adj = [("A0", (plate * 0.30, -plate * 0.30)), ("A1", (-plate * 0.30, plate * 0.30))]
+        for an, (sx, sy) in adj:
             _ocyl(pre + an + "s_" + nm, 1.5, 16.0, mw, (sx, sy, -13.0), coll, "post")            # shaft
-            _bevel(_ocyl(pre + an + "k_" + nm, 3.7, 5.0, mw, (sx, sy, -22.0), coll, "mount"), 0.8, 2)  # knob
-        return 6
+            _bevel(_ocyl(pre + an + "k_" + nm, 3.4, 5.0, mw, (sx, sy, -22.0), coll, "mount"), 0.8, 2)  # knob
+        return 2 + 2 * len(adj)
     # threaded lens / filter / window / generic: a retaining ring inside a short lens-cell wall
     _ring(pre + "Mount_" + nm, ca * 1.18, ca * 0.16, mw, coll)
     _ocyl(pre + "Cell_" + nm, ca * 1.28, 5.0, mw, (0, 0, 0), coll, "mount")

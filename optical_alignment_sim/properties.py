@@ -52,7 +52,8 @@ PORT_ROLES = [
 
 MOUNT_TYPES = [
     ('FIXED',           "Fixed",             "No adjustment"),
-    ('KINEMATIC_2AXIS', "Kinematic tip/tilt", "Two-axis tip/tilt about a pivot"),
+    ('KINEMATIC_2AXIS', "Kinematic tip/tilt", "Two-axis tip/tilt about a pivot (KM100-style, 2 adjusters)"),
+    ('KINEMATIC_3AXIS', "Kinematic 3-adjuster", "Three-adjuster kinematic mount (KS1-style, triangular)"),
     ('TRANSLATION',     "Translation stage", "Linear X / Y / Z"),
     ('ROTATION',        "Rotation mount",    "Rotation about the optical axis"),
     ('GIMBAL',          "Gimbal",            "Gimbal mount"),
