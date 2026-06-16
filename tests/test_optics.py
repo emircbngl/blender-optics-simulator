@@ -16,7 +16,7 @@ sys.path.insert(0, REPO)
 import optical_alignment_sim as oas
 oas.register()
 import optics_api
-from optical_alignment_sim import scan, alignment, ao, physics, render, handlers, operators, elements_generic, mounts, bridge, tracer
+from optical_alignment_sim import scan, alignment, ao, physics, render, handlers, operators, elements_generic, mounts, bridge, tracer, optomech
 
 _checks = []
 
@@ -66,6 +66,28 @@ check("periscope dressing is geometrically valid (no mount-below-holder / collis
 optics_api.dress_bench(False)
 optics_api.build_example("michelson"); optics_api.dress_bench(True)
 check("michelson dressing is geometrically valid", optics_api.get_state()["warnings"] == [], str(optics_api.get_state()["warnings"]))
+# the validator must actually FIRE on a bad config, not just pass clean benches: shove one post onto
+# another and confirm post_overlap is reported (proves the collision gate isn't a no-op).
+_posts = [o for o in sc.objects if o.name.startswith(optomech.BENCH_PREFIX + "Post_")]
+check("michelson dressing spawned multiple posts", len(_posts) >= 2, str(len(_posts)))
+if len(_posts) >= 2:
+    _tgt = _posts[0].matrix_world.translation
+    _posts[1].location.x, _posts[1].location.y = _tgt.x, _tgt.y     # make posts 1 and 0 coincident
+    bpy.context.view_layer.update()
+    _vc = optomech.validate(sc)
+    check("validator FIRES post_overlap on coincident posts",
+          any(i["kind"] == "post_overlap" for i in _vc), str(_vc))
+optics_api.dress_bench(False)
+# a raised mount (periscope upper deck) must ride the fat Ø1" pillar, not a long thin Ø1/2" stick
+optics_api.build_example("periscope"); optics_api.dress_bench(True)
+_pst = [o for o in sc.objects if o.name.startswith(optomech.BENCH_PREFIX + "Post_")]
+_tall = max(_pst, key=lambda o: o.dimensions.z) if _pst else None
+check("periscope produces a tall post (> pillar threshold)",
+      _tall is not None and _tall.dimensions.z > optomech.PILLAR_OVER_MM,
+      "%.1f" % (_tall.dimensions.z if _tall else -1))
+check("the tall post is the fat Ø1\" pillar, not a thin stick",
+      _tall is not None and abs(_tall.dimensions.x * 0.5 - optomech.POST_RADIUS_TALL) < 1.5,
+      "r=%.2f" % (_tall.dimensions.x * 0.5 if _tall else -1))
 optics_api.dress_bench(False)
 
 print("[interference invariants]")
