@@ -67,6 +67,24 @@ optics into a cage/tube/rail never moves them, so the beam path is byte-identica
 post-clamp collars (the real **RS99** assembly), and the beam runs up beside the post in clear air. A
 geometric **validator** guarantees no support post ever sits in a beam path.*
 
+### Complete systems
+
+The same primitives compose into entire subsystems — each a one-line
+`build_example('cage_system' | 'tube_system' | 'rail_system' | 'hybrid_system')`, fully agent-drivable:
+
+| Full 30 mm cage relay | SM1 lens-tube 4f → camera | Dovetail-rail beam expander |
+|:---:|:---:|:---:|
+| ![cage system](docs/img/sys-cage-full.png) | ![tube system](docs/img/sys-tube-full.png) | ![rail system](docs/img/sys-rail-full.png) |
+| fibre → collimator → polarizer → PBS share 4 rods + one post | a fibre + two relay lenses share one Ø1.2″ barrel | a Galilean expander + iris + fold ride carriers on one rail |
+
+<p align="center">
+  <img src="docs/img/sys-hybrid.png" width="62%" alt="A hybrid bench: a 30 mm cage launcher feeds a post-mounted turning mirror, which feeds a rail-mounted analyzer train into a camera">
+</p>
+
+*A **hybrid** bench mixes all three systems on one breadboard — a cage launcher → a free-space
+post-mounted turning mirror → a rail-mounted analyzer train into a camera. Grouping optics into a
+cage/tube/rail never moves them, so every system's beam path stays byte-identical to the bare bench.*
+
 ---
 
 ## Why this exists

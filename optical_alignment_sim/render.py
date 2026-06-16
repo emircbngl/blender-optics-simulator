@@ -144,7 +144,7 @@ def _render_material(et):
         return m
     if kind == 'metal':
         m, b = _principled("OAR_metal_" + et)
-        _setb(b, "Base Color", (*tint, 1.0)); _setb(b, "Metallic", 1.0); _setb(b, "Roughness", 0.04)
+        _setb(b, "Base Color", (*tint, 1.0)); _setb(b, "Metallic", 1.0); _setb(b, "Roughness", 0.025)
         return m
     if kind == 'dark':
         m, b = _principled("OAR_dark_" + et)
@@ -226,7 +226,9 @@ def studio_lighting(scene):
         bm = bmesh.new(); bmesh.ops.create_grid(bm, x_segments=1, y_segments=1, size=size * 7.0)
         bm.to_mesh(me); bm.free()
         gm, gb = _principled("OAR_ground")
-        _setb(gb, "Base Color", (0.015, 0.015, 0.02, 1.0)); _setb(gb, "Roughness", 0.45); _setb(gb, "Metallic", 0.2)
+        # a dark semi-GLOSSY optical-table surface: the (often 45 deg) mirrors then reflect a real floor
+        # + the softbox highlights instead of dead black -- the fix for "mirror reflections look wrong".
+        _setb(gb, "Base Color", (0.045, 0.047, 0.055, 1.0)); _setb(gb, "Roughness", 0.26); _setb(gb, "Metallic", 0.3)
         me.materials.append(gm)
         g = bpy.data.objects.new("OPTICS_Studio_Ground", me)
         scene.collection.objects.link(g)
