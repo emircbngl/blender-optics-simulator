@@ -57,6 +57,12 @@ semantic versioning.
   of floating. `get_state()` exposes each element's `support_system` (POST/CAGE/TUBE/RAIL), its
   `anchor` (the "follows another element" edge from place_relative), and `base_pose_set` — so an
   agent can read the full mounting topology, not just hole occupancy.
+- **Headless animation pipeline (`anim.py`, Phase 3 / C1).** New `optics_api.render_sequence(...)`
+  (+ MCP tool) renders a **camera-orbit PNG sequence** of the setup and, if `ffmpeg` is on PATH,
+  encodes an mp4 — best-effort and reported honestly (`ffmpeg`/`video` fields); the PNG sequence is
+  always produced. EEVEE (fast) or Cycles (realistic). A render-only pipeline: it moves the camera
+  and writes frames, never touching the optics/ports/tracer. (`render.set_camera_direction` factors
+  the framing so every orbit frame stays fit.) The reusable base for the promo video + tutorial.
 - **Opto-mech realism pass (owner review).** Post-holders now carry a **side locking thumbscrew**
   and the base foot shows a **cap screw** fastening it to the table (was a bare floating cylinder);
   kinematic mirror mounts are rebuilt KM100-style with a back-plate and **two knurled actuator

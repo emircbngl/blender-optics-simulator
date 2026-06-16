@@ -146,6 +146,17 @@ def render(preset: str = "preview", camera: str = "HERO", filepath: str = "") ->
 
 
 @mcp.tool()
+def render_sequence(frames: int = 48, motion: str = "ORBIT", out_dir: str = "",
+                    engine: str = "EEVEE", turns: float = 1.0, encode: str = "auto") -> str:
+    """Render a camera-orbit PNG sequence of the current setup (headless animation pipeline) and,
+    if ffmpeg is present, encode an mp4 (best-effort; the PNG sequence is always produced).
+    engine: EEVEE (fast) | CYCLES (realistic). Returns {frames, dir, pattern, ffmpeg, video}."""
+    return _fmt(_call("render_sequence", _wait=900.0, frames=frames, motion=motion,
+                      engine=engine, turns=turns, encode=encode,
+                      **({"out_dir": out_dir} if out_dir else {})))
+
+
+@mcp.tool()
 def tag_element(name: str, element_type: str = "", auto_ports: bool = True) -> str:
     """Mark object `name` as an optical element (optionally set its type) and auto-detect ports."""
     args = {"name": name, "auto_ports": auto_ports}

@@ -580,6 +580,15 @@ check("place_on_rail rejects a non-rail element", "error" in optics_api.place_on
 optomech.strip(sc)
 check("strip removes the rail too", not any(o.name.startswith("BENCH_Rail_") for o in sc.objects))
 
+print("[anim: render_sequence writes a frame sequence]")
+import tempfile as _tf
+optics_api.build_example("michelson")
+_ad = _tf.mkdtemp(prefix="oas_anim_test_")
+_ar = optics_api.render_sequence(frames=3, motion='ORBIT', out_dir=_ad, engine='EEVEE', encode=False)
+check("render_sequence reports 3 frames", isinstance(_ar, dict) and _ar.get("frames") == 3, str(_ar))
+check("render_sequence wrote 3 PNGs", len([f for f in os.listdir(_ad) if f.endswith(".png")]) == 3, str(os.listdir(_ad)))
+check("render_sequence reports honest video/ffmpeg fields", "video" in _ar and "ffmpeg" in _ar)
+
 oas.unregister()
 
 passed = sum(1 for _, ok in _checks if ok)
