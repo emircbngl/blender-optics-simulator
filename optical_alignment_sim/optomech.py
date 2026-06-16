@@ -106,7 +106,9 @@ GRID_IMPERIAL_MM = 25.4         # imperial breadboard pitch (1", 1/4-20)
 # Mechanical standards (mm). A Ø1/2" / Thorlabs-metric post is precision-ground to Ø12.7 mm and
 # shares holders across both unit systems, so we use one diameter for both (only the thread label,
 # which we don't model as geometry, differs). See docs/OPTOMECH_SYSTEMS_PLAN.md.
-POST_RADIUS = 6.35              # Ø12.7 mm optical post (TR/RS 1/2" workhorse)
+POST_RADIUS = 6.35              # Ø12.7 mm optical post (TR 1/2" workhorse)
+POST_RADIUS_TALL = 12.5         # Ø25 mm (1") RS-series pillar — stiffer, for tall/raised mounts
+PILLAR_OVER_MM = 130.0          # above this post length, use the fatter Ø1" pillar (stiffness ∝ d⁴)
 BOARD_THICKNESS = 12.7          # 1/2" solid breadboard slab
 MOUNT_DROP = 15.0               # optical axis -> post top: the mount body bridges this gap
 HOLDER_H = 50.0                 # fixed post-holder body length (PH2-class); insertion varies, not the body
@@ -894,9 +896,12 @@ def dress(scene, post_radius=POST_RADIUS):
         i_top, o_top = members[-1]                       # the highest optic sets the pillar height
         pt = o_top.matrix_world.translation
         h = max((pt.z - MOUNT_DROP) - board_top_z, 1.0)
+        # a tall/raised mount (periscope deck, high optic) rides a fatter Ø1" pillar, not a thin
+        # Ø1/2" stick -- the real bench move for stiffness; short mounts keep the Ø1/2" post.
+        pr = POST_RADIUS_TALL if h > PILLAR_OVER_MM else post_radius
         # one base foot + post-holder + pillar for the whole stack (post top under the highest optic)
-        nh = _post_holder("%02d" % i_top, pt.x, pt.y, board_top_z, post_radius, coll)
-        _cyl(BENCH_PREFIX + "Post_%02d" % i_top, post_radius, h,
+        nh = _post_holder("%02d" % i_top, pt.x, pt.y, board_top_z, pr, coll)
+        _cyl(BENCH_PREFIX + "Post_%02d" % i_top, pr, h,
              (pt.x, pt.y, board_top_z + h * 0.5), coll, "post")
         n += nh + 1
         for i, o in members:                             # each optic in the stack gets its own mount
