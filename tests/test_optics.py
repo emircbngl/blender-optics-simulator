@@ -536,6 +536,24 @@ check("cage gets its own post", any(o.name.startswith("BENCH_CagePost_") for o i
 optomech.strip(sc)
 check("strip removes the cage too", not any(o.name.startswith("BENCH_CageRod_") for o in sc.objects))
 
+print("[bench lens-tube system: shared barrel, trace-safe, MCP-knowable]")
+optics_api.build_example("michelson")
+_segt = scan._trace(sc); _nt = len(_segt); _pt, _vt, _ = alignment.measure(_segt, "MI_D", "NONE")
+_cmt = [e["name"] for e in optics_api.get_state()["elements"] if e["name"].startswith("MI_") and e["type"] not in ("SOURCE", "DETECTOR")]
+optics_api.dress_bench(True)
+_posts0t = len([o for o in sc.objects if o.name.startswith("BENCH_Post_")])
+_rt = optics_api.make_tube([_cmt[0], _cmt[1]], "SM1")
+check("make_tube groups two members @SM1", _rt.get("ok") and _rt.get("thread") == "SM1" and set(_rt.get("members", [])) == {_cmt[0], _cmt[1]}, str(_rt))
+_segt2 = scan._trace(sc); _pt2, _vt2, _ = alignment.measure(_segt2, "MI_D", "NONE")
+check("tube does not move the optics (trace identical)", len(_segt2) == _nt and abs(_pt2 - _pt) < 1e-9 and abs(_vt2 - _vt) < 1e-9)
+_tg = optics_api.get_state()["tubes"]
+check("get_state exposes the tube", isinstance(_tg, list) and len(_tg) == 1 and _tg[0]["thread"] == "SM1" and abs(_tg[0]["inner_dia_mm"] - 25.4) < 1e-6, str(_tg))
+check("one barrel + a post built", any(o.name.startswith("BENCH_Tube_") for o in sc.objects) and any(o.name.startswith("BENCH_TubePost_") for o in sc.objects))
+check("individual posts suppressed for tubed members",
+      len([o for o in sc.objects if o.name.startswith("BENCH_Post_")]) == _posts0t - 2)
+optomech.strip(sc)
+check("strip removes the tube too", not any(o.name.startswith("BENCH_Tube_") for o in sc.objects))
+
 oas.unregister()
 
 passed = sum(1 for _, ok in _checks if ok)

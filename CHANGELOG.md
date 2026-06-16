@@ -39,6 +39,13 @@ semantic versioning.
   `cages` block (id, size, rod dia/length/count, axis, members) and each occupied hole reports its
   `support_system`, so an agent knows which optics share rods. Caging never moves the optics →
   trace byte-identical. Regression 119 → 126.
+- **Lens-tube systems — SM05 / SM1 / SM2 (Phase 3 / A1).** Collinear in-line optics can be stacked
+  into one black-anodized **lens-tube barrel** (a hollow pipe with a retaining ring at each open
+  end) on a single post, instead of an individual post each — the real way an SM relay is built.
+  New `make_tube(members, thread)` (optics_api + MCP) and `support_system` values
+  TUBE_SM05/TUBE_SM1/TUBE_SM2 + a `tube_id`. `get_state()` gains a top-level `tubes` block (id,
+  thread, inner/outer Ø, length, axis, members). Optics are not moved → trace byte-identical.
+  Regression 126 → 132.
 - **Opto-mech realism pass (owner review).** Post-holders now carry a **side locking thumbscrew**
   and the base foot shows a **cap screw** fastening it to the table (was a bare floating cylinder);
   kinematic mirror mounts are rebuilt KM100-style with a back-plate and **two knurled actuator

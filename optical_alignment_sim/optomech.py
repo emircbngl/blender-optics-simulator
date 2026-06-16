@@ -484,6 +484,87 @@ def cage_info(scene):
     return out
 
 
+# ---------------------------------------------------------------------------
+# Lens-tube systems (SM05 / SM1 / SM2): one barrel holds an in-line optic stack
+# ---------------------------------------------------------------------------
+# An SM lens tube is a black-anodized threaded barrel; several in-line optics drop into the bore and
+# the whole stack mounts once. Members are grouped by (support_system, tube_id); they share one
+# barrel + one post instead of an individual post each. (thread, major Ø, optic-seat bore Ø) in mm.
+_TUBE_SPEC = {'TUBE_SM05': ('SM05', 13.59, 12.7), 'TUBE_SM1': ('SM1', 26.29, 25.4),
+              'TUBE_SM2': ('SM2', 51.69, 50.8)}
+
+
+def tube_groups(scene):
+    """Map (support_system, tube_id) -> [member optics] for every tube-mounted element."""
+    groups = {}
+    for o in _optical_objects(scene):
+        ss = getattr(o.optics, "support_system", 'POST')
+        if ss in _TUBE_SPEC:
+            groups.setdefault((ss, getattr(o.optics, "tube_id", "") or ""), []).append(o)
+    return groups
+
+
+def _tube_geom(members):
+    """Shared tube geometry (thread, diameters, axis, centroid, end projections) for builder + info."""
+    name, major, bore = _TUBE_SPEC[members[0].optics.support_system]
+    axis = _cage_axis(members)
+    cs = [m.matrix_world.translation for m in members]
+    centroid = sum(cs, Vector((0.0, 0.0, 0.0))) / len(cs)
+    ts = [(c - centroid).dot(axis) for c in cs]
+    margin = max(major * 0.45, 8.0)
+    return name, major, bore, axis, centroid, min(ts) - margin, max(ts) + margin
+
+
+def _build_tube(scene, members, board_top_z, coll, post_radius, tag):
+    """One lens-tube barrel: a hollow black-anodized pipe spanning the members + a retaining ring at
+    each end, on one post. Optics sit inside the bore and show at the open ends."""
+    name, major, bore, axis, centroid, t0, t1 = _tube_geom(members)
+    od = major + 4.0
+    p0 = centroid + axis * t0
+    p1 = centroid + axis * t1
+    barrel = _rod("%sTube_%s" % (BENCH_PREFIX, tag), p0, p1, od * 0.5, coll, "post")
+    inner = _rod("%sTubebore_%s" % (BENCH_PREFIX, tag), p0 - axis * 3.0, p1 + axis * 3.0, bore * 0.5, coll, "post")
+    m = barrel.modifiers.new("bore", 'BOOLEAN'); m.operation = 'DIFFERENCE'; m.object = inner
+    bpy.context.view_layer.objects.active = barrel
+    bpy.ops.object.modifier_apply(modifier=m.name)
+    _im = inner.data
+    bpy.data.objects.remove(inner, do_unlink=True)
+    if _im.users == 0:
+        bpy.data.meshes.remove(_im)
+    _bevel(barrel, 0.6, 1)
+    # retaining ring just inside each open end
+    u, v = _transverse_basis(axis)
+    rot = Matrix(((u.x, v.x, axis.x, 0.0), (u.y, v.y, axis.y, 0.0),
+                  (u.z, v.z, axis.z, 0.0), (0.0, 0.0, 0.0, 1.0)))
+    for k, end in enumerate((p0 + axis * 2.0, p1 - axis * 2.0)):
+        _ring("%sTubeRR_%s_%d" % (BENCH_PREFIX, tag, k), bore * 0.46, bore * 0.06,
+              Matrix.Translation(end) @ rot, coll, "mount")
+    # one post under the barrel centroid, to beam height
+    post_top_z = centroid.z - MOUNT_DROP
+    h = max(post_top_z - board_top_z, 1.0)
+    nh = _post_holder("tube_" + tag, centroid.x, centroid.y, board_top_z, post_radius, coll)
+    _cyl("%sTubePost_%s" % (BENCH_PREFIX, tag), post_radius, h,
+         (centroid.x, centroid.y, board_top_z + h * 0.5), coll, "post")
+    return 3 + nh + 1
+
+
+def tube_info(scene):
+    """Lens-tube assemblies as data for get_state: id, thread, inner Ø, length, axis, members."""
+    if not is_dressed(scene):
+        return []
+    out = []
+    for (ss, tid), members in tube_groups(scene).items():
+        name, major, bore, axis, centroid, t0, t1 = _tube_geom(members)
+        out.append({
+            "id": tid or ss.lower(), "thread": name,
+            "inner_dia_mm": round(bore, 3), "outer_dia_mm": round(major + 4.0, 3),
+            "length_mm": round(t1 - t0, 2),
+            "axis": [round(axis.x, 4), round(axis.y, 4), round(axis.z, 4)],
+            "members": [m.name for m in members],
+        })
+    return out
+
+
 def dress(scene, post_radius=POST_RADIUS):
     """Spawn a hole-grid breadboard under the optics, then a beam-height-driven post + post-holder
     base under each element and a mount ring framing the optic. The board top sits one beam height
@@ -516,11 +597,14 @@ def dress(scene, post_radius=POST_RADIUS):
     _hole_grid(BENCH_PREFIX + "Holes", x0, y0, nx, ny, pitch, board_top_z, coll,
                hole_r=_thread_hole_r(pitch))
     n = 2
-    # cage-mounted optics ride shared rods + one cage post; everything else gets its own post.
+    # cage-mounted optics ride shared rods + one cage post; tube-mounted optics share one barrel +
+    # one post; everything else gets its own post.
     groups = cage_groups(scene)
-    caged = {m.name for members in groups.values() for m in members}
+    tubes = tube_groups(scene)
+    grouped = {m.name for members in groups.values() for m in members}
+    grouped |= {m.name for members in tubes.values() for m in members}
     for i, o in enumerate(elems):
-        if o.name in caged:
+        if o.name in grouped:
             continue
         p = o.matrix_world.translation
         # post top sits MOUNT_DROP below the optical axis; post length = beam_height - MOUNT_DROP
@@ -535,6 +619,8 @@ def dress(scene, post_radius=POST_RADIUS):
         n += nh + 1 + _build_mount(o, coll, i)
     for gi, members in enumerate(groups.values()):
         n += _build_cage(scene, members, board_top_z, coll, post_radius, "%02d" % gi)
+    for ti, members in enumerate(tubes.values()):
+        n += _build_tube(scene, members, board_top_z, coll, post_radius, "%02d" % ti)
     return n
 
 

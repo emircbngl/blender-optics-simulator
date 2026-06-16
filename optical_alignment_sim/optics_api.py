@@ -97,6 +97,8 @@ def get_state():
         "bench": _optomech.grid_info(scene),
         # Cage assemblies (16/30/60 mm): which optics share rods, the cage axis + rod length.
         "cages": _optomech.cage_info(scene),
+        # Lens-tube assemblies (SM05/SM1/SM2): which optics share a barrel, thread + bore + length.
+        "tubes": _optomech.tube_info(scene),
     }
 
 
@@ -367,6 +369,35 @@ def make_cage(members, size_mm=30, cage_id=None):
     tracer.cached_segments = _trace(scene)
     return {"ok": True, "cage_id": cid, "size_mm": size, "members": [o.name for o in objs],
             "cages": _optomech.cage_info(scene)}
+
+
+def make_tube(members, thread='SM1', tube_id=None):
+    """Stack collinear in-line optics into one SM lens-tube barrel (they share one barrel + one post
+    instead of an individual post each). `members` is a list of element names; `thread` in
+    {SM05, SM1, SM2} (Ø1/2", Ø1", Ø2" optics). The tube is exposed in get_state()['tubes']. Does NOT
+    move the optics, so the trace is unchanged."""
+    scene = _scene()
+    sysmap = {'SM05': 'TUBE_SM05', 'SM1': 'TUBE_SM1', 'SM2': 'TUBE_SM2'}
+    key = str(thread).upper()
+    if key not in sysmap:
+        return {"error": "thread must be SM05, SM1 or SM2 (got %r)" % thread}
+    if not isinstance(members, (list, tuple)) or len(members) < 1:
+        return {"error": "members must be a non-empty list of element names"}
+    objs = []
+    for nm in members:
+        o = scene.objects.get(nm)
+        if not o or not (getattr(o, "optics", None) and o.optics.is_optical):
+            return {"error": "not an optical element: %s" % nm}
+        objs.append(o)
+    tid = tube_id or ("tube_%s" % objs[0].name)
+    for o in objs:
+        o.optics.support_system = sysmap[key]
+        o.optics.tube_id = tid
+    if _optomech.is_dressed(scene):
+        _optomech.dress(scene)
+    tracer.cached_segments = _trace(scene)
+    return {"ok": True, "tube_id": tid, "thread": key, "members": [o.name for o in objs],
+            "tubes": _optomech.tube_info(scene)}
 
 
 def scan(kind='STAGE', lo=0.0, hi=0.002, steps=120, element=None):
