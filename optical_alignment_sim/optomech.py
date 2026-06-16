@@ -290,6 +290,20 @@ def _bore(obj, loc, r, depth, seg=24):
     _diff(obj, bpy.context.active_object)
 
 
+def _bore_local(obj, mw, off, r, depth, axis='Z', seg=24):
+    """Subtract a cylindrical hole along a LOCAL axis of frame ``mw`` (for ports/cage bores cut into
+    a housing in the optic's own frame)."""
+    bpy.ops.mesh.primitive_cylinder_add(radius=r, depth=depth, location=(0, 0, 0), vertices=seg)
+    cut = bpy.context.active_object
+    rot = Matrix.Identity(4)
+    if axis == 'X':
+        rot = Matrix.Rotation(math.radians(90), 4, 'Y')
+    elif axis == 'Y':
+        rot = Matrix.Rotation(math.radians(90), 4, 'X')
+    cut.matrix_world = (mw @ Matrix.Translation(Vector(off))) @ rot
+    _diff(obj, cut)
+
+
 def _build_mount(o, coll, idx):
     """Build the mount silhouette that matches the element's mount/element type, oriented in the
     optic's local frame (local +Z is the optical axis for inline parts; the cube body for splitters).
@@ -312,16 +326,33 @@ def _build_mount(o, coll, idx):
             return 2
         return 1
     if et in {'BEAMSPLITTER', 'PRISM_MIRROR'}:
-        # cube mount: a platform plate under the cube + a back plate, aligned to the cube faces
-        s = ca * 1.25
-        _obox(pre + "CubeBase_" + nm, (s, s, 5.0), mw, (0, 0, -s * 0.62), coll, "mount")
-        _obox(pre + "CubeBack_" + nm, (s, 5.0, s), mw, (0, -s * 0.62, 0), coll, "mount")
-        return 2
+        # 30 mm cage-cube housing: a closed block the beam TUNNELS through, with large SM1 port
+        # apertures on the beam faces (so the cube optic shows through) + four cage-rod bores at the
+        # corners on the 30 mm square -- a precision cube mount, not a homemade tray.
+        s = ca * 2.6
+        body = eg._cube(pre + "CubeBody_" + nm, Vector((s, s, s)), coll)
+        body.matrix_world = mw
+        body.data.materials.clear(); body.data.materials.append(_MATS["mount"]())
+        ap = max(ca * 0.95, 6.0)
+        _bore_local(body, mw, (0, 0, 0), ap, s * 2.0, axis='X')      # IN/OUT optical port through the cube
+        _bore_local(body, mw, (0, 0, 0), ap, s * 2.0, axis='Y')      # REFLECT port (side face)
+        cg = 15.0                                                     # 30 mm cage-rod square
+        for oy in (-cg, cg):
+            for oz in (-cg, cg):
+                _bore_local(body, mw, (0.0, oy, oz), 2.0, s * 2.0, axis='X')
+        _bevel(body, 1.0, 2)
+        return 1
     if mt == 'ROTATION' or et in {'WAVEPLATE', 'POLARIZER'}:
-        # rotation mount: optic ring + a wider knurled collar + a radial index nub (reads "rotates")
-        _ring(pre + "Mount_" + nm, ca * 1.18, ca * 0.16, mw, coll)
-        _ocyl(pre + "Collar_" + nm, ca * 1.5, 6.0, mw, (0, 0, 0), coll, "mount")
-        _obox(pre + "Index_" + nm, (2.5, 2.5, 4.0), mw, (ca * 1.5, 0, 0), coll, "post")
+        # RSP rotation mount: a squat fixed housing + a rotating inner ring nested in front with a
+        # visible SEAM between them (the "this rotates" cue), both bored for the optic, plus a small
+        # recessed top setscrew socket -- not a donut-on-a-tube with a proud nub.
+        body = _ocyl(pre + "RSPhousing_" + nm, max(ca * 1.05, 9.0), 13.0, mw, (0, 0, -1.0), coll, "mount")
+        _bore_local(body, mw, (0, 0, 0), ca * 1.0, 30.0, axis='Z')
+        _bevel(body, 0.6, 2)
+        ring = _ocyl(pre + "RSPring_" + nm, ca * 0.92, 7.0, mw, (0, 0, 4.0), coll, "mount")    # rotating front ring
+        _bore_local(ring, mw, (0, 0, 4.0), ca * 0.78, 14.0, axis='Z')
+        _bevel(ring, 0.5, 2)
+        _ocyl(pre + "RSPset_" + nm, 1.3, 5.0, mw, (0.0, ca * 0.95, 4.0), coll, "hole", axis='Y')  # recessed setscrew
         return 3
     if mt in ('KINEMATIC_2AXIS', 'KINEMATIC_3AXIS', 'GIMBAL') or et == 'MIRROR':
         # KM100/KS1-style kinematic mount: TWIN same-outline plates floating on a visible air gap;
@@ -349,9 +380,12 @@ def _build_mount(o, coll, idx):
         for an, (fx, fy) in (("S0", (0.20, 0.34)), ("S1", (-0.34, -0.06))):     # standoff springs (gap bridge)
             _ocyl(pre + an + "_" + nm, 1.4, 8.0, mw, (hp * fx, hp * fy, -7.5), coll, "steel")
         return 5 + 3 * len(adj)
-    # threaded lens / filter / window / generic: a retaining ring inside a short lens-cell wall
-    _ring(pre + "Mount_" + nm, ca * 1.18, ca * 0.16, mw, coll)
-    _ocyl(pre + "Cell_" + nm, ca * 1.28, 5.0, mw, (0, 0, 0), coll, "mount")
+    # threaded lens mount (LMR): a substantial BARE-ALUMINIUM cell (the LMR signature is bright 6061,
+    # not black anodize), bored for the optic, with a thin retaining ring near the front face.
+    body = _ocyl(pre + "Cell_" + nm, ca * 1.5, 12.0, mw, (0, 0, 0), coll, "alu")
+    _bore_local(body, mw, (0, 0, 0), ca * 1.0, 26.0, axis='Z')
+    _bevel(body, 0.6, 2)
+    _ring(pre + "Mount_" + nm, ca * 1.05, ca * 0.08, mw @ Matrix.Translation((0.0, 0.0, 3.0)), coll, "alu")
     return 2
 
 

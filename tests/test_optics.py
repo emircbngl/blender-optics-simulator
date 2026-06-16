@@ -504,7 +504,7 @@ check("mount geometry leaves trace identical", len(scan._trace(sc)) == _nseg)
 _names = [o.name for o in sc.objects if o.name.startswith("BENCH_")]
 _has = lambda pre: any(n.startswith("BENCH_" + pre) for n in _names)
 check("mirrors get a kinematic back-plate", _has("KMplate"))
-check("beamsplitter gets a cube platform (not a hoop)", _has("CubeBase"))
+check("beamsplitter gets a cage-cube housing (not a hoop)", _has("CubeBody"))
 check("sources/detectors get a bracket, not an optic ring", _has("Bracket"))
 # the beamsplitter must NOT be wrapped by a torus Mount ring (the old horizontal-hoop bug)
 _bs = next((o for o in sc.objects if getattr(o.optics, "is_optical", False) and o.optics.element_type == 'BEAMSPLITTER'), None)
