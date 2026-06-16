@@ -4,6 +4,17 @@ All notable changes to the **Blender Optics Simulator** (`optical_alignment_sim`
 here. The format follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 semantic versioning.
 
+## [0.8.2]
+
+### Fixed — render polish (owner feedback)
+- **Laser / fibre sources** now read as real heads: a dark anodized **housing** with only the front
+  **exit aperture glowing** (slot 2), instead of a uniformly glowing can.
+- **PBS** is now clearly distinguishable from a 50/50 beamsplitter — its polarizing coating shows as a
+  vivid, mirror-like magenta diagonal vs. the BS's subtle blue.
+- **Periscope** no longer blocks its own mirror: the post-clamp arm stops **behind** the mirror mount
+  (a clear-aperture back-off) and the pillar offset grew (30→44 mm), so neither the arm nor the post
+  intrudes on the optic face or the beam. All README renders regenerated with these fixes.
+
 ## [0.8.1]
 
 ### Changed — periscope rebuilt as the real RS99 assembly
