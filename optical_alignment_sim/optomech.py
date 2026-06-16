@@ -304,6 +304,28 @@ def _bore_local(obj, mw, off, r, depth, axis='Z', seg=24):
     _diff(obj, cut)
 
 
+def _bore_grid(board, x0, y0, nx, ny, pitch, top_z, hole_r, depth=2.6):
+    """Bore the tapped-hole array into the board as real recessed pockets (one merged cutter of N
+    cylinders → a single boolean), so holes cast interior shadow instead of reading as painted dots.
+    Capped for cost: above the cap the board keeps its flat-disc holes. Returns True if it bored."""
+    import bmesh
+    if nx * ny > 900:
+        return False
+    me = bpy.data.meshes.new(BENCH_PREFIX + "_holecut")
+    bm = bmesh.new()
+    for j in range(ny):
+        for i in range(nx):
+            bmesh.ops.create_cone(bm, cap_ends=True, segments=10,
+                                  radius1=hole_r, radius2=hole_r, depth=depth + 2.0,
+                                  matrix=Matrix.Translation((x0 + i * pitch, y0 + j * pitch,
+                                                             top_z - depth * 0.5 + 1.0)))
+    bm.to_mesh(me); bm.free()
+    cut = bpy.data.objects.new(BENCH_PREFIX + "_holecut", me)
+    bpy.context.scene.collection.objects.link(cut)
+    _diff(board, cut)
+    return True
+
+
 def _build_mount(o, coll, idx):
     """Build the mount silhouette that matches the element's mount/element type, oriented in the
     optic's local frame (local +Z is the optical axis for inline parts; the cube body for splitters).
@@ -775,12 +797,15 @@ def dress(scene, post_radius=POST_RADIUS):
     ny = min(int(round((y1 - y0) / pitch)) + 1, 80)
     th = BOARD_THICKNESS
     margin = pitch * 0.6  # board overhang past the outermost holes
-    _box(BENCH_PREFIX + "Breadboard",
-         (x1 - x0 + 2 * margin, y1 - y0 + 2 * margin, th),
-         ((x0 + x1) * 0.5, (y0 + y1) * 0.5, board_top_z - th * 0.5),
-         coll, "board")
-    _hole_grid(BENCH_PREFIX + "Holes", x0, y0, nx, ny, pitch, board_top_z, coll,
-               hole_r=_thread_hole_r(pitch))
+    board = _box(BENCH_PREFIX + "Breadboard",
+                 (x1 - x0 + 2 * margin, y1 - y0 + 2 * margin, th),
+                 ((x0 + x1) * 0.5, (y0 + y1) * 0.5, board_top_z - th * 0.5),
+                 coll, "board")
+    # bore real recessed holes into the board; the dark hole discs then sit at the pocket FLOOR so
+    # each hole reads as a shadowed recess, not a painted dot (falls back to flat discs above the cap)
+    bored = _bore_grid(board, x0, y0, nx, ny, pitch, board_top_z, _thread_hole_r(pitch))
+    _hole_grid(BENCH_PREFIX + "Holes", x0, y0, nx, ny, pitch,
+               board_top_z - 2.45 if bored else board_top_z, coll, hole_r=_thread_hole_r(pitch))
     # four feet so the breadboard sits on a surface instead of floating in the void
     cxb = (x0 + x1) * 0.5; cyb = (y0 + y1) * 0.5
     fx = (x1 - x0) * 0.5 + margin - pitch * 0.5
