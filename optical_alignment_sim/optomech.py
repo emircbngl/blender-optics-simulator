@@ -557,13 +557,8 @@ def _build_tube(scene, members, board_top_z, coll, post_radius, tag):
     if _im.users == 0:
         bpy.data.meshes.remove(_im)
     _bevel(barrel, 0.6, 1)
-    # retaining ring just inside each open end
-    u, v = _transverse_basis(axis)
-    rot = Matrix(((u.x, v.x, axis.x, 0.0), (u.y, v.y, axis.y, 0.0),
-                  (u.z, v.z, axis.z, 0.0), (0.0, 0.0, 0.0, 1.0)))
-    for k, end in enumerate((p0 + axis * 2.0, p1 - axis * 2.0)):
-        _ring("%sTubeRR_%s_%d" % (BENCH_PREFIX, tag, k), bore * 0.46, bore * 0.06,
-              Matrix.Translation(end) @ rot, coll, "mount")
+    # (no proud end ring: a real SM retaining ring seats flush *inside* the bore against the optic;
+    # a collar sticking out of the mouth just reads as a mystery part, so the barrel ends open.)
     # one post under the barrel centroid, to beam height
     post_top_z = centroid.z - MOUNT_DROP
     h = max(post_top_z - board_top_z, 1.0)
@@ -633,31 +628,38 @@ def _build_rail(scene, members, board_top_z, coll, post_radius, tag):
     margin = 28.0
     half = 0.5 * (max(ts) - min(ts)) + margin
     mid = Vector((cxy.x, cxy.y, board_top_z)) + ax * (0.5 * (max(ts) + min(ts)))
-    hw = RAIL_W * 0.5
-    # dovetail rail cross-section: a base slab + an UNDERCUT ridge (wider at the top than its neck)
-    rail_prof = [(-hw, 0.0), (hw, 0.0), (hw, 4.0), (6.0, 4.0),
-                 (8.0, 11.0), (-8.0, 11.0), (-6.0, 4.0), (-hw, 4.0)]
+    hw = RAIL_W * 0.5    # 9.55
+    # RLA-style dovetail bar: a narrow base neck flaring to a WIDER top (the overhang the carrier
+    # hooks under) so a carrier can slide along but not lift off.
+    rail_prof = [(-7.0, 0.0), (7.0, 0.0), (7.0, 2.5), (hw, 4.5),
+                 (hw, 9.5), (-hw, 9.5), (-hw, 4.5), (-7.0, 2.5)]
     rail = _extrude_profile(BENCH_PREFIX + "Rail_" + tag, rail_prof,
                             mid - ax * half, mid + ax * half, perp, coll, "holder")
     _bevel(rail, 0.5, 1)
     n = 1
     carrier_top = board_top_z + 18.0
-    cl = 13.0   # carrier half-length along the rail axis
-    # carrier cross-section: a block straddling the ridge with a matching dovetail GROOVE (the cut
-    # the owner asked for) -- slightly oversized so it clamps the ridge instead of fusing to it
-    car_prof = [(-12.0, 4.0), (-12.0, 18.0), (12.0, 18.0), (12.0, 4.0),
-                (6.6, 4.0), (8.6, 11.4), (-8.6, 11.4), (-6.6, 4.0)]
+    cl = 12.0   # carrier half-length along the rail axis
+    # carrier: a chunky block that WRAPS the rail (a dovetail groove hooking under the overhang) with
+    # a top post seat -- and a front locking thumbscrew that clamps it to the rail (the missing screw).
+    car_prof = [(-13.0, 0.0), (-13.0, 18.0), (13.0, 18.0), (13.0, 0.0),
+                (7.5, 0.0), (7.5, 2.0), (10.05, 4.0), (10.05, 10.0),
+                (-10.05, 10.0), (-10.05, 4.0), (-7.5, 2.0), (-7.5, 0.0)]
     for i, m in enumerate(members):
         c = m.matrix_world.translation
         t = (Vector((c.x, c.y, 0.0)) - cxy).dot(ax)
         cc = Vector((cxy.x, cxy.y, board_top_z)) + ax * t
         _bevel(_extrude_profile(BENCH_PREFIX + "Carrier_%s_%d" % (tag, i), car_prof,
-                                cc - ax * cl, cc + ax * cl, perp, coll, "clamp"), 0.5, 1)
+                                cc - ax * cl, cc + ax * cl, perp, coll, "clamp"), 0.6, 1)
+        # front locking thumbscrew (shaft + knurled knob) clamping the carrier to the rail
+        sp = Vector((cc.x, cc.y, board_top_z + 10.0)) + perp * 12.5
+        _rod(BENCH_PREFIX + "RailLocks_%s_%d" % (tag, i), sp, sp + perp * 6.0, 1.6, coll, "post")
+        _bevel(_rod(BENCH_PREFIX + "RailLockh_%s_%d" % (tag, i), sp + perp * 6.0, sp + perp * 10.0,
+                    3.4, coll, "mount", seg=20), 0.6, 1)
         post_top_z = c.z - MOUNT_DROP
         h = max(post_top_z - carrier_top, 1.0)
         _cyl(BENCH_PREFIX + "RailPost_%s_%d" % (tag, i), post_radius, h,
              (c.x, c.y, carrier_top + h * 0.5), coll, "post")
-        n += 2 + _build_mount(m, coll, 100 + i)   # 100+ avoids name clash with the free-loop indices
+        n += 4 + _build_mount(m, coll, 100 + i)   # 100+ avoids name clash with the free-loop indices
     return n
 
 
