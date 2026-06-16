@@ -111,8 +111,8 @@ POST_RADIUS_TALL = 12.5         # Ø25 mm (1") RS-series pillar — stiffer, for
 PILLAR_OVER_MM = 130.0          # above this post length, use the fatter Ø1" pillar (stiffness ∝ d⁴)
 VERTICAL_STACK_MM = 25.0        # optics this far apart in z at one xy => a vertical beam runs between
                                 # them; the pillar must be OFFSET so it doesn't sit in the beam path
-PILLAR_OFFSET = 38.0            # how far to push a vertical-fold pillar off the beam axis (Ø1" pillar
-                                # radius + mount-arm clearance); mirror mounts cantilever back onto it
+PILLAR_OFFSET = 30.0            # how far to push a vertical-fold (RS99 periscope) pillar off the beam
+                                # axis: Ø1" post radius + the post-clamp/mount reach back onto the beam
 BOARD_THICKNESS = 12.7          # 1/2" solid breadboard slab
 MOUNT_DROP = 15.0               # optical axis -> post top: the mount body bridges this gap
 HOLDER_H = 50.0                 # fixed post-holder body length (PH2-class); insertion varies, not the body
@@ -460,6 +460,50 @@ def _post_holder(tag, x, y, board_top_z, post_radius, coll):
     _bevel(_ocyl(BENCH_PREFIX + "Lockh_" + tag, post_radius * 0.7, post_radius * 0.7,
                  mw, (hr + post_radius * 1.05, 0.0, 0.0), coll, "steel", axis='X'), 0.45, 2)
     return 4
+
+
+def _clamp_fork(tag, x, y, board_top_z, post_radius, coll, away):
+    """A clamping fork (Thorlabs CF175 style) anchoring a periscope pillar to the table: a flat slotted
+    bar bolted DOWN, extending outboard (along `away` = unit (dx,dy) from beam toward post), with a
+    collar gripping the post base. Stiffer than a slip-fit holder -- the real RS99 periscope base."""
+    fh = 11.0
+    ax, ay = away
+    L, W = 64.0, 30.0
+    cx = x + ax * (L * 0.5 - post_radius)
+    cy = y + ay * (L * 0.5 - post_radius)
+    dims = (L, W, fh) if abs(ax) >= abs(ay) else (W, L, fh)
+    plate = eg._cube(BENCH_PREFIX + "Fork_" + tag, Vector(dims), coll)
+    plate.location = (cx, cy, board_top_z + fh * 0.5)
+    plate.data.materials.clear(); plate.data.materials.append(_MATS["clamp"]())
+    for t in (0.45, 0.78):                                   # two bolt-down counterbores along the bar
+        bx, by = x + ax * (L * t), y + ay * (L * t)
+        _bore(plate, (bx, by, board_top_z + fh * 0.5), 3.4, fh * 2.5)
+        _bore(plate, (bx, by, board_top_z + fh - 1.0), 5.6, 4.0)
+    _bevel(plate, 1.0, 1)
+    collar = _cyl(BENCH_PREFIX + "ForkCollar_" + tag, post_radius + 5.0, fh + 12.0,
+                  (x, y, board_top_z + (fh + 12.0) * 0.5), coll, "clamp")
+    _bevel(collar, 1.0, 1)
+    return 2
+
+
+def _periscope_clamp(tag, ox, oy, pr, tx, ty, z, coll):
+    """One RS99 mirror unit: a 360deg post-clamp COLLAR gripping the Ø1" post at this mirror's height +
+    a short stout reach to the optic on the beam axis (replaces the thin spider-arm). A side lock knob
+    shows the clamp is fastened to the post."""
+    col = _cyl(BENCH_PREFIX + "Clamp_" + tag, pr + 5.0, 18.0, (ox, oy, z), coll, "mount")
+    _bevel(col, 0.8, 1)
+    dx, dy = tx - ox, ty - oy
+    d = (dx * dx + dy * dy) ** 0.5 or 1.0
+    ux, uy = dx / d, dy / d
+    _bevel(_rod(BENCH_PREFIX + "Arm_" + tag, (ox + ux * pr, oy + uy * pr, z), (tx, ty, z),
+                7.5, coll, "mount", seg=20), 0.6, 1)
+    # side locking thumbscrew on the collar, on the far side from the beam (radial)
+    axis = 'X' if abs(ux) >= abs(uy) else 'Y'
+    s = -1.0 if (ux + uy) >= 0 else 1.0                      # point away from the beam
+    mw = Matrix.Translation((ox - ux * (pr + 4.0), oy - uy * (pr + 4.0), z))
+    _bevel(_ocyl(BENCH_PREFIX + "Clamplock_" + tag, pr * 0.34, pr * 0.5, mw,
+                 (s * abs(ux) * 2.0, s * abs(uy) * 2.0, 0.0), coll, "steel", axis=axis), 0.4, 1)
+    return 3
 
 
 # ---------------------------------------------------------------------------
@@ -944,18 +988,17 @@ def dress(scene, post_radius=POST_RADIUS):
             sy = sum(abs(o.y - pt.y) for o in others)
             dirx, diry = (1.0, 0.0) if sy >= sx else (0.0, 1.0)
             ox, oy = pt.x + dirx * PILLAR_OFFSET, pt.y + diry * PILLAR_OFFSET
-            h = max(pt.z - board_top_z, 1.0)             # pillar reaches up to the top deck
-            nh = _post_holder("%02d" % i_top, ox, oy, board_top_z, POST_RADIUS_TALL, coll)
+            h = max(pt.z - board_top_z, 1.0)             # one Ø1" post reaches up to the top deck
+            # RS99 periscope: a clamping fork anchors the single Ø1" post; each mirror rides a post-clamp
+            # collar that reaches back onto the beam axis (NOT a thin spider-arm on a slip-fit holder).
+            nf = _clamp_fork("%02d" % i_top, ox, oy, board_top_z, POST_RADIUS_TALL, coll, (dirx, diry))
             _cyl(BENCH_PREFIX + "Post_%02d" % i_top, POST_RADIUS_TALL, h,
                  (ox, oy, board_top_z + h * 0.5), coll, "post")
-            n += nh + 1
+            n += nf + 1
             for i, o in members:
                 op = o.matrix_world.translation
-                # cantilever arm from the offset pillar surface in to the optic on the beam axis
-                _rod(BENCH_PREFIX + "Arm_%02d" % i,
-                     (ox - dirx * POST_RADIUS_TALL, oy - diry * POST_RADIUS_TALL, op.z),
-                     (op.x, op.y, op.z), 5.0, coll, "mount")
-                n += 1 + _build_mount(o, coll, i)
+                n += _periscope_clamp("%02d" % i, ox, oy, POST_RADIUS_TALL, op.x, op.y, op.z, coll)
+                n += _build_mount(o, coll, i)
         else:
             h = max((pt.z - MOUNT_DROP) - board_top_z, 1.0)
             # a tall/raised mount (high optic) rides a fatter Ø1" pillar, not a thin Ø1/2" stick --

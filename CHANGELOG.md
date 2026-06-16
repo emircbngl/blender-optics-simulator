@@ -4,6 +4,15 @@ All notable changes to the **Blender Optics Simulator** (`optical_alignment_sim`
 here. The format follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 semantic versioning.
 
+## [0.8.1]
+
+### Changed — periscope rebuilt as the real RS99 assembly
+- The vertical-fold (periscope) dressing now models the actual **Thorlabs RS99** periscope: a single
+  Ø1" post anchored by a **clamping fork**, with each 45° mirror riding a **360° post-clamp collar**
+  that reaches back onto the beam axis (plus a side lock knob) — replacing the thin cantilever
+  "spider-arm" on a slip-fit holder. The beam still folds up beside the post in clear air; the
+  `beam_through_post` validator stays clean and the trace is unchanged.
+
 ## [0.8.0]
 
 ### Added — realistic optical-element geometry
