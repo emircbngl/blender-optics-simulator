@@ -314,12 +314,11 @@ def _build_mount(o, coll, idx):
                             mw @ Matrix.Translation((0.0, 0.0, -1.0)), coll, "mount"), 0.7, 2)
         _bevel(_obox(pre + "KMback_" + nm, (plate * 0.86, plate * 0.86, 6.0),
                      mw, (0, 0, -13.0), coll, "mount"), 0.7, 2)
+        # the two tip/tilt adjusters keep their corners; the 3-adjuster (KS1) variant just ADDS a
+        # third screw at a third corner -- the existing two never move.
+        adj = [("A0", (plate * 0.30, -plate * 0.30)), ("A1", (-plate * 0.30, plate * 0.30))]
         if mt in ('KINEMATIC_3AXIS', 'GIMBAL'):
-            rr = plate * 0.34
-            adj = [("A%d" % k, (rr * math.cos(math.radians(a)), rr * math.sin(math.radians(a))))
-                   for k, a in enumerate((90.0, 210.0, 330.0))]    # triangular 3-adjuster
-        else:
-            adj = [("A0", (plate * 0.30, -plate * 0.30)), ("A1", (-plate * 0.30, plate * 0.30))]
+            adj.append(("A2", (-plate * 0.30, -plate * 0.30)))
         for an, (sx, sy) in adj:
             _ocyl(pre + an + "s_" + nm, 1.5, 16.0, mw, (sx, sy, -13.0), coll, "post")            # shaft
             _bevel(_ocyl(pre + an + "k_" + nm, 3.4, 5.0, mw, (sx, sy, -22.0), coll, "mount"), 0.8, 2)  # knob
