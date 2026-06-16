@@ -816,17 +816,23 @@ def validate(scene):
         if z < holder_top - 1.0:
             issues.append({"kind": "mount_below_holder", "element": o.name,
                            "detail": "optic z=%.1f below holder top %.1f" % (z, holder_top)})
-    # 2. no two support posts/pillars collide (same xy, overlapping radius)
+    # 2. no two support posts/pillars collide -- compare against EACH post's real radius (read from its
+    #    bounding box), not a fixed Ø1/2" guess, so a Ø1" pillar or a fat cage rod is judged correctly.
     posts = [ob for ob in scene.objects
              if any(ob.name.startswith(BENCH_PREFIX + p)
                     for p in ("Post_", "CagePost_", "TubePost_"))]
+    def _r(ob):                                          # post radius from its (axis-aligned) footprint
+        d = ob.dimensions
+        return max(d.x, d.y) * 0.5
     for a in range(len(posts)):
         for b in range(a + 1, len(posts)):
             pa, pb = posts[a].matrix_world.translation, posts[b].matrix_world.translation
-            if ((pa.x - pb.x) ** 2 + (pa.y - pb.y) ** 2) ** 0.5 < 2.2 * POST_RADIUS:
+            dist = ((pa.x - pb.x) ** 2 + (pa.y - pb.y) ** 2) ** 0.5
+            clear = 1.1 * (_r(posts[a]) + _r(posts[b]))  # touching radii + 10% breathing room
+            if dist < clear:
                 issues.append({"kind": "post_overlap",
                                "element": "%s | %s" % (posts[a].name, posts[b].name),
-                               "detail": "posts within %.1f mm (coaxial collision)" % (2.2 * POST_RADIUS)})
+                               "detail": "posts %.1f mm apart, need >=%.1f (collision)" % (dist, clear)})
     return issues
 
 
