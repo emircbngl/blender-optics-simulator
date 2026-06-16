@@ -432,6 +432,16 @@ for _ in range(3):
 check("example rebuild frees meshes (no orphan growth)", len(bpy.data.meshes) <= _em0 + 2,
       "delta=%d" % (len(bpy.data.meshes) - _em0))
 
+# clear stray API/library-test optical objects (RT_*, FILT_*, BS_*, MO_*, ...) so the bench sections
+# see ONLY the example optics -- with xy-stacked posts, leftover optics sharing a hole skew counts.
+_ex_objs = set()
+for _c in bpy.data.collections:
+    if _c.name.startswith("OpticsExample_"):
+        _ex_objs.update(o.name for o in _c.objects)
+for _o in [o for o in bpy.data.objects
+           if getattr(getattr(o, "optics", None), "is_optical", False) and o.name not in _ex_objs]:
+    bpy.data.objects.remove(_o, do_unlink=True)
+
 print("[bench dressing: additive, not traced, reversible]")
 from optical_alignment_sim import optomech
 optics_api.build_example("michelson")

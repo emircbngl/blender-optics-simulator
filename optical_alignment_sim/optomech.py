@@ -339,13 +339,21 @@ def _build_mount(o, coll, idx):
     pre = BENCH_PREFIX
     nm = "%02d" % idx
 
+    if et in {'DETECTOR', 'PHOTODIODE', 'POWER_METER', 'WAVEFRONT_SENSOR'}:
+        # camera/detector: a cuboid body housing BEHIND the sensor (local -Z) + a C-mount barrel on
+        # the FRONT (beam side, local +Z) + a vertical stem down to the post top (world-vertical), so
+        # it reads as a real camera bolted to its post -- not a flat plate stuck to a bracket.
+        _bevel(_obox(pre + "CamBody_" + nm, (ca * 1.7, ca * 1.7, ca * 1.5), mw, (0, 0, -ca * 0.78), coll, "mount"), 1.2, 2)
+        _bevel(_ocyl(pre + "Cmount_" + nm, ca * 0.6, ca * 0.95, mw, (0, 0, ca * 0.72), coll, "clamp"), 0.7, 2)
+        top_z = p.z - MOUNT_DROP                     # the post top dress() leaves under the optic
+        cam_bot = p.z - ca * 0.85                    # camera body underside (world)
+        if cam_bot - top_z > 0.5:
+            _bevel(_cyl(pre + "CamStem_" + nm, 3.0, cam_bot - top_z,
+                        (p.x, p.y, (top_z + cam_bot) * 0.5), coll, "mount"), 0.5, 1)
+        return 3
     if et in _SOURCE_DET:
-        # self-contained body (laser/camera/crystal): a bevelled saddle clamp to the post; a
-        # detector/camera also gets a C-mount adapter nose on its sensor face (local +Z = beam side).
-        _bevel(_obox(pre + "Bracket_" + nm, (ca * 1.4, ca * 1.05, 7.0), mw, (0, 0, -ca * 0.95), coll, "clamp"), 0.8, 2)
-        if et in {'DETECTOR', 'PHOTODIODE', 'POWER_METER', 'WAVEFRONT_SENSOR'}:
-            _bevel(_ocyl(pre + "Cmount_" + nm, ca * 0.62, 9.0, mw, (0, 0, ca * 0.72), coll, "mount"), 0.7, 2)
-            return 2
+        # source/laser/crystal: a self-contained body on a saddle clamp to the post
+        _bevel(_obox(pre + "Bracket_" + nm, (ca * 1.4, ca * 1.05, 8.0), mw, (0, 0, -ca * 0.95), coll, "clamp"), 0.8, 2)
         return 1
     if et in {'BEAMSPLITTER', 'PRISM_MIRROR'}:
         # 30 mm cage-cube housing: a closed block the beam TUNNELS through, with large SM1 port
@@ -386,21 +394,26 @@ def _build_mount(o, coll, idx):
         _bevel(_bored_plate(pre + "KMplate_" + nm, plate, 6.0, ca * 0.95,
                             mw @ Matrix.Translation((0.0, 0.0, -1.0)), coll, "mount"), 0.7, 2)
         _bevel(_obox(pre + "KMback_" + nm, (plate, plate, 7.0), mw, (0, 0, -14.0), coll, "mount"), 0.7, 2)
-        adj = [("A0", (0.30, -0.30)), ("A1", (-0.30, 0.30))]      # adjacent corners (tip + tilt)
+        # the two actuators act on PERPENDICULAR edges (one drives tilt, one drives pan) -- bottom-
+        # centre + right-centre -- pivoting about the OPPOSITE (top-left) corner. They are not on a
+        # diagonal. The 3-adjuster (KS1) variant adds a third on the remaining (left) edge.
+        e = hp * 0.72
+        adj = [("A0", (0.0, -e)), ("A1", (e, 0.0))]
         if mt in ('KINEMATIC_3AXIS', 'GIMBAL'):
-            adj.append(("A2", (-0.30, -0.30)))                   # KS1 adds a third at a corner
-        for an, (fx, fy) in adj:
-            sx, sy = hp * fx * 0.82, hp * fy * 0.82
+            adj.append(("A2", (-e, 0.0)))
+        pivot = (-hp * 0.6, hp * 0.6)        # top-left, opposite the bottom+right actuators
+        for an, (sx, sy) in adj:
             _ocyl(pre + an + "s_" + nm, 1.5, 34.0, mw, (sx, sy, -16.0), coll, "steel")              # long shaft, out the back
             _ocyl(pre + an + "b_" + nm, 3.2, 5.0, mw, (sx, sy, -14.0), coll, "mount")               # bushing at the rear plate
             _bevel(_ocyl(pre + an + "k_" + nm, 4.2, 6.0, mw, (sx, sy, -33.0), coll, "steel"), 0.9, 2)  # rear knurled knob
         bpy.ops.mesh.primitive_uv_sphere_add(radius=2.2, location=(0.0, 0.0, 0.0))
         _pv = bpy.context.active_object; _pv.name = pre + "KMpivot_" + nm
-        _pv.matrix_world = mw @ Matrix.Translation((-hp * 0.30 * 0.82, -hp * 0.30 * 0.82, -8.0))
+        _pv.matrix_world = mw @ Matrix.Translation((pivot[0], pivot[1], -8.0))
         _pv.data.materials.clear(); _pv.data.materials.append(_MATS["steel"]())
         eg._link_only(_pv, coll)
-        for an, (fx, fy) in (("S0", (0.20, 0.34)), ("S1", (-0.34, -0.06))):     # standoff springs (gap bridge)
-            _ocyl(pre + an + "_" + nm, 1.4, 8.0, mw, (hp * fx, hp * fy, -7.5), coll, "steel")
+        # two standoff springs bridging the gap, set in from the actuator edges
+        for an, (sx, sy) in (("S0", (e * 0.5, -e * 0.5)), ("S1", (-e * 0.5, e * 0.5))):
+            _ocyl(pre + an + "_" + nm, 1.4, 8.0, mw, (sx, sy, -7.5), coll, "steel")
         return 5 + 3 * len(adj)
     # threaded lens mount (LMR): a substantial BARE-ALUMINIUM cell (the LMR signature is bright 6061,
     # not black anodize), bored for the optic, with a thin retaining ring near the front face.
@@ -825,20 +838,26 @@ def dress(scene, post_radius=POST_RADIUS):
     grouped = {m.name for members in groups.values() for m in members}
     grouped |= {m.name for members in tubes.values() for m in members}
     grouped |= {m.name for members in rails.values() for m in members}
+    # Group free optics by their board (x,y): optics STACKED at the same xy (e.g. a periscope's two
+    # fold mirrors) share ONE pillar to the tallest one, instead of two coaxial posts colliding.
+    stacks = {}
     for i, o in enumerate(elems):
         if o.name in grouped:
             continue
         p = o.matrix_world.translation
-        # post top sits MOUNT_DROP below the optical axis; post length = beam_height - MOUNT_DROP
-        # for any optic at the reference height, so equal-height optics share one standard post.
-        post_top_z = p.z - MOUNT_DROP
-        h = max(post_top_z - board_top_z, 1.0)
-        # base foot (bolted) + fixed-length post-holder body with a locking thumbscrew + the post
-        nh = _post_holder("%02d" % i, p.x, p.y, board_top_z, post_radius, coll)
-        _cyl(BENCH_PREFIX + "Post_%02d" % i, post_radius, h,
-             (p.x, p.y, board_top_z + h * 0.5), coll, "post")
-        # mount silhouette matched to the element/mount type (kinematic / rotation / cube / lens...)
-        n += nh + 1 + _build_mount(o, coll, i)
+        stacks.setdefault((round(p.x / 3.0), round(p.y / 3.0)), []).append((i, o))
+    for members in stacks.values():
+        members.sort(key=lambda io: io[1].matrix_world.translation.z)
+        i_top, o_top = members[-1]                       # the highest optic sets the pillar height
+        pt = o_top.matrix_world.translation
+        h = max((pt.z - MOUNT_DROP) - board_top_z, 1.0)
+        # one base foot + post-holder + pillar for the whole stack (post top under the highest optic)
+        nh = _post_holder("%02d" % i_top, pt.x, pt.y, board_top_z, post_radius, coll)
+        _cyl(BENCH_PREFIX + "Post_%02d" % i_top, post_radius, h,
+             (pt.x, pt.y, board_top_z + h * 0.5), coll, "post")
+        n += nh + 1
+        for i, o in members:                             # each optic in the stack gets its own mount
+            n += _build_mount(o, coll, i)
     for gi, members in enumerate(groups.values()):
         n += _build_cage(scene, members, board_top_z, coll, post_radius, "%02d" % gi)
     for ti, members in enumerate(tubes.values()):
