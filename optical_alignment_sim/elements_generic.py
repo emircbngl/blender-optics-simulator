@@ -173,7 +173,7 @@ def mirror(name, loc, in_dir, out_dir, coll=None, size=25.0):
     """A flat fold mirror that turns a beam from in_dir to out_dir."""
     n = (Vector(out_dir).normalized() - Vector(in_dir).normalized())
     n = n.normalized() if n.length > 1e-6 else Vector((0, 0, 1))
-    o = _cube(name, (size, size, 4.0), coll)
+    o = _disc(name, size * 0.5, 4.0, coll)        # round mirror substrate (Ø1" look), normal = +Z
     o.data.materials.clear(); o.data.materials.append(MATS["mirror"]())
     _tag(o, 'MIRROR', clear_aperture=size * 0.5, reflectivity=1.0)
     _add_port(o, "IN", 'IN', (0, 0, 2.0), (0, 0, 1), size * 0.5)
@@ -186,18 +186,21 @@ def beamsplitter(name, loc, in_dir, reflect_dir, coll=None, split=0.5, pbs=False
     """50/50 (or PBS) cube: transmits along in_dir, reflects toward reflect_dir."""
     o = _cube(name, (size, size, size), coll)
     o.data.materials.clear(); o.data.materials.append(MATS["pbs" if pbs else "bs"]())
-    # the characteristic coated 45-deg diagonal: a plane through the cube whose normal is the
-    # REFLECT direction (-1,1,0)/sqrt2, merged into the cube mesh so glass shows the split surface
-    bpy.ops.mesh.primitive_plane_add(size=size * 1.40, location=(0, 0, 0))
-    _pl = bpy.context.active_object
-    _pl.matrix_world = _z_to(Vector((-1.0, 1.0, 0.0))).to_4x4()
-    _plmesh = _pl.data
+    # the characteristic coated 45-deg diagonal: a thin slab whose normal is the REFLECT direction
+    # (-1,1,0)/sqrt2, CLIPPED to the cube interior (boolean intersect) so it never pokes out of the
+    # faces, then merged into the cube mesh so the glass shows the internal split surface.
+    _coat = _cube(name + "_coat", (size * 1.55, size * 1.55, 0.5), coll)
+    _coat.matrix_world = _z_to(Vector((-1.0, 1.0, 0.0))).to_4x4()
+    _clip = _coat.modifiers.new("clip", 'BOOLEAN'); _clip.operation = 'INTERSECT'; _clip.object = o
+    bpy.context.view_layer.objects.active = _coat
+    bpy.ops.object.modifier_apply(modifier=_clip.name)
+    _coatmesh = _coat.data
     bpy.ops.object.select_all(action='DESELECT')
-    _pl.select_set(True); o.select_set(True)
+    _coat.select_set(True); o.select_set(True)
     bpy.context.view_layer.objects.active = o
-    bpy.ops.object.join()                        # coating plane -> cube mesh (inherits slot-0 glass)
-    if _plmesh.users == 0:                        # join orphans the plane's own mesh datablock
-        bpy.data.meshes.remove(_plmesh)
+    bpy.ops.object.join()                        # clipped coating -> cube mesh (inherits slot-0 glass)
+    if _coatmesh.users == 0:                      # join orphans the coating's mesh datablock
+        bpy.data.meshes.remove(_coatmesh)
     _tag(o, 'BEAMSPLITTER', split_ratio=split, clear_aperture=size * 0.55, is_pbs=pbs)
     o.optics.mount_preset = "PBS" if pbs else ""
     h = size * 0.5
