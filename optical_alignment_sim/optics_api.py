@@ -75,7 +75,11 @@ def get_state():
             "world_center": [round(x, 4) for x in m.translation],
             "matrix_world": [[round(m[r][c], 6) for c in range(4)] for r in range(4)],
             "ports": ports,
-            "mount": {"type": op.mount_type, "preset": op.mount_preset, "dofs": dofs},
+            "mount": {"type": op.mount_type, "preset": op.mount_preset, "dofs": dofs,
+                      "support_system": getattr(op, "support_system", 'POST')},
+            # the one genuine pose-dependency edge: which element this one follows (place_relative)
+            "anchor": op.anchor.name if getattr(op, "anchor", None) else None,
+            "base_pose_set": bool(getattr(op, "base_pose_set", False)),
             "mech": mech,
             "params": {
                 "focal_length": round(op.focal_length, 4), "split_ratio": round(op.split_ratio, 4),
@@ -99,6 +103,8 @@ def get_state():
         "cages": _optomech.cage_info(scene),
         # Lens-tube assemblies (SM05/SM1/SM2): which optics share a barrel, thread + bore + length.
         "tubes": _optomech.tube_info(scene),
+        # Rail assemblies (dovetail): which optics ride one rail, the axis + each carrier's position.
+        "rails": _optomech.rail_info(scene),
     }
 
 
@@ -398,6 +404,61 @@ def make_tube(members, thread='SM1', tube_id=None):
     tracer.cached_segments = _trace(scene)
     return {"ok": True, "tube_id": tid, "thread": key, "members": [o.name for o in objs],
             "tubes": _optomech.tube_info(scene)}
+
+
+def make_rail(members, rail_id=None):
+    """Put collinear elements on one dovetail rail: each rides a carrier on the shared rail (instead
+    of a bare post on the board), so they translate along one straight track. `members` is a list of
+    element names. Exposed in get_state()['rails'] (carrier positions in s_mm). Does NOT move the
+    optics, so the trace is unchanged. Use place_on_rail(name, s_mm) to slide one along the rail."""
+    scene = _scene()
+    if not isinstance(members, (list, tuple)) or len(members) < 1:
+        return {"error": "members must be a non-empty list of element names"}
+    objs = []
+    for nm in members:
+        o = scene.objects.get(nm)
+        if not o or not (getattr(o, "optics", None) and o.optics.is_optical):
+            return {"error": "not an optical element: %s" % nm}
+        objs.append(o)
+    rid = rail_id or ("rail_%s" % objs[0].name)
+    for o in objs:
+        o.optics.support_system = 'RAIL'
+        o.optics.rail_id = rid
+    if _optomech.is_dressed(scene):
+        _optomech.dress(scene)
+    tracer.cached_segments = _trace(scene)
+    return {"ok": True, "rail_id": rid, "members": [o.name for o in objs],
+            "rails": _optomech.rail_info(scene)}
+
+
+def place_on_rail(name, s_mm):
+    """Slide rail-mounted element `name` to position s_mm along its rail (s=0 at the rail start).
+    Moves the optic along the rail axis only, so the trace updates. The element must be on a rail
+    (make_rail first). Read get_state()['rails'] for the current carrier positions."""
+    scene = _scene()
+    o = scene.objects.get(name)
+    if not o:
+        return {"error": "object not found: %s" % name}
+    if getattr(o.optics, "support_system", 'POST') != 'RAIL':
+        return {"error": "'%s' is not on a rail (call make_rail first)" % name}
+    try:
+        s = float(s_mm)
+    except (TypeError, ValueError):
+        return {"error": "s_mm must be a number"}
+    members = _optomech.rail_groups(scene).get(getattr(o.optics, "rail_id", "") or "", [o])
+    ax, cxy, ts = _optomech.rail_geom(members)
+    start = cxy + ax * min(ts)                       # s = 0 reference
+    target = start + ax * s
+    cur = o.matrix_world.translation
+    o.location.x += target.x - cur.x
+    o.location.y += target.y - cur.y
+    bpy.context.view_layer.update()
+    if _optomech.is_dressed(scene):
+        _optomech.dress(scene)
+    tracer.cached_segments = _trace(scene)
+    m = o.matrix_world
+    return {"ok": True, "name": name, "s_mm": round(s, 3),
+            "world_center": [round(x, 4) for x in m.translation]}
 
 
 def scan(kind='STAGE', lo=0.0, hi=0.002, steps=120, element=None):

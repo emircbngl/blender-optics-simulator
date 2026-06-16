@@ -565,6 +565,90 @@ def tube_info(scene):
     return out
 
 
+# ---------------------------------------------------------------------------
+# Rail systems (RLA dovetail): a continuous track + a carrier + post under each member
+# ---------------------------------------------------------------------------
+RAIL_W = 19.1   # RLA dovetail rail width (mm)
+RAIL_H = 13.0
+
+
+def rail_groups(scene):
+    """Map rail_id -> [member optics] for every rail-mounted element."""
+    groups = {}
+    for o in _optical_objects(scene):
+        if getattr(o.optics, "support_system", 'POST') == 'RAIL':
+            groups.setdefault(getattr(o.optics, "rail_id", "") or "", []).append(o)
+    return groups
+
+
+def _rail_axis_xy(members):
+    """The rail direction in the board plane (the members' XY line)."""
+    cs = [m.matrix_world.translation for m in members]
+    if len(cs) >= 2:
+        d = Vector((cs[-1].x - cs[0].x, cs[-1].y - cs[0].y, 0.0))
+        if d.length > 1e-6:
+            return d.normalized()
+    return Vector((1.0, 0.0, 0.0))
+
+
+def rail_geom(members):
+    """(axis_xy, centroid_xy, projections) shared by the builder, info and place_on_rail."""
+    ax = _rail_axis_xy(members)
+    cs = [m.matrix_world.translation for m in members]
+    cxy = sum((Vector((c.x, c.y, 0.0)) for c in cs), Vector((0.0, 0.0, 0.0))) / len(cs)
+    ts = [(Vector((c.x, c.y, 0.0)) - cxy).dot(ax) for c in cs]
+    return ax, cxy, ts
+
+
+def _build_rail(scene, members, board_top_z, coll, post_radius, tag):
+    """A dovetail rail on the board along the members' line, a carrier under each member, and its
+    post rising from the carrier to the optic + the member's mount silhouette."""
+    ax, cxy, ts = rail_geom(members)
+    perp = Vector((-ax.y, ax.x, 0.0))
+    margin = 28.0
+    L = (max(ts) - min(ts)) + 2 * margin
+    mid = cxy + ax * (0.5 * (max(ts) + min(ts)))
+    rot = Matrix(((ax.x, perp.x, 0.0, 0.0), (ax.y, perp.y, 0.0, 0.0),
+                  (0.0, 0.0, 1.0, 0.0), (0.0, 0.0, 0.0, 1.0)))
+    bar = eg._cube(BENCH_PREFIX + "Rail_" + tag, Vector((L, RAIL_W, RAIL_H)), coll)
+    bar.matrix_world = Matrix.Translation(Vector((mid.x, mid.y, board_top_z + RAIL_H * 0.5))) @ rot
+    bar.data.materials.clear(); bar.data.materials.append(_MATS["holder"]())
+    _bevel(bar, 1.0, 2)
+    n = 1
+    carrier_top = board_top_z + RAIL_H + 14.0
+    for i, m in enumerate(members):
+        c = m.matrix_world.translation
+        t = (Vector((c.x, c.y, 0.0)) - cxy).dot(ax)
+        cp = cxy + ax * t
+        cb = eg._cube(BENCH_PREFIX + "Carrier_%s_%d" % (tag, i), Vector((24.0, RAIL_W + 7.0, 14.0)), coll)
+        cb.matrix_world = Matrix.Translation(Vector((cp.x, cp.y, board_top_z + RAIL_H + 7.0))) @ rot
+        cb.data.materials.clear(); cb.data.materials.append(_MATS["clamp"]())
+        _bevel(cb, 0.8, 2)
+        post_top_z = c.z - MOUNT_DROP
+        h = max(post_top_z - carrier_top, 1.0)
+        _cyl(BENCH_PREFIX + "RailPost_%s_%d" % (tag, i), post_radius, h,
+             (cp.x, cp.y, carrier_top + h * 0.5), coll, "post")
+        n += 2 + _build_mount(m, coll, 100 + i)   # 100+ avoids name clash with the free-loop indices
+    return n
+
+
+def rail_info(scene):
+    """Rail assemblies as data for get_state: id, family, width, length, axis, carriers (element + s)."""
+    if not is_dressed(scene):
+        return []
+    out = []
+    for rid, members in rail_groups(scene).items():
+        ax, cxy, ts = rail_geom(members)
+        tmin = min(ts)
+        out.append({
+            "id": rid or "rail", "family": "RLA", "width_mm": RAIL_W,
+            "length_mm": round((max(ts) - min(ts)) + 56.0, 2),
+            "axis": [round(ax.x, 4), round(ax.y, 4), 0.0],
+            "carriers": [{"element": m.name, "s_mm": round(t - tmin, 2)} for m, t in zip(members, ts)],
+        })
+    return out
+
+
 def dress(scene, post_radius=POST_RADIUS):
     """Spawn a hole-grid breadboard under the optics, then a beam-height-driven post + post-holder
     base under each element and a mount ring framing the optic. The board top sits one beam height
@@ -596,13 +680,25 @@ def dress(scene, post_radius=POST_RADIUS):
          coll, "board")
     _hole_grid(BENCH_PREFIX + "Holes", x0, y0, nx, ny, pitch, board_top_z, coll,
                hole_r=_thread_hole_r(pitch))
-    n = 2
+    # four feet so the breadboard sits on a surface instead of floating in the void
+    cxb = (x0 + x1) * 0.5; cyb = (y0 + y1) * 0.5
+    fx = (x1 - x0) * 0.5 + margin - pitch * 0.5
+    fy = (y1 - y0) * 0.5 + margin - pitch * 0.5
+    foot_h = 20.0
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            _bevel(_cyl(BENCH_PREFIX + "Foot_%d%d" % (sx > 0, sy > 0), pitch * 0.34, foot_h,
+                        (cxb + sx * fx, cyb + sy * fy, board_top_z - th - foot_h * 0.5 + 0.5),
+                        coll, "post"), 1.2, 1)
+    n = 6
     # cage-mounted optics ride shared rods + one cage post; tube-mounted optics share one barrel +
     # one post; everything else gets its own post.
     groups = cage_groups(scene)
     tubes = tube_groups(scene)
+    rails = rail_groups(scene)
     grouped = {m.name for members in groups.values() for m in members}
     grouped |= {m.name for members in tubes.values() for m in members}
+    grouped |= {m.name for members in rails.values() for m in members}
     for i, o in enumerate(elems):
         if o.name in grouped:
             continue
@@ -621,6 +717,8 @@ def dress(scene, post_radius=POST_RADIUS):
         n += _build_cage(scene, members, board_top_z, coll, post_radius, "%02d" % gi)
     for ti, members in enumerate(tubes.values()):
         n += _build_tube(scene, members, board_top_z, coll, post_radius, "%02d" % ti)
+    for ri, members in enumerate(rails.values()):
+        n += _build_rail(scene, members, board_top_z, coll, post_radius, "%02d" % ri)
     return n
 
 
