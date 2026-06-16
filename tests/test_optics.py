@@ -88,6 +88,26 @@ check("periscope produces a tall post (> pillar threshold)",
 check("the tall post is the fat Ø1\" pillar, not a thin stick",
       _tall is not None and abs(_tall.dimensions.x * 0.5 - optomech.POST_RADIUS_TALL) < 1.5,
       "r=%.2f" % (_tall.dimensions.x * 0.5 if _tall else -1))
+# the periscope's vertical-fold pillar must stand OFF the beam axis (the two fold mirrors share xy);
+# a coaxial pillar would block the beam. Confirm the pillar is offset, then prove the gate fires when
+# it is shoved back onto the axis.
+_pscope = optomech._optical_objects(sc)
+_stacked = [o for o in _pscope if any(p is not o
+            and ((o.matrix_world.translation.x - p.matrix_world.translation.x) ** 2
+                 + (o.matrix_world.translation.y - p.matrix_world.translation.y) ** 2) ** 0.5 < 8.0
+            and abs(o.matrix_world.translation.z - p.matrix_world.translation.z) > optomech.VERTICAL_STACK_MM
+            for p in _pscope)]
+check("periscope has a vertical-fold stack (mirrors share an xy)", len(_stacked) >= 2, str(len(_stacked)))
+if _stacked and _tall is not None:
+    _ax = _stacked[0].matrix_world.translation
+    _off = ((_tall.matrix_world.translation.x - _ax.x) ** 2
+            + (_tall.matrix_world.translation.y - _ax.y) ** 2) ** 0.5
+    check("vertical-fold pillar stands off the beam axis", _off > optomech.POST_RADIUS_TALL,
+          "%.1f mm off axis" % _off)
+    _tall.location.x, _tall.location.y = _ax.x, _ax.y      # shove the pillar back onto the beam
+    bpy.context.view_layer.update()
+    check("validator FIRES beam_through_post for a coaxial pillar",
+          any(i["kind"] == "beam_through_post" for i in optomech.validate(sc)))
 optics_api.dress_bench(False)
 
 print("[interference invariants]")

@@ -109,6 +109,10 @@ GRID_IMPERIAL_MM = 25.4         # imperial breadboard pitch (1", 1/4-20)
 POST_RADIUS = 6.35              # Ø12.7 mm optical post (TR 1/2" workhorse)
 POST_RADIUS_TALL = 12.5         # Ø25 mm (1") RS-series pillar — stiffer, for tall/raised mounts
 PILLAR_OVER_MM = 130.0          # above this post length, use the fatter Ø1" pillar (stiffness ∝ d⁴)
+VERTICAL_STACK_MM = 25.0        # optics this far apart in z at one xy => a vertical beam runs between
+                                # them; the pillar must be OFFSET so it doesn't sit in the beam path
+PILLAR_OFFSET = 38.0            # how far to push a vertical-fold pillar off the beam axis (Ø1" pillar
+                                # radius + mount-arm clearance); mirror mounts cantilever back onto it
 BOARD_THICKNESS = 12.7          # 1/2" solid breadboard slab
 MOUNT_DROP = 15.0               # optical axis -> post top: the mount body bridges this gap
 HOLDER_H = 50.0                 # fixed post-holder body length (PH2-class); insertion varies, not the body
@@ -833,6 +837,28 @@ def validate(scene):
                 issues.append({"kind": "post_overlap",
                                "element": "%s | %s" % (posts[a].name, posts[b].name),
                                "detail": "posts %.1f mm apart, need >=%.1f (collision)" % (dist, clear)})
+    # 3. a vertical beam (two optics at one xy, different z) must run through clear air, not through a
+    #    support post: a coaxial post would sit IN the beam. Caught the periscope pillar-in-beam bug.
+    for i in range(len(elems)):
+        for j in range(i + 1, len(elems)):
+            a = elems[i].matrix_world.translation
+            b = elems[j].matrix_world.translation
+            if ((a.x - b.x) ** 2 + (a.y - b.y) ** 2) ** 0.5 >= 8.0:
+                continue                                  # not stacked -> no vertical leg between them
+            if abs(a.z - b.z) <= VERTICAL_STACK_MM:
+                continue
+            z0, z1 = sorted((a.z, b.z))
+            for p in posts:
+                t = p.matrix_world.translation
+                if ((a.x - t.x) ** 2 + (a.y - t.y) ** 2) ** 0.5 >= _r(p):
+                    continue                              # post is off the beam axis -> clear
+                pz0 = t.z - p.dimensions.z * 0.5
+                pz1 = t.z + p.dimensions.z * 0.5
+                if min(z1, pz1) - max(z0, pz0) > 2.0:     # post body overlaps the vertical beam span
+                    issues.append({"kind": "beam_through_post", "element": p.name,
+                                   "detail": "post on vertical beam axis (%.0f,%.0f) z[%.0f..%.0f]"
+                                             % (a.x, a.y, z0, z1)})
+                    break
     return issues
 
 
@@ -901,17 +927,47 @@ def dress(scene, post_radius=POST_RADIUS):
         members.sort(key=lambda io: io[1].matrix_world.translation.z)
         i_top, o_top = members[-1]                       # the highest optic sets the pillar height
         pt = o_top.matrix_world.translation
-        h = max((pt.z - MOUNT_DROP) - board_top_z, 1.0)
-        # a tall/raised mount (periscope deck, high optic) rides a fatter Ø1" pillar, not a thin
-        # Ø1/2" stick -- the real bench move for stiffness; short mounts keep the Ø1/2" post.
-        pr = POST_RADIUS_TALL if h > PILLAR_OVER_MM else post_radius
-        # one base foot + post-holder + pillar for the whole stack (post top under the highest optic)
-        nh = _post_holder("%02d" % i_top, pt.x, pt.y, board_top_z, pr, coll)
-        _cyl(BENCH_PREFIX + "Post_%02d" % i_top, pr, h,
-             (pt.x, pt.y, board_top_z + h * 0.5), coll, "post")
-        n += nh + 1
-        for i, o in members:                             # each optic in the stack gets its own mount
-            n += _build_mount(o, coll, i)
+        zlo = members[0][1].matrix_world.translation.z
+        vfold = (pt.z - zlo) > VERTICAL_STACK_MM         # >1 deck at one xy => a vertical beam runs
+        if vfold:
+            # Vertical fold (periscope): a beam travels UP the shared xy between the decks. A post on
+            # that axis would sit IN the beam -- so the pillar is pushed PILLAR_OFFSET off-axis (out of
+            # the fold plane) and each mirror mount cantilevers back onto the beam on a short arm. This
+            # is the real periscope assembly; a coaxial post here is a (render-invisible) blocked beam.
+            # offset perpendicular to the in-plane beam legs: the horizontal beams leave this stack
+            # toward the other optics, so push the pillar across that axis. Spread of the other optics
+            # in x vs y tells us which way the legs run (periscope: source+detector along Y -> push X).
+            others = [e.matrix_world.translation for e in elems
+                      if ((e.matrix_world.translation.x - pt.x) ** 2
+                          + (e.matrix_world.translation.y - pt.y) ** 2) ** 0.5 > 8.0]
+            sx = sum(abs(o.x - pt.x) for o in others)
+            sy = sum(abs(o.y - pt.y) for o in others)
+            dirx, diry = (1.0, 0.0) if sy >= sx else (0.0, 1.0)
+            ox, oy = pt.x + dirx * PILLAR_OFFSET, pt.y + diry * PILLAR_OFFSET
+            h = max(pt.z - board_top_z, 1.0)             # pillar reaches up to the top deck
+            nh = _post_holder("%02d" % i_top, ox, oy, board_top_z, POST_RADIUS_TALL, coll)
+            _cyl(BENCH_PREFIX + "Post_%02d" % i_top, POST_RADIUS_TALL, h,
+                 (ox, oy, board_top_z + h * 0.5), coll, "post")
+            n += nh + 1
+            for i, o in members:
+                op = o.matrix_world.translation
+                # cantilever arm from the offset pillar surface in to the optic on the beam axis
+                _rod(BENCH_PREFIX + "Arm_%02d" % i,
+                     (ox - dirx * POST_RADIUS_TALL, oy - diry * POST_RADIUS_TALL, op.z),
+                     (op.x, op.y, op.z), 5.0, coll, "mount")
+                n += 1 + _build_mount(o, coll, i)
+        else:
+            h = max((pt.z - MOUNT_DROP) - board_top_z, 1.0)
+            # a tall/raised mount (high optic) rides a fatter Ø1" pillar, not a thin Ø1/2" stick --
+            # the real bench move for stiffness; short mounts keep the Ø1/2" post.
+            pr = POST_RADIUS_TALL if h > PILLAR_OVER_MM else post_radius
+            # one base foot + post-holder + pillar (post top under the optic)
+            nh = _post_holder("%02d" % i_top, pt.x, pt.y, board_top_z, pr, coll)
+            _cyl(BENCH_PREFIX + "Post_%02d" % i_top, pr, h,
+                 (pt.x, pt.y, board_top_z + h * 0.5), coll, "post")
+            n += nh + 1
+            for i, o in members:                         # each optic in the stack gets its own mount
+                n += _build_mount(o, coll, i)
     for gi, members in enumerate(groups.values()):
         n += _build_cage(scene, members, board_top_z, coll, post_radius, "%02d" % gi)
     for ti, members in enumerate(tubes.values()):
