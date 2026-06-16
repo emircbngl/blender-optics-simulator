@@ -60,6 +60,13 @@ _pz = [c[2] for s in _ps for c in (s["p1"], s["p2"])]
 check("periscope reaches the detector at full power", _pp > 0.95, "P=%.3f" % _pp)
 check("periscope raises the beam out of plane (vertical fold)", (max(_pz) - min(_pz)) > 50.0,
       "z-range %.1f" % (max(_pz) - min(_pz)))
+optics_api.dress_bench(True)
+_pw = optics_api.get_state()["warnings"]
+check("periscope dressing is geometrically valid (no mount-below-holder / collision)", _pw == [], str(_pw))
+optics_api.dress_bench(False)
+optics_api.build_example("michelson"); optics_api.dress_bench(True)
+check("michelson dressing is geometrically valid", optics_api.get_state()["warnings"] == [], str(optics_api.get_state()["warnings"]))
+optics_api.dress_bench(False)
 
 print("[interference invariants]")
 optics_api.build_example("michelson")
