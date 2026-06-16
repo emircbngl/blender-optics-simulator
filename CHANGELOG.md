@@ -45,6 +45,12 @@ semantic versioning.
   knobs** (shaft + knob) instead of two thin sticks; cage plates are **bored** so the optic shows
   through the aperture and the rods pass through the frame (was a solid slab). Decoration only;
   trace unaffected; regression stays 126/126.
+- **Optic seated in the mount + 3-adjuster mount + camera nose (owner review #2).** The round mirror
+  now sits **flush in the kinematic mount's bored aperture** (the optic is visibly held, not an empty
+  holder face). New **`KINEMATIC_3AXIS`** mount type renders a KS1-style **three-adjuster** mount
+  (triangular knobs) alongside the two-adjuster KM100; pick it per element in the Element panel.
+  Detectors/cameras gain a **C-mount adapter nose** on the sensor face + a bevelled clamp. Decoration
+  only; trace unaffected; regression 126/126.
 
 ### Added
 - **Mechanically-correct breadboard hole grid.** *Dress Bench* now lays the optics on a real
