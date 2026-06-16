@@ -387,17 +387,42 @@ def _cage_axis(members):
     return (members[0].matrix_world.to_3x3() @ Vector((0.0, 0.0, 1.0))).normalized()
 
 
-def _rod(name, p0, p1, r, coll, matkey):
-    """A cylinder spanning p0 -> p1 (a cage rod)."""
+def _rod(name, p0, p1, r, coll, matkey, seg=16):
+    """A cylinder spanning p0 -> p1 (a cage rod / tube barrel). ``seg`` = radial segments (bump it
+    for a big smooth barrel; 16 is plenty for a thin rod)."""
     p0 = Vector(p0); p1 = Vector(p1)
     d = p1 - p0
     L = max(d.length, 1e-6)
-    bpy.ops.mesh.primitive_cylinder_add(radius=r, depth=L, location=(0, 0, 0), vertices=16)
+    bpy.ops.mesh.primitive_cylinder_add(radius=r, depth=L, location=(0, 0, 0), vertices=seg)
     o = bpy.context.active_object
     o.name = name
     q = Vector((0.0, 0.0, 1.0)).rotation_difference(d.normalized())
     o.matrix_world = Matrix.Translation((p0 + p1) * 0.5) @ q.to_matrix().to_4x4()
     o.data.materials.clear(); o.data.materials.append(_MATS[matkey]())
+    eg._link_only(o, coll)
+    return o
+
+
+def _extrude_profile(name, prof, p0, p1, perp, coll, matkey):
+    """Build a constant cross-section bar by extruding a 2-D profile along p0->p1. ``prof`` is a list
+    of (s, h): s = offset along ``perp`` (across the bar), h = height above p0's plane (world +Z).
+    Used for the dovetail rail (an undercut ridge) and its grooved carrier — real machined profiles,
+    not boxes."""
+    import bmesh
+    p0 = Vector(p0); p1 = Vector(p1); perp = Vector(perp).normalized()
+    up = Vector((0.0, 0.0, 1.0))
+    axis = p1 - p0
+    me = bpy.data.meshes.new(name)
+    bm = bmesh.new()
+    base = [bm.verts.new(p0 + perp * s + up * h) for (s, h) in prof]
+    face = bm.faces.new(base)
+    ext = bmesh.ops.extrude_face_region(bm, geom=[face])
+    bmesh.ops.translate(bm, verts=[v for v in ext["geom"] if isinstance(v, bmesh.types.BMVert)],
+                        vec=axis)
+    bm.normal_update()
+    bm.to_mesh(me); bm.free()
+    o = bpy.data.objects.new(name, me)
+    o.data.materials.append(_MATS[matkey]())
     eg._link_only(o, coll)
     return o
 
@@ -522,8 +547,8 @@ def _build_tube(scene, members, board_top_z, coll, post_radius, tag):
     od = major + 4.0
     p0 = centroid + axis * t0
     p1 = centroid + axis * t1
-    barrel = _rod("%sTube_%s" % (BENCH_PREFIX, tag), p0, p1, od * 0.5, coll, "post")
-    inner = _rod("%sTubebore_%s" % (BENCH_PREFIX, tag), p0 - axis * 3.0, p1 + axis * 3.0, bore * 0.5, coll, "post")
+    barrel = _rod("%sTube_%s" % (BENCH_PREFIX, tag), p0, p1, od * 0.5, coll, "post", seg=56)
+    inner = _rod("%sTubebore_%s" % (BENCH_PREFIX, tag), p0 - axis * 3.0, p1 + axis * 3.0, bore * 0.5, coll, "post", seg=56)
     m = barrel.modifiers.new("bore", 'BOOLEAN'); m.operation = 'DIFFERENCE'; m.object = inner
     bpy.context.view_layer.objects.active = barrel
     bpy.ops.object.modifier_apply(modifier=m.name)
@@ -606,28 +631,32 @@ def _build_rail(scene, members, board_top_z, coll, post_radius, tag):
     ax, cxy, ts = rail_geom(members)
     perp = Vector((-ax.y, ax.x, 0.0))
     margin = 28.0
-    L = (max(ts) - min(ts)) + 2 * margin
-    mid = cxy + ax * (0.5 * (max(ts) + min(ts)))
-    rot = Matrix(((ax.x, perp.x, 0.0, 0.0), (ax.y, perp.y, 0.0, 0.0),
-                  (0.0, 0.0, 1.0, 0.0), (0.0, 0.0, 0.0, 1.0)))
-    bar = eg._cube(BENCH_PREFIX + "Rail_" + tag, Vector((L, RAIL_W, RAIL_H)), coll)
-    bar.matrix_world = Matrix.Translation(Vector((mid.x, mid.y, board_top_z + RAIL_H * 0.5))) @ rot
-    bar.data.materials.clear(); bar.data.materials.append(_MATS["holder"]())
-    _bevel(bar, 1.0, 2)
+    half = 0.5 * (max(ts) - min(ts)) + margin
+    mid = Vector((cxy.x, cxy.y, board_top_z)) + ax * (0.5 * (max(ts) + min(ts)))
+    hw = RAIL_W * 0.5
+    # dovetail rail cross-section: a base slab + an UNDERCUT ridge (wider at the top than its neck)
+    rail_prof = [(-hw, 0.0), (hw, 0.0), (hw, 4.0), (6.0, 4.0),
+                 (8.0, 11.0), (-8.0, 11.0), (-6.0, 4.0), (-hw, 4.0)]
+    rail = _extrude_profile(BENCH_PREFIX + "Rail_" + tag, rail_prof,
+                            mid - ax * half, mid + ax * half, perp, coll, "holder")
+    _bevel(rail, 0.5, 1)
     n = 1
-    carrier_top = board_top_z + RAIL_H + 14.0
+    carrier_top = board_top_z + 18.0
+    cl = 13.0   # carrier half-length along the rail axis
+    # carrier cross-section: a block straddling the ridge with a matching dovetail GROOVE (the cut
+    # the owner asked for) -- slightly oversized so it clamps the ridge instead of fusing to it
+    car_prof = [(-12.0, 4.0), (-12.0, 18.0), (12.0, 18.0), (12.0, 4.0),
+                (6.6, 4.0), (8.6, 11.4), (-8.6, 11.4), (-6.6, 4.0)]
     for i, m in enumerate(members):
         c = m.matrix_world.translation
         t = (Vector((c.x, c.y, 0.0)) - cxy).dot(ax)
-        cp = cxy + ax * t
-        cb = eg._cube(BENCH_PREFIX + "Carrier_%s_%d" % (tag, i), Vector((24.0, RAIL_W + 7.0, 14.0)), coll)
-        cb.matrix_world = Matrix.Translation(Vector((cp.x, cp.y, board_top_z + RAIL_H + 7.0))) @ rot
-        cb.data.materials.clear(); cb.data.materials.append(_MATS["clamp"]())
-        _bevel(cb, 0.8, 2)
+        cc = Vector((cxy.x, cxy.y, board_top_z)) + ax * t
+        _bevel(_extrude_profile(BENCH_PREFIX + "Carrier_%s_%d" % (tag, i), car_prof,
+                                cc - ax * cl, cc + ax * cl, perp, coll, "clamp"), 0.5, 1)
         post_top_z = c.z - MOUNT_DROP
         h = max(post_top_z - carrier_top, 1.0)
         _cyl(BENCH_PREFIX + "RailPost_%s_%d" % (tag, i), post_radius, h,
-             (cp.x, cp.y, carrier_top + h * 0.5), coll, "post")
+             (c.x, c.y, carrier_top + h * 0.5), coll, "post")
         n += 2 + _build_mount(m, coll, 100 + i)   # 100+ avoids name clash with the free-loop indices
     return n
 
