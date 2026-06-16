@@ -290,17 +290,40 @@ def _build_mount(o, coll, idx):
         _obox(pre + "Index_" + nm, (2.5, 2.5, 4.0), mw, (ca * 1.5, 0, 0), coll, "post")
         return 3
     if mt == 'KINEMATIC_2AXIS' or et == 'MIRROR':
-        # kinematic mount: square back-plate behind the optic + retaining ring + two adjuster screws
-        plate = ca * 1.5
-        _obox(pre + "KMplate_" + nm, (plate, plate, 6.0), mw, (0, 0, -6.0), coll, "mount")
+        # kinematic mount (KM100-style): a square back-plate behind the optic, a front retaining
+        # ring holding the mirror, and two actuator screws -- each a thin shaft with a knurled knob
+        # you turn from behind -- at adjacent corners (tip + tilt). Reads as a real steering mount.
+        plate = ca * 1.55
+        _obox(pre + "KMplate_" + nm, (plate, plate, 6.0), mw, (0, 0, -8.0), coll, "mount")
         _ring(pre + "Mount_" + nm, ca * 1.18, ca * 0.16, mw, coll)
-        _ocyl(pre + "Adj1_" + nm, 1.6, 11.0, mw, (plate * 0.32, plate * 0.32, -8.5), coll, "post")
-        _ocyl(pre + "Adj2_" + nm, 1.6, 11.0, mw, (-plate * 0.32, -plate * 0.32, -8.5), coll, "post")
-        return 4
+        for an, (sx, sy) in (("Adj1", (plate * 0.33, -plate * 0.33)),
+                             ("Adj2", (-plate * 0.33, plate * 0.33))):
+            _ocyl(pre + an + "s_" + nm, 1.3, 14.0, mw, (sx, sy, -12.5), coll, "post")    # actuator shaft
+            _ocyl(pre + an + "k_" + nm, 3.1, 4.0, mw, (sx, sy, -20.6), coll, "mount")    # knurled knob
+        return 6
     # threaded lens / filter / window / generic: a retaining ring inside a short lens-cell wall
     _ring(pre + "Mount_" + nm, ca * 1.18, ca * 0.16, mw, coll)
     _ocyl(pre + "Cell_" + nm, ca * 1.28, 5.0, mw, (0, 0, 0), coll, "mount")
     return 2
+
+
+def _post_holder(tag, x, y, board_top_z, post_radius, coll):
+    """The vertical support under one optic: a base foot bolted to the board (a cap-screw head shows
+    it is fastened, not floating) + a fixed-length post-holder body with a side locking thumbscrew
+    (the post slides in and is clamped). The post itself is built by the caller. Returns the count."""
+    hr = post_radius * 1.8
+    _cyl(BENCH_PREFIX + "Base_" + tag, post_radius * 2.6, BASE_H,
+         (x, y, board_top_z + BASE_H * 0.5), coll, "clamp")
+    # cap screw fastening the foot to the table (offset from the central post bore)
+    _cyl(BENCH_PREFIX + "Bolt_" + tag, post_radius * 0.5, 3.5,
+         (x + post_radius * 2.05, y, board_top_z + BASE_H + 0.7), coll, "post")
+    _cyl(BENCH_PREFIX + "Holder_" + tag, hr, HOLDER_H,
+         (x, y, board_top_z + BASE_H + HOLDER_H * 0.5), coll, "holder")
+    # side locking thumbscrew near the top of the holder body (clamps the post in the bore)
+    mw = Matrix.Translation((x, y, board_top_z + BASE_H + HOLDER_H * 0.72))
+    _ocyl(BENCH_PREFIX + "Lock_" + tag, post_radius * 0.55, post_radius * 1.6,
+          mw, (hr + post_radius * 0.55, 0.0, 0.0), coll, "post", axis='X')
+    return 4
 
 
 # ---------------------------------------------------------------------------
@@ -410,16 +433,13 @@ def _build_cage(scene, members, board_top_z, coll, post_radius, tag):
                      sep * 1.3, 8.9, ca, Matrix.Translation(m.matrix_world.translation) @ rot,
                      coll, "mount")
         n += 1
-    # one post under the cage centroid, to beam height
+    # one post under the cage centroid, to beam height (foot + holder + thumbscrew + post)
     post_top_z = centroid.z - MOUNT_DROP
     h = max(post_top_z - board_top_z, 1.0)
-    _cyl("%sCageBase_%s" % (BENCH_PREFIX, tag), post_radius * 2.6, BASE_H,
-         (centroid.x, centroid.y, board_top_z + BASE_H * 0.5), coll, "clamp")
-    _cyl("%sCageHolder_%s" % (BENCH_PREFIX, tag), post_radius * 1.8, HOLDER_H,
-         (centroid.x, centroid.y, board_top_z + BASE_H + HOLDER_H * 0.5), coll, "holder")
+    _post_holder("cage_" + tag, centroid.x, centroid.y, board_top_z, post_radius, coll)
     _cyl("%sCagePost_%s" % (BENCH_PREFIX, tag), post_radius, h,
          (centroid.x, centroid.y, board_top_z + h * 0.5), coll, "post")
-    return n + 3
+    return n + 5
 
 
 def cage_info(scene):
@@ -483,16 +503,12 @@ def dress(scene, post_radius=POST_RADIUS):
         # for any optic at the reference height, so equal-height optics share one standard post.
         post_top_z = p.z - MOUNT_DROP
         h = max(post_top_z - board_top_z, 1.0)
-        # base foot bolted to the board (BA-style), then a fixed-length post-holder body; the post
-        # slides through and is clamped -- body length is constant, only the insertion varies.
-        _cyl(BENCH_PREFIX + "Base_%02d" % i, post_radius * 2.6, BASE_H,
-             (p.x, p.y, board_top_z + BASE_H * 0.5), coll, "clamp")
-        _cyl(BENCH_PREFIX + "Holder_%02d" % i, post_radius * 1.8, HOLDER_H,
-             (p.x, p.y, board_top_z + BASE_H + HOLDER_H * 0.5), coll, "holder")
+        # base foot (bolted) + fixed-length post-holder body with a locking thumbscrew + the post
+        _post_holder("%02d" % i, p.x, p.y, board_top_z, post_radius, coll)
         _cyl(BENCH_PREFIX + "Post_%02d" % i, post_radius, h,
              (p.x, p.y, board_top_z + h * 0.5), coll, "post")
         # mount silhouette matched to the element/mount type (kinematic / rotation / cube / lens...)
-        n += 3 + _build_mount(o, coll, i)
+        n += 5 + _build_mount(o, coll, i)
     for gi, members in enumerate(groups.values()):
         n += _build_cage(scene, members, board_top_z, coll, post_radius, "%02d" % gi)
     return n

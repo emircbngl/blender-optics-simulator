@@ -39,6 +39,12 @@ semantic versioning.
   `cages` block (id, size, rod dia/length/count, axis, members) and each occupied hole reports its
   `support_system`, so an agent knows which optics share rods. Caging never moves the optics →
   trace byte-identical. Regression 119 → 126.
+- **Opto-mech realism pass (owner review).** Post-holders now carry a **side locking thumbscrew**
+  and the base foot shows a **cap screw** fastening it to the table (was a bare floating cylinder);
+  kinematic mirror mounts are rebuilt KM100-style with a back-plate and **two knurled actuator
+  knobs** (shaft + knob) instead of two thin sticks; cage plates are **bored** so the optic shows
+  through the aperture and the rods pass through the frame (was a solid slab). Decoration only;
+  trace unaffected; regression stays 126/126.
 
 ### Added
 - **Mechanically-correct breadboard hole grid.** *Dress Bench* now lays the optics on a real
