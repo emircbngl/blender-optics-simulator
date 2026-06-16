@@ -111,8 +111,8 @@ POST_RADIUS_TALL = 12.5         # Ø25 mm (1") RS-series pillar — stiffer, for
 PILLAR_OVER_MM = 130.0          # above this post length, use the fatter Ø1" pillar (stiffness ∝ d⁴)
 VERTICAL_STACK_MM = 25.0        # optics this far apart in z at one xy => a vertical beam runs between
                                 # them; the pillar must be OFFSET so it doesn't sit in the beam path
-PILLAR_OFFSET = 30.0            # how far to push a vertical-fold (RS99 periscope) pillar off the beam
-                                # axis: Ø1" post radius + the post-clamp/mount reach back onto the beam
+PILLAR_OFFSET = 44.0            # how far to push a vertical-fold (RS99 periscope) pillar off the beam
+                                # axis: enough that the post + clamp clear the optic so neither blocks it
 BOARD_THICKNESS = 12.7          # 1/2" solid breadboard slab
 MOUNT_DROP = 15.0               # optical axis -> post top: the mount body bridges this gap
 HOLDER_H = 50.0                 # fixed post-holder body length (PH2-class); insertion varies, not the body
@@ -486,17 +486,21 @@ def _clamp_fork(tag, x, y, board_top_z, post_radius, coll, away):
     return 2
 
 
-def _periscope_clamp(tag, ox, oy, pr, tx, ty, z, coll):
+def _periscope_clamp(tag, ox, oy, pr, tx, ty, z, coll, optic_r=12.5):
     """One RS99 mirror unit: a 360deg post-clamp COLLAR gripping the Ø1" post at this mirror's height +
-    a short stout reach to the optic on the beam axis (replaces the thin spider-arm). A side lock knob
-    shows the clamp is fastened to the post."""
+    a short stout arm that reaches only to the BACK of the mirror mount (it stops ``optic_r`` short of
+    the optic centre, so it never crosses the beam at the mirror). A side lock knob shows the clamp is
+    fastened to the post."""
     col = _cyl(BENCH_PREFIX + "Clamp_" + tag, pr + 5.0, 18.0, (ox, oy, z), coll, "mount")
     _bevel(col, 0.8, 1)
     dx, dy = tx - ox, ty - oy
     d = (dx * dx + dy * dy) ** 0.5 or 1.0
-    ux, uy = dx / d, dy / d
-    _bevel(_rod(BENCH_PREFIX + "Arm_" + tag, (ox + ux * pr, oy + uy * pr, z), (tx, ty, z),
-                7.5, coll, "mount", seg=20), 0.6, 1)
+    ux, uy = dx / d, dy / d                                  # unit vector post -> mirror (toward beam)
+    start = (ox + ux * pr, oy + uy * pr, z)                 # collar/post edge on the beam side
+    back = optic_r + 3.0                                     # stop this far BEHIND the mirror centre
+    end = (tx - ux * back, ty - uy * back, z)               # mount back, never the optic face/beam
+    if (d - pr - back) > 1.0:                                # only if there is room for a real arm
+        _bevel(_rod(BENCH_PREFIX + "Arm_" + tag, start, end, 7.0, coll, "mount", seg=20), 0.6, 1)
     # side locking thumbscrew on the collar, on the far side from the beam (radial)
     axis = 'X' if abs(ux) >= abs(uy) else 'Y'
     s = -1.0 if (ux + uy) >= 0 else 1.0                      # point away from the beam
@@ -997,7 +1001,8 @@ def dress(scene, post_radius=POST_RADIUS):
             n += nf + 1
             for i, o in members:
                 op = o.matrix_world.translation
-                n += _periscope_clamp("%02d" % i, ox, oy, POST_RADIUS_TALL, op.x, op.y, op.z, coll)
+                opr = getattr(o.optics, "clear_aperture", 0.0) or 12.5
+                n += _periscope_clamp("%02d" % i, ox, oy, POST_RADIUS_TALL, op.x, op.y, op.z, coll, opr)
                 n += _build_mount(o, coll, i)
         else:
             h = max((pt.z - MOUNT_DROP) - board_top_z, 1.0)

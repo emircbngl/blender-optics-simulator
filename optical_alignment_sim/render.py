@@ -108,8 +108,8 @@ RENDER_DESCRIPTORS = {
     'ISOLATOR':          ('dark',  (0.30, 0.30, 0.34)),
     'APERTURE':          ('dark',  (0.05, 0.05, 0.06)),
     'PINHOLE':           ('dark',  (0.05, 0.05, 0.06)),
-    'SOURCE':            ('emit',  (1.00, 0.10, 0.05)),
-    'FIBER_COLLIMATOR':  ('emit',  (1.00, 0.10, 0.05)),
+    'SOURCE':            ('dark',  (0.12, 0.13, 0.15)),
+    'FIBER_COLLIMATOR':  ('dark',  (0.13, 0.14, 0.16)),
 }
 
 

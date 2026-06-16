@@ -65,13 +65,15 @@ MATS = {
     "fiber":  lambda: _mat("OG_fiber", (0.40, 0.42, 0.48), metal=0.85, rough=0.30),
     # accent materials (slot 1+): keep their colour in realistic renders (only slot 0 is theme-swapped)
     "subglass":  lambda: _mat("OG_substrate", (0.28, 0.31, 0.37), metal=0.0, rough=0.22),
-    "coatbs":    lambda: _mat("OG_coat_bs", (0.55, 0.78, 1.00), metal=0.4, rough=0.08),
-    "coatpbs":   lambda: _mat("OG_coat_pbs", (0.72, 0.60, 0.98), metal=0.4, rough=0.08),
+    "coatbs":    lambda: _mat("OG_coat_bs", (0.55, 0.78, 1.00), metal=0.4, rough=0.10),
+    # a PBS shows a vivid, more mirror-like polarizing coating on the diagonal -> clearly NOT a 50/50 BS
+    "coatpbs":   lambda: _mat("OG_coat_pbs", (0.90, 0.28, 0.80), metal=0.7, rough=0.04),
     "coatdich":  lambda: _mat("OG_coat_dich", (0.95, 0.55, 0.85), metal=0.4, rough=0.08),
     "sensor":    lambda: _mat("OG_sensor", (0.02, 0.03, 0.07), metal=0.2, rough=0.45),
     "bezel":     lambda: _mat("OG_bezel", (0.48, 0.49, 0.54), metal=0.9, rough=0.30),
     "arrow":     lambda: _mat("OG_arrow", (0.90, 0.90, 0.92), metal=0.5, rough=0.30),
     "index":     lambda: _mat("OG_index", (0.92, 0.86, 0.45), metal=0.3, rough=0.30),
+    "laserbody": lambda: _mat("OG_laserbody", (0.12, 0.13, 0.15), metal=0.7, rough=0.35),
 }
 
 
@@ -381,13 +383,19 @@ def _etalon(name, radius, half_gap, coll):
 def source(name, loc, direction, coll=None, wavelength=632.8, length=40.0, radius=7.0):
     """A laser/source emitting along `direction` from its front face."""
     o = _disc(name, radius, length, coll)
-    o.data.materials.clear(); o.data.materials.append(MATS["laser"]())
-    # metal exit bezel ring at the front aperture, so it reads as a laser head, not a uniform glowing can
-    bz = _bored_disc(name + "_bezel", radius + 1.5, 3.0, radius * 0.55, coll)
+    # a real laser head: a dark anodized HOUSING (slot 0) with only the front APERTURE glowing -- not a
+    # uniformly glowing can. The emission stays on slot 2 (kept by the render pass; only slot 0 swaps).
+    o.data.materials.clear(); o.data.materials.append(MATS["laserbody"]())
+    bz = _bored_disc(name + "_bezel", radius + 1.5, 3.0, radius * 0.55, coll)   # metal exit bezel (slot 1)
     for v in bz.data.vertices:
         v.co.z += length * 0.5
     bz.data.materials.append(MATS["bezel"]())
     _join(o, bz)
+    ap = _disc(name + "_ap", radius * 0.48, 1.6, coll)                          # glowing exit aperture (slot 2)
+    for v in ap.data.vertices:
+        v.co.z += length * 0.5 + 0.3
+    ap.data.materials.append(MATS["laser"]())
+    _join(o, ap)
     _tag(o, 'SOURCE', is_source=True, wavelength=wavelength)
     _add_port(o, "OUT", 'OUT', (0, 0, length * 0.5), (0, 0, 1), radius)
     _set_matrix(o, Vector(loc), _z_to(direction))
@@ -581,6 +589,11 @@ def fiber_collimator(name, loc, direction, coll=None, wavelength=632.8, length=3
         v.co.z -= length * 0.5 + 4.5
     conn.data.materials.append(MATS["bezel"]())
     _join(o, conn)
+    ap = _disc(name + "_ap", radius * 0.45, 1.4, coll)                          # glowing output aperture
+    for v in ap.data.vertices:
+        v.co.z += length * 0.5 + 0.3
+    ap.data.materials.append(MATS["laser"]())
+    _join(o, ap)
     _tag(o, 'FIBER_COLLIMATOR', is_source=True, wavelength=wavelength)
     _add_port(o, "OUT", 'OUT', (0, 0, length * 0.5), (0, 0, 1), radius)
     _set_matrix(o, Vector(loc), _z_to(direction))
