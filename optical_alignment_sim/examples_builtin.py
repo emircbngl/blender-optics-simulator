@@ -132,6 +132,21 @@ def build_newton_rings(context):
     return "OpticsExample_NewtonRings"
 
 
+def build_periscope(context):
+    """A periscope: two 45-deg fold mirrors raise the beam OUT of the table plane to a second deck
+    and send it on -- the canonical vertical beam-steering build. The beam goes +Y to the lower
+    mirror, straight up (+Z) to the upper mirror, then +Y again at the upper deck to the detector.
+    Demonstrates an out-of-plane (vertical) fold: the optics live at two beam heights, not one."""
+    coll = G.example_collection("OpticsExample_Periscope")
+    Y, Z = Vector((0, 1, 0)), Vector((0, 0, 1))
+    deck = 90.0
+    G.source("PS_Laser", (0, -120, 0), Y, coll)            # shoots +Y on deck 1 (z = 0)
+    G.mirror("PS_M_low", (0, 0, 0), Y, Z, coll)            # +Y -> up (+Z)
+    G.mirror("PS_M_high", (0, 0, deck), Z, Y, coll)        # up -> +Y on deck 2 (z = deck)
+    G.detector("PS_D", (0, 120, deck), Y, coll)            # catches the raised beam
+    return "OpticsExample_Periscope"
+
+
 EXAMPLES = {
     'mach_zehnder': ("Mach-Zehnder Interferometer", build_mach_zehnder),
     'michelson':    ("Michelson Interferometer", build_michelson),
@@ -139,6 +154,7 @@ EXAMPLES = {
     'bell':         ("Bell / Entanglement Source", build_bell_entanglement),
     'adaptive_optics': ("Adaptive Optics (WFS + deformable mirror)", build_adaptive_optics),
     'newton_rings': ("Newton's Rings (lens vs flat)", build_newton_rings),
+    'periscope':    ("Periscope (vertical beam raise)", build_periscope),
 }
 
 

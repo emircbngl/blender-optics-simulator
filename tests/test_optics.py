@@ -48,9 +48,18 @@ check("beam_roc(waist) = inf", math.isinf(physics.beam_roc(physics.q_from_waist(
 check("gouy(waist) = 0", abs(physics.gouy_phase(physics.q_from_waist(0.5, 632.8))) < 1e-9)
 
 print("[examples build + trace]")
-for kind in ("mach_zehnder", "michelson", "hong_ou_mandel", "bell", "adaptive_optics", "newton_rings"):
+for kind in ("mach_zehnder", "michelson", "hong_ou_mandel", "bell", "adaptive_optics", "newton_rings", "periscope"):
     r = optics_api.build_example(kind)
     check("build %s" % kind, isinstance(r, dict) and r.get("segments", 0) >= 1, str(r))
+
+print("[periscope: out-of-plane vertical fold]")
+optics_api.build_example("periscope")
+_ps = scan._trace(sc)
+_pp = alignment.measure(_ps, "PS_D", "NONE")[0]
+_pz = [c[2] for s in _ps for c in (s["p1"], s["p2"])]
+check("periscope reaches the detector at full power", _pp > 0.95, "P=%.3f" % _pp)
+check("periscope raises the beam out of plane (vertical fold)", (max(_pz) - min(_pz)) > 50.0,
+      "z-range %.1f" % (max(_pz) - min(_pz)))
 
 print("[interference invariants]")
 optics_api.build_example("michelson")
