@@ -39,14 +39,25 @@ to PNG. No external plotting or compositing.
 | a lens vs. a flat reference → concentric rings (the Gaussian-wavefront model) | adaptive-optics sensor: injected defocus + astigmatism + coma (RMS 0.56 λ) | after the closed loop → flat (RMS 0.00 λ) |
 
 <p align="center">
-  <img src="docs/img/dressed-bench.png" width="62%" alt="A Michelson interferometer dressed with posts in post-holders on a tapped-hole breadboard so it reads like a real optical table">
+  <img src="docs/img/dressed-bench.png" width="62%" alt="A Michelson interferometer on a tapped-hole breadboard: kinematic mirror mounts, a cube beamsplitter mount, posts in post-holders, all at one beam height">
 </p>
 
-*One-click **Dress Bench** (Render panel) drops the optics onto posts + post-holders on a real
-tapped-hole breadboard (metric 25 mm or imperial 1″, a scene setting) — decoration only, never
-traced — so a Cycles render reads like a real optical table. The hole grid is also a data model:
-`get_state()['bench']` reports the pitch, extent and which hole each optic sits on, and MCP
-`place_on_grid` snaps parts to named holes, so an AI agent knows exactly where things go.*
+*One-click **Dress Bench** (Render panel) seats every optic at one **beam height** on a real
+**tapped-hole breadboard** (metric 25 mm or imperial 1″, a scene setting), with **mount-type-correct
+hardware** — kinematic mirror mounts (KM100/KS1-style, knurled adjusters), a cube beamsplitter
+mount, threaded lens cells, rotation mounts for waveplates — on Ø12.7 mm posts in post-holders with
+locking thumbscrews. Decoration only (never traced), so a Cycles render reads like a real optical
+table. It is also a data model: `get_state()` reports the grid, the beam height, the vertical post
+chain and which hole/system each optic uses, so an AI agent knows exactly where things go.*
+
+| Cage system (16/30/60 mm) | Lens tube (SM05/SM1/SM2) | Dovetail rail + carriers |
+|:---:|:---:|:---:|
+| ![cage](docs/img/sys-cage.png) | ![lens tube](docs/img/sys-tube.png) | ![rail](docs/img/sys-rail.png) |
+| collinear optics share 4 rods + one post (`make_cage`) | an in-line stack shares one barrel (`make_tube`) | carriers slide along one track (`make_rail` / `place_on_rail`) |
+
+*Every mounting system is original GPL-clean procedural geometry built to the real functional
+dimensions (Thorlabs SM threads, ER cage rods, RLA rail) — vendor CAD is never bundled. Grouping
+optics into a cage/tube/rail never moves them, so the beam path is byte-identical.*
 
 ---
 
@@ -115,6 +126,16 @@ few small, inspectable layers:
 - **Kinematic mounts** — rig a static vendor mesh with the tip/tilt/rotate/translate knobs it
   lacks, each with a real range; **auto-align** drives only the knobs and says *"move the post"*
   when a target is out of reach.
+- **Realistic opto-mechanics (Dress Bench)** — one click puts the whole setup on a real bench:
+  a **tapped-hole breadboard** (metric 25 mm / M6 or imperial 1″ / 1/4-20, a scene setting) on
+  feet, every optic at one **beam height** on a Ø12.7 mm post + post-holder (locking thumbscrew),
+  and **mount-type-correct hardware** — kinematic mirror mounts with knurled adjusters (2-axis
+  KM100 or 3-axis KS1), cube beamsplitter mounts, threaded lens cells, waveplate rotation collars,
+  camera C-mounts. Group optics into a **cage** (16/30/60 mm rods), a **lens tube** (SM05/SM1/SM2
+  barrel) or onto a **dovetail rail** with carriers. All original GPL-clean geometry to the real
+  functional dimensions (no vendor CAD); pure decoration that never moves the optics, so the trace
+  is unchanged. The full bench — grid, beam height, post chain, and each optic's mount/system — is
+  exposed in `get_state()` so an agent can read and build a layout.
 - **Opto-mechanical limits** — warns when a post pulls out of its holder or a cage rod leaves
   its bore.
 - **Alignment report** — per-element position/angle residuals with OK/Warn/Bad states and
@@ -299,8 +320,11 @@ the catalog is fully usable out of the box.
 
 The whole point: an AI agent can *see* and *drive* a running optical scene. A dedicated **MCP
 server** connects to a localhost socket bridge built into the add-on — build setups, read the
-full optical state (ports, world normals, beam path, detector readings), align, swap parts,
-position elements, scan, run the AO loop, and render.
+full optical state (ports, world normals, beam path, detector readings, **bench grid + beam height
++ each optic's mount/system**), align, swap parts, position elements, scan, run the AO loop, and
+render. Opto-mechanics is agent-drivable too: `dress_bench`, `set_grid`, `place_on_grid`, and
+`make_cage` / `make_tube` / `make_rail` (+ `place_on_rail`) build a real bench layout the agent can
+both read back and reposition.
 
 1. In Blender: **Optics ▸ Simulation ▸ Start MCP Bridge** (the bridge auto-exposes every public
    `optics_api` function over localhost).
