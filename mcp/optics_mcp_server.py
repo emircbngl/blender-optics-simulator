@@ -252,5 +252,14 @@ def make_cage(members: list, size_mm: int = 30, cage_id: str = "") -> str:
     return _fmt(_call("make_cage", members=members, size_mm=size_mm, cage_id=cage_id or None))
 
 
+@mcp.tool()
+def make_tube(members: list, thread: str = "SM1", tube_id: str = "") -> str:
+    """Stack collinear in-line optics into one SM lens-tube barrel (they share one barrel + one post
+    instead of an individual post each). `members` is a list of element names; `thread` in
+    {SM05, SM1, SM2} (Ø1/2", Ø1", Ø2"). Reported in get_state()['tubes']. Optics are not moved, so
+    the trace is unchanged."""
+    return _fmt(_call("make_tube", members=members, thread=thread, tube_id=tube_id or None))
+
+
 if __name__ == "__main__":
     mcp.run()
