@@ -136,12 +136,13 @@ def _thread_hole_r(pitch):
 
 def _vertical_chain(scene, elems):
     """The shared vertical datum so dress() geometry and grid_info() data report the SAME numbers.
-    Returns (beam_height, ref_axis_z, board_top_z). board_top_z is derived from the beam height and
-    a robust reference axis (median optic-centre z), NOT from min(bbox), so it is stable under
-    incremental edits — adding one tall optic never moves the table or re-cuts standing posts."""
+    Returns (beam_height, ref_axis_z, board_top_z). The board sits one beam height below the LOWEST
+    optic, so even the lowest optic clears its post-holder (a median datum let a low optic in a
+    multi-deck/periscope layout fall below the holder top). Single-height benches are unaffected
+    (lowest == all == one beam height up, equal posts)."""
     bh = beam_height(scene)
-    zs = sorted((o.matrix_world.translation.z for o in elems))
-    ref_z = zs[len(zs) // 2] if zs else 0.0          # median optic-axis height
+    zs = [o.matrix_world.translation.z for o in elems]
+    ref_z = min(zs) if zs else 0.0                   # lowest optic-axis height
     return bh, ref_z, ref_z - bh
 
 
@@ -783,6 +784,48 @@ def rail_info(scene):
             "carriers": [{"element": m.name, "s_mm": round(t - tmin, 2)} for m, t in zip(members, ts)],
         })
     return out
+
+
+def validate(scene):
+    """Geometric sanity check on the dressed bench -- the programmatic 'eyes' on the assembly AND a
+    hard constraint gate, since a render can't be trusted to catch a physically-absurd config. Returns
+    a list of {kind, element, detail} invariant violations (empty list == valid):
+      - mount_below_holder: a post-mounted optic sits at/under its post-holder top (the mount would be
+        BELOW the thing holding it -- absurd; caught the periscope lower-mirror bug)
+      - post_overlap: two support posts/pillars collide (coaxial / overlapping supports)
+    Use it after dress() (regression gate + get_state['warnings']) to KNOW the geometry is valid."""
+    if not is_dressed(scene):
+        return []
+    elems = _optical_objects(scene)
+    if not elems:
+        return []
+    _bh, _ref, board_top_z = _vertical_chain(scene, elems)
+    holder_top = board_top_z + BASE_H + HOLDER_H
+    grouped = set()
+    for members in (list(cage_groups(scene).values()) + list(tube_groups(scene).values())
+                    + list(rail_groups(scene).values())):
+        grouped.update(m.name for m in members)
+    issues = []
+    # 1. every POST-mounted optic must clear its holder top (mount above the holder, not inside/below)
+    for o in elems:
+        if o.name in grouped:
+            continue                                  # cage/tube/rail mount differently
+        z = o.matrix_world.translation.z
+        if z < holder_top - 1.0:
+            issues.append({"kind": "mount_below_holder", "element": o.name,
+                           "detail": "optic z=%.1f below holder top %.1f" % (z, holder_top)})
+    # 2. no two support posts/pillars collide (same xy, overlapping radius)
+    posts = [ob for ob in scene.objects
+             if any(ob.name.startswith(BENCH_PREFIX + p)
+                    for p in ("Post_", "CagePost_", "TubePost_"))]
+    for a in range(len(posts)):
+        for b in range(a + 1, len(posts)):
+            pa, pb = posts[a].matrix_world.translation, posts[b].matrix_world.translation
+            if ((pa.x - pb.x) ** 2 + (pa.y - pb.y) ** 2) ** 0.5 < 2.2 * POST_RADIUS:
+                issues.append({"kind": "post_overlap",
+                               "element": "%s | %s" % (posts[a].name, posts[b].name),
+                               "detail": "posts within %.1f mm (coaxial collision)" % (2.2 * POST_RADIUS)})
+    return issues
 
 
 def dress(scene, post_radius=POST_RADIUS):

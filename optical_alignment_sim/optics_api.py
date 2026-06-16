@@ -105,6 +105,9 @@ def get_state():
         "tubes": _optomech.tube_info(scene),
         # Rail assemblies (dovetail): which optics ride one rail, the axis + each carrier's position.
         "rails": _optomech.rail_info(scene),
+        # Geometric validation: physical-invariant violations on the dressed bench (mount below its
+        # holder, colliding posts). Empty == valid. The agent's programmatic check on the assembly.
+        "warnings": _optomech.validate(scene),
     }
 
 
