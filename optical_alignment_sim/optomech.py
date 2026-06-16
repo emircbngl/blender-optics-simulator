@@ -260,6 +260,17 @@ def _ocyl(name, r, depth, mw, off, coll, matkey, axis='Z'):
     return o
 
 
+def _bevel(o, width=0.5, segments=2):
+    """Round the hard edges of a part so it reads as machined metal, not a CAD block. Applies a
+    Bevel modifier (angle-limited) and bakes it in. Returns the object."""
+    m = o.modifiers.new("bev", 'BEVEL')
+    m.width = width; m.segments = segments
+    m.limit_method = 'ANGLE'; m.angle_limit = math.radians(35)
+    bpy.context.view_layer.objects.active = o
+    bpy.ops.object.modifier_apply(modifier=m.name)
+    return o
+
+
 def _build_mount(o, coll, idx):
     """Build the mount silhouette that matches the element's mount/element type, oriented in the
     optic's local frame (local +Z is the optical axis for inline parts; the cube body for splitters).
@@ -290,16 +301,18 @@ def _build_mount(o, coll, idx):
         _obox(pre + "Index_" + nm, (2.5, 2.5, 4.0), mw, (ca * 1.5, 0, 0), coll, "post")
         return 3
     if mt == 'KINEMATIC_2AXIS' or et == 'MIRROR':
-        # kinematic mount (KM100-style): a square back-plate behind the optic, a front retaining
-        # ring holding the mirror, and two actuator screws -- each a thin shaft with a knurled knob
-        # you turn from behind -- at adjacent corners (tip + tilt). Reads as a real steering mount.
-        plate = ca * 1.55
-        _obox(pre + "KMplate_" + nm, (plate, plate, 6.0), mw, (0, 0, -8.0), coll, "mount")
-        _ring(pre + "Mount_" + nm, ca * 1.18, ca * 0.16, mw, coll)
-        for an, (sx, sy) in (("Adj1", (plate * 0.33, -plate * 0.33)),
-                             ("Adj2", (-plate * 0.33, plate * 0.33))):
-            _ocyl(pre + an + "s_" + nm, 1.3, 14.0, mw, (sx, sy, -12.5), coll, "post")    # actuator shaft
-            _ocyl(pre + an + "k_" + nm, 3.1, 4.0, mw, (sx, sy, -20.6), coll, "mount")    # knurled knob
+        # kinematic mount (KM100-style): a bevelled square front plate with a bored aperture that
+        # frames the (round) optic, a smaller back-plate, and two actuator screws (shaft + knurled
+        # knob) at adjacent corners (tip + tilt). KMplate name kept for the regression.
+        plate = ca * 2.6
+        _bevel(_bored_plate(pre + "KMplate_" + nm, plate, 9.0, ca * 0.95,
+                            mw @ Matrix.Translation((0.0, 0.0, 1.0)), coll, "mount"), 0.7, 2)
+        _bevel(_obox(pre + "KMback_" + nm, (plate * 0.86, plate * 0.86, 6.0),
+                     mw, (0, 0, -12.0), coll, "mount"), 0.7, 2)
+        for an, (sx, sy) in (("Adj1", (plate * 0.30, -plate * 0.30)),
+                             ("Adj2", (-plate * 0.30, plate * 0.30))):
+            _ocyl(pre + an + "s_" + nm, 1.5, 16.0, mw, (sx, sy, -13.0), coll, "post")            # shaft
+            _bevel(_ocyl(pre + an + "k_" + nm, 3.7, 5.0, mw, (sx, sy, -22.0), coll, "mount"), 0.8, 2)  # knob
         return 6
     # threaded lens / filter / window / generic: a retaining ring inside a short lens-cell wall
     _ring(pre + "Mount_" + nm, ca * 1.18, ca * 0.16, mw, coll)
@@ -312,18 +325,20 @@ def _post_holder(tag, x, y, board_top_z, post_radius, coll):
     it is fastened, not floating) + a fixed-length post-holder body with a side locking thumbscrew
     (the post slides in and is clamped). The post itself is built by the caller. Returns the count."""
     hr = post_radius * 1.8
-    _cyl(BENCH_PREFIX + "Base_" + tag, post_radius * 2.6, BASE_H,
-         (x, y, board_top_z + BASE_H * 0.5), coll, "clamp")
+    _bevel(_cyl(BENCH_PREFIX + "Base_" + tag, post_radius * 2.6, BASE_H,
+                (x, y, board_top_z + BASE_H * 0.5), coll, "clamp"), 0.8, 2)
     # cap screw fastening the foot to the table (offset from the central post bore)
-    _cyl(BENCH_PREFIX + "Bolt_" + tag, post_radius * 0.5, 3.5,
-         (x + post_radius * 2.05, y, board_top_z + BASE_H + 0.7), coll, "post")
-    _cyl(BENCH_PREFIX + "Holder_" + tag, hr, HOLDER_H,
-         (x, y, board_top_z + BASE_H + HOLDER_H * 0.5), coll, "holder")
-    # side locking thumbscrew near the top of the holder body (clamps the post in the bore)
+    _bevel(_cyl(BENCH_PREFIX + "Bolt_" + tag, post_radius * 0.55, 3.5,
+                (x + post_radius * 2.0, y, board_top_z + BASE_H + 0.8), coll, "post"), 0.5, 1)
+    _bevel(_cyl(BENCH_PREFIX + "Holder_" + tag, hr, HOLDER_H,
+                (x, y, board_top_z + BASE_H + HOLDER_H * 0.5), coll, "holder"), 0.8, 2)
+    # side locking thumbscrew: a thin shaft + a wider knurled head (the knob you grip), protruding
     mw = Matrix.Translation((x, y, board_top_z + BASE_H + HOLDER_H * 0.72))
-    _ocyl(BENCH_PREFIX + "Lock_" + tag, post_radius * 0.55, post_radius * 1.6,
-          mw, (hr + post_radius * 0.55, 0.0, 0.0), coll, "post", axis='X')
-    return 4
+    _ocyl(BENCH_PREFIX + "Locks_" + tag, post_radius * 0.32, post_radius * 1.1,
+          mw, (hr + post_radius * 0.45, 0.0, 0.0), coll, "post", axis='X')
+    _bevel(_ocyl(BENCH_PREFIX + "Lockh_" + tag, post_radius * 0.72, post_radius * 0.7,
+                 mw, (hr + post_radius * 1.05, 0.0, 0.0), coll, "mount", axis='X'), 0.45, 2)
+    return 5
 
 
 # ---------------------------------------------------------------------------
@@ -436,10 +451,10 @@ def _build_cage(scene, members, board_top_z, coll, post_radius, tag):
     # one post under the cage centroid, to beam height (foot + holder + thumbscrew + post)
     post_top_z = centroid.z - MOUNT_DROP
     h = max(post_top_z - board_top_z, 1.0)
-    _post_holder("cage_" + tag, centroid.x, centroid.y, board_top_z, post_radius, coll)
+    nh = _post_holder("cage_" + tag, centroid.x, centroid.y, board_top_z, post_radius, coll)
     _cyl("%sCagePost_%s" % (BENCH_PREFIX, tag), post_radius, h,
          (centroid.x, centroid.y, board_top_z + h * 0.5), coll, "post")
-    return n + 5
+    return n + nh + 1
 
 
 def cage_info(scene):
@@ -504,11 +519,11 @@ def dress(scene, post_radius=POST_RADIUS):
         post_top_z = p.z - MOUNT_DROP
         h = max(post_top_z - board_top_z, 1.0)
         # base foot (bolted) + fixed-length post-holder body with a locking thumbscrew + the post
-        _post_holder("%02d" % i, p.x, p.y, board_top_z, post_radius, coll)
+        nh = _post_holder("%02d" % i, p.x, p.y, board_top_z, post_radius, coll)
         _cyl(BENCH_PREFIX + "Post_%02d" % i, post_radius, h,
              (p.x, p.y, board_top_z + h * 0.5), coll, "post")
         # mount silhouette matched to the element/mount type (kinematic / rotation / cube / lens...)
-        n += 5 + _build_mount(o, coll, i)
+        n += nh + 1 + _build_mount(o, coll, i)
     for gi, members in enumerate(groups.values()):
         n += _build_cage(scene, members, board_top_z, coll, post_radius, "%02d" % gi)
     return n
