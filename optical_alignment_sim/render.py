@@ -320,7 +320,9 @@ _CAM_DIRS = {
 }
 
 
-def set_camera(scene, preset='HERO'):
+def set_camera_direction(scene, dvec):
+    """Frame the optical setup from an arbitrary view direction (the primitive an orbit animation
+    sweeps). Fits the bounding sphere just like the presets, so every orbit frame stays framed."""
     cam = scene.camera
     if cam is None or cam.type != 'CAMERA':
         cdata = bpy.data.cameras.new("OPTICS_CAM")
@@ -334,10 +336,14 @@ def set_camera(scene, preset='HERO'):
     dist = radius / math.tan(cam.data.angle * 0.5) * 1.3 + radius   # fit bounding sphere
     cam.data.clip_start = max(0.01, radius * 0.001)
     cam.data.clip_end = (dist + size) * 4.0                          # don't clip the setup
-    d = _CAM_DIRS.get(preset, _CAM_DIRS['HERO']).normalized()
+    d = Vector(dvec).normalized()
     cam.location = center + d * dist
     cam.rotation_euler = (center - cam.location).to_track_quat('-Z', 'Y').to_euler()
     return cam
+
+
+def set_camera(scene, preset='HERO'):
+    return set_camera_direction(scene, _CAM_DIRS.get(preset, _CAM_DIRS['HERO']))
 
 
 class OPTICS_OT_set_camera(Operator):

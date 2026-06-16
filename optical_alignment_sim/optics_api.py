@@ -193,6 +193,19 @@ def clear_beams():
     return {"cleared": _bake.clear_baked(_scene())}
 
 
+def render_sequence(frames=48, motion='ORBIT', out_dir=None, engine='EEVEE',
+                    turns=1.0, elevation=0.55, encode='auto', fps=24):
+    """Render a camera-orbit PNG sequence of the current setup (headless animation pipeline) and,
+    if ffmpeg is present, encode an mp4 (best-effort; the PNG sequence is always produced). Bakes
+    the beam first so it shows. Returns {frames, dir, pattern, ffmpeg, video}."""
+    from . import anim
+    scene = _scene()
+    _bake.ensure_beams(bpy.context)
+    return anim.render_sequence(scene, frames=frames, motion=motion, out_dir=out_dir,
+                                engine=engine, turns=turns, elevation=elevation,
+                                encode=encode, fps=fps)
+
+
 def render(preset='preview', camera='HERO', filepath=None):
     scene = _scene()
     _bake.ensure_beams(bpy.context)
