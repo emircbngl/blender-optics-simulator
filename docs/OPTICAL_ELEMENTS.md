@@ -6,6 +6,16 @@ This is the **reference layer** (Phase B). Wiring these variants into the add-on
 
 **8 element categories, 118 variants.** Generated 2026-06-17.
 
+> **Provenance & verification.** The behaviors, formulas (e.g. the thin-lens lensmaker relation
+> `1/f = (n−1)(1/R₁ − 1/R₂)`, the grating equation `mλ = d(sin θ_m − sin θ_i)`, `NA = D/2f`, `f/# = f/D`)
+> and dimensions here were **compiled from manufacturer datasheets and standard optics references**
+> (Thorlabs, Edmund, RP-Photonics, Wikipedia) by a research-agent sweep. They are **standard textbook
+> results included as a reference, NOT independently re-verified with the project's physics oracle**
+> (`physics_verify`) in this pass. This document does **not** change any computed physics — the add-on's
+> actual numerical behavior lives in `physics.py` / `tracer.py` (the oracle-verified path). When Phase A
+> wires any of these relations into the tracer as real computation, that specific formula will be
+> oracle-verified before it ships.
+
 ---
 
 ## Lenses
