@@ -579,6 +579,43 @@ def crystal(name, loc, beam_dir, coll=None, size=14.0, nl_process='NONE'):
     return o
 
 
+# DIN/JIS magnification colour-code ring (the band that identifies an objective at a glance)
+_OBJ_RING = {4: (0.80, 0.12, 0.12), 10: (0.95, 0.80, 0.20), 20: (0.25, 0.70, 0.35),
+             40: (0.30, 0.50, 0.95), 60: (0.20, 0.80, 0.80), 100: (0.95, 0.95, 0.90)}
+
+
+def objective(name, loc, axis, coll=None, mag=10.0, na=0.25, wd=10.0, correction='INFINITY', long_wd=False):
+    """A microscope objective: a stepped anodized barrel (body -> shoulder -> nose) with the DIN
+    magnification colour ring. The OUT (+Z) faces the tube lens, the IN (-Z nose) faces the sample. The
+    tracer focuses it with f_obj = f_tube/M (infinity) -- VERIFIED microscope-objective-magnification."""
+    R, L = 11.0, 42.0
+
+    def _seg(r1, r2, depth, zoff):
+        b = bmesh.new()
+        bmesh.ops.create_cone(b, cap_ends=True, segments=40, radius1=r1, radius2=r2, depth=depth)
+        ob = _bm_obj(name + "_s", b, coll)
+        for v in ob.data.vertices:
+            v.co.z += zoff
+        return ob
+
+    o = _seg(R, R, L * 0.5, L * 0.25)                      # back body (+Z, toward the tube lens)
+    _join(o, _seg(R, R * 0.6, L * 0.30, -L * 0.05))        # shoulder taper
+    _join(o, _seg(R * 0.6, R * 0.32, L * 0.22, -L * 0.30))  # nose (toward the sample)
+    o.data.materials.clear(); o.data.materials.append(MATS["iso"]())   # dark anodized barrel
+    ck = min(_OBJ_RING, key=lambda k: abs(k - mag))        # nearest standard magnification colour
+    ring = _bored_disc(name + "_ring", R * 1.03, 3.2, R * 0.72, coll)
+    for v in ring.data.vertices:
+        v.co.z += -L * 0.02
+    ring.data.materials.append(_mat("OG_objring_%d" % ck, _OBJ_RING[ck], metal=0.3, rough=0.4))
+    _join(o, ring)
+    _tag(o, 'OBJECTIVE', clear_aperture=R, obj_mag=mag, obj_na=na, obj_wd=wd,
+         obj_correction=correction, obj_long_wd=long_wd)
+    _add_port(o, "IN", 'IN', (0, 0, -L * 0.45), (0, 0, -1), R)     # nose faces the sample
+    _add_port(o, "OUT", 'OUT', (0, 0, L * 0.5), (0, 0, 1), R)      # back faces the tube lens
+    _set_matrix(o, Vector(loc), _z_to(axis))
+    return o
+
+
 # --- additional component builders (broad library) --------------------------
 # Inline (pass-through) parts reuse `_inline`: a disc with IN/OUT ports on its
 # optical axis; the tracer transmits the beam straight through (layout fidelity).

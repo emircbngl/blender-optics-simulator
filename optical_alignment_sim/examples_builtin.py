@@ -228,6 +228,22 @@ def build_hybrid_system(context):
     return "OpticsExample_HybridSystem"
 
 
+def build_microscope(context):
+    """A transmitted-light, infinity-corrected microscope: a lamp + condenser (Koehler) image the
+    illumination onto the sample; the OBJECTIVE collimates the sample to infinity space; a TUBE LENS
+    forms the image at the camera. Overall lateral magnification M = f_tube / f_obj (oracle-VERIFIED
+    microscope-objective-magnification) -- here f_tube = 200 mm, 10x objective -> f_obj = 20 mm."""
+    coll = G.example_collection("OpticsExample_Microscope")
+    X = Vector((1, 0, 0))
+    G.source("MIC_Lamp", (-260, 0, 0), X, coll, wavelength=550.0)            # Koehler illumination
+    G.lens("MIC_Condenser", (-180, 0, 0), X, coll, focal=80.0, radius=14.0)  # images the lamp onto the sample
+    G.aperture("MIC_Sample", (-100, 0, 0), X, coll, radius=8.0)              # the specimen (object plane)
+    G.objective("MIC_Obj", (-80, 0, 0), X, coll, mag=10.0, na=0.25, wd=10.0, correction='INFINITY')
+    G.lens("MIC_Tube", (40, 0, 0), X, coll, focal=200.0, radius=16.0)        # tube lens (200 mm -> M = 10x)
+    G.detector("MIC_Cam", (240, 0, 0), X, coll, size=26.0)                   # sensor at the image plane
+    return "OpticsExample_Microscope"
+
+
 EXAMPLES = {
     'mach_zehnder': ("Mach-Zehnder Interferometer", build_mach_zehnder),
     'michelson':    ("Michelson Interferometer", build_michelson),
@@ -240,6 +256,7 @@ EXAMPLES = {
     'tube_system':  ("Lens-Tube System (4f relay -> camera)", build_tube_system),
     'rail_system':  ("Rail System (beam expander beamline)", build_rail_system),
     'hybrid_system': ("Hybrid (cage + post + rail)", build_hybrid_system),
+    'microscope':   ("Microscope (infinity-corrected: objective + tube lens)", build_microscope),
 }
 
 

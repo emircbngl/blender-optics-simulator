@@ -133,6 +133,17 @@ class OPTICS_PT_tag(Panel):
             pcol.prop(props, "nl_process")
             if props.nl_process != 'NONE':
                 pcol.prop(props, "nl_efficiency")
+        elif et == 'OBJECTIVE':
+            pcol.prop(props, "obj_correction")
+            pcol.prop(props, "obj_mag")
+            pcol.prop(props, "obj_na")
+            pcol.prop(props, "obj_wd")
+            pcol.prop(props, "obj_long_wd")
+            if props.obj_correction == 'INFINITY':
+                pcol.prop(props, "obj_tube_ref")
+            _tl = {'FINITE_160': 160.0, 'FINITE_195': 195.0}.get(props.obj_correction, props.obj_tube_ref)
+            pcol.label(text="f_obj = %.2f mm  (M = f_tube/f_obj)" % (_tl / max(props.obj_mag, 1e-6)),
+                       icon='IMAGE_BACKGROUND')
         elif et in ('DETECTOR', 'PHOTODIODE', 'POWER_METER'):
             pcol.prop(props, "analyzer")
             sbox = pcol.box()
