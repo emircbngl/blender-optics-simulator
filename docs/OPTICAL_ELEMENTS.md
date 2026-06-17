@@ -6,15 +6,18 @@ This is the **reference layer** (Phase B). Wiring these variants into the add-on
 
 **8 element categories, 118 variants.** Generated 2026-06-17.
 
-> **Provenance & verification.** The behaviors, formulas (e.g. the thin-lens lensmaker relation
-> `1/f = (n−1)(1/R₁ − 1/R₂)`, the grating equation `mλ = d(sin θ_m − sin θ_i)`, `NA = D/2f`, `f/# = f/D`)
-> and dimensions here were **compiled from manufacturer datasheets and standard optics references**
-> (Thorlabs, Edmund, RP-Photonics, Wikipedia) by a research-agent sweep. They are **standard textbook
-> results included as a reference, NOT independently re-verified with the project's physics oracle**
-> (`physics_verify`) in this pass. This document does **not** change any computed physics — the add-on's
-> actual numerical behavior lives in `physics.py` / `tracer.py` (the oracle-verified path). When Phase A
-> wires any of these relations into the tracer as real computation, that specific formula will be
-> oracle-verified before it ships.
+> **⚠️ Provenance & verification — these formulas are UNVERIFIED by this project's oracle.**
+> The relations in this document — including the thin-lens lensmaker equation `1/f = (n−1)(1/R₁ − 1/R₂)`,
+> the grating equation `mλ = d(sin θ_m − sin θ_i)`, the numerical aperture `NA = D/2f`, the f-number
+> `f/# = f/D`, retardance/Jones, Fresnel/coating, Airy/finesse, and phase-matching relations — are
+> **standard textbook optics compiled from manufacturer datasheets and references** (Thorlabs, Edmund,
+> RP-Photonics, Wikipedia) by a research-agent sweep. **Every one of them is UNVERIFIED with
+> `physics_verify` in this work** — they were NOT run through the project's physics oracle (the oracle is
+> available, but its spec-harness format rejected every submission attempted, so no passing verification
+> was obtained). Treat them as *sourced-standard reference, not oracle-confirmed*. This document changes
+> **no computed physics** — the add-on's actual numerical behavior lives in `physics.py` / `tracer.py`.
+> When Phase A wires any of these relations into the tracer as real computation, that specific formula
+> **will be oracle-verified before it ships** (and the spec-harness format will be resolved first).
 
 ---
 
