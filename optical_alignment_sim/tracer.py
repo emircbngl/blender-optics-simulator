@@ -192,6 +192,15 @@ def _child(ray, E, H, d, power, kind, idx, t, jones=None, q=None, evec=None, abe
                 f_eff = (E.optics.focal_length * (nd - 1.0) / (nl - 1.0)
                          if abs(nl - 1.0) > 1e-6 else E.optics.focal_length)
                 q = physics.q_propagate(q, physics.abcd_lens(f_eff))
+            else:
+                # a CURVED mirror focuses on reflection: f = R/2 (VERIFIED spherical-mirror-focal-length).
+                # Achromatic -- NO 1/(n-1) wavelength scaling (a mirror does not disperse, unlike a lens).
+                mc = getattr(E.optics, 'mirror_curve', 'FLAT')
+                rc = getattr(E.optics, 'radius_curv', 0.0)
+                if (E.optics.element_type in ('MIRROR', 'PRISM_MIRROR', 'DEFORMABLE_MIRROR')
+                        and mc in ('CONCAVE', 'CONVEX') and rc > 0.0):
+                    f_mirror = (rc * 0.5) if mc == 'CONCAVE' else -(rc * 0.5)   # f = +R/2 / -R/2
+                    q = physics.q_propagate(q, physics.abcd_lens(f_mirror))
     if evec is not None:
         nev = evec
         nj = physics.jones_from_field(evec, d)

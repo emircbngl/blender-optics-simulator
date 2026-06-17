@@ -248,6 +248,13 @@ class OpticalElementProps(PropertyGroup):
     prism_angle: FloatProperty(name="Prism angle (deg)", default=45.0)
     clear_aperture: FloatProperty(name="Clear aperture (mm)", default=12.7, min=0.0)
     reflectivity: FloatProperty(name="Reflectivity", default=1.0, min=0.0, max=1.0)
+    # mirror CURVATURE (variant): a curved mirror focuses on reflection with f = R/2 (VERIFIED:
+    # spherical-mirror-focal-length, physics_verify 4/4). FLAT = no focal power (the historic behavior).
+    mirror_curve: EnumProperty(name="Mirror curvature", default='FLAT',
+        items=[('FLAT', "Flat", "Planar fold mirror (no focal power)"),
+               ('CONCAVE', "Concave", "Converging: f = +R/2"),
+               ('CONVEX', "Convex", "Diverging: f = -R/2")])
+    radius_curv: FloatProperty(name="Radius of curvature (mm)", default=0.0, min=0.0)  # |R|; f=R/2
     wavelength: FloatProperty(name="Wavelength (nm)", default=632.8, min=1.0)   # 0 nm would divide-by-zero the Gaussian q
     refractive_index: FloatProperty(name="Refractive index", default=1.5168)
 
