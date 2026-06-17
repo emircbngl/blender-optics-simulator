@@ -457,6 +457,25 @@ paints that curved wavefront as live concentric rings.
 
 ---
 
+## How this compares
+
+A **layout, alignment, and visualization** tool — not a lens-design optimizer or a wave-optics
+solver. It sits in a niche the standard tools don't cover:
+
+- **Zemax / OpticStudio, CODE V** — sequential / non-sequential *lens design + optimization*
+  (tolerancing, MTF, spot diagrams). This doesn't optimize a prescription; it lays out and **aligns a
+  bench** and renders it photorealistically. Different job.
+- **POPPY, diffractio, prysm** — Python **physical / Fourier optics** (diffraction integrals, PSFs,
+  wavefront propagation). This is a **single-ray geometric tracer with analytic overlays** (Jones/Stokes,
+  Gaussian-beam ABCD, analytic fringes) — lighter physics, but a full **3-D bench with opto-mechanics**
+  they don't model.
+- **Blender** on its own — gorgeous renders, **no optics**. This adds the beam tracer, the physics, the
+  kinematic mounts + collision-checked hardware, and the agent API on top.
+
+The niche is the **intersection**: a real 3-D optical bench you can **design, auto-align, render
+photorealistically, and drive from an AI agent over MCP**. Need a diffraction PSF or a tolerancing run?
+Reach for the tools above. Need to lay out, align, visualize, or agent-drive a bench? That's this.
+
 ## How to cite
 
 If you use **Blender Optics Simulator** in academic work, please cite it. A machine-readable
