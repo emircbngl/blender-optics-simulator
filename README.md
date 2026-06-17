@@ -67,6 +67,18 @@ optics into a cage/tube/rail never moves them, so the beam path is byte-identica
 post-clamp collars (the real **RS99** assembly), and the beam runs up beside the post in clear air. A
 geometric **validator** guarantees no support post ever sits in a beam path.*
 
+<p align="center">
+  <img src="docs/img/microscope.png" width="80%" alt="An infinity-corrected microscope optical train on a breadboard: lamp, condenser, sample, a colour-ringed objective, tube lens, and camera, with the beam traced through">
+</p>
+
+*A complete **infinity-corrected microscope**: a Köhler **lamp + condenser** image the illumination onto
+the **sample**, the **objective** collimates it into the infinity space, and a **tube lens** forms the
+image at the **camera**. The objective is a real element — its focal power is `f_obj = f_tube / M`
+(**oracle-verified**: a 10× on a 200 mm tube lens → f_obj = 20 mm), and it carries a `numerical_aperture`,
+`working_distance`, and the **DIN magnification colour ring**. Objectives come in finite (160/195 mm),
+**infinity-corrected**, and **long-working-distance** flavours; every lens applies true Gaussian-beam
+(ABCD) focusing, so the beam genuinely converges through the train.*
+
 ### Complete systems
 
 The same primitives compose into entire subsystems — each a one-line

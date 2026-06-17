@@ -308,6 +308,37 @@ for _o in list(_wcoll.objects):
     eg.drop_example_object(_o)
 bpy.data.collections.remove(_wcoll)
 
+print("[microscope objective: f_obj = f_tube/M, focal power (oracle-VERIFIED)]")
+optics_api.build_example("microscope")
+_msegs = scan._trace(sc)
+check("microscope example: the beam reaches the camera", any(s.get("to") == "MIC_Cam" for s in _msegs))
+_obj = next(o for o in sc.objects if getattr(o, "optics", None) and o.optics.element_type == 'OBJECTIVE')
+_tl = {'FINITE_160': 160.0, 'FINITE_195': 195.0}.get(_obj.optics.obj_correction, _obj.optics.obj_tube_ref)
+check("objective f_obj = f_tube/M (200/10 = 20 mm)", abs(_tl / _obj.optics.obj_mag - 20.0) < 0.01,
+      "%.2f mm" % (_tl / _obj.optics.obj_mag))
+_oc = bpy.data.collections.new("OBJT"); sc.collection.children.link(_oc)
+
+
+def _w_objective(use):
+    for _o in list(sc.objects):
+        if getattr(_o, "optics", None) and _o.optics.is_optical:
+            bpy.data.objects.remove(_o, do_unlink=True)
+    eg.source("OB_S", (-60, 0, 0), (1, 0, 0), coll=_oc)
+    if use:
+        eg.objective("OB_O", (0, 0, 0), (1, 0, 0), coll=_oc, mag=10.0)
+    eg.detector("OB_D", (60, 0, 0), (1, 0, 0), coll=_oc)
+    bpy.context.view_layer.update()
+    return next((s["w_mm"] for s in scan._trace(sc) if s.get("to") == "OB_D"), 0.0)
+
+
+_wn, _wy = _w_objective(False), _w_objective(True)
+check("objective applies focal power (beam size changes vs straight-through)", abs(_wy - _wn) > 0.01,
+      "%.3f vs %.3f" % (_wy, _wn))
+for _o in list(_oc.objects):
+    eg.drop_example_object(_o)
+bpy.data.collections.remove(_oc)
+optics_api.dress_bench(False)
+
 print("[interference invariants]")
 optics_api.build_example("michelson")
 segs = scan._trace(sc)

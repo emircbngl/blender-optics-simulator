@@ -42,6 +42,7 @@ ELEMENT_TYPES = [
     ('DEFORMABLE_MIRROR', "Deformable Mirror",      "Corrector mirror; subtracts its commanded Zernike modes"),
     ('ABERRATOR',    "Aberrator / Turbulence",     "Injects a Zernike wavefront error (the disturbance to correct)"),
     ('CRYSTAL',      "Nonlinear Crystal",          "chi(2) frequency conversion (SHG / SPDC); emits converted beams"),
+    ('OBJECTIVE',    "Microscope Objective",       "High-NA objective; focal power f_obj = f_tube/M, magnifies + focuses"),
 ]
 
 PORT_ROLES = [
@@ -320,6 +321,17 @@ class OpticalElementProps(PropertyGroup):
                ('SHG', "SHG (frequency doubling)", "Emit the second harmonic at lambda/2"),
                ('SPDC', "SPDC (down-conversion)", "Emit degenerate signal + idler at 2*lambda")])
     nl_efficiency: FloatProperty(name="Conversion efficiency", default=0.4, min=0.0, max=1.0)
+    # microscope objective (VERIFIED microscope-objective-magnification + numerical-aperture):
+    # f_obj = f_tube/M (infinity) or tube_length/M (finite); the tracer focuses with f_obj.
+    obj_mag: FloatProperty(name="Magnification (x)", default=10.0, min=1.0)
+    obj_na: FloatProperty(name="Numerical aperture", default=0.25, min=0.01, max=1.6)
+    obj_wd: FloatProperty(name="Working distance (mm)", default=10.0, min=0.0)
+    obj_correction: EnumProperty(name="Correction", default='INFINITY',
+        items=[('INFINITY', "Infinity-corrected", "Collimated output to a tube lens (modern)"),
+               ('FINITE_160', "Finite (160 mm DIN)", "Forms the image at the 160 mm tube"),
+               ('FINITE_195', "Finite (195 mm)", "Forms the image at the 195 mm tube")])
+    obj_tube_ref: FloatProperty(name="Tube-lens focal (mm)", default=200.0, min=1.0)  # Nikon/Leica 200, Olympus 180, Zeiss 165
+    obj_long_wd: BoolProperty(name="Long working distance", default=False)
     is_monitor: BoolProperty(default=False)        # live sensor-monitor target (fringe recomputed live)
     sensor_px: IntProperty(name="Sensor resolution (px)", default=256, min=16, max=1024)
     pixel_size_um: FloatProperty(name="Pixel size (um)", default=5.0, min=0.1)

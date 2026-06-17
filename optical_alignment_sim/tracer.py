@@ -192,6 +192,13 @@ def _child(ray, E, H, d, power, kind, idx, t, jones=None, q=None, evec=None, abe
                 f_eff = (E.optics.focal_length * (nd - 1.0) / (nl - 1.0)
                          if abs(nl - 1.0) > 1e-6 else E.optics.focal_length)
                 q = physics.q_propagate(q, physics.abcd_lens(f_eff))
+            elif E.optics.element_type == 'OBJECTIVE':
+                # a microscope objective focuses with f_obj = f_tube / M (VERIFIED
+                # microscope-objective-magnification); finite conjugates use the optical tube length.
+                tl = {'FINITE_160': 160.0, 'FINITE_195': 195.0}.get(
+                    getattr(E.optics, 'obj_correction', 'INFINITY'), getattr(E.optics, 'obj_tube_ref', 200.0))
+                f_obj = tl / max(getattr(E.optics, 'obj_mag', 10.0), 1.0e-6)
+                q = physics.q_propagate(q, physics.abcd_lens(f_obj))
             else:
                 # a CURVED mirror focuses on reflection: f = R/2 (VERIFIED spherical-mirror-focal-length).
                 # Achromatic -- NO 1/(n-1) wavelength scaling (a mirror does not disperse, unlike a lens).

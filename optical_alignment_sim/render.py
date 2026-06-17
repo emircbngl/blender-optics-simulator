@@ -99,6 +99,7 @@ RENDER_DESCRIPTORS = {
     'POLARIZER':         ('glass', (0.70, 1.00, 0.85)),
     'CAVITY':            ('glass', (0.80, 0.90, 1.00)),
     'CRYSTAL':           ('glass', (0.70, 0.45, 0.90)),
+    'OBJECTIVE':         ('dark',  (0.10, 0.10, 0.12)),
     'FILTER':            ('glass', (0.95, 0.55, 0.30)),
     'ATTENUATOR':        ('glass', (0.55, 0.57, 0.62)),
     'PASSTHROUGH':       ('glass', (0.85, 0.90, 0.95)),
