@@ -19,6 +19,12 @@ and a localhost **MCP bridge** let a script — or an AI agent (e.g. Claude via 
 drive the same core headlessly.
 
 <p align="center">
+  <img src="docs/img/agent-align.gif" width="90%" alt="A laser beam steered by a kinematic mirror misses the detector, then auto-alignment walks the mount until the beam locks onto the sensor — rendered live in Blender">
+</p>
+
+<p align="center"><em><b>Live alignment.</b> A kinematic mirror is knocked out of alignment, so the beam misses the detector — then the mount is tuned back until the beam locks onto the sensor. Driveable from the UI, a script, or an AI agent over the MCP bridge; for fine misalignment one <code>align_element()</code> call auto-solves it (residual 7.0 → 0.001 — see <a href="examples/agent_align.py"><code>examples/agent_align.py</code></a>).</em></p>
+
+<p align="center">
   <img src="docs/img/hero.png" width="78%" alt="A Mach-Zehnder interferometer built and traced in Blender, beams baked to glowing emission tubes">
 </p>
 
@@ -29,6 +35,12 @@ drive the same core headlessly.
 Everything below is produced by the add-on itself — a viewport beam trace baked to emission
 tubes, the Scan + Plot operator, the Detector Fringe Image, and the live sensor window exported
 to PNG. No external plotting or compositing.
+
+<p align="center">
+  <img src="docs/img/michelson-orbit.gif" width="72%" alt="A dressed Michelson interferometer on an optical breadboard, orbited in a Cycles turntable, the laser beams glowing along both arms">
+</p>
+
+<p align="center"><em>A dressed <b>Michelson</b> on a tapped breadboard — kinematic mounts, posts, glowing beams — turntabled in Cycles.</em></p>
 
 | Interferogram | 2-D fringes (tilted) | Malus' law |
 |:---:|:---:|:---:|

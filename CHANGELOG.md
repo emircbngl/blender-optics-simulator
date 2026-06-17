@@ -28,6 +28,40 @@ semantic versioning.
   it went black. Crisper metal roughness (0.04 → 0.025) + a dark semi-glossy optical-table ground give
   the mirrors a real floor + softbox highlights to reflect.
 
+### Added — element variants & new elements (wired into the catalog)
+- **Element variants** across the library, each a parameter that reshapes the mesh + render without
+  touching the ports (trace byte-identical): **lens forms** (plano/bi convex/concave), **beamsplitter
+  forms** (cube / plate / pellicle), **mirror coatings** (Al/Ag/Au/dielectric), **curved mirrors**
+  (concave/convex with radius R; focal power f = R/2 on reflection — oracle-verified), **polarizer
+  types** (film / wire-grid / Glan-Thompson/Taylor/Laser / Brewster / **Wollaston** / **Rochon** — the
+  prisms split into two orthogonally-polarized beams), and **waveplate orders** (zero / multi / achromatic).
+- **Nonlinear crystal** (χ² conversion): **SHG** (emits λ/2) and **SPDC** (degenerate signal + idler at
+  2λ) — both relations oracle-verified.
+- **Microscope objectives** (finite / infinity-corrected / long-WD): focal power f_obj = f_tube/M
+  (oracle-verified), with the DIN magnification colour ring; lenses/objectives apply real ABCD focal power.
+- **Acousto-optic modulator (AOM / Bragg cell):** diffracts the +1 order at θ = λ·f_a/v_s and
+  frequency-shifts it by f_a — deflection angle, grating period, and shift all oracle-verified.
+
+### Added — examples
+- **`microscope`** (infinity-corrected transmitted-light train), **`dhm`** (a vertical, off-axis
+  Mach-Zehnder **digital holographic microscope**), and **`aom`** (a shear-mode TeO₂ acousto-optic
+  deflector showing the undiffracted 0th order + the deflected +1 order).
+
+### Added — real mesh-interpenetration collision gate
+- The bench validator gained an `interpenetration` invariant that consults Blender's true geometry
+  (`BVHTree.overlap`) between support clusters — catching mount / holder / base collisions the
+  post-distance proxies missed. It surfaced and fixed three latent collisions in shipped examples
+  (newton_rings lens ↔ BS2 cube, microscope objective ↔ lens cell, hybrid base ↔ rail).
+
+### Changed
+- **Baked beams taper to the real Gaussian w(z)** — a focus shows as a visible waist, expansion as a
+  flare — instead of constant-radius tubes.
+
+### Docs
+- Honest physics-scope statement (a single-ray geometric tracer with analytic overlays; the core
+  formulas are oracle-verified, the broad variant catalog is modeled), a live **auto-alignment GIF** at
+  the top of the README, a **`CITATION.cff`** + "How to cite" section, and a value-prop one-liner.
+
 ## [0.8.2]
 
 ### Fixed — render polish (owner feedback)
