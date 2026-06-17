@@ -164,6 +164,44 @@ for _o in list(_gc.objects):
     eg.drop_example_object(_o)
 bpy.data.collections.remove(_gc)
 
+print("[element variants: lens_type / bs_form / coating]")
+_vc = bpy.data.collections.new("VARTEST"); sc.collection.children.link(_vc)
+
+
+def _backrange(o):           # z-spread of the back-half verts: ~0 for a flat (plano) back, big if curved
+    zs = [v.co.z for v in o.data.vertices if v.co.z < -0.1]
+    return (max(zs) - min(zs)) if zs else 0.0
+
+
+def _ports(o):
+    return sorted((p.role, tuple(round(c, 3) for c in p.local_position)) for p in o.optics.ports)
+
+
+_lpcx = eg.lens("V_pcx", (0, 0, 0), (0, 0, 1), coll=_vc, focal=60, lens_type='PCX')
+_lbcx = eg.lens("V_bcx", (40, 0, 0), (0, 0, 1), coll=_vc, focal=60, lens_type='BCX')
+_lpcv = eg.lens("V_pcv", (80, 0, 0), (0, 0, 1), coll=_vc, focal=-60, lens_type='PCV')
+check("lens forms are manifold", _nonman(_lpcx) == 0 and _nonman(_lbcx) == 0 and _nonman(_lpcv) == 0)
+check("plano-convex has a FLAT back, bi-convex is curved (lens_type shapes the mesh)",
+      _backrange(_lpcx) < 0.3 and _backrange(_lbcx) > 0.8, "%.2f vs %.2f" % (_backrange(_lpcx), _backrange(_lbcx)))
+check("lens form is recorded on the optic", _lpcx.optics.lens_type == 'PCX' and _lbcx.optics.lens_type == 'BCX')
+_bsc = eg.beamsplitter("V_bsc", (120, 0, 0), (1, 0, 0), (0, 1, 0), coll=_vc, bs_form='CUBE')
+_bsp = eg.beamsplitter("V_bsp", (160, 0, 0), (1, 0, 0), (0, 1, 0), coll=_vc, bs_form='PLATE')
+_bspe = eg.beamsplitter("V_bspe", (200, 0, 0), (1, 0, 0), (0, 1, 0), coll=_vc, bs_form='PELLICLE')
+check("BS cube / plate / pellicle have IDENTICAL ports (form is trace-safe)",
+      _ports(_bsc) == _ports(_bsp) == _ports(_bspe))
+check("BS forms are distinct meshes (plate has fewer verts than the cube+coat)",
+      len(_bsp.data.vertices) != len(_bsc.data.vertices))
+check("BS form is recorded on the optic", _bsp.optics.bs_form == 'PLATE' and _bspe.optics.bs_form == 'PELLICLE')
+_mir = eg.mirror("V_mir", (240, 0, 0), (1, 0, 0), (0, 1, 0), coll=_vc)
+_mir.optics.coating = 'AU'
+render.apply_optical_materials(sc)
+check("mirror coating drives the render material (gold)", "AU" in _mir.data.materials[0].name,
+      _mir.data.materials[0].name)
+render.clear_render_style(sc)
+for _o in list(_vc.objects):
+    eg.drop_example_object(_o)
+bpy.data.collections.remove(_vc)
+
 print("[interference invariants]")
 optics_api.build_example("michelson")
 segs = scan._trace(sc)

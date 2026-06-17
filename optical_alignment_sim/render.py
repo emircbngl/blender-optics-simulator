@@ -159,6 +159,21 @@ def _render_material(et):
     return None
 
 
+# Mirror coating -> reflective tint (the variant's LOOK; the tracer already uses the metal's complex
+# index for reflectivity). Protected silver is the brightest/warmest, aluminum neutral, gold golden.
+_COATING_TINT = {
+    'DIELECTRIC': (0.97, 0.97, 0.99), 'AL': (0.91, 0.92, 0.93),
+    'AG': (0.97, 0.96, 0.90), 'AU': (1.00, 0.78, 0.34),
+}
+
+
+def _coating_material(coating):
+    tint = _COATING_TINT.get(coating, _COATING_TINT['DIELECTRIC'])
+    m, b = _principled("OAR_metalcoat_" + coating)
+    _setb(b, "Base Color", (*tint, 1.0)); _setb(b, "Metallic", 1.0); _setb(b, "Roughness", 0.025)
+    return m
+
+
 def apply_optical_materials(scene):
     """Swap each optical element to a realistic render material, stashing the viewport material
     name in a custom prop so clear_render_style() can restore it. Idempotent and shared-mesh safe:
@@ -172,7 +187,10 @@ def apply_optical_materials(scene):
         cur = o.data.materials[0]
         if cur is not None and cur.name.startswith("OAR_"):
             continue
-        mat = _render_material(op.element_type)
+        if op.element_type in ('MIRROR', 'PRISM_MIRROR'):
+            mat = _coating_material(getattr(op, "coating", 'DIELECTRIC'))   # tint by the coating variant
+        else:
+            mat = _render_material(op.element_type)
         if mat is None:
             continue
         if "_oa_vp_mat" not in o:

@@ -222,6 +222,28 @@ class OpticalElementProps(PropertyGroup):
 
     # optical parameters (geometric v1 uses a subset; rest reserved for Gaussian/ABCD)
     focal_length: FloatProperty(name="Focal length (mm)", default=0.0)
+    # lens FORM (variant) -- shapes the mesh; the ABCD focal power is unchanged (set by focal_length).
+    # AUTO = bi-convex/bi-concave by the sign of focal_length (the historic behavior).
+    lens_type: EnumProperty(name="Lens form", default='AUTO',
+        items=[('AUTO', "Auto (by focal sign)", "Bi-convex if f>=0, bi-concave if f<0"),
+               ('PCX', "Plano-convex", "Flat back, convex front (converging)"),
+               ('BCX', "Bi-convex", "Both surfaces convex (converging)"),
+               ('PCV', "Plano-concave", "Flat back, concave front (diverging)"),
+               ('BCV', "Bi-concave", "Both surfaces concave (diverging)"),
+               ('MENISCUS_POS', "Positive meniscus", "Convex-concave, net converging"),
+               ('MENISCUS_NEG', "Negative meniscus", "Concave-convex, net diverging"),
+               ('ACHROMAT', "Achromatic doublet", "Cemented crown+flint pair"),
+               ('ASPHERE', "Aspheric", "Single aspheric surface"),
+               ('CYLINDRICAL', "Cylindrical", "Power in one axis only"),
+               ('BALL', "Ball lens", "Full sphere"),
+               ('GRIN', "GRIN rod", "Flat-faced gradient-index rod"),
+               ('FRESNEL', "Fresnel", "Grooved flat lens"),
+               ('AXICON', "Axicon", "Conical lens -> Bessel beam")])
+    # beamsplitter FORM (variant) -- shapes the mesh; split behavior unchanged (split_ratio, is_pbs).
+    bs_form: EnumProperty(name="BS form", default='CUBE',
+        items=[('CUBE', "Cube (cemented)", "Two cemented prisms, 45 deg coated hypotenuse"),
+               ('PLATE', "Plate (wedged)", "A coated wedged plate at 45 deg"),
+               ('PELLICLE', "Pellicle", "A thin membrane (negligible ghost / dispersion)")])
     split_ratio: FloatProperty(name="Reflect fraction", default=0.5, min=0.0, max=1.0)
     prism_angle: FloatProperty(name="Prism angle (deg)", default=45.0)
     clear_aperture: FloatProperty(name="Clear aperture (mm)", default=12.7, min=0.0)
