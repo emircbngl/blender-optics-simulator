@@ -98,8 +98,42 @@ def _make_cylinder(context, name, p1, p2, r, mat, coll):
     return ob
 
 
+def _make_taper(context, name, p1, p2, r1, r2, mat, coll):
+    """A truncated-cone beam segment: radius r1 at p1, r2 at p2 -- so the rendered beam follows the real
+    Gaussian w(z) (pinches at a focus, flares after a lens). r1==r2 gives a plain cylinder."""
+    d = p2 - p1
+    length = d.length
+    if length < 1e-6:
+        return None
+    bpy.ops.mesh.primitive_cone_add(radius1=max(r1, 1e-4), radius2=max(r2, 1e-4), depth=length,
+                                    location=(p1 + p2) * 0.5, vertices=24)
+    ob = context.active_object
+    ob.name = name
+    ob.rotation_mode = 'QUATERNION'
+    ob.rotation_quaternion = Vector((0.0, 0.0, 1.0)).rotation_difference(d.normalized())
+    if ob.data.materials:
+        ob.data.materials[0] = mat
+    else:
+        ob.data.materials.append(mat)
+    for c in list(ob.users_collection):
+        if c is not coll:
+            c.objects.unlink(ob)
+    if ob.name not in coll.objects:
+        coll.objects.link(ob)
+    return ob
+
+
+def _vis_radius(w_mm, base, kind):
+    """Map the real Gaussian beam radius to a VISIBLE tube radius -- PROPORTIONAL to w(z) (a 1.8x
+    visibility gain) so convergence/expansion shows, clamped so a focus is a thin visible neck (not
+    zero) and a far-field beam isn't a giant tube."""
+    r = min(max(w_mm * 1.8, 0.25), 6.0) if (w_mm and w_mm > 0.0) else base
+    return r * (0.6 if kind == 'SPLIT_T' else 1.0)
+
+
 def bake_beams(context, radius=0.6):
     global _baked_sig
+    from . import physics
     scene = context.scene
     # always re-trace: baking the current geometry (not a possibly-stale cache from before the
     # last edit, e.g. with live mode off) is the whole point of a fresh bake
@@ -113,9 +147,16 @@ def bake_beams(context, radius=0.6):
     mat = beam_material()
     n = 0
     for i, s in enumerate(tracer.cached_segments):
-        # thinner for beam-splitter-transmitted branches
-        r = radius * (0.6 if s["kind"] == 'SPLIT_T' else 1.0)
-        if _make_cylinder(context, "BEAM_%02d" % i, Vector(s["p1"]), Vector(s["p2"]), r, mat, coll):
+        p1, p2 = Vector(s["p1"]), Vector(s["p2"])
+        qd = s.get("qd")
+        if qd is not None:                              # taper to the real Gaussian w(z) along the segment
+            q2 = complex(qd[0], qd[1]); wl = s.get("wavelength", 633.0)
+            L = (p2 - p1).length
+            r1 = _vis_radius(physics.beam_radius(q2 - L, wl), radius, s["kind"])   # w at p1
+            r2 = _vis_radius(s.get("w_mm") or physics.beam_radius(q2, wl), radius, s["kind"])  # w at p2
+        else:                                           # no Gaussian -> constant (thinner for SPLIT_T)
+            r1 = r2 = radius * (0.6 if s["kind"] == 'SPLIT_T' else 1.0)
+        if _make_taper(context, "BEAM_%02d" % i, p1, p2, r1, r2, mat, coll):
             n += 1
     _baked_sig = _segments_sig(tracer.cached_segments)
     return n
