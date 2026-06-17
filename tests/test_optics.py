@@ -259,6 +259,32 @@ for _o in list(_mcoll.objects):
     eg.drop_example_object(_o)
 bpy.data.collections.remove(_mcoll)
 
+print("[nonlinear crystal: SHG / SPDC frequency conversion (oracle-VERIFIED)]")
+_nlc = bpy.data.collections.new("NLTEST"); sc.collection.children.link(_nlc)
+
+
+def _wls_to_detector(proc, pump_nm):
+    for _o in list(sc.objects):
+        if getattr(_o, "optics", None) and _o.optics.is_optical:
+            bpy.data.objects.remove(_o, do_unlink=True)
+    _s = eg.source("NL_S", (-80, 0, 0), (1, 0, 0), coll=_nlc); _s.optics.wavelength = pump_nm
+    eg.crystal("NL_X", (0, 0, 0), (1, 0, 0), coll=_nlc, nl_process=proc)
+    eg.detector("NL_D", (80, 0, 0), (1, 0, 0), coll=_nlc)
+    bpy.context.view_layer.update()
+    segs = scan._trace(sc)
+    return sorted({round(s["wavelength"], 1) for s in segs if s.get("to") == "NL_D"})
+
+
+_shg = _wls_to_detector('SHG', 1064.0)
+check("SHG crystal emits the second harmonic (1064 -> 532 nm) to the detector",
+      any(abs(w - 532.0) < 1.0 for w in _shg), str(_shg))
+_spdc = _wls_to_detector('SPDC', 405.0)
+check("SPDC crystal emits degenerate down-converted light (405 -> 810 nm)",
+      any(abs(w - 810.0) < 1.0 for w in _spdc), str(_spdc))
+for _o in list(_nlc.objects):
+    eg.drop_example_object(_o)
+bpy.data.collections.remove(_nlc)
+
 print("[interference invariants]")
 optics_api.build_example("michelson")
 segs = scan._trace(sc)

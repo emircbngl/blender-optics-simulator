@@ -41,6 +41,7 @@ ELEMENT_TYPES = [
     ('WAVEFRONT_SENSOR', "Wavefront Sensor",        "Shack-Hartmann-style modal wavefront sensor (Zernike readout)"),
     ('DEFORMABLE_MIRROR', "Deformable Mirror",      "Corrector mirror; subtracts its commanded Zernike modes"),
     ('ABERRATOR',    "Aberrator / Turbulence",     "Injects a Zernike wavefront error (the disturbance to correct)"),
+    ('CRYSTAL',      "Nonlinear Crystal",          "chi(2) frequency conversion (SHG / SPDC); emits converted beams"),
 ]
 
 PORT_ROLES = [
@@ -308,6 +309,13 @@ class OpticalElementProps(PropertyGroup):
                ('AG', "Silver", ""), ('AU', "Gold", "")], default='DIELECTRIC')
     design_wl: FloatProperty(name="Design wavelength (nm)", default=633.0, min=1.0)  # spec point; 0 would null a waveplate
     cavity_spacing_mm: FloatProperty(name="Cavity spacing (mm)", default=0.05, min=1e-4)
+    # nonlinear-crystal chi(2) process (variant). SHG: emit lam/2 (VERIFIED second-harmonic-generation).
+    # SPDC: emit signal+idler at 2*lam degenerate (VERIFIED spdc-energy-conservation). NONE: pump dump.
+    nl_process: EnumProperty(name="chi(2) process", default='NONE',
+        items=[('NONE', "None (dump)", "Absorb the pump (no conversion)"),
+               ('SHG', "SHG (frequency doubling)", "Emit the second harmonic at lambda/2"),
+               ('SPDC', "SPDC (down-conversion)", "Emit degenerate signal + idler at 2*lambda")])
+    nl_efficiency: FloatProperty(name="Conversion efficiency", default=0.4, min=0.0, max=1.0)
     is_monitor: BoolProperty(default=False)        # live sensor-monitor target (fringe recomputed live)
     sensor_px: IntProperty(name="Sensor resolution (px)", default=256, min=16, max=1024)
     pixel_size_um: FloatProperty(name="Pixel size (um)", default=5.0, min=0.1)

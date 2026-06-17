@@ -127,6 +127,10 @@ class OPTICS_PT_tag(Panel):
         elif et == 'CAVITY':
             pcol.prop(props, "cavity_spacing_mm")
             pcol.prop(props, "reflectivity")
+        elif et == 'CRYSTAL':
+            pcol.prop(props, "nl_process")
+            if props.nl_process != 'NONE':
+                pcol.prop(props, "nl_efficiency")
         elif et in ('DETECTOR', 'PHOTODIODE', 'POWER_METER'):
             pcol.prop(props, "analyzer")
             sbox = pcol.box()
