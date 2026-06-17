@@ -1,0 +1,30 @@
+cff-version: 1.2.0
+message: "If you use this software in academic work, please cite it as below."
+title: "Blender Optics Simulator"
+abstract: >-
+  A Blender add-on to design, simulate, align, and render optical setups: a live single-ray
+  geometric beam tracer with analytic physics overlays (Jones/Stokes polarization, Gaussian-beam
+  ABCD propagation, interference fringes), kinematic-mount auto-alignment, a modal adaptive-optics
+  loop, a real-vendor component library, and a headless optics_api plus a localhost MCP bridge an
+  AI agent can drive.
+type: software
+authors:
+  - family-names: "Çobanoğlu"
+    given-names: "Muhammet Emir"
+    orcid: "https://orcid.org/0009-0006-4220-437X"
+repository-code: "https://github.com/emircbngl/blender-optics-simulator"
+url: "https://github.com/emircbngl/blender-optics-simulator"
+license: GPL-3.0-or-later
+keywords:
+  - optics
+  - photonics
+  - blender
+  - blender-addon
+  - optical-simulation
+  - beam-tracing
+  - interferometer
+  - gaussian-beam
+  - polarization
+  - mcp
+version: "0.9.0"
+date-released: "2026-06-18"

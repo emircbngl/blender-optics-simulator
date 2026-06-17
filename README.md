@@ -447,6 +447,27 @@ paints that curved wavefront as live concentric rings.
 
 ---
 
+## How to cite
+
+If you use **Blender Optics Simulator** in academic work, please cite it. A machine-readable
+[`CITATION.cff`](CITATION.cff) is included, so GitHub shows a **"Cite this repository"** button
+(top-right of the repo page) with ready-to-paste APA / BibTeX.
+
+```bibtex
+@software{cobanoglu_blender_optics_simulator,
+  author  = {Çobanoğlu, Muhammet Emir},
+  title   = {Blender Optics Simulator},
+  year    = {2026},
+  version = {0.9.0},
+  license = {GPL-3.0-or-later},
+  url     = {https://github.com/emircbngl/blender-optics-simulator}
+}
+```
+
+A versioned **Zenodo DOI** will be minted from the first tagged GitHub release and added here.
+
+---
+
 ## License & credits
 
 **GPL-3.0-or-later.** See [`LICENSE`](LICENSE). Vendor CAD/meshes are not included and remain the
