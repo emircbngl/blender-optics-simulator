@@ -16,7 +16,7 @@ import math
 
 import bpy
 from bpy.types import Operator
-from mathutils import Vector
+from mathutils import Vector, Matrix
 
 from . import geometry, physics
 
@@ -334,7 +334,9 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             if proc in ('SHG', 'SPDC'):
                 wco = ray.wl * (0.5 if proc == 'SHG' else 2.0)
                 q_conv = None
-                if ray.q is not None:                       # born at the pump's spot size, new wavelength
+                if ray.q is not None:
+                    # Tier-1 MODELING CHOICE (not an oracle-verified law): seed the converted beam with a
+                    # fresh Gaussian waist equal to the pump's spot size at the crystal, at the new wavelength.
                     qpc = physics.q_propagate(ray.q, physics.abcd_free(t))
                     q_conv = physics.q_from_waist(max(physics.beam_radius(qpc, ray.wl), 1.0e-3), wco)
                 stack.append(_child(ray, E, H, ray.dir, ray.power * (1.0 - eff), 'TRANSMIT', idx, t,
@@ -460,8 +462,27 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                     stack.append(_child(ray, E, H, ray.dir, ray.power * (1.0 - r), 'SPLIT_T', idx, t,
                                         jones=physics.scale(J, math.sqrt(max(1.0 - r, 0.0))) if J else None))
         elif et == 'POLARIZER' and J:
-            Jp = physics.apply(physics.M_polarizer(op.pol_axis_deg, op.extinction), J)
-            stack.append(_child(ray, E, H, ray.dir, physics.intensity(Jp), 'TRANSMIT', idx, t, jones=Jp))
+            ptype = getattr(op, 'polarizer_type', 'FILM')
+            if ptype in ('WOLLASTON', 'ROCHON'):
+                # a polarizing PRISM splits the input into TWO orthogonally-polarized beams. The angular
+                # separation is a spec parameter (split_angle_deg) and the deflection is pure geometry
+                # (rotate the ray about the prism's split axis); the polarization is the existing
+                # M_polarizer Jones at orthogonal axes -- no new computed formula here.
+                ax = (E.matrix_world.to_3x3() @ Vector((0.0, 1.0, 0.0))).normalized()   # split axis (local Y)
+                half = math.radians(getattr(op, 'split_angle_deg', 20.0)) * 0.5
+                Jo = physics.apply(physics.M_polarizer(op.pol_axis_deg, op.extinction), J)
+                Je = physics.apply(physics.M_polarizer(op.pol_axis_deg + 90.0, op.extinction), J)
+                if ptype == 'WOLLASTON':                       # symmetric +/- half-angle
+                    do = (Matrix.Rotation(half, 3, ax) @ ray.dir).normalized()
+                    de = (Matrix.Rotation(-half, 3, ax) @ ray.dir).normalized()
+                else:                                          # ROCHON: ordinary undeviated, extraordinary deflected
+                    do = ray.dir
+                    de = (Matrix.Rotation(2.0 * half, 3, ax) @ ray.dir).normalized()
+                stack.append(_child(ray, E, H, do, physics.intensity(Jo), 'POL_O', idx, t, jones=Jo))
+                stack.append(_child(ray, E, H, de, physics.intensity(Je), 'POL_E', idx, t, jones=Je))
+            else:
+                Jp = physics.apply(physics.M_polarizer(op.pol_axis_deg, op.extinction), J)
+                stack.append(_child(ray, E, H, ray.dir, physics.intensity(Jp), 'TRANSMIT', idx, t, jones=Jp))
         elif et == 'WAVEPLATE' and J:
             ret = op.retardance_deg * (op.design_wl / ray.wl) if ray.wl > 0 else op.retardance_deg
             Jw = physics.apply(physics.M_waveplate(ret, op.fast_axis_deg), J)   # retardance ~ 1/lambda
