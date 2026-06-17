@@ -281,15 +281,13 @@ python3 optical_alignment_sim/physics.py   # -> PHYSICS SELFTEST PASSED
 
 ## Install
 
-1. Build the extension zip from this repo (one command):
+Requires **Blender 4.2 LTS or newer** (4.2+ / 5.x).
 
-   ```bash
-   blender --command extension build --source-dir optical_alignment_sim --output-dir .
-   blender --command extension validate optical_alignment_sim
-   ```
-
+1. Download the latest **`optical_alignment_sim-<version>.zip`** from the
+   [**Releases**](https://github.com/emircbngl/blender-optics-simulator/releases) page.
+   *(Or build it from source: `blender --command extension build --source-dir optical_alignment_sim --output-dir .`)*
 2. In Blender: **drag the zip onto the window**, or *Edit ▸ Preferences ▸ Add-ons ▸ Install from
-   Disk…* and pick `optical_alignment_sim-<version>.zip`.
+   Disk…* and pick the zip.
 3. Open the **Optics** tab in the 3D viewport sidebar (press `N`).
 
 ---

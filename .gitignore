@@ -32,3 +32,4 @@ __pycache__/
 !library/*.json
 !docs/*.png
 !docs/*.jpg
+dist/
