@@ -336,6 +336,12 @@ faces are coated, detectors carry a recessed active area (the wavefront sensor a
 lenslet grid). The beam tracer reads only each element's **ports**, so the geometry can look real
 without ever perturbing the physics — every example trace is byte-identical before and after.*
 
+> 📖 **[`docs/OPTICAL_ELEMENTS.md`](docs/OPTICAL_ELEMENTS.md)** — a behavior reference cataloging the
+> **real-world variants** of every element (118 of them: lens forms, mirror coatings, beamsplitter/PBS
+> types, waveplate orders, polarizer prisms, grating/prism families, filters, detectors, sources,
+> nonlinear crystals, modulators…), **what each does to the beam**, and how each maps to the add-on's
+> `element_type` + params.
+
 Vendor 3-D models (Thorlabs, Edmund, …) are **not bundled** — they are the vendors' intellectual
 property. The add-on ships only metadata (element type, port geometry, mount parameters). To use
 real parts:
