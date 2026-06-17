@@ -70,6 +70,7 @@ class OPTICS_PT_tag(Panel):
         pcol.label(text="Parameters")
         et = props.element_type
         if et == 'LENS':
+            pcol.prop(props, "lens_type")
             pcol.prop(props, "focal_length")
             pcol.prop(props, "design_wl")
         if et in ('BEAMSPLITTER', 'DICHROIC'):
@@ -100,6 +101,7 @@ class OPTICS_PT_tag(Panel):
             pcol.prop(props, "pol_axis_deg")
             pcol.prop(props, "extinction")
         elif et == 'BEAMSPLITTER':
+            pcol.prop(props, "bs_form")
             pcol.prop(props, "is_pbs")
         elif et == 'DICHROIC':
             pcol.prop(props, "pass_type")

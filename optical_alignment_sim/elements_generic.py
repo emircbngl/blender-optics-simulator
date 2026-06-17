@@ -223,22 +223,34 @@ def _revolve(name, profile, coll, seg=64, smooth=True):
     return _bm_obj(name, bm, coll, smooth)
 
 
-def _lens_profile(radius, focal, edge=1.6):
-    """Half cross-section of a spherical lens: biconvex for focal>=0 (thick centre), biconcave for
-    focal<0 (thin centre). The curvature is a cosmetic spherical cap -- the tracer uses the ABCD focal
-    length, not the mesh -- but the SIGN and a focal-scaled sag make converging vs diverging obvious."""
+def _lens_profile(radius, focal, edge=1.6, lens_type='AUTO'):
+    """Half cross-section of a spherical lens, shaped by the lens FORM (variant): the front surface is
+    convex (PCX/BCX, or AUTO with focal>=0) or concave (PCV/BCV, or AUTO with focal<0); the back surface
+    is curved (bi-) or FLAT (plano- = PCX/PCV). Curvature is a cosmetic spherical cap -- the tracer uses
+    the ABCD focal length, not the mesh -- but the form + sign make the variant obvious. Exotic forms
+    (meniscus/achromat/ball/...) fall back to the AUTO bi-shape here and get distinct meshes elsewhere."""
     import math
     R = radius; N = 20
     sag = max(0.6, min(2.4, 170.0 / max(abs(focal), 12.0)))
-    if focal >= 0:
-        zc, ze = edge * 0.5 + sag, edge * 0.5
+    if lens_type in ('PCX', 'BCX'):
+        convex = True
+    elif lens_type in ('PCV', 'BCV'):
+        convex = False
     else:
-        zc, ze = edge * 0.5, edge * 0.5 + sag
+        convex = (focal >= 0)                          # AUTO + exotic forms: by the focal sign
+    back_flat = lens_type in ('PCX', 'PCV')            # only the plano- forms flatten the back
+    if convex:
+        zc, ze = edge * 0.5 + sag, edge * 0.5          # convex front: centre bulges out
+    else:
+        zc, ze = edge * 0.5, edge * 0.5 + sag          # concave front: centre dished in
 
     def zf(r):
         return ze + (zc - ze) * math.sqrt(max(0.0, 1.0 - (r / R) ** 2))
-    front = [(R * i / N, zf(R * i / N)) for i in range(N + 1)]          # axis -> edge
-    back = [(R * i / N, -zf(R * i / N)) for i in range(N, -1, -1)]      # edge -> axis
+    front = [(R * i / N, zf(R * i / N)) for i in range(N + 1)]          # curved front, axis -> edge
+    if back_flat:
+        back = [(R * i / N, -ze) for i in range(N, -1, -1)]            # flat back disc at the rim plane
+    else:
+        back = [(R * i / N, -zf(R * i / N)) for i in range(N, -1, -1)]  # mirrored curved back
     return front + back
 
 
@@ -418,29 +430,43 @@ def mirror(name, loc, in_dir, out_dir, coll=None, size=25.0):
     return o
 
 
-def beamsplitter(name, loc, in_dir, reflect_dir, coll=None, split=0.5, pbs=False, size=25.0):
-    """50/50 (or PBS) cube: transmits along in_dir, reflects toward reflect_dir."""
-    o = _cube(name, (size, size, size), coll)
-    _bevel(o, 0.8, 1)                            # chamfered cube edges (cemented-prism look)
-    o.data.materials.clear(); o.data.materials.append(MATS["pbs" if pbs else "bs"]())
-    # the characteristic coated 45-deg diagonal: a thin slab whose normal is the REFLECT direction
-    # (-1,1,0)/sqrt2, CLIPPED to the cube interior (boolean intersect) so it never pokes out of the
-    # faces, then merged in. It carries its OWN tinted coating material (slot 1) so the partial-reflector
-    # hypotenuse is visibly distinct through the glass (and PBS vs 50/50 differ by tint, not just colour).
-    _coat = _cube(name + "_coat", (size * 1.55, size * 1.55, 0.5), coll)
-    _coat.data.materials.append(MATS["coatpbs" if pbs else "coatbs"]())
-    _coat.matrix_world = _z_to(Vector((-1.0, 1.0, 0.0))).to_4x4()
-    _clip = _coat.modifiers.new("clip", 'BOOLEAN'); _clip.operation = 'INTERSECT'; _clip.object = o
-    bpy.context.view_layer.objects.active = _coat
-    bpy.ops.object.modifier_apply(modifier=_clip.name)
-    _coatmesh = _coat.data
-    bpy.ops.object.select_all(action='DESELECT')
-    _coat.select_set(True); o.select_set(True)
-    bpy.context.view_layer.objects.active = o
-    bpy.ops.object.join()                        # clipped coating -> cube mesh (coating keeps slot-1 tint)
-    if _coatmesh.users == 0:                      # join orphans the coating's mesh datablock
-        bpy.data.meshes.remove(_coatmesh)
-    _tag(o, 'BEAMSPLITTER', split_ratio=split, clear_aperture=size * 0.55, is_pbs=pbs)
+def beamsplitter(name, loc, in_dir, reflect_dir, coll=None, split=0.5, pbs=False, size=25.0,
+                 bs_form='CUBE'):
+    """A 50/50 (or PBS) beamsplitter: transmits along in_dir, reflects toward reflect_dir. ``bs_form``
+    shapes the mesh -- a cemented CUBE (with an internal coated diagonal), a 45 deg PLATE, or a thin
+    PELLICLE membrane -- but the ports (and therefore the trace) are identical for all three."""
+    if bs_form == 'CUBE':
+        o = _cube(name, (size, size, size), coll)
+        _bevel(o, 0.8, 1)                            # chamfered cube edges (cemented-prism look)
+        o.data.materials.clear(); o.data.materials.append(MATS["pbs" if pbs else "bs"]())
+        # the characteristic coated 45-deg diagonal: a thin slab whose normal is the REFLECT direction
+        # (-1,1,0)/sqrt2, CLIPPED to the cube interior, then merged in with its OWN tinted coating
+        # material (slot 1) so the partial reflector is visibly distinct (PBS vs 50/50 differ by tint).
+        _coat = _cube(name + "_coat", (size * 1.55, size * 1.55, 0.5), coll)
+        _coat.data.materials.append(MATS["coatpbs" if pbs else "coatbs"]())
+        _coat.matrix_world = _z_to(Vector((-1.0, 1.0, 0.0))).to_4x4()
+        _clip = _coat.modifiers.new("clip", 'BOOLEAN'); _clip.operation = 'INTERSECT'; _clip.object = o
+        bpy.context.view_layer.objects.active = _coat
+        bpy.ops.object.modifier_apply(modifier=_clip.name)
+        _coatmesh = _coat.data
+        bpy.ops.object.select_all(action='DESELECT')
+        _coat.select_set(True); o.select_set(True)
+        bpy.context.view_layer.objects.active = o
+        bpy.ops.object.join()                        # clipped coating -> cube mesh (coating keeps slot-1 tint)
+        if _coatmesh.users == 0:
+            bpy.data.meshes.remove(_coatmesh)
+    else:
+        # PLATE / PELLICLE: a thin coated plate tilted to 45 deg (its normal = the REFLECT direction).
+        thick = 0.4 if bs_form == 'PELLICLE' else 2.4
+        o = _cube(name, (size * 1.35, size * 1.35, thick), coll)
+        o.matrix_world = _z_to(Vector((-1.0, 1.0, 0.0))).to_4x4()          # plate normal -> reflect dir
+        bpy.ops.object.transform_apply(location=False, rotation=True, scale=False)  # bake the 45 deg tilt
+        if bs_form != 'PELLICLE':
+            _bevel(o, 0.3, 1)
+        o.data.materials.clear(); o.data.materials.append(MATS["pbs" if pbs else "bs"]())
+        _accent(o, "coatpbs" if pbs else "coatbs",
+                lambda c, nrm: (nrm - Vector((-1.0, 1.0, 0.0)).normalized()).length < 0.5)  # coated face
+    _tag(o, 'BEAMSPLITTER', split_ratio=split, clear_aperture=size * 0.55, is_pbs=pbs, bs_form=bs_form)
     o.optics.mount_preset = "PBS" if pbs else ""
     h = size * 0.5
     _add_port(o, "IN", 'IN', (-h, 0, 0), (-1, 0, 0), size * 0.55)
@@ -471,13 +497,13 @@ def _inline(name, loc, axis, coll, element_type, matkey, radius=14.0, depth=6.0,
     return o
 
 
-def lens(name, loc, axis, coll=None, focal=100.0, radius=14.0):
+def lens(name, loc, axis, coll=None, focal=100.0, radius=14.0, lens_type='AUTO'):
     depth = 5.0
-    # real spherical lens: biconvex for focal>=0, biconcave for focal<0, with a finite edge land.
-    # Curvature is cosmetic (the tracer uses the ABCD focal length), but the SIGN now reads correctly.
-    o = _revolve(name, _lens_profile(radius, focal), coll, seg=64, smooth=True)
+    # real spherical lens, shaped by the FORM (lens_type): plano-/bi-convex/concave. Curvature is
+    # cosmetic (the tracer uses the ABCD focal length), but the form + focal SIGN read correctly.
+    o = _revolve(name, _lens_profile(radius, focal, lens_type=lens_type), coll, seg=64, smooth=True)
     o.data.materials.clear(); o.data.materials.append(MATS["lens"]())
-    _tag(o, 'LENS', clear_aperture=radius, focal_length=focal)
+    _tag(o, 'LENS', clear_aperture=radius, focal_length=focal, lens_type=lens_type)
     _add_port(o, "IN", 'IN', (0, 0, -depth * 0.5), (0, 0, -1), radius)
     _add_port(o, "OUT", 'OUT', (0, 0, depth * 0.5), (0, 0, 1), radius)
     _set_matrix(o, Vector(loc), _z_to(axis))         # optical axis = local +Z -> world axis
