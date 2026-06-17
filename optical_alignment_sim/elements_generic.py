@@ -414,16 +414,36 @@ def source(name, loc, direction, coll=None, wavelength=632.8, length=40.0, radiu
     return o
 
 
-def mirror(name, loc, in_dir, out_dir, coll=None, size=25.0):
-    """A flat fold mirror that turns a beam from in_dir to out_dir."""
+def _mirror_profile(radius, curve, sag=2.0, thick=6.0):
+    """Half cross-section of a curved mirror: a spherical front cap (CONVEX bulges out, CONCAVE dishes
+    in) over a flat substrate back. Cosmetic -- the FOCAL power (f=R/2) is applied by the tracer from
+    radius_curv -- but it makes a focusing mirror visibly curved."""
+    import math
+    R = radius; N = 18
+    ze = thick * 0.5
+    zc = ze + sag if curve == 'CONVEX' else ze - sag
+    def zf(r):
+        return ze + (zc - ze) * math.sqrt(max(0.0, 1.0 - (r / R) ** 2))
+    front = [(R * i / N, zf(R * i / N)) for i in range(N + 1)]          # curved front, axis -> edge
+    back = [(R * i / N, -thick * 0.5) for i in range(N, -1, -1)]        # flat substrate back
+    return front + back
+
+
+def mirror(name, loc, in_dir, out_dir, coll=None, size=25.0, mirror_curve='FLAT', radius_curv=0.0):
+    """A fold mirror turning a beam from in_dir to out_dir. ``mirror_curve`` (FLAT/CONCAVE/CONVEX) gives
+    it a curved face; with radius_curv set, the tracer applies f=R/2 focal power on reflection."""
     n = (Vector(out_dir).normalized() - Vector(in_dir).normalized())
     n = n.normalized() if n.length > 1e-6 else Vector((0, 0, 1))
-    o = _disc(name, size * 0.5, 6.0, coll)        # Ø1" substrate, 6 mm thick; +Z = coated front face
-    _bevel(o, 0.5, 2)
+    if mirror_curve in ('CONCAVE', 'CONVEX'):
+        o = _revolve(name, _mirror_profile(size * 0.5, mirror_curve), coll, seg=64, smooth=True)
+    else:
+        o = _disc(name, size * 0.5, 6.0, coll)    # Ø1" substrate, 6 mm thick; +Z = coated front face
+        _bevel(o, 0.5, 2)
     o.data.materials.clear(); o.data.materials.append(MATS["mirror"]())
     # only the +Z front is the reflective coating; the back + ground edge read as bare glass substrate
     _accent(o, "subglass", lambda c, nrm: nrm.z < 0.55)
-    _tag(o, 'MIRROR', clear_aperture=size * 0.5, reflectivity=1.0)
+    _tag(o, 'MIRROR', clear_aperture=size * 0.5, reflectivity=1.0,
+         mirror_curve=mirror_curve, radius_curv=radius_curv)
     _add_port(o, "IN", 'IN', (0, 0, 2.0), (0, 0, 1), size * 0.5)
     _add_port(o, "REFLECT", 'REFLECT', (0, 0, 0), (0, 0, 1), size * 0.5)
     _set_matrix(o, Vector(loc), _z_to(n))     # local +Z (face/REFLECT normal) -> bisector n

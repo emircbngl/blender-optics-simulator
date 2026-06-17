@@ -216,6 +216,49 @@ for _o in list(_vc.objects):
     eg.drop_example_object(_o)
 bpy.data.collections.remove(_vc)
 
+print("[curved mirror focuses on reflection: f=R/2 (oracle-VERIFIED)]")
+_mcoll = bpy.data.collections.new("CMIR"); sc.collection.children.link(_mcoll)
+
+
+def _w_at_detector(curve, R):
+    for _o in list(sc.objects):                          # clean scene so the trace is just this setup
+        if getattr(_o, "optics", None) and _o.optics.is_optical:
+            bpy.data.objects.remove(_o, do_unlink=True)
+    eg.source("CM_S", (-100, 0, 0), (1, 0, 0), coll=_mcoll)
+    eg.mirror("CM_M", (0, 0, 0), (1, 0, 0), (0, 1, 0), coll=_mcoll, mirror_curve=curve, radius_curv=R)
+    eg.detector("CM_D", (0, 120, 0), (0, 1, 0), coll=_mcoll)
+    bpy.context.view_layer.update()
+    segs = scan._trace(sc)
+    from mathutils import Vector as _V
+    best, bd = None, 1e9
+    for s in segs:
+        d = (_V(s["p2"]) - _V((0, 120, 0))).length
+        if d < bd:
+            bd, best = d, s
+    return best["w_mm"] if best else 0.0
+
+
+_wf = _w_at_detector('FLAT', 0.0)
+_wc = _w_at_detector('CONCAVE', 300.0)      # f = +150 mm -> converging
+_wx = _w_at_detector('CONVEX', 300.0)       # f = -150 mm -> diverging
+check("concave mirror focuses the beam (smaller w at the detector than flat)", _wc < _wf * 0.97,
+      "concave %.4f vs flat %.4f" % (_wc, _wf))
+check("convex mirror diverges the beam (larger w at the detector than flat)", _wx > _wf * 1.03,
+      "convex %.4f vs flat %.4f" % (_wx, _wf))
+def _frontrange(o):          # z-spread of the FRONT-half verts: ~0 for a flat front, big if curved
+    zs = [v.co.z for v in o.data.vertices if v.co.z > 0.1]
+    return (max(zs) - min(zs)) if zs else 0.0
+
+
+_cmesh = eg.mirror("CM_curved", (0, 0, 0), (1, 0, 0), (0, 1, 0), coll=_mcoll, mirror_curve='CONCAVE', radius_curv=300.0)
+_cflat = eg.mirror("CM_flat", (40, 0, 0), (1, 0, 0), (0, 1, 0), coll=_mcoll, mirror_curve='FLAT')
+check("concave mirror has a curved front (vs near-flat front)", _frontrange(_cmesh) > _frontrange(_cflat) + 1.0,
+      "%.2f vs %.2f" % (_frontrange(_cmesh), _frontrange(_cflat)))
+check("mirror curvature recorded on the optic", _cmesh.optics.mirror_curve == 'CONCAVE')
+for _o in list(_mcoll.objects):
+    eg.drop_example_object(_o)
+bpy.data.collections.remove(_mcoll)
+
 print("[interference invariants]")
 optics_api.build_example("michelson")
 segs = scan._trace(sc)

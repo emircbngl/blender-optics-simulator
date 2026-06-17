@@ -153,6 +153,9 @@ class OPTICS_PT_tag(Panel):
             pcol.operator("optics.ao_close_loop", icon='MOD_NOISE')
         if et in ('MIRROR', 'PRISM_MIRROR'):
             pcol.prop(props, "coating")
+            pcol.prop(props, "mirror_curve")
+            if props.mirror_curve != 'FLAT':
+                pcol.prop(props, "radius_curv")
         pcol.prop(props, "clear_aperture")
 
 
