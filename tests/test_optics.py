@@ -49,9 +49,21 @@ check("gouy(waist) = 0", abs(physics.gouy_phase(physics.q_from_waist(0.5, 632.8)
 
 print("[examples build + trace]")
 for kind in ("mach_zehnder", "michelson", "hong_ou_mandel", "bell", "adaptive_optics", "newton_rings",
-             "periscope", "cage_system", "tube_system", "rail_system", "hybrid_system"):
+             "periscope", "cage_system", "tube_system", "rail_system", "hybrid_system",
+             "microscope", "dhm"):
     r = optics_api.build_example(kind)
     check("build %s" % kind, isinstance(r, dict) and r.get("segments", 0) >= 1, str(r))
+
+print("[DHM: vertical holographic microscope -- recombines + no interpenetration]")
+optics_api.build_example("dhm")
+_dseg = scan._trace(sc)
+check("DHM: object + reference arms both reach the camera (-> hologram)",
+      sum(1 for s in _dseg if s.get("to") == "DHM_Cam") >= 2,
+      str(sum(1 for s in _dseg if s.get("to") == "DHM_Cam")))
+optomech.dress(sc)
+check("DHM (vertical, multi-arm) dresses with NO interpenetration", optomech.validate(sc) == [],
+      str(optomech.validate(sc)))
+optics_api.dress_bench(False)
 
 print("[full systems: cage / tube / rail / hybrid dress trace-safe + valid]")
 for kind in ("cage_system", "tube_system", "rail_system", "hybrid_system"):
