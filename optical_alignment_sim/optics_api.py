@@ -225,8 +225,9 @@ def render(preset='preview', camera='HERO', filepath=None):
 
 
 def build_example(kind='mach_zehnder'):
-    """Build a canonical setup (mach_zehnder | michelson | hong_ou_mandel | bell)
-    from generic components, then trace it."""
+    """Build a canonical setup (one of the 14 builders in examples_builtin.EXAMPLES: mach_zehnder,
+    michelson, hong_ou_mandel, bell, adaptive_optics, newton_rings, periscope, cage_system, tube_system,
+    rail_system, hybrid_system, microscope, dhm, aom) from generic components, then trace it."""
     from . import examples_builtin as ex
     if kind not in ex.EXAMPLES:
         return {"error": "unknown example '%s'; choose from %s" % (kind, list(ex.EXAMPLES))}
