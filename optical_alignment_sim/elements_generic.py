@@ -589,8 +589,8 @@ def polarizer(name, loc, axis, coll=None, radius=12.5, polarizer_type='FILM'):
     (transmit pol_axis_deg, extinction) and the ports (+/-1.5 on the axis) are identical for all."""
     import math
     pt = polarizer_type
-    if pt in ('GLAN_THOMPSON', 'GLAN_TAYLOR', 'GLAN_LASER'):
-        L = radius * 1.7                                     # a Glan prism is a long calcite block
+    if pt in ('GLAN_THOMPSON', 'GLAN_TAYLOR', 'GLAN_LASER', 'WOLLASTON', 'ROCHON'):
+        L = radius * 1.7                                     # a calcite prism block (the tracer splits Wollaston/Rochon)
         o = _cube(name, (radius * 1.7, radius * 1.7, L), coll)
         _bevel(o, 0.6, 1)
         o.data.materials.clear(); o.data.materials.append(MATS["pol"]())

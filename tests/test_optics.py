@@ -285,6 +285,29 @@ for _o in list(_nlc.objects):
     eg.drop_example_object(_o)
 bpy.data.collections.remove(_nlc)
 
+print("[Wollaston prism: two-beam polarizing split]")
+_wcoll = bpy.data.collections.new("WTEST"); sc.collection.children.link(_wcoll)
+for _o in list(sc.objects):
+    if getattr(_o, "optics", None) and _o.optics.is_optical:
+        bpy.data.objects.remove(_o, do_unlink=True)
+_ws = eg.source("W_S", (-60, 0, 0), (1, 0, 0), coll=_wcoll); _ws.optics.pol_angle = 45.0
+_wp = eg.polarizer("W_P", (0, 0, 0), (1, 0, 0), coll=_wcoll, radius=12, polarizer_type='WOLLASTON')
+_wp.optics.split_angle_deg = 20.0
+bpy.context.view_layer.update()
+_wsegs = scan._trace(sc)
+from mathutils import Vector as _WV
+_outs = [s for s in _wsegs if s.get("from") == "W_P"]
+check("Wollaston emits TWO beams (one input -> two outputs)", len(_outs) == 2, str(len(_outs)))
+if len(_outs) == 2:
+    _d0 = (_WV(_outs[0]["p2"]) - _WV(_outs[0]["p1"])).normalized()
+    _d1 = (_WV(_outs[1]["p2"]) - _WV(_outs[1]["p1"])).normalized()
+    _ang = math.degrees(math.acos(max(-1.0, min(1.0, _d0.dot(_d1)))))
+    check("the two Wollaston beams are separated by ~the split angle (20 deg)", abs(_ang - 20.0) < 2.0,
+          "%.1f deg" % _ang)
+for _o in list(_wcoll.objects):
+    eg.drop_example_object(_o)
+bpy.data.collections.remove(_wcoll)
+
 print("[interference invariants]")
 optics_api.build_example("michelson")
 segs = scan._trace(sc)

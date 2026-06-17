@@ -100,6 +100,8 @@ class OPTICS_PT_tag(Panel):
             pcol.prop(props, "design_wl")
         elif et == 'POLARIZER':
             pcol.prop(props, "polarizer_type")
+            if props.polarizer_type in ('WOLLASTON', 'ROCHON'):
+                pcol.prop(props, "split_angle_deg")
             pcol.prop(props, "pol_axis_deg")
             pcol.prop(props, "extinction")
         elif et == 'BEAMSPLITTER':

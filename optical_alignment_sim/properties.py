@@ -286,7 +286,11 @@ class OpticalElementProps(PropertyGroup):
                ('GLAN_THOMPSON', "Glan-Thompson", "Cemented calcite prism (wide field)"),
                ('GLAN_TAYLOR', "Glan-Taylor", "Air-spaced calcite prism (high power)"),
                ('GLAN_LASER', "Glan-laser", "Air-spaced w/ escape windows (high power)"),
-               ('BREWSTER', "Brewster plate", "Thin plate near Brewster's angle")])
+               ('BREWSTER', "Brewster plate", "Thin plate near Brewster's angle"),
+               ('WOLLASTON', "Wollaston prism", "Splits into TWO orthogonally-polarized beams at +-angle/2"),
+               ('ROCHON', "Rochon prism", "One undeviated + one deflected orthogonal beam")])
+    # angular separation of a polarizing beam-splitting prism (Wollaston/Rochon); a spec, ~1-20 deg.
+    split_angle_deg: FloatProperty(name="Split angle (deg)", default=20.0, min=0.0, max=45.0)
     is_pbs: BoolProperty(name="Polarizing (PBS)", default=False)
     pass_type: EnumProperty(name="Pass band",
         items=[('LP', "Longpass", ""), ('SP', "Shortpass", "")], default='LP')
