@@ -3,6 +3,8 @@
 [![CI](https://github.com/emircbngl/blender-optics-simulator/actions/workflows/ci.yml/badge.svg)](https://github.com/emircbngl/blender-optics-simulator/actions/workflows/ci.yml)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
 
+**Design, simulate, auto-align, and photorealistically render real optical benches inside Blender — on a physics-checked live beam tracer that an AI agent can *see* and drive over MCP.**
+
 > *"See a need, fill a need."* — Bigweld, *Robots* (2005)
 
 A Blender **4.2+ / 5.x** add-on for **designing, simulating, aligning, and rendering optical
@@ -228,10 +230,15 @@ few small, inspectable layers:
 
 ## Physics layer
 
-The physics lives in a single dependency-free `physics.py`. Every formula in the table is
-checked against an external **symbolic + numerical oracle** (the `physicist` verifier: units,
-symbolic identities, limits, and known input → known answer), so the engine is not
-"dimensionally plausible" — it is *verified*.
+The physics lives in a single dependency-free `physics.py`, layered on a **single-ray (chief-ray)
+geometric tracer** (`tracer.py`) with **analytic physics overlays** — Jones/Stokes polarization,
+Gaussian-beam ABCD propagation, and analytic interference / fringe models. It is **not** a wave-optics
+or diffraction-integral solver, and not a lens-design optimizer. But what it *does* model, it models
+honestly: the **core formulas in the table below are checked against an external symbolic + numerical
+oracle** (the `physicist` verifier: units, symbolic identities, limits, and known input → known answer),
+so they are not merely "dimensionally plausible" — they are *verified*. The broader element-variant
+catalog is physically modeled but not each independently oracle-checked — see
+[docs/OPTICAL_ELEMENTS.md](docs/OPTICAL_ELEMENTS.md) for per-element provenance.
 
 | Layer | Models | Validated against |
 |-------|--------|-------------------|
@@ -277,7 +284,7 @@ python3 optical_alignment_sim/physics.py   # -> PHYSICS SELFTEST PASSED
 
 ## Quick start
 
-- **Examples ▸** pick *Michelson* (or any of the six) to spawn a full setup with the live beam
+- **Examples ▸** pick *Michelson* (or any of the 14) to spawn a full setup with the live beam
   overlay.
 - **Element** — select an object, *Tag as Optical Element*, then *Auto-Detect Ports* (by name) or
   *Add Port from Face* (any mesh); *Normalize Imported CAD* fixes units/scale. Per-type parameters
