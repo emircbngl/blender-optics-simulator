@@ -616,6 +616,34 @@ def objective(name, loc, axis, coll=None, mag=10.0, na=0.25, wd=10.0, correction
     return o
 
 
+def aom(name, loc, axis, coll=None, freq_mhz=80.0, sound_mps=4200.0, efficiency=0.85, size=10.0):
+    """An acousto-optic modulator (Bragg cell): a clear TeO2-style crystal block with a piezo transducer
+    bonded to its -Y face (the acoustic source, launching the index grating along +Y) plus an RF stub. The
+    beam passes IN/OUT on -/+Z; the tracer diffracts the +1 order at theta = lambda*f_a/v_s in the Y-Z plane
+    and frequency-shifts it by f_a (VERIFIED acousto-optic-bragg-deflection)."""
+    import math
+    w, h, L = size, size * 1.4, size * 2.2                 # block: tall in Y so the acoustic column fits
+    o = _cube(name, (w, h, L), coll)                       # +Z = beam propagation
+    _bevel(o, 0.5, 1)
+    o.data.materials.clear(); o.data.materials.append(MATS["index"]())     # clear crystal (slot 0; theme-swapped)
+    trans = _cube(name + "_xducer", (w * 0.9, 1.6, L * 0.8), coll)          # piezo transducer on the -Y face
+    for v in trans.data.vertices:
+        v.co.y += -(h * 0.5 + 0.8)
+    trans.data.materials.append(_mat("OG_aom_xducer", (0.72, 0.55, 0.20), metal=0.9, rough=0.3))  # gold bond
+    _join(o, trans)
+    stub = _disc(name + "_rf", 1.8, 5.0, coll)                              # RF coax stub feeding the transducer
+    stub.data.transform(Matrix.Rotation(math.radians(90.0), 4, 'X'))       # axis along Y
+    for v in stub.data.vertices:
+        v.co.y += -(h * 0.5 + 4.0)
+    stub.data.materials.append(MATS["iso"]())
+    _join(o, stub)
+    _tag(o, 'AOM', clear_aperture=w, aom_freq_mhz=freq_mhz, aom_sound_mps=sound_mps, aom_efficiency=efficiency)
+    _add_port(o, "IN", 'IN', (0, 0, -L * 0.5), (0, 0, -1), w)
+    _add_port(o, "OUT", 'OUT', (0, 0, L * 0.5), (0, 0, 1), w)
+    _set_matrix(o, Vector(loc), _z_to(axis))
+    return o
+
+
 # --- additional component builders (broad library) --------------------------
 # Inline (pass-through) parts reuse `_inline`: a disc with IN/OUT ports on its
 # optical axis; the tracer transmits the beam straight through (layout fidelity).

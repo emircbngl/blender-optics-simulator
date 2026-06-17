@@ -144,6 +144,13 @@ class OPTICS_PT_tag(Panel):
             _tl = {'FINITE_160': 160.0, 'FINITE_195': 195.0}.get(props.obj_correction, props.obj_tube_ref)
             pcol.label(text="f_obj = %.2f mm  (M = f_tube/f_obj)" % (_tl / max(props.obj_mag, 1e-6)),
                        icon='IMAGE_BACKGROUND')
+        elif et == 'AOM':
+            pcol.prop(props, "aom_freq_mhz")
+            pcol.prop(props, "aom_sound_mps")
+            pcol.prop(props, "aom_efficiency")
+            _th = (633e-9 * props.aom_freq_mhz * 1e6 / max(props.aom_sound_mps, 1.0)) * 1e3   # mrad @633nm
+            pcol.label(text="deflect %.2f mrad @633nm  (+%.0f MHz shift)" % (_th, props.aom_freq_mhz),
+                       icon='IMAGE_BACKGROUND')
         elif et in ('DETECTOR', 'PHOTODIODE', 'POWER_METER'):
             pcol.prop(props, "analyzer")
             sbox = pcol.box()

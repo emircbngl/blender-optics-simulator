@@ -412,6 +412,33 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             else:
                 stack.append(_child(ray, E, H, nd, ray.power * op.reflectivity, 'REFLECT', idx, t,
                                     jones=physics.scale(J, a) if J else None))
+        elif et == 'AOM':
+            # Acousto-optic Bragg cell: a travelling acoustic grating (period Lam = v_s/f_a) diffracts a
+            # fraction (efficiency) into the +1 order at the deflection angle theta = lambda/Lam =
+            # lambda*f_a/v_s (VERIFIED acousto-optic-bragg-deflection), which is frequency-shifted by +f_a.
+            # The undiffracted 0th order passes straight through. The deflection is pure geometry (rotate
+            # about the acoustic axis = local Y); a phase grating leaves polarization unchanged, so only the
+            # power is split. The optical-frequency shift (~1e-7 of lambda) is below the model's wavelength
+            # resolution, so it is carried as the aom_freq_mhz parameter (metadata) rather than as a dlambda.
+            f_a = max(getattr(op, 'aom_freq_mhz', 80.0), 0.0) * 1.0e6        # Hz
+            v_s = max(getattr(op, 'aom_sound_mps', 4200.0), 1.0)            # m/s
+            eta = min(max(getattr(op, 'aom_efficiency', 0.85), 0.0), 1.0)
+            theta = (ray.wl * 1.0e-9) * f_a / v_s                          # rad; lambda[m]*f_a/v_s
+            # acoustic wave runs along local Y -> the beam (local Z) diffracts in the Y-Z plane, so the
+            # deflection is a rotation about local X (perpendicular to that plane).
+            ax = (E.matrix_world.to_3x3() @ Vector((1.0, 0.0, 0.0))).normalized()
+            d1 = (Matrix.Rotation(theta, 3, ax) @ ray.dir).normalized()    # +1 diffracted order (toward +Y)
+            s0, s1 = math.sqrt(max(1.0 - eta, 0.0)), math.sqrt(eta)
+            if ray.evec is not None:
+                ev0 = (ray.evec[0] * s0, ray.evec[1] * s0, ray.evec[2] * s0)          # 0th: scaled, undeviated
+                ev1 = physics.redirect_field(ray.evec, ray.dir, d1, sn, s1, s1)        # +1: isotropic redirect
+                stack.append(_child(ray, E, H, ray.dir, ray.power * (1.0 - eta), 'TRANSMIT', idx, t, evec=ev0))
+                stack.append(_child(ray, E, H, d1, ray.power * eta, 'AOM_1', idx, t, evec=ev1))
+            else:
+                stack.append(_child(ray, E, H, ray.dir, ray.power * (1.0 - eta), 'TRANSMIT', idx, t,
+                                    jones=physics.scale(J, s0) if J else None))
+                stack.append(_child(ray, E, H, d1, ray.power * eta, 'AOM_1', idx, t,
+                                    jones=physics.scale(J, s1) if J else None))
         elif et == 'DICHROIC':
             transmit = (ray.wl >= op.cut_nm) if op.pass_type == 'LP' else (ray.wl <= op.cut_nm)
             if transmit:

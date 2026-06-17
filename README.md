@@ -91,6 +91,17 @@ arm** bypasses it, and the two **recombine at the camera**, so it records the in
 crosses a beam and nothing interpenetrates**. Baked beams taper to the real Gaussian `w(z)`, so the
 objective focus shows as a visible waist.*
 
+<p align="center">
+  <img src="docs/img/aom.png" width="62%" alt="An acousto-optic modulator (Bragg cell): a clear crystal with a gold piezo transducer bonded underneath, splitting an input beam into an undiffracted 0th order and a deflected +1 order">
+</p>
+
+*An **acousto-optic modulator / Bragg cell** — a clear TeO₂ crystal with a **piezo transducer** (gold)
+launching a travelling acoustic grating. The beam splits into the undiffracted **0th order** and a
+frequency-shifted **+1 order** deflected by `θ = λ·f_a/v_s` — the **oracle-verified** Bragg relation. This
+is a **shear-mode** deflector (`v_s ≈ 650 m/s`, `f_a = 200 MHz`), so the deflection is a large, visible
+**≈ 11°**, exactly why shear-mode cells are used as AODs. The deflection angle, grating period
+`Λ = v_s/f_a`, and `+f_a` frequency shift are all physics-checked in the sandbox.*
+
 ### Complete systems
 
 The same primitives compose into entire subsystems — each a one-line
