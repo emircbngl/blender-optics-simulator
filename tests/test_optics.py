@@ -136,6 +136,37 @@ if len(_posts) >= 2:
     check("validator FIRES post_overlap on coincident posts",
           any(i["kind"] == "post_overlap" for i in _vc), str(_vc))
 optics_api.dress_bench(False)
+
+# the interpenetration gate must FIRE on a real MESH collision the post-distance checks miss: two mounts so
+# close their bodies pass through each other while the Ø12.7 posts still just clear (proves validate() now
+# consults Blender's true geometry and BLOCKS). Then space them out -> the same gate must report CLEAN.
+print("[collision gate: real BVH mesh interpenetration FIRES + CLEARS]")
+from mathutils import Vector as _Vec
+_cc = elements_generic.example_collection("CollisionGate")
+_CX, _CY = _Vec((1, 0, 0)), _Vec((0, 1, 0))
+elements_generic.source("CG_L", (-100, 0, 0), _CX, _cc)
+elements_generic.mirror("CG_M1", (0, 0, 0), _CX, _CY, _cc)
+_cm2 = elements_generic.mirror("CG_M2", (18, 0, 0), _CX, _CY, _cc)     # 18 mm: posts clear, mount bodies collide
+elements_generic.detector("CG_D", (18, 100, 0), _CY, _cc)
+optomech.dress(sc)
+_iv = optomech.validate(sc)
+check("collision gate FIRES interpenetration on mounts 18 mm apart (posts clear, bodies collide)",
+      any(i["kind"] == "interpenetration" for i in _iv), str(_iv))
+check("...and the OLD post-distance checks DON'T catch it (why the mesh gate is needed)",
+      not any(i["kind"] in ("post_overlap", "mount_below_holder", "beam_through_post") for i in _iv),
+      str(_iv))
+_cm2.location.x = 80.0; bpy.context.view_layer.update()                # space them out
+optomech.dress(sc)
+_iv2 = [i for i in optomech.validate(sc) if i["kind"] == "interpenetration"]
+check("collision gate CLEARS once the mounts are spaced (no false positive)", _iv2 == [], str(_iv2))
+optomech.strip(sc)
+for _nm in ("CG_L", "CG_M1", "CG_M2", "CG_D"):                         # clean up so later tests aren't polluted
+    _o = bpy.data.objects.get(_nm)
+    if _o:
+        bpy.data.objects.remove(_o, do_unlink=True)
+_cg = bpy.data.collections.get("CollisionGate")
+if _cg:
+    bpy.data.collections.remove(_cg)
 # a raised mount (periscope upper deck) must ride the fat Ø1" pillar, not a long thin Ø1/2" stick
 optics_api.build_example("periscope"); optics_api.dress_bench(True)
 _pst = [o for o in sc.objects if o.name.startswith(optomech.BENCH_PREFIX + "Post_")]
