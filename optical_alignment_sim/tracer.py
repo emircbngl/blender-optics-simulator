@@ -173,7 +173,7 @@ def _aberr_combine(base, vec, sign):
     return out
 
 
-def _child(ray, E, H, d, power, kind, idx, t, jones=None, q=None, evec=None, aberr=None):
+def _child(ray, E, H, d, power, kind, idx, t, jones=None, q=None, evec=None, aberr=None, wl=None):
     """Construct a continuation ray: carry polarization/coherence, advance the optical
     path length, and propagate the Gaussian beam q through the free space to E (and
     through E's focal power when it is a lens).
@@ -207,7 +207,7 @@ def _child(ray, E, H, d, power, kind, idx, t, jones=None, q=None, evec=None, abe
     else:
         nj = ray.jones if jones is None else jones
         nev = physics.field_from_jones(nj, d) if nj is not None else None
-    return _Ray(H, d, power, ray.depth + 1, E, ray.wl, kind, idx,
+    return _Ray(H, d, power, ray.depth + 1, E, (wl if wl is not None else ray.wl), kind, idx,
                 jones=nj, opl=ray.opl + t, q=q,
                 src_id=ray.src_id, coh=ray.coh, evec=nev,
                 aberr=(aberr if aberr is not None else ray.aberr))
@@ -323,10 +323,33 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
         idx = len(segments)
         segments.append(_seg(ray, H, E, sn))
         et = E.optics.element_type
+        op = E.optics
+
+        if et == 'CRYSTAL':
+            # chi(2) nonlinear conversion. SHG -> a collinear child at lam/2 (VERIFIED
+            # second-harmonic-generation); SPDC -> degenerate signal+idler at 2*lam (VERIFIED
+            # spdc-energy-conservation). The residual pump transmits; NONE just dumps the pump.
+            proc = getattr(op, 'nl_process', 'NONE')
+            eff = getattr(op, 'nl_efficiency', 0.4)
+            if proc in ('SHG', 'SPDC'):
+                wco = ray.wl * (0.5 if proc == 'SHG' else 2.0)
+                q_conv = None
+                if ray.q is not None:                       # born at the pump's spot size, new wavelength
+                    qpc = physics.q_propagate(ray.q, physics.abcd_free(t))
+                    q_conv = physics.q_from_waist(max(physics.beam_radius(qpc, ray.wl), 1.0e-3), wco)
+                stack.append(_child(ray, E, H, ray.dir, ray.power * (1.0 - eff), 'TRANSMIT', idx, t,
+                                    jones=ray.jones))       # residual unconverted pump
+                if proc == 'SHG':
+                    stack.append(_child(ray, E, H, ray.dir, ray.power * eff, 'SHG', idx, t,
+                                        jones=ray.jones, q=q_conv, wl=wco))
+                else:
+                    for nm in ('SIGNAL', 'IDLER'):          # degenerate, collinear (Tier-1)
+                        stack.append(_child(ray, E, H, ray.dir, ray.power * eff * 0.5, nm, idx, t,
+                                            jones=ray.jones, q=q_conv, wl=wco))
+            continue                                         # NONE: pump dumped
 
         if et in TERMINAL:
             continue
-        op = E.optics
         J = ray.jones
         if et == 'APERTURE':
             Tc = _clip_T(ray, E, t)

@@ -560,15 +560,22 @@ def aperture(name, loc, axis, coll=None, radius=14.0):
     return o
 
 
-def crystal(name, loc, beam_dir, coll=None, size=14.0):
-    """A nonlinear crystal (e.g. BBO) shown as a small block; tagged DETECTOR so the
-    pump beam terminates on it (signal/idler are emitted by separate sources).
-    Its IN face is oriented to face the incoming pump (`beam_dir`)."""
+def crystal(name, loc, beam_dir, coll=None, size=14.0, nl_process='NONE'):
+    """A nonlinear (e.g. BBO) crystal block. With nl_process SHG/SPDC it is a real TRANSMISSIVE chi(2)
+    element (IN/OUT on the pump axis) and the tracer emits the converted beam(s): SHG at lambda/2, SPDC
+    degenerate signal+idler at 2*lambda (both formulas oracle-VERIFIED). With nl_process NONE it stays a
+    pump-dump (DETECTOR terminal) -- the legacy behavior the Bell example relies on."""
     o = _cube(name, (size * 0.6, size * 0.6, size), coll)
     o.data.materials.clear(); o.data.materials.append(MATS["bbo"]())
-    _tag(o, 'DETECTOR', clear_aperture=size)
-    _add_port(o, "IN", 'IN', (0, 0, size * 0.5), (0, 0, 1), size)
-    _set_matrix(o, Vector(loc), _z_to(-Vector(beam_dir).normalized()))
+    if nl_process in ('SHG', 'SPDC'):
+        _tag(o, 'CRYSTAL', clear_aperture=size, nl_process=nl_process)
+        _add_port(o, "IN", 'IN', (0, 0, -size * 0.5), (0, 0, -1), size)
+        _add_port(o, "OUT", 'OUT', (0, 0, size * 0.5), (0, 0, 1), size)
+        _set_matrix(o, Vector(loc), _z_to(Vector(beam_dir).normalized()))   # +Z = pump propagation
+    else:
+        _tag(o, 'DETECTOR', clear_aperture=size)
+        _add_port(o, "IN", 'IN', (0, 0, size * 0.5), (0, 0, 1), size)
+        _set_matrix(o, Vector(loc), _z_to(-Vector(beam_dir).normalized()))
     return o
 
 
