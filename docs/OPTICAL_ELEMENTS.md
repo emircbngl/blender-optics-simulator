@@ -6,18 +6,21 @@ This is the **reference layer** (Phase B). Wiring these variants into the add-on
 
 **8 element categories, 118 variants.** Generated 2026-06-17.
 
-> **⚠️ Provenance & verification — these formulas are UNVERIFIED by this project's oracle.**
-> The relations in this document — including the thin-lens lensmaker equation `1/f = (n−1)(1/R₁ − 1/R₂)`,
-> the grating equation `mλ = d(sin θ_m − sin θ_i)`, the numerical aperture `NA = D/2f`, the f-number
-> `f/# = f/D`, retardance/Jones, Fresnel/coating, Airy/finesse, and phase-matching relations — are
-> **standard textbook optics compiled from manufacturer datasheets and references** (Thorlabs, Edmund,
-> RP-Photonics, Wikipedia) by a research-agent sweep. **Every one of them is UNVERIFIED with
-> `physics_verify` in this work** — they were NOT run through the project's physics oracle (the oracle is
-> available, but its spec-harness format rejected every submission attempted, so no passing verification
-> was obtained). Treat them as *sourced-standard reference, not oracle-confirmed*. This document changes
-> **no computed physics** — the add-on's actual numerical behavior lives in `physics.py` / `tracer.py`.
-> When Phase A wires any of these relations into the tracer as real computation, that specific formula
-> **will be oracle-verified before it ships** (and the spec-harness format will be resolved first).
+> **Provenance & verification status.** The relations here are standard textbook optics compiled from
+> manufacturer datasheets + references (Thorlabs, Edmund, RP-Photonics, Wikipedia) by a research-agent
+> sweep. Their verification status against the project's physics oracle (`physicist` plugin) is:
+> - **VERIFIED** in the project KB (`physics_lookup`, on sympy 1.14 / pint 0.24 / scipy 1.16): the
+>   **thin-lens equation** `1/f = 1/d_o + 1/d_i`, the **grating / double-slit maxima** `d·sin θ = m·λ`
+>   (the core of `mλ = d(sin θ_m − sin θ_i)`), and **Snell's law** `n₁ sin θ_i = n₂ sin θ_t`.
+> - **GROUNDED** (the KB's verified focal-length / thin-lens concepts reference it as the established
+>   relation): the **lensmaker's equation** `1/f = (n−1)(1/R₁ − 1/R₂)`.
+> - **UNVERIFIED in this pass** (sourced-standard, not yet run through the oracle): everything else —
+>   Jones/Mueller, Fresnel + coating reflectance, Airy/finesse, retardance dispersion, NA = D/2f, f/# = f/D,
+>   nonlinear phase-matching, etc. Treat these as reference, not oracle-confirmed.
+>
+> This document changes **no computed physics** — the add-on's numerical behavior lives in `physics.py` /
+> `tracer.py`. When Phase A wires any UNVERIFIED relation into the tracer as real computation, that
+> specific formula is **oracle-verified before it ships**.
 
 ---
 
