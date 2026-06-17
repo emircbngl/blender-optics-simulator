@@ -198,6 +198,20 @@ render.apply_optical_materials(sc)
 check("mirror coating drives the render material (gold)", "AU" in _mir.data.materials[0].name,
       _mir.data.materials[0].name)
 render.clear_render_style(sc)
+# Batch 2: polarizer types + waveplate order (mesh/param variants; Jones + ports unchanged = trace-safe)
+_pf = eg.polarizer("V_pf", (0, 40, 0), (0, 0, 1), coll=_vc, radius=12, polarizer_type='FILM')
+_pg = eg.polarizer("V_pg", (40, 40, 0), (0, 0, 1), coll=_vc, radius=12, polarizer_type='GLAN_THOMPSON')
+_pb = eg.polarizer("V_pb", (80, 40, 0), (0, 0, 1), coll=_vc, radius=12, polarizer_type='BREWSTER')
+check("polarizer types manifold", _nonman(_pf) == 0 and _nonman(_pg) == 0 and _nonman(_pb) == 0)
+check("polarizer types share identical ports (Jones + trace unchanged)", _ports(_pf) == _ports(_pg) == _ports(_pb))
+check("Glan prism is a longer block than a film disc", _pg.dimensions.z > _pf.dimensions.z * 1.5,
+      "%.1f vs %.1f" % (_pg.dimensions.z, _pf.dimensions.z))
+check("polarizer type recorded", _pg.optics.polarizer_type == 'GLAN_THOMPSON')
+_w0 = eg.waveplate("V_w0", (0, 80, 0), (0, 0, 1), coll=_vc, waveplate_order='ZERO')
+_wm = eg.waveplate("V_wm", (40, 80, 0), (0, 0, 1), coll=_vc, waveplate_order='MULTI')
+check("waveplate order shapes thickness (multi > zero) + ports identical",
+      _wm.dimensions.z > _w0.dimensions.z and _ports(_w0) == _ports(_wm))
+check("waveplate order recorded", _wm.optics.waveplate_order == 'MULTI')
 for _o in list(_vc.objects):
     eg.drop_example_object(_o)
 bpy.data.collections.remove(_vc)

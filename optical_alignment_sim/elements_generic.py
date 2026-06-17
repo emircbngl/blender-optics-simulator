@@ -510,13 +510,21 @@ def lens(name, loc, axis, coll=None, focal=100.0, radius=14.0, lens_type='AUTO')
     return o
 
 
-def waveplate(name, loc, axis, coll=None, kind='HWP', fast_axis=0.0, design_wl=None):
+def waveplate(name, loc, axis, coll=None, kind='HWP', fast_axis=0.0, design_wl=None, waveplate_order='ZERO'):
     ret = 90.0 if str(kind).upper() == 'QWP' else 180.0      # QWP=90deg, HWP=180deg retardance
-    kw = {"retardance_deg": ret, "fast_axis_deg": fast_axis}
+    # the ORDER only sets the mesh thickness cue (zero-order thin, multi/achromatic thicker); the ports
+    # stay at +/-1.5 so the Jones interaction plane -- and the trace -- is unchanged.
+    depth = {'ZERO': 2.0, 'MULTI': 5.0, 'ACHROMATIC': 5.0}.get(waveplate_order, 3.0)
+    o = _disc(name, 12.0, depth, coll)
+    o.data.materials.clear(); o.data.materials.append(MATS["wp"]())
+    _tag(o, 'WAVEPLATE', clear_aperture=12.0, retardance_deg=ret, fast_axis_deg=fast_axis,
+         waveplate_order=waveplate_order)
     if design_wl is not None:                                # spec the retarder at its arm wavelength
-        kw["design_wl"] = design_wl
-    o = _inline(name, loc, axis, coll, 'WAVEPLATE', "wp", radius=12.0, depth=3.0, **kw)
+        o.optics.design_wl = design_wl
     o.optics.mount_preset = kind
+    _add_port(o, "IN", 'IN', (0, 0, -1.5), (0, 0, -1), 12.0)
+    _add_port(o, "OUT", 'OUT', (0, 0, 1.5), (0, 0, 1), 12.0)
+    _set_matrix(o, Vector(loc), _z_to(axis))
     return o
 
 
@@ -548,9 +556,41 @@ def crystal(name, loc, beam_dir, coll=None, size=14.0):
 # Inline (pass-through) parts reuse `_inline`: a disc with IN/OUT ports on its
 # optical axis; the tracer transmits the beam straight through (layout fidelity).
 
-def polarizer(name, loc, axis, coll=None, radius=12.5):
-    """A linear polarizer; geometrically a pass-through inline plate."""
-    return _inline(name, loc, axis, coll, 'POLARIZER', "pol", radius=radius, depth=3.0)
+def polarizer(name, loc, axis, coll=None, radius=12.5, polarizer_type='FILM'):
+    """A linear polarizer. ``polarizer_type`` shapes the mesh -- a thin film/wire-grid disc, a Glan
+    calcite PRISM block (with the cut interface), or a tilted Brewster plate -- but the Jones behavior
+    (transmit pol_axis_deg, extinction) and the ports (+/-1.5 on the axis) are identical for all."""
+    import math
+    pt = polarizer_type
+    if pt in ('GLAN_THOMPSON', 'GLAN_TAYLOR', 'GLAN_LASER'):
+        L = radius * 1.7                                     # a Glan prism is a long calcite block
+        o = _cube(name, (radius * 1.7, radius * 1.7, L), coll)
+        _bevel(o, 0.6, 1)
+        o.data.materials.clear(); o.data.materials.append(MATS["pol"]())
+        seam = _cube(name + "_seam", (radius * 2.6, radius * 2.6, 0.5), coll)  # the diagonal cut/air gap
+        seam.data.materials.append(MATS["index"]())
+        seam.matrix_world = _z_to(Vector((0.0, 1.0, 1.0))).to_4x4()
+        clip = seam.modifiers.new("clip", 'BOOLEAN'); clip.operation = 'INTERSECT'; clip.object = o
+        bpy.context.view_layer.objects.active = seam; bpy.ops.object.modifier_apply(modifier=clip.name)
+        sm = seam.data
+        bpy.ops.object.select_all(action='DESELECT'); seam.select_set(True); o.select_set(True)
+        bpy.context.view_layer.objects.active = o; bpy.ops.object.join()
+        if sm.users == 0:
+            bpy.data.meshes.remove(sm)
+    elif pt == 'BREWSTER':
+        o = _disc(name, radius, 2.0, coll)
+        o.data.transform(Matrix.Rotation(math.radians(32.0), 4, 'Y'))   # tilt the plate; ports stay axial
+        o.data.materials.clear(); o.data.materials.append(MATS["pol"]())
+    else:                                                   # FILM / WIRE_GRID
+        o = _disc(name, radius, 3.0, coll)
+        o.data.materials.clear(); o.data.materials.append(MATS["pol"]())
+        if pt == 'WIRE_GRID':
+            _accent(o, "bezel", lambda c, nrm: nrm.z > 0.7)   # metallic wire-grid front face
+    _tag(o, 'POLARIZER', clear_aperture=radius, polarizer_type=pt)
+    _add_port(o, "IN", 'IN', (0, 0, -1.5), (0, 0, -1), radius)
+    _add_port(o, "OUT", 'OUT', (0, 0, 1.5), (0, 0, 1), radius)
+    _set_matrix(o, Vector(loc), _z_to(axis))
+    return o
 
 
 def optical_filter(name, loc, axis, coll=None, radius=12.5,

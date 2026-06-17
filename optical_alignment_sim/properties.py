@@ -263,8 +263,22 @@ class OpticalElementProps(PropertyGroup):
     waist_um: FloatProperty(name="Beam waist (um)", default=500.0, min=0.0)
     retardance_deg: FloatProperty(name="Retardance (deg)", default=180.0)       # HWP=180, QWP=90
     fast_axis_deg: FloatProperty(name="Fast-axis angle (deg)", default=0.0)
+    # retarder ORDER (variant): shapes the mesh thickness; the design-wavelength retardance is unchanged.
+    waveplate_order: EnumProperty(name="Retarder order", default='ZERO',
+        items=[('ZERO', "Zero-order", "Thin true zero-order (or a compound zero-order pair)"),
+               ('MULTI', "Multi-order", "Thicker, many full waves + the design retardance"),
+               ('ACHROMATIC', "Achromatic", "Two-material compound, flat retardance vs wavelength")])
     pol_axis_deg: FloatProperty(name="Transmission axis (deg)", default=0.0)
     extinction: FloatProperty(name="Extinction ratio", default=1000.0, min=1.0)
+    # polarizer TYPE (variant): shapes the mesh (film disc vs Glan prism block vs Brewster plate). The
+    # Jones behavior (a linear polarizer at pol_axis_deg with `extinction`) is the same for all.
+    polarizer_type: EnumProperty(name="Polarizer type", default='FILM',
+        items=[('FILM', "Film / sheet", "Dichroic sheet polarizer (thin)"),
+               ('WIRE_GRID', "Wire grid", "Metal-grid polarizer on a substrate (broadband/IR)"),
+               ('GLAN_THOMPSON', "Glan-Thompson", "Cemented calcite prism (wide field)"),
+               ('GLAN_TAYLOR', "Glan-Taylor", "Air-spaced calcite prism (high power)"),
+               ('GLAN_LASER', "Glan-laser", "Air-spaced w/ escape windows (high power)"),
+               ('BREWSTER', "Brewster plate", "Thin plate near Brewster's angle")])
     is_pbs: BoolProperty(name="Polarizing (PBS)", default=False)
     pass_type: EnumProperty(name="Pass band",
         items=[('LP', "Longpass", ""), ('SP', "Shortpass", "")], default='LP')
