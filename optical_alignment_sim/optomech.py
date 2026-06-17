@@ -857,6 +857,10 @@ def validate(scene):
       - mount_below_holder: a post-mounted optic sits at/under its post-holder top (the mount would be
         BELOW the thing holding it -- absurd; caught the periscope lower-mirror bug)
       - post_overlap: two support posts/pillars collide (coaxial / overlapping supports)
+      - beam_through_post: a support post sits on a vertical beam axis
+      - interpenetration: ANY two parts from different support clusters actually interpenetrate -- a real
+        Blender mesh-overlap (BVHTree) check, so it catches mount/holder/base/optic collisions the cheap
+        post-distance proxies above miss (e.g. two mounts placed too close so their bodies pass through).
     Use it after dress() (regression gate + get_state['warnings']) to KNOW the geometry is valid."""
     if not is_dressed(scene):
         return []
@@ -917,6 +921,67 @@ def validate(scene):
                                    "detail": "post on vertical beam axis (%.0f,%.0f) z[%.0f..%.0f]"
                                              % (a.x, a.y, z0, z1)})
                     break
+    # 4. real mesh-level collision: any two parts from DIFFERENT support clusters that interpenetrate
+    issues += _interpenetration_issues(scene)
+    return issues
+
+
+def _own_new(coll, before, owner, optics=()):
+    """Tag every bench object created since the `before` snapshot (and the given member optics) with a
+    support-cluster `owner` id. The interpenetration check treats one cluster's parts (a post + its
+    holder + its mount; a periscope's shared pillar + both clamps; a cage's rods + plates + members) as
+    designed-to-touch, and only flags collisions BETWEEN clusters. The shared breadboard / feet / holes
+    stay untagged (owner == None) so nothing is flagged for resting on the board."""
+    for o in coll.objects:
+        if o not in before:
+            o["oa_owner"] = owner
+    for o in optics:
+        o["oa_owner"] = owner
+
+
+def _interpenetration_issues(scene, min_faces=2):
+    """Real mesh-level collision check using Blender's true geometry (mathutils BVHTree.overlap), not a
+    distance proxy. Builds a BVH tree per owned mesh (bench hardware + optics, each carrying its
+    `oa_owner` support-cluster tag) and reports each pair of DIFFERENT clusters whose meshes actually
+    interpenetrate. Same-cluster contact is designed and skipped; the untagged board/feet/holes are
+    skipped. Deduped per cluster-pair so one collision is one issue. This is what makes the validator
+    actually 'block' on a collision the post-distance checks above never see."""
+    import bmesh
+    from mathutils.bvhtree import BVHTree
+    try:
+        deps = bpy.context.evaluated_depsgraph_get()
+    except Exception:
+        return []
+    trees = []
+    for o in scene.objects:
+        if o.type != 'MESH' or o.get("oa_owner") is None or o.name.startswith("BEAM_"):
+            continue
+        bm = bmesh.new()
+        try:
+            bm.from_object(o, deps)
+        except Exception:
+            bm.free(); continue
+        if bm.faces:
+            bm.transform(o.matrix_world)
+            trees.append((o.name, o["oa_owner"], BVHTree.FromBMesh(bm)))
+        bm.free()
+    issues, seen = [], set()
+    for i in range(len(trees)):
+        na, oa, ta = trees[i]
+        for j in range(i + 1, len(trees)):
+            nb, ob, tb = trees[j]
+            if oa == ob:
+                continue                                  # same support cluster -> designed to touch
+            key = tuple(sorted((str(oa), str(ob))))
+            if key in seen:
+                continue
+            ov = ta.overlap(tb)
+            if len(ov) >= min_faces:
+                seen.add(key)
+                issues.append({"kind": "interpenetration",
+                               "element": "%s | %s" % (na, nb),
+                               "detail": "meshes interpenetrate (%d face hits; clusters %s / %s)"
+                                         % (len(ov), oa, ob)})
     return issues
 
 
@@ -932,6 +997,9 @@ def dress(scene, post_radius=POST_RADIUS):
     elems = _optical_objects(scene)
     if not elems:
         return 0
+    for o in elems:                                  # clear any stale support-cluster tag from a prior dress
+        if "oa_owner" in o:
+            del o["oa_owner"]
     coll = bench_collection(scene)
     pitch = bench_pitch(scene)
     bh, ref_z, board_top_z = _vertical_chain(scene, elems)
@@ -982,6 +1050,7 @@ def dress(scene, post_radius=POST_RADIUS):
         p = o.matrix_world.translation
         stacks.setdefault((round(p.x / 3.0), round(p.y / 3.0)), []).append((i, o))
     for members in stacks.values():
+        before = set(coll.objects)                       # snapshot -> tag this cluster's new hardware below
         members.sort(key=lambda io: io[1].matrix_world.translation.z)
         i_top, o_top = members[-1]                       # the highest optic sets the pillar height
         pt = o_top.matrix_world.translation
@@ -1026,12 +1095,19 @@ def dress(scene, post_radius=POST_RADIUS):
             n += nh + 1
             for i, o in members:                         # each optic in the stack gets its own mount
                 n += _build_mount(o, coll, i)
+        _own_new(coll, before, "stk%02d" % i_top, [o for _i, o in members])
     for gi, members in enumerate(groups.values()):
+        before = set(coll.objects)
         n += _build_cage(scene, members, board_top_z, coll, post_radius, "%02d" % gi)
+        _own_new(coll, before, "cage%02d" % gi, members)
     for ti, members in enumerate(tubes.values()):
+        before = set(coll.objects)
         n += _build_tube(scene, members, board_top_z, coll, post_radius, "%02d" % ti)
+        _own_new(coll, before, "tube%02d" % ti, members)
     for ri, members in enumerate(rails.values()):
+        before = set(coll.objects)
         n += _build_rail(scene, members, board_top_z, coll, post_radius, "%02d" % ri)
+        _own_new(coll, before, "rail%02d" % ri, members)
     return n
 
 

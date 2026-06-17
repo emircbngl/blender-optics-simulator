@@ -125,7 +125,7 @@ def build_newton_rings(context):
     G.beamsplitter("NR_BS1", (0, 0, 0), X, Y, coll)
     G.mirror("NR_M_ref", (0, L, 0), Y, X, coll)           # reference arm: +Y -> +X (flat)
     G.mirror("NR_M_lens", (L, 0, 0), X, Y, coll)          # lensed arm: +X -> +Y
-    G.lens("NR_Lens", (L, L - 18.0, 0), Y, coll, focal=100.0, radius=16.0)   # near BS2, in arm A
+    G.lens("NR_Lens", (L, L - 34.0, 0), Y, coll, focal=100.0, radius=13.0)   # in arm A, clear of the BS2 mount
     G.beamsplitter("NR_BS2", (L, L, 0), X, Y, coll)
     det = G.detector("NR_D", (L + 40.0, L, 0), X, coll)   # before the lens focus -> rings
     det.optics.pixel_size_um = 4.0                        # zoom the sensor field onto the beam
@@ -224,7 +224,7 @@ def build_hybrid_system(context):
     l2 = G.lens("HY_Focus", (20, 60, 0), Y, coll, focal=75.0, radius=14.0)
     an = G.polarizer("HY_Analyzer", (20, 100, 0), Y, coll)
     _group([l2, an], 'RAIL', 'hy_rail')                        # RAIL analyzer train
-    G.detector("HY_Cam", (20, 140, 0), Y, coll)
+    G.detector("HY_Cam", (20, 158, 0), Y, coll)                # clear of the rail end
     return "OpticsExample_HybridSystem"
 
 
@@ -238,7 +238,7 @@ def build_microscope(context):
     G.source("MIC_Lamp", (-260, 0, 0), X, coll, wavelength=550.0)            # Koehler illumination
     G.lens("MIC_Condenser", (-180, 0, 0), X, coll, focal=80.0, radius=14.0)  # images the lamp onto the sample
     G.aperture("MIC_Sample", (-100, 0, 0), X, coll, radius=8.0)              # the specimen (object plane)
-    G.objective("MIC_Obj", (-80, 0, 0), X, coll, mag=10.0, na=0.25, wd=10.0, correction='INFINITY')
+    G.objective("MIC_Obj", (-58, 0, 0), X, coll, mag=10.0, na=0.25, wd=10.0, correction='INFINITY')
     G.lens("MIC_Tube", (40, 0, 0), X, coll, focal=200.0, radius=16.0)        # tube lens (200 mm -> M = 10x)
     G.detector("MIC_Cam", (240, 0, 0), X, coll, size=26.0)                   # sensor at the image plane
     return "OpticsExample_Microscope"
