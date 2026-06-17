@@ -79,6 +79,18 @@ image at the **camera**. The objective is a real element — its focal power is 
 **infinity-corrected**, and **long-working-distance** flavours; every lens applies true Gaussian-beam
 (ABCD) focusing, so the beam genuinely converges through the train.*
 
+<p align="center">
+  <img src="docs/img/dhm.png" width="58%" alt="A vertical digital holographic microscope: an off-axis Mach-Zehnder with the imaging column rising vertically, the reference arm climbing alongside, recombining at a camera on top">
+</p>
+
+*A **digital holographic microscope (DHM)** — a vertical, off-axis **Mach-Zehnder**: the **object arm**
+is the imaging column (illumination → sample → objective → tube lens) rising vertically, the **reference
+arm** bypasses it, and the two **recombine at the camera**, so it records the interference *hologram*
+(amplitude **and** phase), not just an image. The whole interferometer lives in one vertical plane, so
+**Dress Bench** puts every support pillar out of that plane — the geometric **validator confirms no post
+crosses a beam and nothing interpenetrates**. Baked beams taper to the real Gaussian `w(z)`, so the
+objective focus shows as a visible waist.*
+
 ### Complete systems
 
 The same primitives compose into entire subsystems — each a one-line

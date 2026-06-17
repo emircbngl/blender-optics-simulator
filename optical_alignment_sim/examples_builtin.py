@@ -244,6 +244,30 @@ def build_microscope(context):
     return "OpticsExample_Microscope"
 
 
+def build_dhm(context):
+    """A digital holographic microscope (DHM): an off-axis Mach-Zehnder where the OBJECT arm is a
+    VERTICAL imaging column (illumination -> sample -> objective -> tube lens) and a REFERENCE arm
+    bypasses it; the two recombine at the camera, so it records the interference HOLOGRAM (amplitude +
+    phase) rather than a plain image. The whole interferometer lives in the x=0 (y,z) plane, so dressing
+    puts every support pillar out of that plane (+x) and no post crosses a beam (validator stays clean)."""
+    coll = G.example_collection("OpticsExample_DHM")
+    Y, Z = Vector((0, 1, 0)), Vector((0, 0, 1))
+    # coherent laser, split into object (up the column) + reference (bypass)
+    G.source("DHM_Laser", (0, -100, 40), Y, coll, wavelength=633.0)
+    G.beamsplitter("DHM_BS1", (0, 0, 40), Y, Z, coll)                # reflect UP = object, transmit +Y = reference
+    # OBJECT arm -- the vertical microscope column
+    G.lens("DHM_Condenser", (0, 0, 80), Z, coll, focal=42.0, radius=12.0)   # Koehler condenser
+    G.aperture("DHM_Sample", (0, 0, 130), Z, coll, radius=7.0)              # specimen (object plane)
+    G.objective("DHM_Obj", (0, 0, 140), Z, coll, mag=20.0, na=0.40, wd=3.0, correction='INFINITY')
+    G.lens("DHM_Tube", (0, 0, 195), Z, coll, focal=200.0, radius=14.0)      # tube lens (M = 200/10 = 20x)
+    G.mirror("DHM_Mobj", (0, 0, 235), Z, Y, coll)                           # fold the object beam to +Y -> BS2
+    # REFERENCE arm -- a clean bypass that climbs the far side to BS2
+    G.mirror("DHM_Mref", (0, 95, 40), Y, Z, coll)                           # send the reference UP
+    G.beamsplitter("DHM_BS2", (0, 95, 235), Y, Z, coll)                     # recombine: object +Y -> reflect +Z; reference +Z -> transmit
+    G.detector("DHM_Cam", (0, 95, 275), Z, coll, size=26.0)                 # records the off-axis hologram
+    return "OpticsExample_DHM"
+
+
 EXAMPLES = {
     'mach_zehnder': ("Mach-Zehnder Interferometer", build_mach_zehnder),
     'michelson':    ("Michelson Interferometer", build_michelson),
@@ -257,6 +281,7 @@ EXAMPLES = {
     'rail_system':  ("Rail System (beam expander beamline)", build_rail_system),
     'hybrid_system': ("Hybrid (cage + post + rail)", build_hybrid_system),
     'microscope':   ("Microscope (infinity-corrected: objective + tube lens)", build_microscope),
+    'dhm':          ("Digital Holographic Microscope (vertical, off-axis Mach-Zehnder)", build_dhm),
 }
 
 
