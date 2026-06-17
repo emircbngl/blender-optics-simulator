@@ -50,7 +50,7 @@ check("gouy(waist) = 0", abs(physics.gouy_phase(physics.q_from_waist(0.5, 632.8)
 print("[examples build + trace]")
 for kind in ("mach_zehnder", "michelson", "hong_ou_mandel", "bell", "adaptive_optics", "newton_rings",
              "periscope", "cage_system", "tube_system", "rail_system", "hybrid_system",
-             "microscope", "dhm"):
+             "microscope", "dhm", "aom"):
     r = optics_api.build_example(kind)
     check("build %s" % kind, isinstance(r, dict) and r.get("segments", 0) >= 1, str(r))
 
@@ -62,6 +62,40 @@ check("DHM: object + reference arms both reach the camera (-> hologram)",
       str(sum(1 for s in _dseg if s.get("to") == "DHM_Cam")))
 optomech.dress(sc)
 check("DHM (vertical, multi-arm) dresses with NO interpenetration", optomech.validate(sc) == [],
+      str(optomech.validate(sc)))
+optics_api.dress_bench(False)
+
+print("[AOM: Bragg cell deflects + splits the beam (VERIFIED acousto-optic-bragg-deflection)]")
+optics_api.build_example("aom")
+_aseg = scan._trace(sc)
+_aout = [s for s in _aseg if s.get("from") == "AOM_cell"]
+check("AOM emits TWO output orders (0th transmit + 1st diffracted)", len(_aout) == 2, "%d orders" % len(_aout))
+_a0 = next((s for s in _aout if s["kind"] == 'TRANSMIT'), None)
+_a1 = next((s for s in _aout if s["kind"] == 'AOM_1'), None)
+check("AOM orders are the 0th (TRANSMIT) + 1st (AOM_1)", _a0 is not None and _a1 is not None,
+      str(sorted(s["kind"] for s in _aout)))
+if _a0 and _a1:
+    def _udir(s):
+        d = [s["p2"][i] - s["p1"][i] for i in range(3)]
+        n = math.sqrt(sum(c * c for c in d)) or 1.0
+        return [c / n for c in d]
+    _u0, _u1 = _udir(_a0), _udir(_a1)
+    _ang = math.acos(max(-1.0, min(1.0, sum(_u0[i] * _u1[i] for i in range(3)))))
+    _theta = 632.8e-9 * 200.0e6 / 650.0                     # lambda*f_a/v_s (the VERIFIED deflection)
+    check("AOM +1 order is deflected by theta = lambda*f_a/v_s", abs(_ang - _theta) < 1e-3,
+          "got %.5f rad, expect %.5f" % (_ang, _theta))
+    _tot = _a0["power"] + _a1["power"]
+    check("AOM power splits by efficiency (+1 ~0.85 of the light, energy conserved)",
+          _tot > 0.0 and abs(_a1["power"] / _tot - 0.85) < 0.02 and abs(_a0["power"] / _tot - 0.15) < 0.02,
+          "0th=%.3f +1=%.3f" % (_a0["power"], _a1["power"]))
+_acell = bpy.data.objects.get("AOM_cell")
+check("AOM records its acoustic frequency f_a (the +f_a optical shift)",
+      _acell is not None and abs(_acell.optics.aom_freq_mhz - 200.0) < 1e-6)
+_an0 = len(scan._trace(sc))
+optomech.dress(sc)
+_an1 = len(scan._trace(sc))
+check("AOM dressing leaves the trace identical (ports x matrix_world)", _an0 == _an1, "%d vs %d" % (_an0, _an1))
+check("AOM dressing is geometrically valid (no interpenetration)", optomech.validate(sc) == [],
       str(optomech.validate(sc)))
 optics_api.dress_bench(False)
 

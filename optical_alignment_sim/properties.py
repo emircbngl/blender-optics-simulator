@@ -43,6 +43,7 @@ ELEMENT_TYPES = [
     ('ABERRATOR',    "Aberrator / Turbulence",     "Injects a Zernike wavefront error (the disturbance to correct)"),
     ('CRYSTAL',      "Nonlinear Crystal",          "chi(2) frequency conversion (SHG / SPDC); emits converted beams"),
     ('OBJECTIVE',    "Microscope Objective",       "High-NA objective; focal power f_obj = f_tube/M, magnifies + focuses"),
+    ('AOM',          "Acousto-Optic Modulator",    "Bragg cell: deflects the +1 order by theta = lambda*f_a/v_s + frequency-shifts it by f_a"),
 ]
 
 PORT_ROLES = [
@@ -332,6 +333,12 @@ class OpticalElementProps(PropertyGroup):
                ('FINITE_195', "Finite (195 mm)", "Forms the image at the 195 mm tube")])
     obj_tube_ref: FloatProperty(name="Tube-lens focal (mm)", default=200.0, min=1.0)  # Nikon/Leica 200, Olympus 180, Zeiss 165
     obj_long_wd: BoolProperty(name="Long working distance", default=False)
+    # acousto-optic modulator / Bragg cell (VERIFIED acousto-optic-bragg-deflection): a travelling acoustic
+    # grating (period Lambda = v_s/f_a) diffracts the +1 order at theta = lambda*f_a/v_s and frequency-shifts
+    # it by +f_a (optical shift ~1e-7 of lambda -> below the model's wavelength resolution, carried as metadata).
+    aom_freq_mhz: FloatProperty(name="Acoustic frequency (MHz)", default=80.0, min=0.0)   # f_a
+    aom_sound_mps: FloatProperty(name="Sound velocity (m/s)", default=4200.0, min=1.0)     # v_s (TeO2 longitudinal ~4200)
+    aom_efficiency: FloatProperty(name="Diffraction efficiency", default=0.85, min=0.0, max=1.0)  # power into +1 order
     is_monitor: BoolProperty(default=False)        # live sensor-monitor target (fringe recomputed live)
     sensor_px: IntProperty(name="Sensor resolution (px)", default=256, min=16, max=1024)
     pixel_size_um: FloatProperty(name="Pixel size (um)", default=5.0, min=0.1)

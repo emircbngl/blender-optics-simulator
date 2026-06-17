@@ -268,6 +268,23 @@ def build_dhm(context):
     return "OpticsExample_DHM"
 
 
+def build_aom(context):
+    """Acousto-optic deflector (TeO2 shear-mode Bragg cell): the beam splits into an undiffracted 0th order
+    and a frequency-shifted +1 order deflected by theta = lambda*f_a/v_s (VERIFIED acousto-optic-bragg-
+    deflection). Shear-mode TeO2 runs at a low sound speed (~650 m/s) so f_a = 200 MHz gives a large, visible
+    ~11 deg deflection -- exactly why shear-mode cells are used as AODs. The +1 order deflects toward -Y in
+    the horizontal beam plane; the 0th order continues straight."""
+    coll = G.example_collection("OpticsExample_AOM")
+    X = Vector((1, 0, 0))
+    th = 632.8e-9 * 200.0e6 / 650.0                          # the deflection angle (rad) at the source wavelength
+    d1 = Vector((math.cos(th), -math.sin(th), 0.0))          # +1 order direction (deflects toward -Y)
+    G.source("AOM_Laser", (-200, 0, 0), X, coll)
+    G.aom("AOM_cell", (0, 0, 0), X, coll, freq_mhz=200.0, sound_mps=650.0, efficiency=0.85)
+    G.detector("AOM_D0", (320, 0, 0), X, coll)               # 0th order (undiffracted)
+    G.detector("AOM_D1", d1 * 320.0, d1, coll)               # +1 order (diffracted, +200 MHz shift)
+    return "OpticsExample_AOM"
+
+
 EXAMPLES = {
     'mach_zehnder': ("Mach-Zehnder Interferometer", build_mach_zehnder),
     'michelson':    ("Michelson Interferometer", build_michelson),
@@ -282,6 +299,7 @@ EXAMPLES = {
     'hybrid_system': ("Hybrid (cage + post + rail)", build_hybrid_system),
     'microscope':   ("Microscope (infinity-corrected: objective + tube lens)", build_microscope),
     'dhm':          ("Digital Holographic Microscope (vertical, off-axis Mach-Zehnder)", build_dhm),
+    'aom':          ("Acousto-Optic Deflector (Bragg cell: 0th + deflected +1 order)", build_aom),
 }
 
 
