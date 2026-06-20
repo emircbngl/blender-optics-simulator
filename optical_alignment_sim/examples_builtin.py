@@ -162,15 +162,17 @@ def _group(elems, system, gid):
 
 
 def build_cage_system(context):
-    """A complete 30 mm CAGE relay (Thorlabs-style): a fibre launcher, a collimating lens, a clean-up
-    polarizer and a polarizing beamsplitter all share four ER cage rods + one post; the PBS transmits
-    p-pol straight to a 90 deg turning mirror -> camera, and reflects s-pol out the side to a beam dump.
+    """A complete 30 mm CAGE relay (Thorlabs-style): a fibre launcher, a collimating lens, a polarizer
+    set to 45 deg and a polarizing beamsplitter all share four ER cage rods + one post; the 45 deg state
+    feeds the PBS a balanced mix, so it transmits p-pol straight to a 90 deg turning mirror -> camera AND
+    reflects s-pol out the side to a beam dump -- a visible 50/50 polarization split across both detectors.
     Dress Bench to see the cage. Showcases an in-line cage subsystem feeding free-space post mounts."""
     coll = G.example_collection("OpticsExample_CageSystem")
     X, Y = Vector((1, 0, 0)), Vector((0, 1, 0))
     f = G.fiber_collimator("CG_Fiber", (-105, 0, 0), X, coll)
     l1 = G.lens("CG_Collimate", (-55, 0, 0), X, coll, focal=50.0, radius=12.0)
     pol = G.polarizer("CG_CleanPol", (-15, 0, 0), X, coll)
+    pol.optics.pol_axis_deg = 45.0     # 45 deg -> the PBS splits 50/50 (p->camera, s->dump), both ports live
     pbs = G.beamsplitter("CG_PBS", (25, 0, 0), X, Y, coll, pbs=True)
     _group([f, l1, pol, pbs], 'CAGE_30', 'cage_main')          # the 30 mm cage train
     G.mirror("CG_Turn", (95, 0, 0), X, Y, coll)                # transmitted p-pol: +X -> +Y
