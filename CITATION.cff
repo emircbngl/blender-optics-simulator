@@ -28,3 +28,8 @@ keywords:
   - mcp
 version: "0.9.1"
 date-released: "2026-06-21"
+doi: "10.5281/zenodo.20778998"
+identifiers:
+  - type: doi
+    value: "10.5281/zenodo.20778998"
+    description: "Concept DOI (always resolves to the latest version)"

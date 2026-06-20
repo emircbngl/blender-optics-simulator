@@ -3,6 +3,7 @@
 [![CI](https://github.com/emircbngl/blender-optics-simulator/actions/workflows/ci.yml/badge.svg)](https://github.com/emircbngl/blender-optics-simulator/actions/workflows/ci.yml)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
 [![Blender 4.2+](https://img.shields.io/badge/Blender-4.2%2B%20%2F%205.x-orange)](https://www.blender.org/)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20778998.svg)](https://doi.org/10.5281/zenodo.20778998)
 
 **An optical bench an AI agent can build, inspect, align, and render — over MCP.**
 
@@ -316,12 +317,15 @@ ready-to-paste APA / BibTeX.
   title   = {Blender Optics Simulator},
   year    = {2026},
   version = {0.9.1},
+  doi     = {10.5281/zenodo.20778998},
   license = {GPL-3.0-or-later},
   url     = {https://github.com/emircbngl/blender-optics-simulator}
 }
 ```
 
-A versioned **Zenodo DOI** will be minted from the first tagged GitHub release and added here.
+This software is archived on **Zenodo** with a citable DOI:
+[**10.5281/zenodo.20778998**](https://doi.org/10.5281/zenodo.20778998) — the *concept* DOI, which always
+resolves to the latest version.
 
 ---
 
