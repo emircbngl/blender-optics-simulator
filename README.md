@@ -231,13 +231,15 @@ Run the self-test with a bare interpreter (no Blender needed):
 python3 optical_alignment_sim/physics.py   # -> PHYSICS SELFTEST PASSED
 ```
 
-**Catalog & meshes.** A built-in catalog of **38 real Thorlabs part numbers** (plus generic
-fallbacks) addressable by SKU, with **118 documented real-world variants** in
-[docs/OPTICAL_ELEMENTS.md](docs/OPTICAL_ELEMENTS.md). Vendor 3-D models (Thorlabs, Edmund, …) are
-**not bundled** — they are the vendors' IP. The add-on ships only original metadata (element type,
-port geometry, mount parameters) and **correct generic mesh-free geometry**, so every catalog entry
-is usable out of the box. Import your own CAD (STL/OBJ natively; STEP/IGES via FreeCAD) to use real
-parts.
+**Catalog & meshes.** A built-in, **IP-clean component library** — **our own**, built to **real
+market norms**: **38 catalog entries** whose dimensions, specs, and mount conventions are modeled on
+industry-standard parts (the kind you'd source from Thorlabs, Edmund, Newport, …), addressable by
+SKU, plus **118 documented real-world variants** in
+[docs/OPTICAL_ELEMENTS.md](docs/OPTICAL_ELEMENTS.md). **No vendor CAD is bundled** — vendor 3-D
+models are the vendors' IP. The library ships only **original metadata** (element type, port
+geometry, mount parameters) and **correct generic mesh-free geometry** at true functional
+dimensions, so every entry is usable out of the box. Import your own CAD (STL/OBJ natively;
+STEP/IGES via FreeCAD) to drop in an exact part.
 
 ---
 
