@@ -26,6 +26,10 @@ can *see* and *close the loop* on.
 
 <p align="center"><em><b>An agent drives a real bench.</b> A kinematic mirror is knocked out of alignment, so the beam misses the detector — then one <code>optics_api.align_element()</code> call solves the pointing residual (7.0 → 0.001 mrad) and the beam locks onto the sensor. Drivable from the UI, a script, or an AI agent over MCP — see <a href="examples/agent_align.py"><code>examples/agent_align.py</code></a>.</em></p>
 
+<p align="center">
+  <img src="docs/img/hero.png" width="82%" alt="A Michelson interferometer on a tapped breadboard, built and traced in Blender — kinematic mounts and posts, the two arms' beams baked to glowing emission tubes, rendered in Cycles">
+</p>
+
 ---
 
 ## The core loop
