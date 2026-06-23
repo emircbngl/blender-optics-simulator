@@ -348,10 +348,34 @@ def abcd_compose(*mats):
     return A
 
 
-def q_from_waist(w0_mm, wavelength_nm):
-    """Gaussian beam q at its waist: q = i*zR, zR = pi*w0^2/lambda."""
+def gaussian_divergence(w0_mm, wavelength_nm, m2=1.0):
+    """Far-field (half-angle) divergence of a Gaussian beam with beam-quality M^2 (VERIFIED:
+    theta = M2*lambda/(pi*w0), physics_verify ok=true). Reduces EXACTLY to the diffraction-
+    limited theta = lambda/(pi*w0) at m2=1. Real waist w0 is kept; M^2 broadens the far field."""
+    lam = wavelength_nm * NM_TO_MM
+    return m2 * lam / (math.pi * w0_mm)
+
+
+def beam_parameter_product(wavelength_nm, m2=1.0):
+    """Beam-parameter product BPP = w0*theta = M2*lambda/pi (VERIFIED: physics_verify ok=true).
+    Units of length*rad (== length, rad being dimensionless). M2=1 -> the diffraction limit."""
+    lam = wavelength_nm * NM_TO_MM
+    return m2 * lam / math.pi
+
+
+def q_from_waist(w0_mm, wavelength_nm, m2=1.0):
+    """Gaussian beam q at its waist: q = i*zR.
+
+    Diffraction-limited (m2=1): zR = pi*w0^2/lambda.
+
+    For a real beam of quality M^2 (the "times-diffraction-limit" spec) the standard
+    embedded-Gaussian model keeps the true waist w0 but scales the Rayleigh range
+    zR -> zR/M^2 (equivalently the divergence -> M^2 * lambda/(pi*w0), so the far-field
+    w(z) broadens by exactly M^2). At m2=1 this is bit-for-bit the original q."""
     lam = wavelength_nm * NM_TO_MM
     zR = math.pi * w0_mm * w0_mm / lam
+    if m2 != 1.0:
+        zR /= m2
     return complex(0.0, zR)
 
 
@@ -368,6 +392,17 @@ def beam_radius(q, wavelength_nm):
     if inv_imag >= 0.0:
         return 0.0
     return math.sqrt(-lam / (math.pi * inv_imag))
+
+
+def beam_radius_m2(q, wavelength_nm, m2=1.0):
+    """Physical spot radius of an M^2 beam (B1). The tracer carries the *embedded* Gaussian
+    q (waist w0/M, M=sqrt(M2)); the real beam is M times wider at every z (the M^2 invariant
+    is a uniform transverse scale preserved by every ABCD operation). So the physical radius
+    is w_real = M * beam_radius(q_embedded). At m2=1 this is exactly beam_radius(q) -> the
+    existing diffraction-limited path is bit-for-bit unchanged. Far field: w_real(z)/z ->
+    M2*lambda/(pi*w0) = gaussian_divergence(w0,lambda,M2) (physics_verify ok=true)."""
+    w = beam_radius(q, wavelength_nm)
+    return (math.sqrt(m2) * w) if m2 != 1.0 else w
 
 
 def beam_roc(q):

@@ -93,6 +93,7 @@ class OPTICS_PT_tag(Panel):
             pcol.prop(props, "linewidth_nm")
             pcol.prop(props, "bandwidth_nm")
             pcol.prop(props, "waist_um")
+            pcol.prop(props, "m2")
         elif et == 'WAVEPLATE':
             pcol.prop(props, "waveplate_order")
             pcol.prop(props, "retardance_deg")

@@ -151,9 +151,10 @@ def bake_beams(context, radius=0.6):
         qd = s.get("qd")
         if qd is not None:                              # taper to the real Gaussian w(z) along the segment
             q2 = complex(qd[0], qd[1]); wl = s.get("wavelength", 633.0)
+            m2 = s.get("m2", 1.0)                          # B1: physical radius = sqrt(m2)*beam_radius(q)
             L = (p2 - p1).length
-            r1 = _vis_radius(physics.beam_radius(q2 - L, wl), radius, s["kind"])   # w at p1
-            r2 = _vis_radius(s.get("w_mm") or physics.beam_radius(q2, wl), radius, s["kind"])  # w at p2
+            r1 = _vis_radius(physics.beam_radius_m2(q2 - L, wl, m2), radius, s["kind"])   # w at p1
+            r2 = _vis_radius(s.get("w_mm") or physics.beam_radius_m2(q2, wl, m2), radius, s["kind"])  # w at p2
         else:                                           # no Gaussian -> constant (thinner for SPLIT_T)
             r1 = r2 = radius * (0.6 if s["kind"] == 'SPLIT_T' else 1.0)
         if _make_taper(context, "BEAM_%02d" % i, p1, p2, r1, r2, mat, coll):

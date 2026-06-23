@@ -153,10 +153,11 @@ def beam_profile_data(scene, det_name="", samples=24):
         if qd and L > 1e-9:
             q_end = complex(qd[0], qd[1])
             wl = s.get("wavelength", 632.8)
+            m2 = s.get("m2", 1.0)                      # B1: physical radius = sqrt(m2)*beam_radius(q)
             for k in range(samples + 1):
                 f = k / samples
                 xs.append(z0 + f * L)
-                ws.append(physics.beam_radius(q_end - (1.0 - f) * L, wl))
+                ws.append(physics.beam_radius_m2(q_end - (1.0 - f) * L, wl, m2))
         z0 += L
         to_obj = scene.objects.get(s["to"]) if s.get("to") else None
         if to_obj is not None:

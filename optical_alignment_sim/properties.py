@@ -271,6 +271,14 @@ class OpticalElementProps(PropertyGroup):
     linewidth_nm: FloatProperty(name="Linewidth (nm)", default=0.0, min=0.0)   # 0 -> ideal coherence
     bandwidth_nm: FloatProperty(name="Bandwidth (nm)", default=0.0, min=0.0)   # >0 -> broadband / white-light
     waist_um: FloatProperty(name="Beam waist (um)", default=500.0, min=0.0)
+    # M^2 beam-quality ("times-diffraction-limit") factor (B1). Far-field divergence
+    # theta = M2*lambda/(pi*w0), BPP = M2*lambda/pi (physics_verify ok=true). The real
+    # waist w0 is kept; M2 scales the Rayleigh range zR -> zR/M2 so w(z) far-field
+    # broadens by M2. M2=1 is the diffraction limit -> the existing Gaussian, unchanged.
+    m2: FloatProperty(name="Beam quality M2", default=1.0, min=1.0,
+        description="Beam-quality factor (times diffraction limit). 1.0 = ideal Gaussian "
+                    "(TEM00); HeNe ~1.0-1.1, single-mode diode ~1.1-1.3, multimode higher. "
+                    "Broadens the far-field divergence by M2 without changing the waist")
     retardance_deg: FloatProperty(name="Retardance (deg)", default=180.0)       # HWP=180, QWP=90
     fast_axis_deg: FloatProperty(name="Fast-axis angle (deg)", default=0.0)
     # retarder ORDER (variant): shapes the mesh thickness; the design-wavelength retardance is unchanged.

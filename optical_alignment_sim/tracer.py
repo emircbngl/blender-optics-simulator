@@ -35,10 +35,11 @@ TERMINAL = ('DETECTOR', 'PHOTODIODE', 'POWER_METER', 'WAVEFRONT_SENSOR')
 
 class _Ray:
     __slots__ = ('p1', 'dir', 'power', 'depth', 'from_obj', 'wl', 'kind', 'parent',
-                 'jones', 'opl', 'q', 'src_id', 'coh', 'evec', 'aberr')
+                 'jones', 'opl', 'q', 'src_id', 'coh', 'evec', 'aberr', 'm2')
 
     def __init__(self, p1, d, power, depth, from_obj, wl, kind, parent,
-                 jones=None, opl=0.0, q=None, src_id=-1, coh=1.0e12, evec=None, aberr=None):
+                 jones=None, opl=0.0, q=None, src_id=-1, coh=1.0e12, evec=None, aberr=None,
+                 m2=1.0):
         self.p1 = p1
         self.dir = d.normalized()
         self.power = power
@@ -54,6 +55,7 @@ class _Ray:
         self.coh = coh              # coherence length (mm) from the source linewidth
         self.evec = evec            # 3-D complex field (vectorial pol), transverse to dir
         self.aberr = aberr          # Zernike wavefront-error coeffs (waves) or None (=flat)
+        self.m2 = m2                # beam-quality factor (B1): physical radius = sqrt(m2)*beam_radius(q)
 
 
 def _find_port(props, role):
@@ -159,8 +161,9 @@ def _seg(ray, p2, to_obj, sn=None):
         "power": round(ray.power, 4), "wavelength": ray.wl, "parent": ray.parent,
         "jones": [j[0].real, j[0].imag, j[1].real, j[1].imag] if j else None,
         "opl": opl, "phase": phase, "src_id": ray.src_id, "coh": ray.coh,
-        "w_mm": physics.beam_radius(qd, ray.wl) if qd is not None else 0.0,
+        "w_mm": physics.beam_radius_m2(qd, ray.wl, ray.m2) if qd is not None else 0.0,
         "qd": [qd.real, qd.imag] if qd is not None else None,   # Gaussian q at the hit -> R, w, Gouy
+        "m2": ray.m2,                                          # beam quality (B1): w_real = sqrt(m2)*beam_radius(q)
         "aberr": list(ray.aberr) if ray.aberr else None,
     }
 
@@ -214,17 +217,20 @@ def _child(ray, E, H, d, power, kind, idx, t, jones=None, q=None, evec=None, abe
     else:
         nj = ray.jones if jones is None else jones
         nev = physics.field_from_jones(nj, d) if nj is not None else None
+    # a converted child (CRYSTAL: SHG/SPDC) passes an explicit fresh q -> it is a new,
+    # diffraction-limited beam (m2=1); a plain continuation inherits the parent's m2.
+    child_m2 = ray.m2 if q is None else 1.0
     return _Ray(H, d, power, ray.depth + 1, E, (wl if wl is not None else ray.wl), kind, idx,
                 jones=nj, opl=ray.opl + t, q=q,
                 src_id=ray.src_id, coh=ray.coh, evec=nev,
-                aberr=(aberr if aberr is not None else ray.aberr))
+                aberr=(aberr if aberr is not None else ray.aberr), m2=child_m2)
 
 
 def _clip_T(ray, E, t):
     """Gaussian power transmission through the element's circular clear aperture."""
     if ray.q is None:
         return 1.0
-    w = physics.beam_radius(physics.q_propagate(ray.q, physics.abcd_free(t)), ray.wl)
+    w = physics.beam_radius_m2(physics.q_propagate(ray.q, physics.abcd_free(t)), ray.wl, ray.m2)
     a = E.optics.clear_aperture
     if w <= 1e-9 or a <= 0.0:
         return 1.0
@@ -380,14 +386,19 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 spectrum = [(sp.wavelength, 1.0)]
             P = geometry.world_port(src, op.local_position)
             D = geometry.world_normal(src, op.local_normal)
+            m2 = max(getattr(sp, 'm2', 1.0), 1.0)
             for wl_i, sw in spectrum:
-                q0 = physics.q_from_waist(max(sp.waist_um, 1.0) * 1.0e-3, wl_i)
+                # B1 beam quality M^2: emit the EMBEDDED Gaussian q (q_from_waist scales
+                # zR -> zR/M2, i.e. an embedded waist w0/M). The ray carries m2 so every
+                # *physical* radius is read as sqrt(m2)*beam_radius(q) -> the far-field
+                # divergence broadens by exactly M2 = M^2*lambda/(pi*w0). m2=1 -> unchanged.
+                q0 = physics.q_from_waist(max(sp.waist_um, 1.0) * 1.0e-3, wl_i, m2)
                 coh0 = min(physics.coherence_length_mm(wl_i, sp.linewidth_nm), 1.0e12)
                 for jv, pw in emit:
                     js = physics.scale(jv, math.sqrt(sw))
                     stack.append(_Ray(P, D, pw * sw, 0, src, wl_i, 'SOURCE', -1,
                                       jones=js, opl=0.0, q=q0, src_id=sid, coh=coh0,
-                                      evec=physics.field_from_jones(js, D)))
+                                      evec=physics.field_from_jones(js, D), m2=m2))
                     sid += 1
 
     segments = []
@@ -422,7 +433,8 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                     # Tier-1 MODELING CHOICE (not an oracle-verified law): seed the converted beam with a
                     # fresh Gaussian waist equal to the pump's spot size at the crystal, at the new wavelength.
                     qpc = physics.q_propagate(ray.q, physics.abcd_free(t))
-                    q_conv = physics.q_from_waist(max(physics.beam_radius(qpc, ray.wl), 1.0e-3), wco)
+                    q_conv = physics.q_from_waist(
+                        max(physics.beam_radius_m2(qpc, ray.wl, ray.m2), 1.0e-3), wco)
                 stack.append(_child(ray, E, H, ray.dir, ray.power * (1.0 - eff), 'TRANSMIT', idx, t,
                                     jones=ray.jones))       # residual unconverted pump
                 if proc == 'SHG':
