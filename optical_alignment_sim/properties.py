@@ -324,6 +324,21 @@ class OpticalElementProps(PropertyGroup):
     d_ref_mm: FloatProperty(name="Reference thickness (mm)", default=3.0, min=0.01)
     peak_t: FloatProperty(name="Peak transmittance", default=0.91, min=0.0, max=1.0)
     edge_width_nm: FloatProperty(name="Absorptive edge width (nm)", default=18.0, min=1.0)
+    # --- dielectric interference filters (LP/SP/BP): soft (finite-slope) edges + AOI blue-shift (C1) ---
+    # A real thin-film interference filter does NOT have a step edge: it has a finite-slope transition
+    # (edge_width), a finite stopband floor (10^-od_block, never exactly 0), and its edge/band BLUE-SHIFTS
+    # with angle of incidence theta:  lambda_c_eff = lambda_c * sqrt(1 - (sin theta / n_eff)^2)
+    # (n_eff ~ 1.85, the effective coating index; physics_verify ok=true, 550nm/60deg -> 486nm).
+    edge_width: FloatProperty(name="Edge width (nm)", default=3.0, min=0.1,
+        description="Logistic edge slope for LP/SP (nm); ~10x sharper than a colored-glass edge")
+    od_block: FloatProperty(name="Block OD", default=4.0, min=0.0,
+        description="Stopband optical density; floor transmission = 10^-od_block (finite, not 0)")
+    n_eff: FloatProperty(name="Effective coating index", default=1.85, min=1.0,
+        description="Effective index for the AOI blue-shift lambda_c*sqrt(1-(sin theta/n_eff)^2)")
+    cwl_nm: FloatProperty(name="Center wavelength (nm)", default=550.0, min=1.0,
+        description="Bandpass center wavelength (CWL) for the super-Gaussian flat-top")
+    fwhm_nm: FloatProperty(name="Bandpass FWHM (nm)", default=40.0, min=0.1,
+        description="Bandpass full-width-at-half-maximum for the order-3 super-Gaussian")
     lines_per_mm: FloatProperty(name="Grating lines/mm", default=1200.0, min=0.0)
     grating_order: IntProperty(name="Diffraction order", default=1)
     analyzer: EnumProperty(name="Analyzer",

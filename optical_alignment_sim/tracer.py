@@ -235,6 +235,7 @@ def _clip_T(ray, E, t):
 # (the standard lambda_c convention), i.e. A_cut = -log10(0.5).
 _A_HALF = math.log10(2.0)                                   # ~0.30103
 _A_BLOCK = 4.0                                              # deep-stopband absorbance floor (tau ~ 1e-4)
+_LN2 = math.log(2.0)                                        # super-Gaussian flat-top half-max normalization (C1 BP)
 
 
 def _cglass_absorbance(op, wl):
@@ -266,19 +267,50 @@ def _cglass_absorbance(op, wl):
     return max(edge_block_short(wl, op.cut_lo_nm), edge_block_long(wl, op.cut_hi_nm))
 
 
-def _transmission(op, wl):
-    """Wavelength-dependent power transmission of a filter / attenuator."""
+def _aoi_blueshift(lam_c, aoi, n_eff):
+    """Angle-of-incidence edge/band BLUE-SHIFT of a thin-film interference filter:
+    lambda_c_eff = lambda_c * sqrt(1 - (sin theta / n_eff)^2). A tilted dielectric filter
+    sees a shorter effective path through the coating stack, so its cut/center wavelength
+    moves to the BLUE with increasing angle. n_eff (~1.85) is the effective coating index.
+    physics_verify ok=true (4/4): 550nm @ 60deg, n_eff=1.85 -> 486.0nm (a 12% shift)."""
+    s = math.sin(aoi) / max(n_eff, 1e-6)
+    return lam_c * math.sqrt(max(0.0, 1.0 - s * s))
+
+
+def _transmission(op, wl, aoi=0.0):
+    """Wavelength-dependent power transmission of a filter / attenuator.
+
+    For the dielectric interference filters (LP/SP/BP) the spectral edges are SOFT
+    (finite-slope), bottom out at a finite stopband floor (10^-od_block, never exactly 0),
+    and blue-shift with the angle of incidence ``aoi`` (radians) -- see _aoi_blueshift (C1).
+    The colored-glass (CGLASS_*) bulk-absorption path (C2) is angle-insensitive and untouched."""
     if op.element_type == 'ATTENUATOR':
         return 10.0 ** (-op.od)
     ft = op.filt_type
     if ft == 'ND':
         return 10.0 ** (-op.od)
-    if ft == 'LP':
-        return 1.0 if wl >= op.cut_lo_nm else 0.0
-    if ft == 'SP':
-        return 1.0 if wl <= op.cut_hi_nm else 0.0
-    if ft == 'BP':
-        return 1.0 if op.cut_lo_nm <= wl <= op.cut_hi_nm else 0.0
+    if ft in ('LP', 'SP', 'BP'):
+        # Thin-film interference filter: SOFT edges + finite OD floor + AOI blue-shift (C1).
+        peak = max(0.0, min(getattr(op, 'peak_t', 0.91), 1.0))    # passband transmission T_peak
+        floor = 10.0 ** (-max(getattr(op, 'od_block', 4.0), 0.0))  # finite stopband floor (not 0)
+        n_eff = max(getattr(op, 'n_eff', 1.85), 1.0)
+        span = peak - floor
+        if ft == 'LP':                                            # passes LONG lambda; logistic rising edge
+            w = max(getattr(op, 'edge_width', 3.0), 1e-6)
+            lc = _aoi_blueshift(op.cut_lo_nm, aoi, n_eff)         # edge blue-shifts with angle
+            return floor + span / (1.0 + math.exp(-(wl - lc) / w))
+        if ft == 'SP':                                            # passes SHORT lambda; sign-flipped logistic
+            w = max(getattr(op, 'edge_width', 3.0), 1e-6)
+            lc = _aoi_blueshift(op.cut_hi_nm, aoi, n_eff)
+            return floor + span / (1.0 + math.exp((wl - lc) / w))
+        # BP: order-3 super-Gaussian flat-top centered at the (blue-shifted) CWL.
+        # T(cwl)=peak; T = floor + span/2 at |wl-cwl| = fwhm/2 (the half-max points), since the
+        # exponent argument is -ln2 * (2|wl-cwl|/fwhm)^(2*order) -> -ln2 at the FWHM half-width.
+        cwl = _aoi_blueshift(getattr(op, 'cwl_nm', 550.0), aoi, n_eff)
+        fwhm = max(getattr(op, 'fwhm_nm', 40.0), 1e-6)
+        order = 3
+        u = 2.0 * (wl - cwl) / fwhm
+        return floor + span * math.exp(-_LN2 * (u * u) ** order)
     if ft in ('CGLASS_LP', 'CGLASS_SP', 'CGLASS_BP'):
         # Colored-glass BULK absorption (C2). Beer-Lambert, thickness-scaled by the oracle-VERIFIED
         # Schott TIE-35 power law:  T = peak_t * 10^(-A(lambda) * d / d_ref)
@@ -567,7 +599,11 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             Jw = physics.apply(physics.M_waveplate(ret, op.fast_axis_deg), J)   # retardance ~ 1/lambda
             stack.append(_child(ray, E, H, ray.dir, physics.intensity(Jw), 'TRANSMIT', idx, t, jones=Jw))
         elif et in ('FILTER', 'ATTENUATOR'):
-            T = _transmission(op, ray.wl)
+            # angle of incidence on the filter face -> dielectric-edge blue-shift (C1).
+            # The ray PATH is undeviated (filters transmit straight through); only the
+            # transmitted POWER near the edge changes with angle.
+            aoi = math.acos(min(1.0, abs(ray.dir.dot(sn))))
+            T = _transmission(op, ray.wl, aoi)
             stack.append(_child(ray, E, H, ray.dir, ray.power * T, 'TRANSMIT', idx, t,
                                 jones=physics.scale(J, math.sqrt(max(T, 0.0))) if J else None))
         elif et == 'PINHOLE':
