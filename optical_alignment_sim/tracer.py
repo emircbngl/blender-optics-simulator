@@ -347,6 +347,49 @@ def _diffract(d, n, wl_nm, lines_per_mm, order):
     return (sin_m * t_hat + cos_m * n_in).normalized()
 
 
+def _prism_faces(E):
+    """World (point, outward-normal) of a prism's entry (IN) and exit (OUT) faces."""
+    op = E.optics
+    ip, opo = _find_port(op, 'IN'), _find_port(op, 'OUT')
+    pin = (geometry.world_port(E, ip.local_position), geometry.world_normal(E, ip.local_normal)) if ip else None
+    pout = (geometry.world_port(E, opo.local_position), geometry.world_normal(E, opo.local_normal)) if opo else None
+    return pin, pout
+
+
+def _glass_seg(ray, p2, E, n_glass, kind):
+    """Emit an IN-GLASS segment from ray.p1 to p2 inside element E: the optical path advances by n*L
+    (the glass index), and the dict mirrors _seg's schema so bake/overlay/digest treat it uniformly."""
+    seg_len = (p2 - ray.p1).length
+    opl = ray.opl + n_glass * seg_len            # glass optical path: n * geometric length
+    lam_mm = ray.wl * 1.0e-6
+    phase = (2.0 * math.pi * opl / lam_mm) if lam_mm > 0.0 else 0.0
+    j = ray.jones
+    qd = physics.q_propagate(ray.q, physics.abcd_free(seg_len)) if ray.q is not None else None
+    return {
+        "p1": ray.p1.copy(), "p2": p2.copy(), "kind": kind,
+        "from": ray.from_obj.name if ray.from_obj else None,
+        "to": E.name if E else None,
+        "power": round(ray.power, 4), "wavelength": ray.wl, "parent": ray.parent,
+        "jones": [j[0].real, j[0].imag, j[1].real, j[1].imag] if j else None,
+        "opl": opl, "phase": phase, "src_id": ray.src_id, "coh": ray.coh,
+        "w_mm": physics.beam_radius_m2(qd, ray.wl, ray.m2) if qd is not None else 0.0,
+        "qd": [qd.real, qd.imag] if qd is not None else None,
+        "m2": ray.m2,
+        "aberr": list(ray.aberr) if ray.aberr else None,
+    }, opl, qd
+
+
+def _prism_exit_ray(glass_ray, E, He, d_out, opl_exit, power, parent_idx):
+    """Continuation ray leaving a prism's exit face at He along d_out, carrying the accumulated optical path
+    (opl_exit, already including the glass n*L legs) and the propagated Gaussian q. Polarization is rebuilt
+    on the new direction. from_obj = E so the ray won't immediately re-hit the prism it just left."""
+    nj = glass_ray.jones
+    nev = physics.field_from_jones(nj, d_out) if nj is not None else None
+    return _Ray(He, d_out, power, glass_ray.depth + 1, E, glass_ray.wl, 'TRANSMIT', parent_idx,
+                jones=nj, opl=opl_exit, q=glass_ray.q, src_id=glass_ray.src_id, coh=glass_ray.coh,
+                evec=nev, m2=glass_ray.m2)
+
+
 def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
     elems = [o for o in scene.objects
              if getattr(o, "optics", None) and o.optics.is_optical]
@@ -653,6 +696,145 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             else:
                 stack.append(_child(ray, E, H, nd, ray.power * op.reflectivity, 'REFLECT', idx, t,
                                     jones=None, aberr=ab))
+        elif et == 'PRISM':
+            # Dispersing prism (C3): refract air->glass at the entry face (wavelength-dependent n via
+            # sellmeier_n), propagate the in-glass leg (OPL += n*L), then refract glass->air (EQUILATERAL/
+            # AMICI), TIR-fold then refract (PELLIN_BROCA), or coated back-reflect then refract back out the
+            # entry (LITTROW), at the exit face. Each wavelength bends by a different angle -> the spectrum
+            # fans out. Transmission weights use the existing fresnel_reflect; TIR past the critical angle.
+            n_g = physics.sellmeier_n(ray.wl, getattr(op, 'prism_glass', 'N-SF11'))
+            pin, pout = _prism_faces(E)
+            if pout is None:                                  # malformed prism (no exit port): pass straight
+                stack.append(_child(ray, E, H, ray.dir, ray.power, 'TRANSMIT', idx, t))
+                continue
+            entry_n = sn
+            # angle of incidence at the entry face (for the Fresnel transmission weight)
+            theta_i = math.acos(min(1.0, abs(ray.dir.dot(entry_n))))
+            d_glass = physics.refract_dir((ray.dir.x, ray.dir.y, ray.dir.z),
+                                          (entry_n.x, entry_n.y, entry_n.z), 1.0, n_g)
+            if d_glass is None:                               # TIR at entry (grazing) -> specular reflect off
+                nd_r = geometry.reflect(ray.dir, entry_n)
+                stack.append(_child(ray, E, H, nd_r, ray.power, 'REFLECT', idx, t, jones=ray.jones))
+                continue
+            d_glass = Vector(d_glass)
+            T_in = physics.fresnel_transmit_power(1.0, n_g, theta_i)
+            exit_pt, exit_n = pout
+            ex_n = Vector(exit_n)
+
+            # --- entry-refracted in-glass ray ---
+            glass_ray = _Ray(H, d_glass, ray.power * T_in, ray.depth + 1, E, ray.wl, 'GLASS', idx,
+                             jones=ray.jones, opl=ray.opl + t, q=(physics.q_propagate(ray.q, physics.abcd_free(t))
+                             if ray.q is not None else None), src_id=ray.src_id, coh=ray.coh,
+                             evec=(physics.field_from_jones(ray.jones, d_glass) if ray.jones else None), m2=ray.m2)
+
+            ptype = getattr(op, 'prism_type', 'EQUILATERAL')
+            if ptype == 'PELLIN_BROCA':
+                # refract in -> internal TIR off the dedicated fold face (the 'TIR' port, role TRANSMIT) ->
+                # refract out the exit face. The design wavelength deviates by a constant 90 deg; off-design
+                # wavelengths fan around it. The TIR-face normal carries the world geometry of the fold.
+                tirp = _find_port(op, 'TRANSMIT')
+                if tirp is None:
+                    continue
+                tir_n = geometry.world_normal(E, tirp.local_normal)
+                # fold the in-glass ray off the TIR face. The face midpoint is the in-glass ray's hit; use the
+                # ray-plane intersection through the TIR port position for the segment break.
+                tir_pt = geometry.world_port(E, tirp.local_position)
+                hb = _ray_plane(glass_ray.p1, glass_ray.dir, tir_pt, tir_n)
+                Hb = hb[0] if hb is not None else (glass_ray.p1 + glass_ray.dir * 1.0)
+                gseg, opl_b, _qd = _glass_seg(glass_ray, Hb, E, n_g, 'GLASS')
+                segments.append(gseg)
+                d_fold = geometry.reflect(glass_ray.dir, tir_n)    # internal total reflection (the 90 deg fold)
+                fold_ray = _Ray(Hb, d_fold, glass_ray.power, glass_ray.depth + 1, E, ray.wl, 'GLASS', idx,
+                                jones=ray.jones, opl=opl_b, q=glass_ray.q, src_id=ray.src_id, coh=ray.coh,
+                                evec=glass_ray.evec, m2=ray.m2)
+                he = _ray_plane(fold_ray.p1, fold_ray.dir, exit_pt, ex_n)
+                He = he[0] if he is not None else (fold_ray.p1 + fold_ray.dir * 1.0)
+                gseg2, opl_e, _qd2 = _glass_seg(fold_ray, He, E, n_g, 'GLASS')
+                segments.append(gseg2)
+                theta_e = math.acos(min(1.0, abs(fold_ray.dir.dot(ex_n))))
+                d_out = physics.refract_dir((fold_ray.dir.x, fold_ray.dir.y, fold_ray.dir.z),
+                                            (ex_n.x, ex_n.y, ex_n.z), n_g, 1.0)
+                if d_out is None:
+                    continue
+                T_out = physics.fresnel_transmit_power(1.0, n_g, math.asin(min(1.0, n_g * math.sin(theta_e))))
+                stack.append(_prism_exit_ray(fold_ray, E, He, Vector(d_out), opl_e,
+                                             ray.power * T_in * T_out, idx))
+            elif ptype == 'LITTROW':
+                # refract in -> reflect off the coated BACK (exit) face -> refract back out the ENTRY face
+                # (autocollimating, ~2x dispersion). Reflect about the exit face, then exit through entry.
+                he = _ray_plane(glass_ray.p1, glass_ray.dir, exit_pt, ex_n)
+                if he is None:
+                    continue
+                He, _te = he
+                gseg, opl_e, _qd = _glass_seg(glass_ray, He, E, n_g, 'GLASS')
+                segments.append(gseg)
+                d_refl = geometry.reflect(glass_ray.dir, ex_n)     # coated back-reflection
+                refl_ray = _Ray(He, d_refl, glass_ray.power, glass_ray.depth + 1, E, ray.wl, 'GLASS', idx,
+                                jones=ray.jones, opl=opl_e, q=glass_ray.q, src_id=ray.src_id, coh=ray.coh,
+                                evec=glass_ray.evec, m2=ray.m2)
+                hx = _ray_plane(refl_ray.p1, refl_ray.dir, pin[0], Vector(pin[1]))
+                if hx is None:
+                    continue
+                Hx, _tx = hx
+                gseg2, opl_x, _qd2 = _glass_seg(refl_ray, Hx, E, n_g, 'GLASS')
+                segments.append(gseg2)
+                en = Vector(pin[1])
+                theta_x = math.acos(min(1.0, abs(refl_ray.dir.dot(en))))
+                d_out = physics.refract_dir((refl_ray.dir.x, refl_ray.dir.y, refl_ray.dir.z),
+                                            (en.x, en.y, en.z), n_g, 1.0)
+                if d_out is None:
+                    continue
+                T_out = physics.fresnel_transmit_power(1.0, n_g, math.asin(min(1.0, n_g * math.sin(theta_x))))
+                stack.append(_prism_exit_ray(refl_ray, E, Hx, Vector(d_out), opl_x,
+                                             ray.power * T_in * T_out, idx))
+            elif ptype == 'AMICI':
+                # Direct-vision doublet: refract crown (already done into glass_ray with n_g = crown index),
+                # refract crown->flint at the cemented interface (the 'CEMENT' port), then flint->air at the
+                # exit face. The design wavelength exits ~undeviated; the spectrum still fans (the two glasses'
+                # different Abbe numbers mean the deviation cancels but the dispersion does not).
+                cemp = _find_port(op, 'TRANSMIT')
+                n2 = physics.sellmeier_n(ray.wl, getattr(op, 'prism_glass2', 'N-SF11'))
+                if cemp is None:
+                    continue
+                cem_n = geometry.world_normal(E, cemp.local_normal)
+                cem_pt = geometry.world_port(E, cemp.local_position)
+                hc = _ray_plane(glass_ray.p1, glass_ray.dir, cem_pt, cem_n)
+                Hc = hc[0] if hc is not None else (glass_ray.p1 + glass_ray.dir * 1.0)
+                gseg, opl_c, _qd = _glass_seg(glass_ray, Hc, E, n_g, 'GLASS')   # crown leg (n_g)
+                segments.append(gseg)
+                d_flint = physics.refract_dir((glass_ray.dir.x, glass_ray.dir.y, glass_ray.dir.z),
+                                              (cem_n.x, cem_n.y, cem_n.z), n_g, n2)   # crown -> flint
+                if d_flint is None:
+                    continue
+                flint_ray = _Ray(Hc, Vector(d_flint), glass_ray.power, glass_ray.depth + 1, E, ray.wl, 'GLASS',
+                                 idx, jones=ray.jones, opl=opl_c, q=glass_ray.q, src_id=ray.src_id,
+                                 coh=ray.coh, evec=glass_ray.evec, m2=ray.m2)
+                he = _ray_plane(flint_ray.p1, flint_ray.dir, exit_pt, ex_n)
+                He = he[0] if he is not None else (flint_ray.p1 + flint_ray.dir * 1.0)
+                gseg2, opl_e, _qd2 = _glass_seg(flint_ray, He, E, n2, 'GLASS')      # flint leg (n2)
+                segments.append(gseg2)
+                d_out = physics.refract_dir((flint_ray.dir.x, flint_ray.dir.y, flint_ray.dir.z),
+                                            (ex_n.x, ex_n.y, ex_n.z), n2, 1.0)       # flint -> air
+                if d_out is None:
+                    continue
+                stack.append(_prism_exit_ray(flint_ray, E, He, Vector(d_out), opl_e,
+                                             ray.power * T_in, idx))
+            else:
+                # EQUILATERAL: refract in -> straight in-glass leg -> refract out the exit face.
+                he = _ray_plane(glass_ray.p1, glass_ray.dir, exit_pt, ex_n)
+                if he is None:
+                    continue
+                He, _te = he
+                gseg, opl_e, _qd = _glass_seg(glass_ray, He, E, n_g, 'GLASS')
+                segments.append(gseg)
+                theta_e = math.acos(min(1.0, abs(glass_ray.dir.dot(ex_n))))   # in-glass exit incidence
+                d_out = physics.refract_dir((glass_ray.dir.x, glass_ray.dir.y, glass_ray.dir.z),
+                                            (ex_n.x, ex_n.y, ex_n.z), n_g, 1.0)
+                if d_out is None:                              # TIR at the exit face: fold internally, dump (Tier-1)
+                    continue
+                T_out = physics.fresnel_transmit_power(1.0, n_g, math.asin(min(1.0, n_g * math.sin(theta_e))))
+                stack.append(_prism_exit_ray(glass_ray, E, He, Vector(d_out), opl_e,
+                                             ray.power * T_in * T_out, idx))
         else:  # LENS / PASSTHROUGH
             stack.append(_child(ray, E, H, ray.dir, ray.power, 'TRANSMIT', idx, t))
 

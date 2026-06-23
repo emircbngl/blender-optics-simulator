@@ -44,6 +44,7 @@ ELEMENT_TYPES = [
     ('CRYSTAL',      "Nonlinear Crystal",          "chi(2) frequency conversion (SHG / SPDC); emits converted beams"),
     ('OBJECTIVE',    "Microscope Objective",       "High-NA objective; focal power f_obj = f_tube/M, magnifies + focuses"),
     ('AOM',          "Acousto-Optic Modulator",    "Bragg cell: deflects the +1 order by theta = lambda*f_a/v_s + frequency-shifts it by f_a"),
+    ('PRISM',        "Dispersing Prism",           "Refractive material-dispersion prism (equilateral / Littrow / Pellin-Broca / Amici); fans a white beam by wavelength"),
 ]
 
 PORT_ROLES = [
@@ -383,6 +384,29 @@ class OpticalElementProps(PropertyGroup):
     aom_freq_mhz: FloatProperty(name="Acoustic frequency (MHz)", default=80.0, min=0.0)   # f_a
     aom_sound_mps: FloatProperty(name="Sound velocity (m/s)", default=4200.0, min=1.0)     # v_s (TeO2 longitudinal ~4200)
     aom_efficiency: FloatProperty(name="Diffraction efficiency", default=0.85, min=0.0, max=1.0)  # power into +1 order
+    # dispersing prism (C3): refractive material-dispersion family. The tracer refracts the chief ray at the
+    # entry face (n(lambda) via sellmeier_n), propagates the glass OPL (n*L), and refracts/TIRs/reflects at the
+    # exit face per prism_type. apex_angle_deg = the refracting (apex) angle; equilateral A=60 deg.
+    prism_type: EnumProperty(name="Prism type", default='EQUILATERAL',
+        items=[('EQUILATERAL', "Equilateral (dispersing)", "Two-surface Snell; spectrum fans, min deviation at A=60 deg"),
+               ('LITTROW', "Littrow (autocollimating)", "Refract -> coated back-reflect -> refract; ~2x dispersion, retro"),
+               ('PELLIN_BROCA', "Pellin-Broca (constant 90 deg)", "Refract -> internal TIR -> refract; selected lambda always exits at 90 deg"),
+               ('AMICI', "Amici (direct-vision)", "Cemented crown/flint; zero net deviation at lambda0, still disperses")])
+    apex_angle_deg: FloatProperty(name="Apex angle (deg)", default=60.0, min=1.0, max=170.0,
+        description="The prism's refracting (apex) angle; 60 deg for an equilateral dispersing prism")
+    prism_glass: EnumProperty(name="Prism glass", default='N-SF11',
+        items=[('N-SF11', "N-SF11 (dense flint, high dispersion)", "Vd=25.7; the classic dispersing-prism glass"),
+               ('F2', "F2 (flint)", "Vd=36.4"),
+               ('N-F2', "N-F2 (lead-free flint)", "Vd=36.4"),
+               ('N-BK7', "N-BK7 (borosilicate crown)", "Vd=64.2; low dispersion"),
+               ('CaF2', "CaF2 (calcium fluoride)", "Vd=95.0; very low dispersion, UV-transmitting"),
+               ('FUSED_SILICA', "Fused silica", "UV-grade low-dispersion")])
+    # Amici (direct-vision) flint glass: the second, higher-dispersion element that cancels the crown's
+    # net deviation at the design wavelength while the dispersion adds. Only read for prism_type=AMICI.
+    prism_glass2: EnumProperty(name="Amici flint glass", default='N-SF11',
+        items=[('N-SF11', "N-SF11 (dense flint)", ""), ('F2', "F2 (flint)", ""), ('N-F2', "N-F2 (lead-free flint)", "")])
+    prism_design_wl: FloatProperty(name="Prism design wavelength (nm)", default=589.3, min=1.0,
+        description="The selected wavelength: Pellin-Broca deviates it by exactly 90 deg; Amici passes it undeviated")
     is_monitor: BoolProperty(default=False)        # live sensor-monitor target (fringe recomputed live)
     sensor_px: IntProperty(name="Sensor resolution (px)", default=256, min=16, max=1024)
     pixel_size_um: FloatProperty(name="Pixel size (um)", default=5.0, min=0.1)

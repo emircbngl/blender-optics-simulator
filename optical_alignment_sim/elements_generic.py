@@ -12,6 +12,8 @@ matrix_world automatically (the same math the tracer/alignment rely on).
 """
 from __future__ import annotations
 
+import math
+
 import bpy
 from mathutils import Vector, Matrix
 
@@ -63,6 +65,7 @@ MATS = {
     "grating": lambda: _mat("OG_grating", (0.55, 0.45, 0.65), metal=0.9, rough=0.20),
     "retro":  lambda: _mat("OG_retro", (0.75, 0.78, 0.85), metal=1.0, rough=0.10),
     "fiber":  lambda: _mat("OG_fiber", (0.40, 0.42, 0.48), metal=0.85, rough=0.30),
+    "prism":  lambda: _mat("OG_prism", (0.70, 0.85, 0.98), metal=0.0, rough=0.05),
     # accent materials (slot 1+): keep their colour in realistic renders (only slot 0 is theme-swapped)
     "subglass":  lambda: _mat("OG_substrate", (0.28, 0.31, 0.37), metal=0.0, rough=0.22),
     "coatbs":    lambda: _mat("OG_coat_bs", (0.55, 0.78, 1.00), metal=0.4, rough=0.10),
@@ -312,6 +315,97 @@ def _corner_cube(name, size, coll):
         j = (i + 1) % 3
         bm.faces.new((F[i], F[j], rim[j], rim[i]))
     bm.faces.new((rim[0], rim[1], rim[2]))
+    return _bm_obj(name, bm, coll, smooth=False)
+
+
+def _prism_triangle_yz(apex_deg, face_mm):
+    """Cross-section (in the local Y-Z plane) of a dispersing prism with refracting apex angle ``apex_deg``
+    and slant-face length ``face_mm``: apex at the TOP (+Y), base at the bottom, two equal slant faces.
+    Returns [(y,z) ...] for apex, base-left (-Z), base-right (+Z). The entry (left) face outward normal is
+    (0, sin(A/2), -cos(A/2)) and the exit (right) (0, sin(A/2), +cos(A/2)) -- the frame the tracer refracts
+    in (in-glass min-deviation ray along +Z)."""
+    A = math.radians(apex_deg)
+    zb = face_mm * math.sin(A / 2.0)       # base half-width
+    H = face_mm * math.cos(A / 2.0)        # apex height above base
+    return [(H * 0.5, 0.0), (-H * 0.5, -zb), (-H * 0.5, zb)]
+
+
+def _littrow_triangle_yz(apex_deg, face_mm):
+    """Cross-section of a Littrow (autocollimating) prism in the local Y-Z plane: a right-triangle whose
+    COATED back face is perpendicular to the in-glass +Z ray (normal incidence -> retroreflection) and whose
+    entry face is tilted by the refracting angle ``apex_deg`` (alpha). Returns [(y,z) ...] in CCW winding =
+    A (top of coated face), B (bottom of coated face), E (far entry vertex). The COATED face (A->B) has
+    outward normal (0, 0, +1); the ENTRY face (A->E) has outward normal (0, sin alpha, -cos alpha)."""
+    a = math.radians(apex_deg)
+    s = face_mm
+    h = s * 0.5 * math.sin(a)              # half-height of the coated face
+    zc = s * 0.4                           # coated face at z = +zc (perpendicular to the in-glass +Z ray)
+    A = (h, zc)
+    B = (-h, zc)
+    E = (A[0] - s * math.cos(a), A[1] - s * math.sin(a))
+    return [A, B, E]
+
+
+def _tri_prism(name, apex_deg, face_mm, depth_mm, coll):
+    """A triangular dispersing prism: the _prism_triangle_yz cross-section extruded along local X by
+    ``depth_mm`` (the prism's clear height). +Z is the in-glass optical axis, +Y the apex, X the bar axis."""
+    (ya, za), (yl, zl), (yr, zr) = _prism_triangle_yz(apex_deg, face_mm)
+    hx = depth_mm * 0.5
+    bm = bmesh.new()
+    # two triangular end caps at x=-hx and x=+hx, joined into a solid bar
+    front = [bm.verts.new((-hx, ya, za)), bm.verts.new((-hx, yl, zl)), bm.verts.new((-hx, yr, zr))]
+    back = [bm.verts.new((hx, ya, za)), bm.verts.new((hx, yl, zl)), bm.verts.new((hx, yr, zr))]
+    bm.faces.new((front[0], front[2], front[1]))           # -X cap
+    bm.faces.new((back[0], back[1], back[2]))              # +X cap
+    for i in range(3):                                     # three rectangular side faces (entry/exit/base)
+        j = (i + 1) % 3
+        bm.faces.new((front[i], front[j], back[j], back[i]))
+    return _bm_obj(name, bm, coll, smooth=False)
+
+
+def _pellin_broca_quad_yz(face_mm):
+    """Cross-section of a Pellin-Broca prism (four-sided block, apex angles 90/75/135/60). A beam enters the
+    AB face near Brewster, refracts, totally-internally-reflects off the bottom hypotenuse, and exits the BC
+    face deviated by a constant 90 deg for the design wavelength. Built in the local Y-Z plane with the same
+    +Z optical-axis convention; the mesh is a faithful 4-vertex polygon (TIR fold modelled by the tracer)."""
+    s = face_mm
+    # A clean P-B silhouette: entry + exit faces at right angles, a long TIR hypotenuse. Coordinates chosen
+    # so the entry (left) face outward normal tilts back/-Z and the exit (top/+Z) face tilts forward/+Z.
+    return [(0.55 * s, -0.45 * s), (0.55 * s, 0.55 * s), (-0.45 * s, 0.55 * s), (-0.75 * s, -0.45 * s)]
+
+
+def _amici_quad_yz(face_mm):
+    """Cross-section of an Amici (direct-vision) doublet block: a trapezoid that reads as a cemented
+    crown+flint pair. Entry face (verts[3]->verts[0]) and exit face (verts[1]->verts[2]) are the outer
+    glass-air faces; the cemented crown/flint diagonal runs through the body (modelled by the tracer)."""
+    s = face_mm
+    return [(0.5 * s, -0.5 * s), (0.5 * s, 0.5 * s), (-0.35 * s, 0.6 * s), (-0.55 * s, -0.5 * s)]
+
+
+def _quad_prism(name, quad_yz, depth_mm, coll):
+    """A four-sided prism bar: the quad_yz cross-section extruded along local X by ``depth_mm``."""
+    return _poly_prism(name, quad_yz, depth_mm, coll)
+
+
+def _tri_prism_yz(name, tri_yz, depth_mm, coll):
+    """A triangular prism bar from an EXPLICIT (y,z) cross-section (e.g. the asymmetric Littrow right-triangle),
+    extruded along local X by ``depth_mm``."""
+    return _poly_prism(name, tri_yz, depth_mm, coll)
+
+
+def _poly_prism(name, poly_yz, depth_mm, coll):
+    """A prism bar: the convex polygon cross-section ``poly_yz`` (CCW in the Y-Z plane) extruded along local
+    X by ``depth_mm``, capped both ends. Shared by the quad / Littrow prism builders."""
+    hx = depth_mm * 0.5
+    bm = bmesh.new()
+    front = [bm.verts.new((-hx, y, z)) for (y, z) in poly_yz]
+    back = [bm.verts.new((hx, y, z)) for (y, z) in poly_yz]
+    bm.faces.new(tuple(reversed(front)))                  # -X cap
+    bm.faces.new(tuple(back))                             # +X cap
+    nq = len(poly_yz)
+    for i in range(nq):
+        j = (i + 1) % nq
+        bm.faces.new((front[i], front[j], back[j], back[i]))
     return _bm_obj(name, bm, coll, smooth=False)
 
 
@@ -654,6 +748,130 @@ def aom(name, loc, axis, coll=None, freq_mhz=80.0, sound_mps=4200.0, efficiency=
     _add_port(o, "OUT", 'OUT', (0, 0, L * 0.5), (0, 0, 1), w)
     _set_matrix(o, Vector(loc), _z_to(axis))
     return o
+
+
+def prism(name, loc, axis, coll=None, prism_type='EQUILATERAL', apex_deg=60.0,
+          glass='N-SF11', glass2='N-SF11', design_wl=589.3, face_mm=26.0, depth_mm=24.0, roll_deg=0.0):
+    """A dispersing prism (C3): a refractive material-dispersion element that fans a white beam into a
+    spectrum (each wavelength refracts by a different angle via Snell + the glass's n(lambda)).
+
+    ``axis`` is the INCOMING beam direction. The prism is oriented so the design wavelength enters at the
+    symmetric MINIMUM-DEVIATION incidence (the equilateral spectrometer condition); the tracer then refracts
+    the chief ray at the entry face, propagates the glass OPL, and refracts (or TIRs / back-reflects) at the
+    exit face per ``prism_type``. The local frame keeps the in-glass ray along +Z (apex +Y, bar along X);
+    the entry/exit port normals carry the true face geometry so the world trace bends correctly under any
+    placement. ``roll_deg`` extra-rolls the prism about its bar axis (off-min-deviation studies)."""
+    from . import physics
+    A = float(apex_deg)
+    n_d = physics.sellmeier_n(design_wl, glass)
+    b = math.radians(A / 2.0)
+    tir_n = None                                           # Pellin-Broca internal TIR-fold face normal (else unused)
+    tir_pos = None
+    cem_n = None                                           # Amici cemented crown/flint interface normal (else unused)
+    cem_pos = None
+    if prism_type == 'PELLIN_BROCA':
+        # A constant-90-deg P-B block: ENTRY face tilted +te so the in-glass ray is +Z; a TIR face folds it to
+        # +Y; an EXIT face tilted so the net deviation is exactly 90 deg at the design wavelength (and disperses
+        # around it). The functional face normals are computed from the design index; the quad mesh is cosmetic.
+        te = math.radians(20.0)
+        nE = Vector((0.0, math.sin(te), -math.cos(te)))
+        d_back0 = physics.refract_dir((0.0, 0.0, -1.0), (nE.x, nE.y, nE.z), n_d, 1.0)
+        din0 = Vector((-d_back0[0], -d_back0[1], -d_back0[2])).normalized() if d_back0 else Vector((0, 0, 1))
+        dg0 = Vector(physics.refract_dir((din0.x, din0.y, din0.z), (nE.x, nE.y, nE.z), 1.0, n_d))
+        tir_n = (dg0 - Vector((0.0, 1.0, 0.0))).normalized()   # folds the in-glass +Z-ish ray to +Y
+        nO = Vector((0.0, math.cos(te), math.sin(te)))     # exit face (lets the +Y ray out, net 90 deg)
+        o = _quad_prism(name, _pellin_broca_quad_yz(face_mm), depth_mm, coll)
+        quad = _pellin_broca_quad_yz(face_mm)
+        in_pos = _edge_mid(quad, 3, 0)
+        out_pos = _edge_mid(quad, 1, 2)
+        tir_pos = _edge_mid(quad, 0, 1)                    # bottom hypotenuse (the TIR-fold face)
+    elif prism_type == 'LITTROW':
+        # right-triangle Littrow: COATED face (A->B) perpendicular to the in-glass +Z ray (-> retroreflect),
+        # ENTRY face (A->E) tilted by the refracting angle A. The IN port is the entry face; the OUT port is
+        # the coated back face (the tracer reflects off it and exits back through the entry face).
+        o = _tri_prism_yz(name, _littrow_triangle_yz(A, face_mm), depth_mm, coll)
+        tri = _littrow_triangle_yz(A, face_mm)
+        nE = _edge_outward_normal(tri, 0, 2)              # entry face A->E
+        nO = _edge_outward_normal(tri, 0, 1)              # coated face A->B (outward +Z)
+        in_pos = _edge_mid(tri, 0, 2)
+        out_pos = _edge_mid(tri, 0, 1)
+    elif prism_type == 'AMICI':
+        # Direct-vision (Amici) crown+flint doublet: 3 interfaces air->crown (entry), crown->flint (cemented
+        # diagonal), flint->air (exit). The face tilts are tuned so the DESIGN wavelength exits UNDEVIATED
+        # (net deviation ~0) while the spectrum still fans -- the headline direct-vision behaviour. The
+        # cemented-interface normal is carried as a 'CEMENT' port (role TRANSMIT) so the tracer chains the two
+        # glasses (prism_glass = crown, prism_glass2 = flint). A trapezoid mesh stands in for the doublet.
+        te = math.radians(39.0); tc = math.radians(-59.0); tx = math.radians(-10.0)
+        nE = Vector((0.0, math.sin(te), -math.cos(te)))
+        cem_n = Vector((0.0, math.sin(tc), -math.cos(tc)))
+        nO = Vector((0.0, math.sin(tx), -math.cos(tx)))
+        o = _quad_prism(name, _amici_quad_yz(face_mm), depth_mm, coll)
+        quad = _amici_quad_yz(face_mm)
+        in_pos = _edge_mid(quad, 3, 0)
+        out_pos = _edge_mid(quad, 1, 2)
+        cem_pos = Vector((0.0, 0.0, 0.0))                 # cemented diagonal through the block centre
+    else:
+        o = _tri_prism(name, A, face_mm, depth_mm, coll)
+        nE = Vector((0.0, math.sin(b), -math.cos(b)))      # entry (left) face outward normal
+        nO = Vector((0.0, math.sin(b), math.cos(b)))       # exit (right) face outward normal
+        tri = _prism_triangle_yz(A, face_mm)
+        in_pos = Vector((0.0, (tri[0][0] + tri[1][0]) * 0.5, (tri[0][1] + tri[1][1]) * 0.5))   # entry-face mid
+        out_pos = Vector((0.0, (tri[0][0] + tri[2][0]) * 0.5, (tri[0][1] + tri[2][1]) * 0.5))  # exit-face mid
+    o.data.materials.clear(); o.data.materials.append(MATS["prism"]())
+    _bevel(o, 0.3, 1)
+
+    # local INCOMING beam direction for the design wavelength's design condition.
+    if prism_type == 'AMICI':
+        # Amici tilts were derived for a local +Z input giving zero net deviation, so the design beam IS +Z.
+        d_in_local = Vector((0.0, 0.0, 1.0))
+    else:
+        # EQUILATERAL / LITTROW / PELLIN_BROCA: the in-glass +Z ray refracts BACKWARD out the entry face to
+        # give the external incoming beam landing the design wavelength at min deviation / autocollimation /
+        # the 90 deg P-B fold. The chief-ray fan stays exact (each face refraction uses the true world ports).
+        d_back = physics.refract_dir((0.0, 0.0, -1.0), (nE.x, nE.y, nE.z), n_d, 1.0)
+        if d_back is None:
+            d_in_local = Vector((0.0, 0.0, 1.0))           # degenerate fallback (shouldn't happen for real glass)
+        else:
+            d_in_local = Vector((-d_back[0], -d_back[1], -d_back[2])).normalized()
+
+    _tag(o, 'PRISM', clear_aperture=face_mm * 0.5, prism_type=prism_type, apex_angle_deg=A,
+         prism_glass=glass, prism_glass2=glass2, prism_design_wl=design_wl)
+    _add_port(o, "IN", 'IN', in_pos, nE, face_mm * 0.5)
+    _add_port(o, "OUT", 'OUT', out_pos, nO, face_mm * 0.5)
+    if tir_n is not None:                                  # Pellin-Broca internal TIR-fold face (role TRANSMIT)
+        _add_port(o, "TIR", 'TRANSMIT', tir_pos if tir_pos is not None else Vector((0, 0, 0)),
+                  tir_n, face_mm * 0.5)
+    if cem_n is not None:                                  # Amici cemented crown/flint interface (role TRANSMIT)
+        _add_port(o, "CEMENT", 'TRANSMIT', cem_pos if cem_pos is not None else Vector((0, 0, 0)),
+                  cem_n, face_mm * 0.5)
+    # orient: map the local incoming-beam direction onto the world axis (so `axis` = the incoming beam).
+    # Optional ``roll_deg`` rolls the prism about its bar axis (local X) for off-min-deviation studies.
+    R = Vector(d_in_local).rotation_difference(Vector(axis).normalized()).to_matrix()
+    if roll_deg:
+        R = R @ Matrix.Rotation(math.radians(roll_deg), 3, Vector((1.0, 0.0, 0.0)))
+    # place the prism so its ENTRY-FACE CENTER lands at ``loc`` (not the mesh centroid), so a beam aimed at
+    # ``loc`` along ``axis`` always strikes the entry face regardless of prism_type / apex / glass.
+    _set_matrix(o, Vector(loc) - (R @ in_pos), R)
+    return o
+
+
+def _edge_outward_normal(quad_yz, i, j):
+    """Outward unit normal (as a 3-vector in the X=0 plane) of the edge verts[i]->verts[j] of a Y-Z polygon,
+    pointing away from the polygon centroid. Used for the Pellin-Broca quad's entry/exit face ports."""
+    cy = sum(p[0] for p in quad_yz) / len(quad_yz)
+    cz = sum(p[1] for p in quad_yz) / len(quad_yz)
+    (yi, zi), (yj, zj) = quad_yz[i], quad_yz[j]
+    dy, dz = yj - yi, zj - zi
+    nrm = Vector((0.0, dz, -dy))
+    mid = Vector((0.0, (yi + yj) * 0.5, (zi + zj) * 0.5))
+    if (mid - Vector((0.0, cy, cz))).dot(nrm) < 0.0:
+        nrm = -nrm
+    return nrm.normalized()
+
+
+def _edge_mid(quad_yz, i, j, depth=0.0):
+    (yi, zi), (yj, zj) = quad_yz[i], quad_yz[j]
+    return Vector((0.0, (yi + yj) * 0.5, (zi + zj) * 0.5))
 
 
 # --- additional component builders (broad library) --------------------------

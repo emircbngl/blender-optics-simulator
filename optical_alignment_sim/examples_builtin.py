@@ -287,6 +287,22 @@ def build_aom(context):
     return "OpticsExample_AOM"
 
 
+def build_prism_spectrometer(context):
+    """A dispersing-prism spectrometer: a white (broadband) source feeds an equilateral N-SF11 prism at
+    minimum deviation; the prism fans the spectrum out by wavelength (blue bends more than red, Snell +
+    n(lambda)) onto a wide screen. The canonical C3 dispersion demo -- trace a few wavelengths and each
+    exit ray lands at a different angle. Bake + Cycles render shows the spectral fan as a colored rainbow."""
+    coll = G.example_collection("OpticsExample_Prism")
+    X = Vector((1, 0, 0))
+    src = G.source("PRISM_Laser", (-150, 0, 0), X, coll, wavelength=550.0)
+    src.optics.bandwidth_nm = 220.0                       # broadband "white" beam (the spectrum to fan)
+    G.prism("PRISM_Prism", (0, 0, 0), X, coll, prism_type='EQUILATERAL',
+            apex_deg=60.0, glass='N-SF11', design_wl=550.0)
+    # a wide screen placed across the fanned-out spectrum (deviated ~66 deg downward, toward -Y)
+    G.detector("PRISM_Screen", (120, -150, 0), Vector((120, -150, 0)).normalized(), coll, size=240.0)
+    return "OpticsExample_Prism"
+
+
 EXAMPLES = {
     'mach_zehnder': ("Mach-Zehnder Interferometer", build_mach_zehnder),
     'michelson':    ("Michelson Interferometer", build_michelson),
@@ -302,6 +318,7 @@ EXAMPLES = {
     'microscope':   ("Microscope (infinity-corrected: objective + tube lens)", build_microscope),
     'dhm':          ("Digital Holographic Microscope (vertical, off-axis Mach-Zehnder)", build_dhm),
     'aom':          ("Acousto-Optic Deflector (Bragg cell: 0th + deflected +1 order)", build_aom),
+    'prism':        ("Dispersing Prism Spectrometer (equilateral, fans the spectrum)", build_prism_spectrometer),
 }
 
 

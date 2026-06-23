@@ -174,10 +174,25 @@ def polarization_state(J):
 
 # --- dispersion (Sellmeier n(lambda)) ---------------------------------------
 
-# Sellmeier coefficients (B1,B2,B3,C1,C2,C3; lambda in micron) for common glasses
+# Sellmeier coefficients (B1,B2,B3,C1,C2,C3; lambda in micron) for common glasses.
+# Form: n^2 - 1 = sum_j Bj*L^2/(L^2 - Cj), L = lambda in micron, Cj in micron^2 (Cj = lambda_j^2).
+# Each set is the manufacturer/literature datasheet fit and reproduces the published n(lambda) to
+# 5 decimals at the standard spectral lines (verified in tests/_verify_prism.py against nd/nC/ne/Vd):
+#   N-BK7 / FUSED_SILICA  -- existing, Schott / Malitson 1965.
+#   N-SF11  -- Schott dense flint, datasheet fit (nd=1.78472, ne=1.79192, Vd=25.68). Dispersing-prism glass.
+#   F2      -- Schott flint, datasheet fit (nd=1.62004, Vd=36.37).
+#   N-F2    -- Schott lead-free flint, datasheet fit (nd=1.62005, Vd=36.43).
+#   CaF2    -- Malitson 1963, "A Redetermination of Some Optical Properties of Calcium Fluoride",
+#              Appl. Opt. 2(11):1103 (nd=1.43385, Vd=94.99); the low-dispersion / UV reference.
+# Sources: SCHOTT optical-glass datasheet collection; refractiveindex.info (Malitson 1963 for CaF2).
 GLASSES = {
     'N-BK7': (1.03961212, 0.231792344, 1.01046945, 0.00600069867, 0.0200179144, 103.560653),
     'FUSED_SILICA': (0.6961663, 0.4079426, 0.8974794, 0.0046791, 0.0135121, 97.934003),
+    'N-SF11': (1.73759695, 0.313747346, 1.89878101, 0.0131887070, 0.0623068142, 155.236290),
+    'F2': (1.34533359, 0.209073176, 0.937357162, 0.00997743871, 0.0470450767, 111.886764),
+    'N-F2': (1.39757037, 0.159201403, 1.26865430, 0.00995906143, 0.0546931752, 119.248346),
+    # CaF2 C-coefficients are the SQUARED resonance wavelengths from Malitson: (0.050263605, 0.1003909, 34.649040) um.
+    'CaF2': (0.5675888, 0.4710914, 3.8484723, 0.050263605 ** 2, 0.1003909 ** 2, 34.649040 ** 2),
 }
 
 
@@ -192,6 +207,63 @@ def sellmeier_n(wl_nm, glass='N-BK7'):
     if not (0.0 < n2 < 16.0):           # n in (1, 4): covers all common optical glasses
         return 1.0 if n2 <= 1.0 else 4.0
     return math.sqrt(n2)
+
+
+# --- prism deviation (two-surface Snell + minimum-deviation relation) --------
+# A thin/thick prism of apex angle A, index n: a ray entering at incidence i1 refracts at the first
+# face (sin i1 = n sin r1), crosses to the second face where r2 = A - r1, and refracts out
+# (n sin r2 = sin i2). The total deviation is delta = i1 + i2 - A. At minimum deviation the path is
+# symmetric (i1 = i2, r1 = r2 = A/2) and the classic relation n = sin((A+delta_min)/2)/sin(A/2) holds.
+# physics_verify ok=true (tests/_verify_prism.py): the deviation reduces to delta_min at symmetric
+# incidence and the min-deviation relation inverts exactly.
+
+def prism_deviation(n, apex_deg, incidence_deg):
+    """Total ray deviation (deg) through a prism of index ``n`` and apex angle ``apex_deg`` for a ray
+    at first-surface angle of incidence ``incidence_deg``: delta = i1 + i2 - A, with the two-surface
+    Snell chain i1->r1->(r2=A-r1)->i2. Returns None if the ray totally-internally-reflects at the exit
+    face (no real i2), i.e. the apex is too large for this n / incidence to transmit."""
+    A = math.radians(apex_deg)
+    i1 = math.radians(incidence_deg)
+    s1 = math.sin(i1) / n
+    if abs(s1) > 1.0:
+        return None
+    r1 = math.asin(s1)
+    r2 = A - r1
+    s2 = n * math.sin(r2)
+    if abs(s2) > 1.0:                    # TIR at the exit face -> no transmitted ray
+        return None
+    i2 = math.asin(s2)
+    return math.degrees(i1 + i2 - A)
+
+
+def prism_min_deviation(n, apex_deg):
+    """Minimum deviation (deg) of a prism (index ``n``, apex ``apex_deg``), the symmetric-path value
+    delta_min = 2*asin(n*sin(A/2)) - A (the inverse of n_from_min_deviation). Returns None if the
+    apex is too large to transmit symmetrically (n*sin(A/2) > 1, total internal reflection)."""
+    A = math.radians(apex_deg)
+    x = n * math.sin(A / 2.0)
+    if abs(x) > 1.0:
+        return None
+    return math.degrees(2.0 * math.asin(x) - A)
+
+
+def n_from_min_deviation(delta_min_deg, apex_deg):
+    """Refractive index from the measured minimum deviation: n = sin((A+delta_min)/2)/sin(A/2)
+    (the prism-spectrometer index formula). Inverse of prism_min_deviation."""
+    A = math.radians(apex_deg)
+    d = math.radians(delta_min_deg)
+    return math.sin((A + d) / 2.0) / math.sin(A / 2.0)
+
+
+def prism_angular_dispersion(glass, apex_deg, wl_nm, dwl_nm=1.0):
+    """Angular dispersion d(delta_min)/d(lambda) in deg/nm at ``wl_nm`` for a prism of ``glass`` at
+    minimum deviation: a central finite difference of prism_min_deviation(sellmeier_n(lambda)).
+    Negative under normal dispersion (deviation falls as wavelength rises). None near a TIR edge."""
+    dm_hi = prism_min_deviation(sellmeier_n(wl_nm + dwl_nm, glass), apex_deg)
+    dm_lo = prism_min_deviation(sellmeier_n(wl_nm - dwl_nm, glass), apex_deg)
+    if dm_hi is None or dm_lo is None:
+        return None
+    return (dm_hi - dm_lo) / (2.0 * dwl_nm)
 
 
 # --- Fresnel reflection (s/p amplitude + phase) -----------------------------
@@ -279,6 +351,57 @@ def reflect_field(evec, d_in, n, rs, rp):
            rs * es * s_hat[1] + rp * ep * p_out[1],
            rs * es * s_hat[2] + rp * ep * p_out[2])
     return out, d_out
+
+
+def refract_dir(d_in, n_surf, n1, n2):
+    """Snell refraction of a unit propagation direction at a surface of unit normal ``n_surf``,
+    from index n1 into n2 (vector form). Returns the unit refracted direction, or None on total
+    internal reflection (sin(theta_t) > 1). The normal is auto-flipped to oppose the incoming ray
+    (so the helper is orientation-agnostic: a port normal may point either way through the glass).
+
+    Vector Snell:  d_t = eta*d_in + (eta*c1 - c2)*n,  eta = n1/n2,  c1 = -d.n (>0), c2 = cos(theta_t)."""
+    d = _rnorm(d_in)
+    nrm = _rnorm(n_surf)
+    c1 = -_rdot(d, nrm)
+    if c1 < 0.0:                          # normal points along the ray -> flip it to face the ray
+        nrm = (-nrm[0], -nrm[1], -nrm[2])
+        c1 = -c1
+    eta = n1 / n2
+    k = 1.0 - eta * eta * (1.0 - c1 * c1)
+    if k < 0.0:                           # total internal reflection: no transmitted ray
+        return None
+    c2 = math.sqrt(k)
+    f = eta * c1 - c2
+    return _rnorm((eta * d[0] + f * nrm[0], eta * d[1] + f * nrm[1], eta * d[2] + f * nrm[2]))
+
+
+def refract_field(evec, d_in, d_out, n_surf, ts, tp):
+    """Transmit a 3-D field through a refracting surface: decompose into true s (perp to the plane of
+    incidence, d_in x n) and p (in-plane), apply the Fresnel AMPLITUDE transmission ts/tp, and rebuild p
+    transverse to the refracted direction ``d_out`` (which refract_dir supplies). Mirrors reflect_field /
+    redirect_field but for transmission, keeping polarization frame-independent across the interface."""
+    d_in = _rnorm(d_in)
+    d_out = _rnorm(d_out)
+    nrm = _rnorm(n_surf)
+    s_hat = _s_hat(d_in, nrm)
+    p_in = _rcross(d_in, s_hat)
+    p_out = _rcross(d_out, s_hat)
+    es = evec[0] * s_hat[0] + evec[1] * s_hat[1] + evec[2] * s_hat[2]
+    ep = evec[0] * p_in[0] + evec[1] * p_in[1] + evec[2] * p_in[2]
+    return (ts * es * s_hat[0] + tp * ep * p_out[0],
+            ts * es * s_hat[1] + tp * ep * p_out[1],
+            ts * es * s_hat[2] + tp * ep * p_out[2])
+
+
+def fresnel_transmit_power(n1, n2, theta_i):
+    """Total (s+p, unpolarized-average) Fresnel POWER transmission at an n1->n2 interface for angle of
+    incidence ``theta_i`` (radians): T = 1 - (|rs|^2 + |rp|^2)/2. 0 at/beyond the critical angle (TIR).
+    Used to weight the prism's transmitted segments through the entry/exit faces via the existing
+    fresnel_reflect amplitudes (so the two-surface transmission is energy-consistent)."""
+    rs, rp = fresnel_reflect(n1, n2, theta_i)
+    Rs = abs(rs) ** 2
+    Rp = abs(rp) ** 2
+    return max(0.0, 1.0 - 0.5 * (Rs + Rp))
 
 
 def _s_hat(d_in, n):
@@ -655,6 +778,44 @@ if __name__ == "__main__":
         fails.append("sellmeier n(587.6)=%.4f" % sellmeier_n(587.6, 'N-BK7'))
     if not (sellmeier_n(450.0) > sellmeier_n(650.0)):
         fails.append("sellmeier dispersion sign")
+    # new prism glasses reproduce published d-line indices (C3); cross-check vs Schott/Malitson
+    for g, nd in (('N-SF11', 1.78472), ('F2', 1.62004), ('N-F2', 1.62005), ('CaF2', 1.43385)):
+        if not close(sellmeier_n(587.56, g), nd, 5e-5):
+            fails.append("sellmeier %s n_d=%.5f != %.5f" % (g, sellmeier_n(587.56, g), nd))
+
+    # prism deviation: min-deviation relation round-trips, deviation -> delta_min at symmetric incidence
+    for (n_test, A) in ((1.5, 60.0), (1.78472, 60.0), (1.62004, 60.0)):
+        dmin = prism_min_deviation(n_test, A)
+        if not close(n_from_min_deviation(dmin, A), n_test, 1e-9):
+            fails.append("prism n_from_min_deviation %g" % n_test)
+        # symmetric incidence i1 = (A + dmin)/2 should give exactly dmin
+        i_sym = 0.5 * (A + dmin)
+        if not close(prism_deviation(n_test, A, i_sym), dmin, 1e-7):
+            fails.append("prism_deviation@symmetric %g: %.5f != %.5f"
+                         % (n_test, prism_deviation(n_test, A, i_sym), dmin))
+        # min deviation is a minimum: off-symmetric incidence deviates MORE
+        if not (prism_deviation(n_test, A, i_sym + 8.0) > dmin + 1e-4
+                and prism_deviation(n_test, A, i_sym - 8.0) > dmin + 1e-4):
+            fails.append("prism delta_min not a minimum %g" % n_test)
+    # known closed form: A=60, n=sqrt(2) -> sin((60+dmin)/2)=sqrt2*sin30=1/sqrt2 -> dmin=30 deg
+    if not close(prism_min_deviation(math.sqrt(2.0), 60.0), 30.0, 1e-9):
+        fails.append("prism dmin(sqrt2,60)=%.5f != 30" % prism_min_deviation(math.sqrt(2.0), 60.0))
+    # angular dispersion is NEGATIVE under normal dispersion (deviation falls as lambda rises)
+    if not (prism_angular_dispersion('N-SF11', 60.0, 550.0) < 0.0):
+        fails.append("prism angular dispersion sign")
+
+    # vector Snell: refract_dir obeys n1 sin t1 = n2 sin t2 and stays in the plane of incidence
+    d_in = _rnorm((math.sin(math.radians(30.0)), 0.0, -math.cos(math.radians(30.0))))
+    nrm = (0.0, 0.0, 1.0)                                  # air(1.0) -> glass(1.5) at 30 deg incidence
+    d_t = refract_dir(d_in, nrm, 1.0, 1.5)
+    t2 = math.asin(min(1.0, 1.0 * math.sin(math.radians(30.0)) / 1.5))
+    if not (d_t is not None and close(math.acos(-_rdot(d_t, nrm)), t2, 1e-9)):
+        fails.append("refract_dir Snell angle")
+    # TIR: glass(1.5) -> air(1.0) past the critical angle returns None
+    crit = math.degrees(math.asin(1.0 / 1.5))
+    d_steep = _rnorm((math.sin(math.radians(crit + 5.0)), 0.0, -math.cos(math.radians(crit + 5.0))))
+    if refract_dir(d_steep, (0.0, 0.0, 1.0), 1.5, 1.0) is not None:
+        fails.append("refract_dir should TIR past critical angle")
 
     # Fabry-Perot: T=1 on resonance, small mid-FSR; finesse(R=0.9) ~ 29.8
     Lc_fp = 0.05

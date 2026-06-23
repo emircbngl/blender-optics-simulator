@@ -385,6 +385,48 @@ for _o in list(_wcoll.objects):
     eg.drop_example_object(_o)
 bpy.data.collections.remove(_wcoll)
 
+print("[dispersing prism: Sellmeier glasses + two-surface Snell fan (C3, oracle-VERIFIED)]")
+# (a) the added Sellmeier glasses reproduce published d-line indices (hallucinated coeff -> wrong n)
+for _g, _nd in (('N-SF11', 1.78472), ('F2', 1.62004), ('N-F2', 1.62005), ('CaF2', 1.43385)):
+    check("sellmeier %s n_d (587.56) = published" % _g, abs(physics.sellmeier_n(587.56, _g) - _nd) < 5e-5,
+          "%.5f vs %.5f" % (physics.sellmeier_n(587.56, _g), _nd))
+# (b) the minimum-deviation relation inverts: n = sin((A+delta)/2)/sin(A/2), A=60
+check("prism min-deviation relation inverts (sqrt2, A=60 -> dmin=30)",
+      abs(physics.prism_min_deviation(math.sqrt(2.0), 60.0) - 30.0) < 1e-9)
+check("prism_deviation = delta_min at symmetric incidence (N-SF11)",
+      abs(physics.prism_deviation(1.78472, 60.0, 0.5 * (60.0 + physics.prism_min_deviation(1.78472, 60.0)))
+          - physics.prism_min_deviation(1.78472, 60.0)) < 1e-6)
+# (c) the tracer fans the spectrum: blue bends more than red, design wl at min deviation
+_pcoll = bpy.data.collections.new("PRISMTEST"); sc.collection.children.link(_pcoll)
+for _o in list(sc.objects):
+    if getattr(getattr(_o, "optics", None), "is_optical", False):
+        bpy.data.objects.remove(_o, do_unlink=True)
+from mathutils import Vector as _PV
+eg.source("PR_S", (-150, 0, 0), _PV((1, 0, 0)), _pcoll)
+eg.prism("PR_P", (0, 0, 0), _PV((1, 0, 0)), _pcoll, prism_type='EQUILATERAL', apex_deg=60.0, glass='N-SF11', design_wl=589.3)
+bpy.context.view_layer.update()
+
+
+def _prism_dev(wl):
+    sc.objects["PR_S"].optics.wavelength = wl
+    _ss = scan._trace(sc)
+    _ex = [s for s in _ss if s.get("from") == "PR_P" and s.get("kind") == "TRANSMIT"]
+    if not _ex:
+        return None
+    _d = (_PV(_ex[-1]["p2"]) - _PV(_ex[-1]["p1"])).normalized()
+    return math.degrees(math.acos(max(-1.0, min(1.0, _d.dot(_PV((1, 0, 0)))))))
+
+
+_db, _dr, _d0 = _prism_dev(450.0), _prism_dev(650.0), _prism_dev(589.3)
+check("prism fans the spectrum: blue (450) bends MORE than red (650)",
+      _db is not None and _dr is not None and _db > _dr + 1.0, "blue=%.2f red=%.2f" % (_db or -1, _dr or -1))
+check("prism design wavelength sits at minimum deviation",
+      _d0 is not None and abs(_d0 - physics.prism_min_deviation(physics.sellmeier_n(589.3, 'N-SF11'), 60.0)) < 1e-2,
+      "trace=%.3f analytic=%.3f" % (_d0 or -1, physics.prism_min_deviation(physics.sellmeier_n(589.3, 'N-SF11'), 60.0)))
+for _o in list(_pcoll.objects):
+    eg.drop_example_object(_o)
+bpy.data.collections.remove(_pcoll)
+
 print("[microscope objective: f_obj = f_tube/M, focal power (oracle-VERIFIED)]")
 optics_api.build_example("microscope")
 _msegs = scan._trace(sc)
