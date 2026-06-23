@@ -697,11 +697,39 @@ def polarizer(name, loc, axis, coll=None, radius=12.5, polarizer_type='FILM'):
     return o
 
 
+# Colored-glass (Schott RG/GG/OG/BG) body tints -- saturated, so the slab reads as deep colored
+# glass in the viewport AND in a Cycles render (volume-absorbing tint). Keyed by glass_type (C2).
+CGLASS_TINT = {
+    'RG610': (0.62, 0.02, 0.02), 'RG630': (0.55, 0.02, 0.03),
+    'OG550': (0.85, 0.30, 0.02), 'OG590': (0.78, 0.16, 0.02),
+    'GG495': (0.92, 0.82, 0.08), 'GG420': (0.95, 0.90, 0.30),
+    'BG39':  (0.05, 0.45, 0.55), 'BG40':  (0.05, 0.55, 0.65),
+    'VG9':   (0.08, 0.55, 0.12), 'CUSTOM': (0.50, 0.30, 0.55),
+}
+
+
+def _cglass_tint(glass_type):
+    return CGLASS_TINT.get(glass_type, CGLASS_TINT['CUSTOM'])
+
+
 def optical_filter(name, loc, axis, coll=None, radius=12.5,
-                   filt_type='BP', cut_lo_nm=600.0, cut_hi_nm=700.0, od=1.0):
-    """An optical filter (longpass/shortpass/bandpass/ND); transmits per its band."""
-    return _inline(name, loc, axis, coll, 'FILTER', "filt", radius=radius, depth=3.5,
-                   filt_type=filt_type, cut_lo_nm=cut_lo_nm, cut_hi_nm=cut_hi_nm, od=od)
+                   filt_type='BP', cut_lo_nm=600.0, cut_hi_nm=700.0, od=1.0,
+                   glass_type='RG610', thickness_mm=3.0, d_ref_mm=3.0, peak_t=0.91):
+    """An optical filter (longpass/shortpass/bandpass/ND/colored-glass); transmits per its band.
+
+    For the CGLASS_* (colored-glass, bulk-absorptive) types the body is volume-tinted to the
+    Schott glass colour (RG610->deep red, GG495->yellow, BG39->blue-green, ...) so the slab
+    reads as a saturated colored window in both the viewport and a Cycles render (C2)."""
+    is_cglass = str(filt_type).startswith('CGLASS')
+    o = _inline(name, loc, axis, coll, 'FILTER', "filt", radius=radius, depth=3.5,
+                filt_type=filt_type, cut_lo_nm=cut_lo_nm, cut_hi_nm=cut_hi_nm, od=od,
+                glass_type=glass_type, thickness_mm=thickness_mm, d_ref_mm=d_ref_mm, peak_t=peak_t)
+    if is_cglass:
+        tint = _cglass_tint(glass_type)
+        # saturated body tint (slot 0); a glass-type-keyed material so distinct glasses don't share one
+        o.data.materials.clear()
+        o.data.materials.append(_mat("OG_cglass_%s" % glass_type, tint, metal=0.0, rough=0.12))
+    return o
 
 
 def pinhole(name, loc, axis, coll=None, radius=12.5):

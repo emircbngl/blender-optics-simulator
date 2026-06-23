@@ -231,6 +231,41 @@ def _clip_T(ray, E, t):
     return 1.0 - math.exp(-2.0 * a * a / (w * w))
 
 
+# base-10 absorbance at a Schott catalog "cut" wavelength: internal transmittance tau = 0.5 there
+# (the standard lambda_c convention), i.e. A_cut = -log10(0.5).
+_A_HALF = math.log10(2.0)                                   # ~0.30103
+_A_BLOCK = 4.0                                              # deep-stopband absorbance floor (tau ~ 1e-4)
+
+
+def _cglass_absorbance(op, wl):
+    """Per-wavelength bulk absorbance A(lambda) [base-10, at the REFERENCE thickness d_ref]
+    for a colored-glass (Schott RG/GG/OG/BG) absorptive filter. A ~ 0 in the passband (clear,
+    only the peak_t Fresnel/residual loss) and rises to a deep floor across a WIDE, SOFT logistic
+    edge -- the signature of a bulk-absorptive glass, distinct from the sharp interference cliff.
+    The edge is anchored so A == -log10(0.5) AT the catalog cut wavelength (tau=0.5, the standard
+    lambda_c), rising toward A_BLOCK deeper in the stopband. Shaped by the FILTER element's cut
+    wavelengths: CGLASS_LP passes long lambda, CGLASS_SP passes short, CGLASS_BP passes a band."""
+    ft = op.filt_type
+    w = max(getattr(op, 'edge_width_nm', 18.0), 1.0)        # soft-edge scale (nm); ~10x softer than an interference filter
+
+    def edge_block_short(lam, cut):
+        # longpass: A high BELOW cut, ~0 ABOVE; logistic shifted so A(cut)=_A_HALF (tau=0.5 at lambda_c)
+        x = (cut - lam) / w                                 # >0 in the stopband (lam<cut)
+        return _A_BLOCK / (1.0 + math.exp(-x) * (_A_BLOCK / _A_HALF - 1.0))
+
+    def edge_block_long(lam, cut):
+        # shortpass: A high ABOVE cut, ~0 BELOW; A(cut)=_A_HALF
+        x = (lam - cut) / w                                 # >0 in the stopband (lam>cut)
+        return _A_BLOCK / (1.0 + math.exp(-x) * (_A_BLOCK / _A_HALF - 1.0))
+
+    if ft == 'CGLASS_LP':
+        return edge_block_short(wl, op.cut_lo_nm)
+    if ft == 'CGLASS_SP':
+        return edge_block_long(wl, op.cut_hi_nm)
+    # CGLASS_BP: absorb on BOTH sides of [cut_lo, cut_hi] -> the larger (more-blocking) edge wins
+    return max(edge_block_short(wl, op.cut_lo_nm), edge_block_long(wl, op.cut_hi_nm))
+
+
 def _transmission(op, wl):
     """Wavelength-dependent power transmission of a filter / attenuator."""
     if op.element_type == 'ATTENUATOR':
@@ -244,6 +279,16 @@ def _transmission(op, wl):
         return 1.0 if wl <= op.cut_hi_nm else 0.0
     if ft == 'BP':
         return 1.0 if op.cut_lo_nm <= wl <= op.cut_hi_nm else 0.0
+    if ft in ('CGLASS_LP', 'CGLASS_SP', 'CGLASS_BP'):
+        # Colored-glass BULK absorption (C2). Beer-Lambert, thickness-scaled by the oracle-VERIFIED
+        # Schott TIE-35 power law:  T = peak_t * 10^(-A(lambda) * d / d_ref)
+        #   == peak_t * (10^(-A))^(d/d_ref),  i.e. tau(d2) = tau(d1)^(d2/d1).
+        # Angle-INSENSITIVE (no AOI edge shift -- that is task C1); the path is undeviated (flat window).
+        d = max(getattr(op, 'thickness_mm', 3.0), 1e-6)
+        d_ref = max(getattr(op, 'd_ref_mm', 3.0), 1e-6)
+        peak = max(0.0, min(getattr(op, 'peak_t', 0.91), 1.0))
+        A = _cglass_absorbance(op, wl)
+        return peak * 10.0 ** (-A * d / d_ref)
     return 1.0
 
 

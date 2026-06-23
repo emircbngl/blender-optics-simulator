@@ -135,6 +135,29 @@ def _principled(name):
     return m, b
 
 
+def _cglass_render_material(op):
+    """Realistic render material for a colored-glass (Schott RG/GG/OG/BG) absorptive filter (C2):
+    a saturated tinted Principled glass PLUS a Volume Absorption tied to the glass colour, so the
+    slab reads as a deep volume-tinted colored window (RG610 deep red, GG495 yellow, BG39 cyan...).
+    Keyed by glass_type so distinct glasses get distinct render materials."""
+    from . import elements_generic as eg
+    gt = getattr(op, "glass_type", "CUSTOM")
+    tint = eg._cglass_tint(gt)
+    m, b = _principled("OAR_cglass_" + gt)
+    if b is not None:                                    # freshly built (cached on reuse)
+        _setb(b, "Base Color", (*tint, 1.0)); _setb(b, "Roughness", 0.04); _setb(b, "IOR", 1.52)
+        _setb(b, "Transmission Weight", 1.0); _setb(b, "Transmission", 1.0)
+        nt = m.node_tree
+        out = next((n for n in nt.nodes if n.type == 'OUTPUT_MATERIAL'), None)
+        vol = nt.nodes.new("ShaderNodeVolumeAbsorption")
+        # absorb the COMPLEMENT of the body tint -> the slab transmits its own colour (deep saturated)
+        vol.inputs["Color"].default_value = (1.0 - tint[0], 1.0 - tint[1], 1.0 - tint[2], 1.0)
+        vol.inputs["Density"].default_value = 0.18       # full-body tint at mm-scale thickness
+        if out is not None and "Volume" in out.inputs:
+            nt.links.new(vol.outputs[0], out.inputs["Volume"])
+    return m
+
+
 def _render_material(et):
     desc = RENDER_DESCRIPTORS.get(et)
     if desc is None:
@@ -192,6 +215,8 @@ def apply_optical_materials(scene):
             continue
         if op.element_type in ('MIRROR', 'PRISM_MIRROR'):
             mat = _coating_material(getattr(op, "coating", 'DIELECTRIC'))   # tint by the coating variant
+        elif op.element_type == 'FILTER' and str(getattr(op, "filt_type", "")).startswith('CGLASS'):
+            mat = _cglass_render_material(op)                               # saturated volume-tinted glass
         else:
             mat = _render_material(op.element_type)
         if mat is None:

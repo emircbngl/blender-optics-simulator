@@ -298,11 +298,32 @@ class OpticalElementProps(PropertyGroup):
         items=[('LP', "Longpass", ""), ('SP', "Shortpass", "")], default='LP')
     cut_nm: FloatProperty(name="Cut wavelength (nm)", default=650.0)
     filt_type: EnumProperty(name="Filter type",
-        items=[('LP', "Longpass", ""), ('SP', "Shortpass", ""), ('BP', "Bandpass", ""), ('ND', "Neutral density", "")],
+        items=[('LP', "Longpass", "Interference longpass (sharp dichroic edge)"),
+               ('SP', "Shortpass", "Interference shortpass (sharp dichroic edge)"),
+               ('BP', "Bandpass", "Interference bandpass (sharp dichroic edges)"),
+               ('ND', "Neutral density", "Spectrally flat attenuation (Beer-Lambert)"),
+               ('CGLASS_LP', "Colored-glass longpass", "Schott RG/OG bulk-absorptive longpass (thickness-scaled)"),
+               ('CGLASS_SP', "Colored-glass shortpass", "Schott BG bulk-absorptive shortpass (thickness-scaled)"),
+               ('CGLASS_BP', "Colored-glass bandpass", "Schott GG/VG bulk-absorptive bandpass (thickness-scaled)")],
         default='BP')
     cut_lo_nm: FloatProperty(name="Cut low (nm)", default=600.0)
     cut_hi_nm: FloatProperty(name="Cut high (nm)", default=700.0)
     od: FloatProperty(name="Optical density", default=1.0, min=0.0)
+    # --- colored-glass (CGLASS_*) absorptive filters: Schott-style RG/GG/OG/BG glasses (C2) ---
+    # Bulk Beer-Lambert absorption A(lambda) shaped by the cut wavelengths, scaled by glass thickness
+    # via the oracle-VERIFIED Schott TIE-35 power law T(d2) = T(d1)^(d2/d1). glass_type only sets the
+    # body tint + sensible cut/peak presets; the trace uses cut_lo/hi + thickness_mm/d_ref_mm.
+    glass_type: EnumProperty(name="Colored glass",
+        items=[('RG610', "RG610 (deep red LP)", ""), ('RG630', "RG630 (red LP)", ""),
+               ('OG550', "OG550 (orange LP)", ""), ('OG590', "OG590 (orange-red LP)", ""),
+               ('GG495', "GG495 (yellow LP)", ""), ('GG420', "GG420 (pale-yellow LP)", ""),
+               ('BG39', "BG39 (blue-green SP)", ""), ('BG40', "BG40 (cyan SP)", ""),
+               ('VG9', "VG9 (green BP)", ""), ('CUSTOM', "Custom", "Use cut/peak fields directly")],
+        default='RG610')
+    thickness_mm: FloatProperty(name="Glass thickness (mm)", default=3.0, min=0.01)
+    d_ref_mm: FloatProperty(name="Reference thickness (mm)", default=3.0, min=0.01)
+    peak_t: FloatProperty(name="Peak transmittance", default=0.91, min=0.0, max=1.0)
+    edge_width_nm: FloatProperty(name="Absorptive edge width (nm)", default=18.0, min=1.0)
     lines_per_mm: FloatProperty(name="Grating lines/mm", default=1200.0, min=0.0)
     grating_order: IntProperty(name="Diffraction order", default=1)
     analyzer: EnumProperty(name="Analyzer",
