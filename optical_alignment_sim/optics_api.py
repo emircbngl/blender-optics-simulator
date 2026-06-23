@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import bpy
 
-from . import tracer, alignment, mounts, geometry
+from . import tracer, alignment, mounts, geometry, solvers
 from . import diagnostics as _diagnostics
 from . import optomech as _optomech
 from . import operators as _ops
@@ -181,6 +181,29 @@ def align_all():
     return {"aligned": [{"name": n,
                          **{k: (round(v, 3) if isinstance(v, float) else v)
                             for k, v in r.items()}} for n, r in res]}
+
+
+def auto_align(actuators=None, targets=None, gain=1.0, eps=0.02, max_iters=8):
+    """On-demand auto-aligner: the linearized influence-matrix corrector (A6/A7/A8).
+
+    Drives steering DOFs until the beam is centered on the reference apertures.
+    GENERIC: with no arguments it auto-picks every kinematic (tip/tilt) element
+    and the iris/pinhole/detector planes downstream of them, then walks the beam
+    onto them. With arguments it steers exactly what you name:
+
+      * `actuators`: list of element names (use all their tip/tilt/translation
+        DOFs) or [name, kind] / [name, [kinds]] pairs to pick specific DOFs.
+      * `targets`: list of reference-aperture element names (irises / detectors).
+
+    This MOVES the named DOFs (that is the point) but only when called - a normal
+    trace never invokes it. Returns
+    {ok, residual_before, residual_after, iterations, converged, history, ...}."""
+    scene = _scene()
+    res = solvers.auto_align(scene, actuators=actuators, targets=targets,
+                             gain=gain, eps=eps, max_iters=max_iters)
+    tracer.cached_segments = _trace(scene)
+    alignment.refresh_report(scene)
+    return res
 
 
 def check_mechanics():

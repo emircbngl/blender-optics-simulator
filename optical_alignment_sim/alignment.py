@@ -374,6 +374,29 @@ class OPTICS_OT_align_all(Operator):
         return {'FINISHED'}
 
 
+class OPTICS_OT_auto_align(Operator):
+    bl_idname = "optics.auto_align"
+    bl_label = "Auto-align"
+    bl_description = ("Run the closed-loop influence-matrix corrector: auto-pick the kinematic "
+                      "steering elements + downstream irises/detectors and walk the beam onto them")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        from . import solvers
+        scene = context.scene
+        res = solvers.auto_align(scene)
+        tracer.cached_segments = _trace(scene)
+        refresh_report(scene)
+        tracer._tag_redraw()
+        if not res.get("ok"):
+            self.report({'WARNING'}, "Auto-align: %s" % res.get("error", "no solution"))
+            return {'CANCELLED'}
+        self.report({'INFO'}, "Auto-align: residual %.3f -> %.3f mm in %d iters (%s)"
+                    % (res["residual_before"], res["residual_after"], res["iterations"],
+                       "converged" if res["converged"] else "not converged"))
+        return {'FINISHED'}
+
+
 class OPTICS_OT_power_budget(Operator):
     bl_idname = "optics.power_budget"
     bl_label = "Power Budget"
@@ -422,6 +445,7 @@ _classes = (
     OPTICS_OT_refresh_report,
     OPTICS_OT_align_element,
     OPTICS_OT_align_all,
+    OPTICS_OT_auto_align,
     OPTICS_OT_power_budget,
 )
 

@@ -21,13 +21,13 @@ if "properties" in locals():
 import sys
 
 from . import (prefs, presets, physics, geometry, properties, operators, mounts, tracer, overlay,
-               monitor, handlers, alignment, diagnostics, scan, bake, render, library, assembly, ao,
+               monitor, handlers, alignment, solvers, diagnostics, scan, bake, render, library, assembly, ao,
                bridge, elements_generic, optomech, examples_builtin, svg_export, ui, optics_api)
 
 # Registration order matters: property groups + pointers first, then the operators, mount
-# logic, tracer/overlay/monitor/handlers/alignment/bake/render, library, assembly, ao, bridge, panels.
+# logic, tracer/overlay/monitor/handlers/alignment/solvers/bake/render, library, assembly, ao, bridge, panels.
 _modules = (prefs, properties, operators, mounts, tracer, overlay, monitor,
-            handlers, alignment, scan, bake, render, library, assembly, ao, bridge, optomech, examples_builtin, svg_export, ui)
+            handlers, alignment, solvers, scan, bake, render, library, assembly, ao, bridge, optomech, examples_builtin, svg_export, ui)
 
 
 def register():

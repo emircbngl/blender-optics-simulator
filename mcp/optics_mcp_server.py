@@ -182,6 +182,31 @@ def align_element(name: str) -> str:
 
 
 @mcp.tool()
+def auto_align(actuators: list = None, targets: list = None,
+               gain: float = 1.0, eps: float = 0.02, max_iters: int = 8) -> str:
+    """On-demand auto-aligner: the closed-loop influence-matrix corrector (the same
+    AI/auto-align the promo teased). Drives steering knobs until the beam is centered
+    on the reference apertures, by calibrating dy/du (poke each DOF, re-trace) and
+    iterating u <- u - gain*A_pinv(y - y_target) to eps.
+
+    GENERIC: with no args it auto-picks every kinematic (tip/tilt) element and the
+    iris/pinhole/detector planes downstream of them. Or name what to steer:
+      * actuators: list of element names (uses their tip/tilt DOFs), or
+        [name, kind] / [name, [kinds]] pairs to pick specific DOFs.
+      * targets: list of reference-aperture element names (irises / detectors).
+
+    Returns {ok, residual_before, residual_after, iterations, converged, history}.
+    This MOVES DOFs - only call it when you actually want to align (it is never run
+    during a normal trace)."""
+    args = {"gain": gain, "eps": eps, "max_iters": max_iters}
+    if actuators:
+        args["actuators"] = actuators
+    if targets:
+        args["targets"] = targets
+    return _fmt(_call("auto_align", _wait=300.0, **args))
+
+
+@mcp.tool()
 def check_mechanics() -> str:
     """Report the worst opto-mechanical limit (post pull-out, cage-rod travel, ...)."""
     return _fmt(_call("check_mechanics"))
