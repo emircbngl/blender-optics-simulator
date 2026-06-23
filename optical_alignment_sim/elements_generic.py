@@ -213,7 +213,17 @@ def _accent(o, matkey, pred):
     return idx
 
 
-def _revolve(name, profile, coll, seg=64, smooth=True):
+def _seg_for_aperture(diameter_mm):
+    """Aperture-aware revolve segment count. Small parts (< Ø1" ~ 24 mm) keep the cheap 64-seg ring;
+    a Ø1"+ optic scales smoothly up to seg=192 so its silhouette has no visible facets in a close
+    render (~0.4 mm facet at Ø1", vs ~1.2 mm at 64). Geometry-only -- ports/trace are unaffected."""
+    if diameter_mm < 24.0:
+        return 64
+    seg = int(round(96.0 * diameter_mm / 24.0))            # 96 at Ø1", scaling with aperture
+    return max(96, min(192, seg))
+
+
+def _revolve(name, profile, coll, seg=96, smooth=True):
     """Solid of revolution about +Z from profile=[(r,z),...] whose endpoints sit on the axis."""
     bm = bmesh.new()
     vs = [bm.verts.new((r, 0.0, z)) for (r, z) in profile]
@@ -435,7 +445,8 @@ def mirror(name, loc, in_dir, out_dir, coll=None, size=25.0, mirror_curve='FLAT'
     n = (Vector(out_dir).normalized() - Vector(in_dir).normalized())
     n = n.normalized() if n.length > 1e-6 else Vector((0, 0, 1))
     if mirror_curve in ('CONCAVE', 'CONVEX'):
-        o = _revolve(name, _mirror_profile(size * 0.5, mirror_curve), coll, seg=64, smooth=True)
+        o = _revolve(name, _mirror_profile(size * 0.5, mirror_curve), coll,
+                     seg=_seg_for_aperture(size), smooth=True)
     else:
         o = _disc(name, size * 0.5, 6.0, coll)    # Ø1" substrate, 6 mm thick; +Z = coated front face
         _bevel(o, 0.5, 2)
@@ -521,7 +532,8 @@ def lens(name, loc, axis, coll=None, focal=100.0, radius=14.0, lens_type='AUTO')
     depth = 5.0
     # real spherical lens, shaped by the FORM (lens_type): plano-/bi-convex/concave. Curvature is
     # cosmetic (the tracer uses the ABCD focal length), but the form + focal SIGN read correctly.
-    o = _revolve(name, _lens_profile(radius, focal, lens_type=lens_type), coll, seg=64, smooth=True)
+    o = _revolve(name, _lens_profile(radius, focal, lens_type=lens_type), coll,
+                 seg=_seg_for_aperture(2.0 * radius), smooth=True)
     o.data.materials.clear(); o.data.materials.append(MATS["lens"]())
     _tag(o, 'LENS', clear_aperture=radius, focal_length=focal, lens_type=lens_type)
     _add_port(o, "IN", 'IN', (0, 0, -depth * 0.5), (0, 0, -1), radius)
