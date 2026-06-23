@@ -165,6 +165,31 @@ def design_4f(f1, f2):
     return design.design_4f(f1, f2)
 
 
+def mode_match(w0_in, s_in, w0_t, z_t, wavelength_nm, m2=1.0):
+    """Solve the single thin-lens that mode-matches a Gaussian (waist `w0_in`, located
+    `s_in` mm before the lens) into a target Gaussian (waist `w0_t` at distance `z_t` mm
+    past the lens) -- the lens-to-cavity/fiber design solve (B3). PURE -- no scene mutation.
+
+    Returns {ok, f, f_alt, s_lens, s_lens_alt, m, zR, achieved_w0, achieved_z, coupling,
+    offset}: `f` is the solved focal (with `f_alt` the conjugate-plane second root), `s_lens`
+    the REQUIRED input-waist-to-lens distance, and achieved_w0/achieved_z are obtained by
+    actually propagating the input q through the solved lens (so they self-check against
+    (w0_t, z_t)). `coupling` is the power-coupling efficiency into the target mode (== 1 on a
+    clean solve). Returns {ok:False, error:...} for a non-physical input or an UNREACHABLE
+    target (no real focal exists -- e.g. demagnifying too close to the lens); no focal is
+    fabricated. All lengths mm, wavelength nm."""
+    return design.mode_match_lens(w0_in, s_in, w0_t, z_t, wavelength_nm, m2=m2)
+
+
+def coupling_efficiency(w_in, w_t, offset=0.0):
+    """Power-coupling efficiency eta of a Gaussian mode (waist `w_in`) into a target Gaussian
+    mode (waist `w_t`) transversely offset by `offset` (all mm) -- the fiber/cavity coupling
+    metric (B3). PURE. eta = [2 w_in w_t/(w_in^2+w_t^2)]^2 * exp(-2 offset^2/(w_in^2+w_t^2)):
+    symmetric, dimensionless, bounded (0,1], == 1 only at w_in==w_t and offset==0. Returns the
+    scalar eta, or {ok:False, error:...} for a non-physical waist."""
+    return design.coupling_efficiency(w_in, w_t, offset)
+
+
 def tag_element(name, element_type=None, auto_ports=True):
     obj = _scene().objects.get(name)
     if not obj:

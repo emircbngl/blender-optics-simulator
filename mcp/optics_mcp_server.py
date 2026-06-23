@@ -111,6 +111,35 @@ def design_4f(f1: float, f2: float) -> str:
 
 
 @mcp.tool()
+def mode_match(w0_in: float, s_in: float, w0_t: float, z_t: float,
+               wavelength_nm: float, m2: float = 1.0) -> str:
+    """Solve the single thin lens that mode-matches a Gaussian beam into a target mode --
+    the lens-to-cavity/fiber design solve (B3, PURE -- no scene mutation). Inputs: input
+    waist w0_in (mm) located s_in mm before the lens, target waist w0_t (mm) at distance z_t
+    mm past the lens, wavelength_nm, and optional beam quality m2. Returns the solved focal f
+    (and the conjugate-plane second root f_alt), the REQUIRED lens position s_lens, the waist
+    magnification m, the input Rayleigh range zR, the achieved_w0 / achieved_z obtained by
+    actually propagating the input q through the solved lens (self-checking against the
+    target), and the power-coupling efficiency `coupling` into the target mode (== 1 on a
+    clean solve). Returns {ok:False, error:...} for a non-physical input or an UNREACHABLE
+    target (no real focal -- e.g. demagnifying too close to the lens); no focal is fabricated.
+    Verified by forward q-propagation against the physics oracle."""
+    return _fmt(_call("mode_match", w0_in=w0_in, s_in=s_in, w0_t=w0_t, z_t=z_t,
+                      wavelength_nm=wavelength_nm, m2=m2))
+
+
+@mcp.tool()
+def coupling_efficiency(w_in: float, w_t: float, offset: float = 0.0) -> str:
+    """Power-coupling efficiency eta of a Gaussian mode (waist w_in, mm) into a target
+    Gaussian mode (waist w_t, mm) transversely offset by `offset` mm -- the fiber/cavity
+    coupling metric (B3, PURE). eta = [2 w_in w_t/(w_in^2+w_t^2)]^2 * exp(-2 offset^2/
+    (w_in^2+w_t^2)): symmetric, dimensionless, bounded (0,1], and == 1 only when w_in==w_t
+    and offset==0. Returns the scalar eta, or {ok:False, error:...} for a non-physical waist.
+    The coupling formula is verified against the physics oracle (pass_rate 1.0)."""
+    return _fmt(_call("coupling_efficiency", w_in=w_in, w_t=w_t, offset=offset))
+
+
+@mcp.tool()
 def align_all() -> str:
     """Auto-align every element's kinematic knobs toward its target detector."""
     return _fmt(_call("align_all"))
