@@ -13,6 +13,7 @@ from __future__ import annotations
 import bpy
 
 from . import tracer, alignment, mounts, geometry
+from . import diagnostics as _diagnostics
 from . import optomech as _optomech
 from . import operators as _ops
 from . import bake as _bake
@@ -108,6 +109,10 @@ def get_state():
         # Geometric validation: physical-invariant violations on the dressed bench (mount below its
         # holder, colliding posts). Empty == valid. The agent's programmatic check on the assembly.
         "warnings": _optomech.validate(scene),
+        # Wave-1 beam-physics error detection (A1-A5): beam_clipped / vignetting / dark_detector /
+        # orphan_source / energy_violation / mount_limit, each {kind, element, detail, severity}.
+        # READ-ONLY post-pass over the SAME cached trace above -- the beam path is unaffected.
+        "diagnostics": _diagnostics.run_diagnostics(scene),
     }
 
 
@@ -121,6 +126,20 @@ def trace_beam(mode=None):
     tracer.cached_segments = _trace(scene)
     return {"segments": len(tracer.cached_segments),
             "beam_path": _beam_path_json(tracer.cached_segments)}
+
+
+def diagnose():
+    """Run the Wave-1 P0 bench-intelligence error-detection gates (A1-A5) over the
+    current trace: beam_clipped (hard miss), vignetting (Gaussian wing clip),
+    dark_detector / orphan_source, energy_violation (per-node + global budget), and
+    mount_limit (DOF range exhaustion). READ-ONLY -- the trace is unaffected.
+    Returns {ok, diagnostics:[{kind, element, detail, severity}], counts:{BAD,WARN}}."""
+    scene = _scene()
+    tracer.cached_segments = _trace(scene)
+    diags = _diagnostics.run_diagnostics(scene)
+    bad = sum(1 for d in diags if d.get("severity") == 'BAD')
+    warn = sum(1 for d in diags if d.get("severity") == 'WARN')
+    return {"ok": True, "diagnostics": diags, "counts": {"BAD": bad, "WARN": warn}}
 
 
 def tag_element(name, element_type=None, auto_ports=True):

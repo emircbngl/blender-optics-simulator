@@ -926,6 +926,21 @@ def validate(scene):
     return issues
 
 
+def validate_all(scene):
+    """validate() (geometric/mechanical invariants on the dressed bench) PLUS the
+    Wave-1 beam-physics error-detection diagnostics (diagnostics.run_diagnostics:
+    beam_clipped / vignetting / dark_detector / orphan_source / energy_violation /
+    mount_limit). Additive: validate() itself is unchanged (still the hard geometric
+    gate), this is the clearly-named adjacent call that surfaces both layers at once.
+
+    Returns {"geometry": [...], "beam": [...]} where each list is the usual
+    {kind, element, detail} dicts (the beam list also carries a `severity`). The
+    beam diagnostics are pure READ-ONLY post-passes over the trace -- they never move
+    the geometry or change the ray path."""
+    from . import diagnostics
+    return {"geometry": validate(scene), "beam": diagnostics.run_diagnostics(scene)}
+
+
 def _own_new(coll, before, owner, optics=()):
     """Tag every bench object created since the `before` snapshot (and the given member optics) with a
     support-cluster `owner` id. The interpenetration check treats one cluster's parts (a post + its

@@ -79,6 +79,16 @@ def trace_beam(mode: str = "") -> str:
 
 
 @mcp.tool()
+def diagnose() -> str:
+    """Run the bench-intelligence error-detection gates over the current trace:
+    beam_clipped (hard miss), vignetting (Gaussian wing clip), dark_detector /
+    orphan_source, energy_violation (per-node + global power budget), and mount_limit
+    (DOF range exhausted). READ-ONLY -- the beam trace is unaffected. Returns the
+    diagnostics list ({kind, element, detail, severity}) + BAD/WARN counts."""
+    return _fmt(_call("diagnose"))
+
+
+@mcp.tool()
 def align_all() -> str:
     """Auto-align every element's kinematic knobs toward its target detector."""
     return _fmt(_call("align_all"))
