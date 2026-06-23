@@ -32,6 +32,14 @@ Covered diagnostics:
                          (leaves + absorbed) does not match the source within eps.
   A5  mount_limit      - the steering a mirror/optic needs (~ang_err, x2 for a
                          mirror) exceeds its TIP/TILT DOF range (max-min).
+
+Wave-2 B2 adds one more (an open-loop DESIGN check, still a read-only post-pass):
+  B2  relay_spacing    - two consecutive lenses in beam order, plausibly intended
+                         as an afocal relay/telescope (separation within +-25% of
+                         f1+f2), but detuned so |d-(f1+f2)| > tol -> the output is
+                         no longer collimated (collimation error). Uses only the
+                         lens focals + the traced separation; the design math lives
+                         in design.py (oracle-verified afocal ABCD).
 """
 from __future__ import annotations
 
@@ -358,6 +366,63 @@ def _mount_limit(scene, segs):
 
 
 # ---------------------------------------------------------------------------
+# B2 - relay / telescope spacing (afocal de-tuning)
+# ---------------------------------------------------------------------------
+
+# B2: how far the traced separation may sit from the ideal afocal d=f1+f2 and still
+# be read as an *intended* (merely detuned) relay. A pair further out than this band
+# is almost certainly NOT meant to be afocal (e.g. a lens that just focuses onto a
+# detector), so flagging it would be a false positive. +-25% cleanly separates a
+# detuned telescope (a few mm off, well inside the band) from an unrelated lens pair.
+_RELAY_BAND = 0.25           # |d-(f1+f2)| <= band * (f1+f2)  -> plausibly an afocal relay
+_RELAY_TOL_FRAC = 0.01       # within the band, flag when |d-(f1+f2)| > max(0.5 mm, 1% of f1+f2)
+_RELAY_TOL_FLOOR = 0.5       # mm
+
+
+def _relay_spacing(scene, segs):
+    """B2: flag a two-lens pair that is *plausibly* an afocal relay/telescope (their
+    separation sits within +-25% of f1+f2) but is DETUNED off the afocal condition
+    d == f1+f2, so a collimated input no longer exits collimated.
+
+    Find consecutive LENS elements in BEAM ORDER with no other powered element
+    between them -- exactly the segment whose `from` and `to` are both lenses (the
+    tracer emits one transmit segment directly between them, so 'no powered element
+    between' is structural). Its `p1->p2` length is the on-axis separation d. With
+    focals f1 (upstream) and f2 (downstream): if |d-(f1+f2)| is within the relay band
+    but exceeds tol = max(0.5 mm, 1% of f1+f2), emit a WARN on the 2nd lens. Exactly
+    afocal -> nothing. Uses only the lens focals + the traced separation; no trace is
+    mutated. The collimation/afocal math is design.afocal_abcd (oracle-verified)."""
+    issues = []
+    by_name = {o.name: o for o in scene.objects
+               if getattr(o, "optics", None) and o.optics.is_optical}
+    for s in segs:
+        a = by_name.get(s.get("from"))
+        b = by_name.get(s.get("to"))
+        if a is None or b is None:
+            continue
+        if a.optics.element_type != 'LENS' or b.optics.element_type != 'LENS':
+            continue
+        f1 = float(a.optics.focal_length)
+        f2 = float(b.optics.focal_length)
+        ideal = f1 + f2
+        if abs(ideal) < 1e-6:                     # f1 == -f2 -> no afocal spacing exists; skip
+            continue
+        d = (Vector(s["p2"]) - Vector(s["p1"])).length
+        err = d - ideal
+        if abs(err) > _RELAY_BAND * abs(ideal):   # not plausibly an afocal relay -> not our call
+            continue
+        tol = max(_RELAY_TOL_FLOOR, _RELAY_TOL_FRAC * abs(ideal))
+        if abs(err) > tol:
+            issues.append(_issue(
+                "relay_spacing", b.name,
+                "afocal relay %s->%s detuned: d=%.3f mm, expected f1+f2=%.3f mm "
+                "(f1=%.3f, f2=%.3f), off by %.3f mm -> collimation error"
+                % (a.name, b.name, d, ideal, f1, f2, err),
+                "WARN"))
+    return issues
+
+
+# ---------------------------------------------------------------------------
 # public entry point
 # ---------------------------------------------------------------------------
 
@@ -376,4 +441,5 @@ def run_diagnostics(scene):
     out += _dark_and_orphan(scene, segs)
     out += _energy_budget(scene, segs)
     out += _mount_limit(scene, segs)
+    out += _relay_spacing(scene, segs)
     return out

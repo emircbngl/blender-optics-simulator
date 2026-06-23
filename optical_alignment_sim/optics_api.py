@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import bpy
 
-from . import tracer, alignment, mounts, geometry, solvers
+from . import tracer, alignment, mounts, geometry, solvers, design
 from . import diagnostics as _diagnostics
 from . import optomech as _optomech
 from . import operators as _ops
@@ -140,6 +140,29 @@ def diagnose():
     bad = sum(1 for d in diags if d.get("severity") == 'BAD')
     warn = sum(1 for d in diags if d.get("severity") == 'WARN')
     return {"ok": True, "diagnostics": diags, "counts": {"BAD": bad, "WARN": warn}}
+
+
+def design_telescope(f1, f2):
+    """Design an afocal two-lens telescope / beam-expander (B2). PURE -- no scene
+    mutation. Given objective focal `f1` and eyepiece/relay focal `f2` it returns the
+    afocal lens separation and the magnifications:
+      {ok, sep: f1+f2, magnification: -f2/f1, angular_mag: -f1/f2,
+       beam_expansion: |f2/f1|, type: 'keplerian'|'galilean', abcd}
+    where `abcd` is the composed (oracle-verified) afocal system matrix
+    [[-f2/f1, f1+f2], [0, -f1/f2]] (C=0 -> a collimated input stays collimated when
+    the lenses are placed `sep` apart). Returns {ok:False, error:...} for a zero /
+    non-finite focal."""
+    return design.design_telescope(f1, f2)
+
+
+def design_4f(f1, f2):
+    """Design a full 4f relay (B2). PURE -- no scene mutation. Object at the front
+    focal plane of L1, lenses `f1+f2` apart, image at the back focal plane of L2:
+      {ok, seps: [f1, f1+f2, f2], total_length: 2*(f1+f2), transverse_mag: -f2/f1,
+       beam_expansion: |f2/f1|, abcd}
+    where `abcd` is the L1->L2 afocal system matrix. Returns {ok:False, error:...}
+    for a zero / non-finite focal."""
+    return design.design_4f(f1, f2)
 
 
 def tag_element(name, element_type=None, auto_ports=True):

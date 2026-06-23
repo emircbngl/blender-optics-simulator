@@ -89,6 +89,28 @@ def diagnose() -> str:
 
 
 @mcp.tool()
+def design_telescope(f1: float, f2: float) -> str:
+    """Design an afocal two-lens telescope / beam-expander (PURE -- no scene mutation).
+    Given objective focal f1 and eyepiece/relay focal f2, returns the afocal lens
+    separation sep=f1+f2, the transverse magnification -f2/f1, the angular
+    magnification -f1/f2, the beam expansion |f2/f1|, the type (keplerian if both
+    focals positive, else galilean), and the composed afocal ABCD matrix
+    [[-f2/f1, f1+f2], [0, -f1/f2]] (C=0 -> a collimated input exits collimated when the
+    lenses are sep apart). Verified against the physics oracle."""
+    return _fmt(_call("design_telescope", f1=f1, f2=f2))
+
+
+@mcp.tool()
+def design_4f(f1: float, f2: float) -> str:
+    """Design a full 4f relay (PURE -- no scene mutation). Object at the front focal
+    plane of L1, lenses f1+f2 apart, image at the back focal plane of L2. Returns the
+    object->L1->L2->image spacings seps=[f1, f1+f2, f2], the total length 2*(f1+f2),
+    the transverse magnification -f2/f1, the beam expansion |f2/f1|, and the L1->L2
+    afocal ABCD matrix. Verified against the physics oracle."""
+    return _fmt(_call("design_4f", f1=f1, f2=f2))
+
+
+@mcp.tool()
 def align_all() -> str:
     """Auto-align every element's kinematic knobs toward its target detector."""
     return _fmt(_call("align_all"))

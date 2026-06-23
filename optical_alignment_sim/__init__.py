@@ -13,7 +13,7 @@ from __future__ import annotations
 if "properties" in locals():
     import importlib
     for _m in ("prefs", "presets", "physics", "geometry", "properties", "operators", "mounts", "tracer",
-               "overlay", "monitor", "handlers", "alignment", "diagnostics", "scan", "bake", "render", "library",
+               "overlay", "monitor", "handlers", "alignment", "solvers", "design", "diagnostics", "scan", "bake", "render", "library",
                "assembly", "ao", "bridge", "elements_generic", "optomech", "examples_builtin", "svg_export", "ui", "optics_api"):
         if _m in locals():
             importlib.reload(locals()[_m])
@@ -21,13 +21,13 @@ if "properties" in locals():
 import sys
 
 from . import (prefs, presets, physics, geometry, properties, operators, mounts, tracer, overlay,
-               monitor, handlers, alignment, solvers, diagnostics, scan, bake, render, library, assembly, ao,
+               monitor, handlers, alignment, solvers, design, diagnostics, scan, bake, render, library, assembly, ao,
                bridge, elements_generic, optomech, examples_builtin, svg_export, ui, optics_api)
 
 # Registration order matters: property groups + pointers first, then the operators, mount
 # logic, tracer/overlay/monitor/handlers/alignment/solvers/bake/render, library, assembly, ao, bridge, panels.
 _modules = (prefs, properties, operators, mounts, tracer, overlay, monitor,
-            handlers, alignment, solvers, scan, bake, render, library, assembly, ao, bridge, optomech, examples_builtin, svg_export, ui)
+            handlers, alignment, solvers, design, scan, bake, render, library, assembly, ao, bridge, optomech, examples_builtin, svg_export, ui)
 
 
 def register():
