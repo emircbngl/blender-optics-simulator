@@ -654,6 +654,36 @@ def ao_close_loop(sensor, dm, gain=0.5, iters=15):
             "rms_initial": round(hist[0], 4), "rms_final": round(hist[-1], 4)}
 
 
+def ao_close_loop_recon(sensor, dm, gain=0.8, leak=0.99, method='TSVD', iters=30):
+    """B5: close the AO loop with the full reconstructor control structure -- an interaction
+    matrix B (poke each DM mode, record the WFS response), a reconstructor R=B+ (``method``:
+    'TSVD' truncated-SVD pseudoinverse, or 'DAMPED_TRANSPOSE' noise-tolerant c*B^T), and the
+    leaky integrator x_{k+1}=leak*x_k - gain*R*w_k. Returns the convergence report (rms_before/
+    after, reduction, history, singular spectrum). On-demand; the trace stays byte-identical."""
+    from . import ao
+    return ao.close_loop_recon(_scene(), sensor, dm, gain=gain, leak=leak,
+                               method=method, iters=iters)
+
+
+def ao_kolmogorov(aberrator, r0_mm=None, D_mm=None, seed=0):
+    """B5: drive an ABERRATOR element's injected wavefront from a PHYSICAL Fried parameter r0
+    (the Kolmogorov/Noll turbulence statistics, sigma^2=1.0299*(D/r0)^(5/3) rad^2). Writes the
+    deterministic Zernike vector onto ``aberrator``.aberr_spec; smaller r0 = stronger turbulence.
+    r0_mm / D_mm default to the scene AO props (ao_r0 / ao_aperture). {ok, r0_mm, D_mm, rms, modes}."""
+    from . import ao, physics
+    obj = _scene().objects.get(aberrator)
+    if not obj:
+        return {"error": "object not found: %s" % aberrator}
+    sc = _scene()
+    r0 = float(r0_mm) if r0_mm is not None else sc.optics.ao_r0
+    D = float(D_mm) if D_mm is not None else sc.optics.ao_aperture
+    modes = ao.kolmogorov_aberration(r0, D, seed=seed)
+    obj.optics.aberr_spec = modes
+    return {"ok": True, "aberrator": aberrator, "r0_mm": round(r0, 3), "D_mm": round(D, 3),
+            "rms": round(physics.wavefront_rms(modes), 4),
+            "modes": [round(m, 4) for m in modes]}
+
+
 def export_svg(filepath):
     """Export a top-view 2-D vector (SVG) schematic of the optical layout + beam path to filepath
     (a publication figure: element glyphs, port ticks, wavelength-coloured beams). {ok, path, ...}."""

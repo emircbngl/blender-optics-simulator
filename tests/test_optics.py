@@ -1016,6 +1016,52 @@ cmd = list(sc.objects["AO_DM"].optics.dm_command)
 check("AO DM -> injected modes", abs(cmd[3] - 0.4) < 0.02 and abs(cmd[5] - 0.3) < 0.02 and abs(cmd[7] - 0.25) < 0.02,
       str([round(cmd[i], 3) for i in (3, 5, 7)]))
 
+print("[B5 AO reconstructor: interaction matrix + TSVD/damped-transpose + leaky integrator + Kolmogorov]")
+# Interaction matrix B is built by poking each DM mode + recording the WFS response (W = B x).
+# For the modal DM the tracer subtracts dm_command, so B = -I (all singular values ~1): a well-
+# conditioned interaction matrix. Built on the adaptive_optics bench.
+optics_api.build_example("adaptive_optics")
+_B, _w0 = ao.interaction_matrix(sc, "AO_WFS", "AO_DM", poke=0.2)
+check("B5 interaction matrix is built (15x15) by poking the DM modes",
+      _B is not None and len(_B) == physics.N_ZERNIKE and len(_B[0]) == physics.N_ZERNIKE)
+_sv = sorted(np.linalg.svd(np.array(_B), compute_uv=False), reverse=True)
+check("B5 interaction matrix is well-conditioned (B ~ -I, singular values ~1)",
+      abs(_sv[0] - 1.0) < 1e-6 and abs(_sv[-1] - 1.0) < 1e-6, "sv range %.4f..%.4f" % (_sv[0], _sv[-1]))
+
+# Closed loop with the TSVD reconstructor reduces the injected RMS by >5x (it actually does ~80x).
+optics_api.build_example("adaptive_optics")
+_tsvd = ao.close_loop_recon(sc, "AO_WFS", "AO_DM", gain=0.8, leak=0.99, method='TSVD', iters=40)
+check("B5 TSVD closed loop reduces RMS >5x", _tsvd["ok"] and _tsvd["rms_before"] / max(_tsvd["rms_after"], 1e-12) > 5.0,
+      "RMS %.4f -> %.4f (%.1fx)" % (_tsvd["rms_before"], _tsvd["rms_after"], _tsvd["reduction"]))
+check("B5 TSVD history monotone non-increasing",
+      all(_tsvd["history"][i + 1] <= _tsvd["history"][i] + 1e-6 for i in range(len(_tsvd["history"]) - 1)))
+
+# The damped-transpose reconstructor also converges (slower path, never amplifies modes).
+optics_api.build_example("adaptive_optics")
+_damp = ao.close_loop_recon(sc, "AO_WFS", "AO_DM", gain=0.8, leak=0.99, method='DAMPED_TRANSPOSE', iters=40)
+check("B5 damped-transpose closed loop reduces RMS >5x",
+      _damp["ok"] and _damp["rms_before"] / max(_damp["rms_after"], 1e-12) > 5.0,
+      "RMS %.4f -> %.4f (%.1fx)" % (_damp["rms_before"], _damp["rms_after"], _damp["reduction"]))
+
+# TSVD drops an ill-conditioned (near-null) mode instead of amplifying it: a synthetic B with a
+# tiny singular value -> the reconstructor gain on that mode is ~0 (TSVD truncation), not 1/(1e-4).
+_Bill = [[-1.0 if i == k else 0.0 for k in range(6)] for i in range(6)]
+_Bill[3][3] = -1e-4                                    # near-null mode
+_R = ao.reconstructor(_Bill, method='TSVD', rcond=1e-3)
+check("B5 TSVD drops the ill-conditioned mode (reconstructor gain ~0, not 1e4)",
+      abs(_R[3][3]) < 1.0, "R[3][3]=%.4g" % _R[3][3])
+_Rd = ao.reconstructor(_Bill, method='DAMPED_TRANSPOSE')
+check("B5 damped-transpose never amplifies the null mode (|gain| < 1)", abs(_Rd[3][3]) < 1.0, "Rd[3][3]=%.4g" % _Rd[3][3])
+
+# Kolmogorov ABERRATOR: the injected phase VARIANCE obeys the physics_verified Noll law
+# sigma^2 = 1.0299*(D/r0)^(5/3) -> halving r0 scales the variance by exactly 2^(5/3).
+_v30 = (2 * math.pi * physics.wavefront_rms(ao.kolmogorov_aberration(30.0, 25.4, seed=3))) ** 2
+_v60 = (2 * math.pi * physics.wavefront_rms(ao.kolmogorov_aberration(60.0, 25.4, seed=3))) ** 2
+check("B5 Kolmogorov variance scales as (D/r0)^(5/3) [Noll 1976, physics_verify ok]",
+      abs(_v30 / _v60 - 2.0 ** (5.0 / 3.0)) < 1e-4, "var ratio %.5f vs 2^(5/3)=%.5f" % (_v30 / _v60, 2.0 ** (5.0 / 3.0)))
+check("B5 Kolmogorov aberrator is deterministic (reproducible without an RNG)",
+      ao.kolmogorov_aberration(60.0, 25.4, seed=7) == ao.kolmogorov_aberration(60.0, 25.4, seed=7))
+
 print("[Newton's rings]")
 optics_api.build_example("newton_rings")
 segs = scan._trace(sc)

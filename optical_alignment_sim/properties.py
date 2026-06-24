@@ -595,6 +595,20 @@ class OpticalSceneProps(PropertyGroup):
         default=True)
     monitor_show: BoolProperty(name="Sensor window", default=False, update=_monitor_update)
     monitor_size: IntProperty(name="Sensor window size (px)", default=256, min=96, max=720)
+    # B5 adaptive-optics control loop (scene-global; the loop runs ON DEMAND, so these never
+    # affect a normal trace). The reconstructor + leaky integrator + Kolmogorov ABERRATOR settings:
+    ao_recon: EnumProperty(name="Reconstructor", default='TSVD',
+        items=[('TSVD', "Truncated SVD", "R = B+ via SVD, drop singular values below the cutoff (fast, ill-cond-tolerant)"),
+               ('DAMPED_TRANSPOSE', "Damped transpose", "R = c*B^T (noise-tolerant; slower, never amplifies null modes)")],
+        description="Wavefront reconstructor mapping the WFS residual to a DM command increment")
+    ao_leak: FloatProperty(name="Integrator leak", default=0.99, min=0.0, max=1.0,
+        description="Forgetting factor in the leaky integrator x_{k+1}=leak*x_k - g*R*w_k (1.0 = pure integrator)")
+    ao_loop_gain: FloatProperty(name="AO loop gain", default=0.8, min=0.0, max=2.0,
+        description="Closed-loop gain g in x_{k+1}=leak*x_k - g*R*w_k (the reconstructor loop; ~0.8)")
+    ao_r0: FloatProperty(name="Fried parameter r0 (mm)", default=60.0, min=1.0, soft_max=400.0,
+        description="Atmospheric coherence length; the Kolmogorov aberrator's per-mode variance scales as (D/r0)^(5/3)")
+    ao_aperture: FloatProperty(name="Pupil diameter D (mm)", default=25.4, min=0.1,
+        description="Pupil diameter the Kolmogorov turbulence variance (D/r0)^(5/3) is reckoned over")
     # alignment thresholds
     ok_pos_mm: FloatProperty(name="OK pos (mm)", default=0.5, min=0.0)
     ok_ang_deg: FloatProperty(name="OK ang (deg)", default=0.2, min=0.0)

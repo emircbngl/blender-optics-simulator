@@ -333,6 +333,32 @@ def ao_close_loop(sensor: str, dm: str, gain: float = 0.5, iters: int = 15) -> s
 
 
 @mcp.tool()
+def ao_close_loop_recon(sensor: str, dm: str, gain: float = 0.8, leak: float = 0.99,
+                        method: str = 'TSVD', iters: int = 30) -> str:
+    """B5: close the AO loop with the full reconstructor control structure -- an interaction
+    matrix B (poke each DM mode, record the wavefront-sensor response), a reconstructor R=B+
+    (method='TSVD' truncated-SVD pseudoinverse, or 'DAMPED_TRANSPOSE' noise-tolerant c*B^T), and
+    the leaky integrator x_{k+1}=leak*x_k - gain*R*w_k. Returns {rms_before, rms_after, reduction,
+    history, singular spectrum}. TSVD converges fast; damped-transpose is slower but never amplifies
+    ill-conditioned/noise modes."""
+    return _fmt(_call("ao_close_loop_recon", sensor=sensor, dm=dm, gain=gain, leak=leak,
+                      method=method, iters=iters))
+
+
+@mcp.tool()
+def ao_kolmogorov(aberrator: str, r0_mm: float = None, D_mm: float = None, seed: int = 0) -> str:
+    """B5: drive an ABERRATOR element's injected wavefront from a PHYSICAL Fried parameter r0
+    (Kolmogorov/Noll turbulence statistics, sigma^2=1.0299*(D/r0)^(5/3) rad^2). Smaller r0 =
+    stronger turbulence. r0_mm / D_mm default to the scene AO props. {ok, r0_mm, D_mm, rms, modes}."""
+    args = {"aberrator": aberrator, "seed": seed}
+    if r0_mm is not None:
+        args["r0_mm"] = r0_mm
+    if D_mm is not None:
+        args["D_mm"] = D_mm
+    return _fmt(_call("ao_kolmogorov", **args))
+
+
+@mcp.tool()
 def export_svg(filepath: str) -> str:
     """Export a top-view 2-D vector (SVG) schematic of the optical layout + beam path to filepath
     (element glyphs, port ticks, wavelength-coloured beams) -- a dependency-free publication figure."""

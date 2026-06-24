@@ -13,7 +13,7 @@ import math
 
 import bpy
 from bpy.types import Operator
-from bpy.props import StringProperty, FloatProperty, IntProperty
+from bpy.props import StringProperty, FloatProperty, IntProperty, EnumProperty, BoolProperty
 
 from . import physics, tracer, monitor
 
@@ -103,6 +103,257 @@ def publish_wavefront(det, segs):
                       "wavefront RMS=%.3f waves" % det.optics.wf_rms)
 
 
+# --------------------------------------------------------------------------- #
+# B5 - the textbook AO control loop: interaction matrix B, reconstructor R=B+,
+#       leaky integrator x_{k+1}=leak*x_k - g*R*w_k, Kolmogorov ABERRATOR(r0).
+#
+# The reconstructor MATH is plain linear algebra over the ALREADY-oracle-verified
+# Zernike modes (physics._NOLL / wavefront_rms): B and R never introduce a new
+# optical formula. The ONE new physical relation is the Kolmogorov/Noll turbulence
+# variance scaling, sigma^2 = 1.0299*(D/r0)^(5/3) rad^2 (Noll 1976), physics_verify
+# ok=true (DIMENSIONAL dimensionless + NUMERIC at D/r0 = 0.5,1,2 + SANITY:positive).
+# All of this runs ON DEMAND only (it pokes + re-traces the live scene); a normal
+# trace never enters here, so every build_example scene stays byte-identical.
+# --------------------------------------------------------------------------- #
+
+# Noll (1976) total residual phase variance over a circular pupil of diameter D for
+# Kolmogorov turbulence of Fried parameter r0:  sigma^2 = NOLL_KOLM * (D/r0)^(5/3) rad^2.
+NOLL_KOLM = 1.0299
+KOLM_EXP = 5.0 / 3.0
+
+# Per-Noll-index residual-variance weights for the LOW-ORDER modes (Noll 1976, Table IV:
+# the Delta_j = <residual after correcting j-1 modes> - <after j>, i.e. the variance each mode
+# REMOVES, hence the variance it CARRIES). These give turbulence its correct relative spectrum:
+# tip/tilt dominate, defocus next, higher orders fall off. Indexed by Noll j (1=piston carries
+# none). Values are the standard residual deltas Delta_2..Delta_15 (rad^2 per (D/r0)^(5/3)).
+_NOLL_VAR = {
+    2: 0.448, 3: 0.448,                       # tip, tilt
+    4: 0.0232,                                # defocus
+    5: 0.0232, 6: 0.0232,                     # astigmatism
+    7: 0.00619, 8: 0.00619,                   # coma
+    9: 0.00619, 10: 0.00619,                  # trefoil
+    11: 0.00245,                              # spherical
+    12: 0.00245, 13: 0.00245,                 # secondary astigmatism
+    14: 0.00245, 15: 0.00245,                 # tetrafoil
+}
+
+
+def kolmogorov_aberration(r0_mm, D_mm, n_modes=None, seed=0):
+    """Deterministic Kolmogorov/Noll Zernike aberration vector (waves) for a pupil of diameter
+    ``D_mm`` under turbulence of Fried parameter ``r0_mm``.
+
+    The TOTAL phase variance over the pupil is the physics_verified Noll relation
+        sigma^2 = 1.0299 * (D/r0)^(5/3)   [rad^2]
+    and that variance is distributed across the Zernike modes with the Noll residual-variance
+    spectrum (_NOLL_VAR): tip/tilt carry the most, higher orders fall off as the well-known
+    ~j^(-sqrt3) tail. Each mode's coefficient (in WAVES) is therefore
+        a_j = sign_j * sqrt(var_j * (D/r0)^(5/3)) / (2*pi)
+    (the /(2*pi) converts the rad RMS to a wave RMS, since 1 wave = 2*pi rad of phase). The
+    coefficients are DETERMINISTIC: the sign alternates with a fixed hash of (j, seed), so a
+    given (r0, D, seed) always yields the same turbulence frame -- tests are reproducible without
+    a real RNG (the headless env forbids one), yet different seeds give different realizations and
+    the *RMS* obeys the (D/r0)^(5/3) law exactly. Returns a 15-coeff list (piston j=1 = 0)."""
+    n = physics.N_ZERNIKE if n_modes is None else min(n_modes, physics.N_ZERNIKE)
+    ratio = (max(D_mm, 1e-9) / max(r0_mm, 1e-9)) ** KOLM_EXP     # (D/r0)^(5/3), dimensionless
+    coeffs = [0.0] * physics.N_ZERNIKE
+    for j in range(2, n + 1):                                    # j=1 piston carries no aberration
+        var_rad2 = _NOLL_VAR.get(j, 0.0) * ratio                 # this mode's phase variance [rad^2]
+        if var_rad2 <= 0.0:
+            continue
+        rms_waves = math.sqrt(var_rad2) / (2.0 * math.pi)        # rad RMS -> wave RMS
+        # deterministic but mode-varying sign (no RNG): a stable parity of (j*2654435761 ^ seed)
+        sign = 1.0 if (((j * 2654435761) ^ (seed * 40503)) >> 3) & 1 else -1.0
+        coeffs[j - 1] = sign * rms_waves
+    return coeffs
+
+
+def _np():
+    try:
+        import numpy as np
+        return np
+    except Exception:
+        return None
+
+
+def _wfs_response(scene, sensor_name):
+    """Re-trace the live scene and read the WFS residual Zernike vector (waves), or a flat
+    (zero) vector if nothing reaches the sensor. The single measurement front-end the poke +
+    the loop share -- identical to what publish_wavefront / ao_measure read."""
+    from . import scan
+    tracer.cached_segments = scan._trace(scene)
+    c = _aberr_at(tracer.cached_segments, sensor_name)
+    return list(c) if c is not None else None
+
+
+def interaction_matrix(scene, sensor_name, dm_name, poke=0.2, n_modes=None):
+    """Build the AO interaction matrix B by POKING each deformable-mirror mode and recording the
+    wavefront-sensor modal response: B[:, i] = (w(x + poke*e_i) - w(x)) / poke, exactly the
+    finite-difference column build solvers.calibrate_jacobian uses for the steering Jacobian,
+    here over the DM's Zernike command channels instead of tip/tilt knobs.
+
+    W = B x is then the WFS-measured wavefront produced by a DM command x. For an ideal modal
+    DM (the tracer subtracts dm_command from the aberration) B = -I, but we MEASURE it so any
+    real modal cross-talk / un-actuated (null) mode shows up as a small / zero singular value --
+    which is precisely what the TSVD reconstructor must drop and the damped-transpose must not
+    amplify. Returns (B, w0): B a list of m rows x n cols (m WFS modes, n DM modes), w0 the
+    open-loop residual at the current command. Restores the DM command exactly. On-demand only."""
+    dm = scene.objects.get(dm_name)
+    if dm is None:
+        return None, None
+    n = physics.N_ZERNIKE if n_modes is None else min(n_modes, physics.N_ZERNIKE)
+    base_cmd = list(dm.optics.dm_command)
+    w0 = _wfs_response(scene, sensor_name)
+    if w0 is None:
+        return None, None
+    m = len(w0)
+    cols = []
+    for i in range(n):
+        cmd = list(base_cmd)
+        cmd[i] = cmd[i] + poke
+        dm.optics.dm_command = cmd
+        wp = _wfs_response(scene, sensor_name)
+        dm.optics.dm_command = list(base_cmd)                    # restore exactly
+        if wp is None:
+            cols.append([0.0] * m)
+            continue
+        cols.append([(wp[k] - w0[k]) / poke for k in range(m)])
+    # transpose columns -> rows (m x n)
+    B = [[cols[i][k] for i in range(n)] for k in range(m)]
+    return B, w0
+
+
+def reconstructor(B, method='TSVD', rcond=1e-3, damping=None):
+    """Pseudo-inverse / reconstructor R such that x_correction = R w drives the residual w to zero.
+
+    * 'TSVD'  -> R = B+ via a truncated-SVD pseudoinverse (reuses solvers._pinv_apply's numpy SVD,
+      dropping singular values below rcond*sigma_max so an ill-conditioned / near-null mode does
+      not blow up). This is the same noise-/rank-tolerant inverse the A7 steering solver uses.
+    * 'DAMPED_TRANSPOSE' -> R = c*B^T with c = 1/(sigma_max^2 + lambda) (a damped/steepest-descent
+      reconstructor). It NEVER amplifies a small-singular-value mode (its gain on a mode of singular
+      value s is c*s <= c*sigma_max < 1), so it is robust to measurement noise on near-null modes --
+      it converges more SLOWLY than TSVD but cannot diverge on them.
+
+    Returns R as a list of n rows x m cols (n DM modes, m WFS modes) so x = R w is an n-vector."""
+    m = len(B)
+    n = len(B[0]) if m else 0
+    if m == 0 or n == 0:
+        return [[0.0] * m for _ in range(n)]
+    np = _np()
+    method = str(method).upper()
+    if method == 'DAMPED_TRANSPOSE':
+        # c scales the transpose so the largest mode's loop gain is < 1 (no null-mode blow-up).
+        if np is not None:
+            Bm = np.array(B, dtype=float)
+            smax = float(np.linalg.svd(Bm, compute_uv=False)[0]) if min(m, n) else 1.0
+        else:
+            # power-iteration-free bound: largest column 2-norm >= sigma_max / sqrt(n) suffices as a scale
+            smax = max((sum(B[k][i] ** 2 for k in range(m)) ** 0.5 for i in range(n)), default=1.0)
+        lam = damping if damping is not None else 0.05 * (smax * smax if smax > 0 else 1.0)
+        c = 1.0 / (smax * smax + lam) if (smax * smax + lam) > 0 else 0.0
+        return [[c * B[k][i] for k in range(m)] for i in range(n)]    # R = c * B^T  (n x m)
+
+    # --- TSVD pseudoinverse R = B+ (drop sigma < rcond*sigma_max) ---
+    if np is not None:
+        Bm = np.array(B, dtype=float)
+        U, s, Vt = np.linalg.svd(Bm, full_matrices=False)
+        smax = s[0] if s.size else 0.0
+        cut = rcond * smax
+        s_inv = np.array([(1.0 / si if si > cut else 0.0) for si in s])
+        R = (Vt.T * s_inv) @ U.T                                  # B+ = V S+ U^T  (n x m)
+        return [[float(v) for v in row] for row in R]
+    # pure-python fallback: column-by-column least-squares solve B x = e_k via solvers._pinv_apply
+    from . import solvers
+    R = []
+    for k in range(m):
+        ek = [1.0 if i == k else 0.0 for i in range(m)]
+        R.append(solvers._pinv_apply(B, ek, rcond=rcond))        # x solving B x ~= e_k  -> column k of B+
+    # R built row-per-WFS-mode (m rows x n cols) -> transpose to n x m
+    return [[R[k][i] for k in range(m)] for i in range(n)]
+
+
+def _matvec(R, w):
+    """R (n x m) times w (m) -> n-vector. Plain python so it needs no numpy."""
+    return [sum(R[i][k] * w[k] for k in range(len(w))) for i in range(len(R))]
+
+
+def close_loop_recon(scene, sensor_name, dm_name, gain=0.8, leak=0.99,
+                     method='TSVD', iters=30, tol=1.0e-3, poke=0.2, B=None):
+    """The textbook AO closed loop (B5): build the interaction matrix B (poke + record), invert it
+    to a reconstructor R = B+ (TSVD) or R = c*B^T (damped transpose), then run the LEAKY INTEGRATOR
+
+        x_{k+1} = leak * x_k - gain * R * w_k
+
+    where w_k is the WFS residual Zernike vector at step k and x is the DM command. ``gain`` ~0.8,
+    ``leak`` ~0.99 (a slowly-forgetting integrator -> robust to a static reconstructor error /
+    drift). Stops when the residual RMS < ``tol`` or a relative plateau is hit or ``iters`` pass.
+
+    Returns a JSON-able report:
+      {ok, method, rms_before, rms_after, reduction (rms_before/rms_after), iterations, converged,
+       history:[rms0, rms1, ...] (waves, open-loop first, corrected last), n_modes, leak, gain,
+       singular:[s0..]}. ON-DEMAND only (it pokes + re-traces); a normal trace is untouched.
+
+    Pass a pre-built ``B`` to reuse an interaction matrix across runs (e.g. inject measurement
+    noise into the loop while keeping the same calibration)."""
+    dm = scene.objects.get(dm_name)
+    wfs = scene.objects.get(sensor_name)
+    if dm is None or wfs is None:
+        return {"ok": False, "error": "need a wavefront sensor + deformable mirror"}
+
+    if B is None:
+        B, _w0 = interaction_matrix(scene, sensor_name, dm_name, poke=poke)
+    if B is None:
+        return {"ok": False, "error": "no beam between the sensor and the deformable mirror"}
+    R = reconstructor(B, method=method)
+    n = len(R)
+
+    # singular spectrum of B (diagnostic: TSVD drops the modes below the cutoff)
+    singular = []
+    np = _np()
+    if np is not None and len(B):
+        singular = [float(s) for s in np.linalg.svd(np.array(B, dtype=float), compute_uv=False)]
+
+    x = list(dm.optics.dm_command)
+    hist = []
+    converged = False
+    for _ in range(max(1, int(iters))):
+        w = _wfs_response(scene, sensor_name)
+        if w is None:
+            converged = True
+            break
+        rms = physics.wavefront_rms(w)
+        hist.append(rms)
+        delta = (hist[-2] - rms) if len(hist) >= 2 else None
+        stalled = delta is not None and 0.0 <= delta < 1.0e-4 * max(hist[-2], 1.0e-12)
+        if rms < tol or stalled:
+            converged = True
+            break
+        dx = _matvec(R, w)                                       # R * w_k  (n-vector)
+        x = [leak * x[i] - gain * dx[i] for i in range(min(len(x), n))] + list(x[n:])
+        dm.optics.dm_command = list(x)
+    if not converged:                                           # measure the final applied command once
+        w = _wfs_response(scene, sensor_name)
+        if w is not None:
+            hist.append(physics.wavefront_rms(w))
+    if hist:
+        wfs.optics.wf_rms = hist[-1]
+    r_before = hist[0] if hist else 0.0
+    r_after = hist[-1] if hist else 0.0
+    return {
+        "ok": True,
+        "method": method,
+        "rms_before": round(r_before, 6),
+        "rms_after": round(r_after, 6),
+        "reduction": round(r_before / r_after, 3) if r_after > 1e-12 else float('inf'),
+        "iterations": len(hist) - 1,
+        "converged": bool(converged),
+        "history": [round(h, 6) for h in hist],
+        "n_modes": n,
+        "leak": leak,
+        "gain": gain,
+        "singular": [round(s, 6) for s in singular],
+    }
+
+
 def close_loop(scene, sensor_name, dm_name, gain=0.5, iters=15, tol=1.0e-3):
     """Modal AO integrator: each step trace -> read residual Zernike at the sensor -> accumulate
     the DM command toward it (dm_command += gain*residual) -> repeat until the wavefront is flat
@@ -158,8 +409,15 @@ class OPTICS_OT_ao_close_loop(Operator):
 
     sensor: StringProperty(name="Wavefront sensor")
     dm: StringProperty(name="Deformable mirror")
-    gain: FloatProperty(name="Loop gain", default=0.5, min=0.0, max=1.0)
-    iters: IntProperty(name="Iterations", default=15, min=1, max=200)
+    gain: FloatProperty(name="Loop gain", default=0.8, min=0.0, max=2.0)
+    iters: IntProperty(name="Iterations", default=30, min=1, max=200)
+    use_reconstructor: BoolProperty(name="Use reconstructor (B5)", default=True,
+        description="Run the B5 interaction-matrix + reconstructor + leaky-integrator loop; "
+                    "off = the legacy modal integrator")
+    method: EnumProperty(name="Reconstructor", default='TSVD',
+        items=[('TSVD', "Truncated SVD", "R = B+ via SVD (fast, ill-cond-tolerant)"),
+               ('DAMPED_TRANSPOSE', "Damped transpose", "R = c*B^T (noise-tolerant, slower)")])
+    leak: FloatProperty(name="Integrator leak", default=0.99, min=0.0, max=1.0)
 
     def invoke(self, context, event):
         scene = context.scene
@@ -169,27 +427,46 @@ class OPTICS_OT_ao_close_loop(Operator):
         if not self.dm:
             self.dm = next((o.name for o in scene.objects if getattr(o, "optics", None)
                             and o.optics.element_type == 'DEFORMABLE_MIRROR'), "")
+        self.method = scene.optics.ao_recon
+        self.leak = scene.optics.ao_leak
+        self.gain = scene.optics.ao_loop_gain
         return context.window_manager.invoke_props_dialog(self, width=340)
 
     def draw(self, context):
         col = self.layout.column()
         col.prop_search(self, "sensor", context.scene, "objects")
         col.prop_search(self, "dm", context.scene, "objects")
+        col.prop(self, "use_reconstructor")
+        if self.use_reconstructor:
+            col.prop(self, "method")
+            col.prop(self, "leak")
         col.prop(self, "gain")
         col.prop(self, "iters")
 
     def execute(self, context):
         scene = context.scene
-        hist = close_loop(scene, self.sensor, self.dm, self.gain, self.iters)
-        if not hist:
-            self.report({'ERROR'}, "Pick a wavefront sensor + deformable mirror with a beam between them")
-            return {'CANCELLED'}
+        if self.use_reconstructor:
+            res = close_loop_recon(scene, self.sensor, self.dm, gain=self.gain, leak=self.leak,
+                                   method=self.method, iters=self.iters)
+            if not res.get("ok"):
+                self.report({'ERROR'}, res.get("error", "AO loop failed"))
+                return {'CANCELLED'}
+            hist = res["history"]
+            msg = ("AO %s loop: RMS %.3f -> %.3f waves (%.1fx) over %d iters"
+                   % (self.method, res["rms_before"], res["rms_after"],
+                      res["reduction"] if res["reduction"] != float('inf') else 0.0, res["iterations"]))
+        else:
+            hist = close_loop(scene, self.sensor, self.dm, self.gain, self.iters)
+            if not hist:
+                self.report({'ERROR'}, "Pick a wavefront sensor + deformable mirror with a beam between them")
+                return {'CANCELLED'}
+            msg = ("AO loop: RMS %.3f -> %.3f waves over %d iters"
+                   % (hist[0], hist[-1], len(hist) - 1))
         from . import scan
         scene.optics.monitor_show = True
         scan.live_fringe_update(scene)
         tracer._tag_redraw()
-        self.report({'INFO'}, "AO loop: RMS %.3f -> %.3f waves over %d iters"
-                    % (hist[0], hist[-1], len(hist) - 1))
+        self.report({'INFO'}, msg)
         return {'FINISHED'}
 
 
