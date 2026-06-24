@@ -320,7 +320,7 @@ ready-to-paste APA / BibTeX.
   author  = {Çobanoğlu, Muhammet Emir},
   title   = {Blender Optics Simulator},
   year    = {2026},
-  version = {0.9.1},
+  version = {0.10.0},
   doi     = {10.5281/zenodo.20778998},
   license = {GPL-3.0-or-later},
   url     = {https://github.com/emircbngl/blender-optics-simulator}

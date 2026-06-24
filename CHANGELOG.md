@@ -4,6 +4,64 @@ All notable changes to the **Blender Optics Simulator** (`optical_alignment_sim`
 here. The format follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 semantic versioning.
 
+## [0.10.0] — Optics-v2
+
+The big capability expansion: an agent-facing auto-aligner, a full prism / nonlinear-crystal /
+aperture / detector / circulator component build-out, an upgraded adaptive-optics loop, and a
+read-only error-detection layer. Every new formula is machine-verified against the physicist
+Docker oracle before shipping, and every existing scene traces byte-identical (the port-based
+data model: behavior reads element properties × `matrix_world`, never the mesh). Regression
+**215 → 304** checks.
+
+### Added — bench intelligence (placement / correction / error detection)
+- **Generic auto-aligner** (`optics_api.auto_align` + MCP tool) — a scene-agnostic linearized
+  influence-matrix corrector: calibrate ∂y/∂u by poking DOFs + re-tracing, SVD-pseudoinvert, and
+  drive the beam onto any reference aperture. Two-mirror beam-walk is the canonical 4-DOF case. The
+  steering law (mirror tilt θ → 2θ deflection) is oracle-verified.
+- **Read-only diagnostics** (`diagnose()` + MCP) — beam-clipping, vignetting, dark-detector /
+  orphan-source, energy-budget audit, mount-limit, relay-spacing, **back-reflection / ghost beams**
+  (opt-in Fresnel ghosts at transmissive faces + a `back_reflection` flag an isolator clears),
+  **pol- vs coherence-mismatch** fringe disambiguation, and **parasitic-etalon** detection (a wedged
+  surface clears it).
+
+### Added — analysis / design methods
+- **4f / telescope designer** (`design_telescope` / `design_4f`) — the afocal (C=0) lens-to-lens and the
+  object→image (B=0) imaging ABCD matrices, both oracle-verified.
+- **Gaussian mode-match q-solver** — the single-lens focal + position that images an input waist onto a
+  target, with a power-coupling efficiency η.
+- **Interferometer tilt-null solver** — recover the relative wavefront tilt from the fringe image and
+  drive the fringes to a single broad null.
+- **AO reconstructor upgrade** — interaction matrix + TSVD / damped-transpose reconstructor + leaky
+  integrator + a physical Kolmogorov (Fried-`r0`) turbulence aberrator (Noll-1976 variance).
+
+### Added — components
+- **Dispersing prisms** (equilateral / Littrow / Pellin-Broca / Amici) on real Sellmeier glasses
+  (N-SF11 / F2 / N-F2 / CaF2) — the first element that geometrically bends the chief ray per wavelength.
+- **Beam-routing prisms** (right-angle / penta / Dove / roof / rhomboid) with an image-parity overlay;
+  the penta 90° tilt-invariance is a validator invariant.
+- **Beam conditioning** — `SLIT`, `BEAM_DUMP`, `KNIFE_EDGE` (a knife scan recovers the beam radius).
+- **Nonlinear-crystal family** — THG / SFG / DFG / OPO (energy conservation) + sinc² phase-matching, on
+  top of the existing SHG / SPDC.
+- **Configurable photodiode** — material (Si / InGaAs / Ge) responsivity, biased / amplified / APD / SPAD
+  modes, and quadrant / lateral-PSD / camera readouts (a quadrant recovers an injected beam offset).
+- **Fiber circulator** — a non-reciprocal N-port cyclic router (P1→P2→P3) with dB isolation leakage.
+- **Universal coatings** — paint ANY element with a controllable reflective `coating_reflectance`
+  (a plain window becomes a beam pickoff) and a neutral `element_transmittance` absorber; energy conserved.
+
+### Added — mesh realism
+- **Live multi-leaf iris** — the blades actually close (an animatable diaphragm) while the trace stays
+  byte-identical.
+- **Grating profiles** — ruled (blazed sawtooth), holographic (sinusoid), echelle (staircase); PPLN
+  poling-domain stripes + oven housing.
+- Larger-optic revolve-segment bump; colored-glass (Beer-Lambert) + soft dielectric-filter edges + M²
+  beam-quality physics overlays.
+
+### Notes
+- Conversion-efficiency prefactors (nonlinear crystals) and the Kolmogorov dn/dT slope are honest Tier-1
+  placeholders — relative / shape, not absolute. Every wavelength relation, ABCD matrix, Fresnel/erf
+  factor, and constant is oracle-checked; literature constants (Noll 1.0299, hc/e) are cited, not derived.
+- 8 new Cycles renders in `docs/img/`. Internal planning docs are no longer published.
+
 ## [0.9.0]
 
 ### Added — complete-system showcases
