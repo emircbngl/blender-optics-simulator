@@ -549,6 +549,63 @@ for _o in list(_c5.objects):
     eg.drop_example_object(_o)
 bpy.data.collections.remove(_c5)
 
+print("[A9 back-reflection / ghost beams: 4% Fresnel ghost, R+T=1, isolator clears back_reflection]")
+import optical_alignment_sim.diagnostics as _a9diag
+
+
+def _a9_clear():
+    for _o in list(sc.objects):
+        if getattr(getattr(_o, "optics", None), "is_optical", False):
+            bpy.data.objects.remove(_o, do_unlink=True)
+
+
+# surface_reflectance: 4% uncoated, R+T=1 (the ghost energy bookkeeping, physics_verify ok=true 12/12)
+check("A9 surface_reflectance(1,1.5) = 4%", abs(physics.surface_reflectance(1.0, 1.5) - 0.04) < 1e-12)
+check("A9 R+T=1 conservation", abs((physics.surface_reflectance(1.0, 1.52)
+      + (1.0 - physics.surface_reflectance(1.0, 1.52))) - 1.0) < 1e-15)
+_a9c = bpy.data.collections.new("A9TEST"); sc.collection.children.link(_a9c)
+# model_ghosts OFF (default): a window spawns NO ghost -> the trace is byte-identical to before A9
+_a9_clear(); sc.optics.model_ghosts = False
+eg.source("A9_S", (-150, 0, 0), _PV((1, 0, 0)), _a9c)
+eg.window("A9_W", (0, 0, 0), _PV((1, 0, 0)), _a9c)
+eg.detector("A9_D", (150, 0, 0), _PV((1, 0, 0)), _a9c)
+bpy.context.view_layer.update()
+_g_off = [s for s in scan._trace(sc) if s.get("kind") == "GHOST"]
+check("A9 model_ghosts OFF -> zero ghost children (byte-identical default)", len(_g_off) == 0)
+# model_ghosts ON: ~4% ghost off the window, transmit debited to (1-R), A4 budget balances
+sc.optics.model_ghosts = True
+bpy.context.view_layer.update()
+_son = scan._trace(sc)
+_gon = [s for s in _son if s.get("kind") == "GHOST"]
+_ton = next((s["power"] for s in _son if s.get("from") == "A9_W" and s.get("kind") == "TRANSMIT"), None)
+_Rw = physics.surface_reflectance(1.0, sc.objects["A9_W"].optics.refractive_index)
+check("A9 ghost power ~ R*incident (4%)", len(_gon) == 1 and abs(_gon[0]["power"] - _Rw) < 2e-3,
+      "ghost=%.5f R=%.5f" % (_gon[0]["power"] if _gon else -1, _Rw))
+check("A9 transmit debited to (1-R)*incident", _ton is not None and abs(_ton - (1.0 - _Rw)) < 2e-3,
+      "transmit=%.5f expect=%.5f" % (_ton or -1, 1.0 - _Rw))
+tracer.cached_segments = _son
+check("A9 energy budget balances with the ghost (0 energy_violations)",
+      len([i for i in _a9diag.run_diagnostics(sc) if i.get("kind") == "energy_violation"]) == 0)
+# back_reflection FIRES without an isolator (normal-incidence window feeds the ghost into the source)
+_a9_clear(); sc.optics.model_ghosts = True
+eg.source("A9_S", (-150, 0, 0), _PV((1, 0, 0)), _a9c)
+eg.window("A9_W", (0, 0, 0), _PV((1, 0, 0)), _a9c)
+eg.detector("A9_D", (150, 0, 0), _PV((1, 0, 0)), _a9c)
+bpy.context.view_layer.update()
+tracer.cached_segments = scan._trace(sc)
+_br0 = [i for i in _a9diag.run_diagnostics(sc) if i.get("kind") == "back_reflection"]
+check("A9 back_reflection FIRES without isolator", len(_br0) == 1 and _br0[0]["element"] == "A9_S")
+# ... and an ISOLATOR in the path CLEARS it (the teachable signal)
+eg.isolator("A9_ISO", (-80, 0, 0), _PV((1, 0, 0)), _a9c)
+bpy.context.view_layer.update()
+tracer.cached_segments = scan._trace(sc)
+_br1 = [i for i in _a9diag.run_diagnostics(sc) if i.get("kind") == "back_reflection"]
+check("A9 isolator CLEARS back_reflection (teachable signal)", len(_br1) == 0)
+_a9_clear(); sc.optics.model_ghosts = False
+for _o in list(_a9c.objects):
+    eg.drop_example_object(_o)
+bpy.data.collections.remove(_a9c)
+
 print("[microscope objective: f_obj = f_tube/M, focal power (oracle-VERIFIED)]")
 optics_api.build_example("microscope")
 _msegs = scan._trace(sc)

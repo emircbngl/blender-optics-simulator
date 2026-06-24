@@ -264,6 +264,19 @@ class OpticalElementProps(PropertyGroup):
     radius_curv: FloatProperty(name="Radius of curvature (mm)", default=0.0, min=0.0)  # |R|; f=R/2
     wavelength: FloatProperty(name="Wavelength (nm)", default=632.8, min=1.0)   # 0 nm would divide-by-zero the Gaussian q
     refractive_index: FloatProperty(name="Refractive index", default=1.5168)
+    # A9 ghost back-reflection: an AR-coated transmissive surface reflects ~0.25-0.5% instead of the
+    # ~4% of an uncoated air<->glass face. The ghost reflectance is taken from refractive_index when
+    # uncoated, or ar_reflectance when ar_coated. Only consulted when scene.optics.model_ghosts is ON.
+    ar_coated: BoolProperty(
+        name="AR coated", default=False,
+        description="Anti-reflection coated surface: the parasitic Fresnel ghost (A9) uses "
+                    "ar_reflectance (~0.25%) instead of the uncoated ((n-1)/(n+1))^2 (~4%). "
+                    "Only consulted when 'Model ghost reflections' is on")
+    ar_reflectance: FloatProperty(
+        name="AR reflectance (R)", default=0.0025, min=0.0, max=1.0,
+        description="Residual per-surface power reflectance of an AR coating (~0.0025 for a "
+                    "broadband AR-V, ~0.001 for a V-coat at the design line). The ghost power "
+                    "fraction when ar_coated is on")
 
     # --- physics-layer parameters (read by the polarization / wavelength engine) ---
     pol_type: EnumProperty(name="Source polarization",
@@ -542,6 +555,31 @@ class OpticalSceneProps(PropertyGroup):
     ok_ang_deg: FloatProperty(name="OK ang (deg)", default=0.2, min=0.0)
     warn_pos_mm: FloatProperty(name="Warn pos (mm)", default=2.0, min=0.0)
     warn_ang_deg: FloatProperty(name="Warn ang (deg)", default=1.0, min=0.0)
+
+    # --- A9 back-reflection / ghost-beam modeling (OPT-IN; default OFF) ---
+    # When OFF (the default), the tracer spawns NO ghost children and every existing scene
+    # traces BYTE-IDENTICAL to before. When ON, each transmissive face (lens/window/filter/
+    # beamsplitter) spawns a low-power Fresnel back-reflection (the "ghost"): power R*ray.power
+    # with R=((n1-n2)/(n1+n2))^2 (~4% uncoated, tiny AR-coated), and the transmitted power is
+    # debited to (1-R)*ray.power so energy is conserved (R+T=1). Ghosts are gated by ghost_floor
+    # + max_ghost_depth so they never recurse into ghosts-of-ghosts and blow the segment budget.
+    model_ghosts: BoolProperty(
+        name="Model ghost reflections",
+        description="Spawn the parasitic ~4% Fresnel back-reflection (a GHOST) at each transmissive "
+                    "surface, then detect bad ghosts (back_reflection into a source, ghost on a "
+                    "detector). OFF by default so existing scenes trace byte-identical; turn ON to "
+                    "study stray light / laser-feedback and verify an isolator clears it",
+        default=False)
+    ghost_floor: FloatProperty(
+        name="Ghost power floor", default=1.0e-3, min=0.0, max=1.0,
+        description="A ghost weaker than this fraction of the incident power is not spawned "
+                    "(protects the segment budget). ~1e-3 keeps the 4% first ghost, drops the "
+                    "0.16% ghost-of-ghost")
+    max_ghost_depth: IntProperty(
+        name="Max ghost depth", default=2, min=0, max=8,
+        description="How many times a ghost may itself spawn another ghost. 2 keeps the primary "
+                    "back-reflection and its first re-reflection; deeper ghosts are extinguished "
+                    "so the trace stays bounded")
 
 
 _classes = (OpticalPort, AdjustmentDOF, MechLink, OpticalElementProps, OpticalSceneProps)

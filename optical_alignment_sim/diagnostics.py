@@ -426,6 +426,116 @@ def _relay_spacing(scene, segs):
 
 
 # ---------------------------------------------------------------------------
+# A9 - back-reflection / ghost-beam detection
+# ---------------------------------------------------------------------------
+
+# A9: how anti-parallel a ghost must run to count as a back-reflection INTO a source -- the
+# dangerous laser-feedback case. cos(angle) <= this (i.e. >~155 deg from forward) is "heading
+# back the way it came". A ghost peeled off at ~normal incidence returns near-exactly anti-parallel
+# (cos ~ -1); a ghost off a tilted face fans away and is harmless, so this cleanly separates them.
+_BACKREFLECT_COS = -0.9          # ray.dir . forward <= -0.9  -> ~anti-parallel (within ~25 deg)
+_GHOST_KINDS = ('GHOST',)        # the seed kind the tracer tags a parasitic Fresnel reflection with
+
+
+def _ghost_lineage(segs):
+    """Return the set of segment indices that ARE a ghost or DESCEND from one (a ghost that then
+    transmits/reflects through more optics keeps its own kind on those legs, so we propagate the
+    'ghost' taint down the parent tree). Empty when no ghosts were spawned (model_ghosts OFF)."""
+    n = len(segs)
+    is_ghost = [False] * n
+    # a segment is a ghost seed if its own kind is GHOST
+    for i, s in enumerate(segs):
+        if s.get("kind") in _GHOST_KINDS:
+            is_ghost[i] = True
+    # propagate the taint to descendants: a child inherits ghost-ness from its parent. Segments are
+    # emitted parent-before-child (the tracer appends the hit segment, then stacks its children, which
+    # are traced later -> higher index), so a single forward pass settles the closure.
+    for i, s in enumerate(segs):
+        p = s.get("parent", -1)
+        if 0 <= p < n and is_ghost[p]:
+            is_ghost[i] = True
+    return {i for i in range(n) if is_ghost[i]}
+
+
+def _back_reflection_and_ghost_hits(scene, segs):
+    """A9: two stray-light faults that only exist once ghosts are modeled.
+
+      back_reflection  - a GHOST (or its descendant) runs ~anti-parallel back into a SOURCE: the
+                         classic, damaging laser-feedback case (a window/lens reflecting ~4% straight
+                         back into the laser cavity). A correctly-oriented ISOLATOR in the return path
+                         EXTINGUISHES the ghost (the tracer's ISOLATOR branch absorbs a backward ray),
+                         so this flag CLEARS -- the teachable signal.
+      ghost_on_detector - a GHOST (or its descendant) lands on a detector/terminal: a spurious spot /
+                         false reading the real beam never put there.
+
+    Read-only: classifies the existing segments by ghost lineage + geometry; mutates nothing.
+    """
+    issues = []
+    ghosts = _ghost_lineage(segs)
+    if not ghosts:
+        return issues                      # model_ghosts OFF (or no transmissive surface) -> nothing
+    by_name = {o.name: o for o in scene.objects
+               if getattr(o, "optics", None) and o.optics.is_optical}
+    sources = {n for n, o in by_name.items()
+               if o.optics.element_type in ('SOURCE', 'FIBER_COLLIMATOR') or o.optics.is_source}
+
+    # back_reflection: a source is NOT a hittable surface (no IN port), so a ghost heading back into
+    # the laser ESCAPES (to == None). It is a back-reflection when its line runs ~anti-parallel to a
+    # source's emission axis AND passes back through that source's exit aperture -- i.e. the parasitic
+    # Fresnel feedback returns into the laser. An ISOLATOR oriented to block the return ABSORBS the
+    # backward ghost at the isolator (the tracer's ISOLATOR branch drops a backward ray), so the ghost
+    # lineage terminates there (to == isolator, no escaping child) and NO anti-parallel escaping ghost
+    # exists -> the flag CLEARS. Removing the isolator lets the ghost escape back -> the flag FIRES.
+    flagged_src = set()
+    for i in sorted(ghosts):
+        s = segs[i]
+        if s.get("to") is not None:                 # only an ESCAPING ghost can run back into a source
+            continue
+        p1 = Vector(s["p1"])
+        d = Vector(s["p2"]) - p1
+        if d.length < 1e-9:
+            continue
+        d = d.normalized()
+        for sname in sources:
+            if sname in flagged_src:
+                continue
+            src = by_name[sname]
+            op = tracer._first_out(src.optics)
+            if op is None:
+                continue
+            fwd = geometry.world_normal(src, op.local_normal)
+            if d.dot(fwd) > _BACKREFLECT_COS:        # not running back the way the beam came -> harmless
+                continue
+            sp = geometry.world_port(src, op.local_position)
+            ca = op.clear_aperture or src.optics.clear_aperture or 12.0
+            # perpendicular distance from the source exit point to the ghost ray line; within the
+            # exit aperture -> the ghost re-enters the laser.
+            off = ((sp - p1) - (sp - p1).dot(d) * d).length
+            if off <= max(ca, 0.0) + 1.0 and (sp - p1).dot(d) > 0.0:
+                issues.append(_issue(
+                    "back_reflection", sname,
+                    "ghost back-reflection runs anti-parallel into source %s (parasitic Fresnel "
+                    "feedback, miss=%.2f mm <= aperture %.2f mm) -- insert/orient an isolator to block it"
+                    % (sname, off, ca),
+                    "BAD"))
+                flagged_src.add(sname)
+
+    # ghost_on_detector: a ghost-lineage segment landing on a detector/terminal -> a spurious spot.
+    terminals = {n for n, o in by_name.items() if o.optics.element_type in tracer.TERMINAL
+                 and o.optics.element_type != 'BEAM_DUMP'}
+    for i in sorted(ghosts):
+        s = segs[i]
+        to = s.get("to")
+        if to in terminals:
+            issues.append(_issue(
+                "ghost_on_detector", to,
+                "a ghost (parasitic reflection, power=%.4g) lands on detector %s -> a spurious spot / "
+                "false reading not from the real beam" % (s.get("power", 0.0), to),
+                "WARN"))
+    return issues
+
+
+# ---------------------------------------------------------------------------
 # public entry point
 # ---------------------------------------------------------------------------
 
@@ -445,4 +555,5 @@ def run_diagnostics(scene):
     out += _energy_budget(scene, segs)
     out += _mount_limit(scene, segs)
     out += _relay_spacing(scene, segs)
+    out += _back_reflection_and_ghost_hits(scene, segs)
     return out

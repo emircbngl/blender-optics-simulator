@@ -404,6 +404,19 @@ def fresnel_transmit_power(n1, n2, theta_i):
     return max(0.0, 1.0 - 0.5 * (Rs + Rp))
 
 
+def surface_reflectance(n1, n2):
+    """Normal-incidence single-surface power reflectance R = ((n1-n2)/(n1+n2))^2 -- the
+    parasitic Fresnel back-reflection at an n1->n2 transmissive face (A9 ghost beams).
+    ~0.04 (4%) at an uncoated air<->glass face (n2=1.5), ~0.0006 for an AR-V coating
+    (n2~1.05). This is just |fresnel_reflect|^2 at theta_i=0 (rs=rp=(n1-n2)/(n1+n2) there),
+    so it reuses the already-oracle-verified Fresnel kernel rather than hand-rolling it; the
+    transmitted power is debited to (1-R)*P so R+T=1 (physics_verify ok=true, 12/12: the
+    ghost+transmitted = incident power split). At AOI use fresnel_reflect's angular form;
+    this normal-incidence value is the floor."""
+    rs, _rp = fresnel_reflect(n1, n2, 0.0)
+    return abs(rs) ** 2
+
+
 def _s_hat(d_in, n):
     """Unit s-axis (perp to the plane of incidence, d x n); transverse_basis fallback at
     normal incidence where s/p degenerate. Shared by reflect-like field transforms."""
@@ -827,6 +840,13 @@ if __name__ == "__main__":
     rs0, rp0 = fresnel_reflect(1.0, 1.5, 0.0)
     if not (close(abs(rs0), 0.2, 1e-3) and close(abs(rp0), 0.2, 1e-3)):
         fails.append("fresnel normal |rs|=%.3f |rp|=%.3f" % (abs(rs0), abs(rp0)))
+    # A9 normal-incidence surface reflectance R=((n1-n2)/(n1+n2))^2 (the ghost back-reflection):
+    # 4% uncoated air<->glass, tiny for AR-ish; R+T=1 (physics_verify ok=true 12/12)
+    if not (close(surface_reflectance(1.0, 1.5), 0.04, 1e-9)
+            and close(surface_reflectance(1.0, 1.52), 0.042579994960947345, 1e-9)
+            and surface_reflectance(1.0, 1.05) < 1e-3
+            and close(1.0 - surface_reflectance(1.0, 1.5), 0.96, 1e-9)):
+        fails.append("surface_reflectance R=%.5f (want 0.04)" % surface_reflectance(1.0, 1.5))
     _rsb, rpB = fresnel_reflect(1.0, 1.5, math.atan(1.5))
     if abs(rpB) > 1e-3:
         fails.append("fresnel Brewster |rp|=%.4f" % abs(rpB))

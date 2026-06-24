@@ -321,6 +321,37 @@ def build_beam_router(context):
     return "OpticsExample_BeamRouter"
 
 
+def build_back_reflection(context):
+    """A back-reflection / ghost-beam bench (A9). A laser passes through an UNCOATED window (n~1.5):
+    ~96% transmits to the main detector, but ~4% peels back off the front face as a parasitic Fresnel
+    GHOST. The window faces the laser at NORMAL incidence, so the ghost runs ~anti-parallel straight
+    back toward the cavity -- the dangerous laser-feedback case. An OPTICAL ISOLATOR sits between the
+    laser and the window and EXTINGUISHES that backward ghost (the tracer's ISOLATOR branch drops a
+    backward ray), so back_reflection is CLEARED -- the teachable signal. Delete the isolator (or flip
+    its forward axis) and the ghost feeds straight back into the laser -> back_reflection FIRES. A
+    second, lightly-TILTED pickoff window sends its own ~4% ghost off-axis onto a small catcher (a
+    spurious spot -> ghost_on_detector). Requires scene.optics.model_ghosts (set here) -- with it OFF
+    the trace is byte-identical (no ghost children). Headline A9 demo: you SEE the dim ~4% ghosts."""
+    coll = G.example_collection("OpticsExample_BackReflection")
+    X = Vector((1, 0, 0))
+    context.scene.optics.model_ghosts = True              # A9: opt IN to ghost modeling for this bench
+    G.source("GHOST_Laser", (-200, 0, 0), X, coll, wavelength=632.8)
+    # an isolator guarding the laser: the forward beam passes, the back-reflected ghost is extinguished
+    G.isolator("GHOST_Isolator", (-120, 0, 0), X, coll)
+    # an UNCOATED window at NORMAL incidence (~4% ghost straight back -> the back_reflection hazard)
+    win = G.window("GHOST_Window", (0, 0, 0), X, coll, radius=14.0)
+    win.optics.ar_coated = False                          # the parasitic ~4% Fresnel ghost source
+    G.detector("GHOST_Screen", (200, 0, 0), X, coll, size=60.0)        # the main (transmitted) beam
+    # a second, lightly-tilted pickoff window downstream: its ghost fans off-axis onto a side catcher
+    tilt = math.radians(18.0)
+    pick_axis = Vector((math.cos(tilt), math.sin(tilt), 0.0))
+    pw = G.window("GHOST_Pickoff", (90, 0, 0), pick_axis, coll, radius=14.0)
+    pw.optics.ar_coated = False
+    # the tilted pickoff ghost deflects ~36 deg down/back; a small catcher sits in that path
+    G.detector("GHOST_Catcher", (10, -60, 0), Vector((-80, -60, 0)).normalized(), coll, size=44.0)
+    return "OpticsExample_BackReflection"
+
+
 def build_beam_profiler(context):
     """A knife-edge beam profiler (C5): a lens focuses the collimated beam to a small waist, a KNIFE_EDGE on a
     stage cuts into that focused spot, and a power meter behind it reads the transmitted power. Sweeping the
@@ -359,6 +390,7 @@ EXAMPLES = {
     'prism':        ("Dispersing Prism Spectrometer (equilateral, fans the spectrum)", build_prism_spectrometer),
     'beam_router':  ("Beam Router (penta 90 deg fold + rhomboid lateral offset)", build_beam_router),
     'beam_profiler': ("Knife-Edge Beam Profiler (slit + knife erf scan + beam dump)", build_beam_profiler),
+    'back_reflection': ("Back-Reflection / Ghost Beam (uncoated window 4% ghost + isolator)", build_back_reflection),
 }
 
 
@@ -378,6 +410,12 @@ def _reset_examples():
     try:                                              # drop any realistic-render studio rig + swap
         from . import render
         render.clear_render_style(bpy.context.scene)
+    except Exception:
+        pass
+    # A9: ghost modeling is an opt-in per-bench setting; reset it OFF so every example starts from the
+    # byte-identical baseline. The back_reflection example turns it back ON for its own bench.
+    try:
+        bpy.context.scene.optics.model_ghosts = False
     except Exception:
         pass
     tracer.cached_segments = []

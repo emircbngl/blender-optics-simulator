@@ -36,11 +36,11 @@ TERMINAL = ('DETECTOR', 'PHOTODIODE', 'POWER_METER', 'WAVEFRONT_SENSOR', 'BEAM_D
 
 class _Ray:
     __slots__ = ('p1', 'dir', 'power', 'depth', 'from_obj', 'wl', 'kind', 'parent',
-                 'jones', 'opl', 'q', 'src_id', 'coh', 'evec', 'aberr', 'm2')
+                 'jones', 'opl', 'q', 'src_id', 'coh', 'evec', 'aberr', 'm2', 'ghost_depth')
 
     def __init__(self, p1, d, power, depth, from_obj, wl, kind, parent,
                  jones=None, opl=0.0, q=None, src_id=-1, coh=1.0e12, evec=None, aberr=None,
-                 m2=1.0):
+                 m2=1.0, ghost_depth=0):
         self.p1 = p1
         self.dir = d.normalized()
         self.power = power
@@ -57,6 +57,7 @@ class _Ray:
         self.evec = evec            # 3-D complex field (vectorial pol), transverse to dir
         self.aberr = aberr          # Zernike wavefront-error coeffs (waves) or None (=flat)
         self.m2 = m2                # beam-quality factor (B1): physical radius = sqrt(m2)*beam_radius(q)
+        self.ghost_depth = ghost_depth  # A9: how many parasitic back-reflections deep this ray is
 
 
 def _find_port(props, role):
@@ -233,7 +234,8 @@ def _child(ray, E, H, d, power, kind, idx, t, jones=None, q=None, evec=None, abe
     return _Ray(H, d, power, ray.depth + 1, E, (wl if wl is not None else ray.wl), kind, idx,
                 jones=nj, opl=ray.opl + t, q=q,
                 src_id=ray.src_id, coh=ray.coh, evec=nev,
-                aberr=(aberr if aberr is not None else ray.aberr), m2=child_m2)
+                aberr=(aberr if aberr is not None else ray.aberr), m2=child_m2,
+                ghost_depth=ray.ghost_depth)
 
 
 def _clip_T(ray, E, t):
@@ -245,6 +247,55 @@ def _clip_T(ray, E, t):
     if w <= 1e-9 or a <= 0.0:
         return 1.0
     return 1.0 - math.exp(-2.0 * a * a / (w * w))
+
+
+def _ghost_reflectance(E, ray, sn):
+    """A9: the per-surface power reflectance R of a transmissive face -- the fraction that
+    becomes the parasitic Fresnel ghost (back-reflection). AR-coated surfaces use the element's
+    small ar_reflectance (~0.25%); uncoated air<->glass uses the verified surface_reflectance at
+    the LOCAL angle of incidence (fresnel_reflect's unpolarized-average power, with the
+    normal-incidence ((n1-n2)/(n1+n2))^2 ~4% as the floor). n2 comes from the element's
+    refractive_index (Sellmeier glasses default ~1.5)."""
+    op = E.optics
+    if getattr(op, 'ar_coated', False):
+        return min(max(getattr(op, 'ar_reflectance', 0.0025), 0.0), 1.0)
+    n2 = max(getattr(op, 'refractive_index', 1.5168), 1.0)
+    aoi = math.acos(min(1.0, abs(ray.dir.dot(sn))))
+    if aoi < 1e-6:
+        return physics.surface_reflectance(1.0, n2)         # normal-incidence floor
+    # off-axis: the unpolarized-average Fresnel power reflection (>= the normal-incidence floor)
+    return 1.0 - physics.fresnel_transmit_power(1.0, n2, aoi)
+
+
+def _spawn_ghost(stack, gcfg, ray, E, H, sn, idx, t):
+    """A9: spawn the low-power GHOST (parasitic Fresnel back-reflection) at a transmissive face, and
+    return R so the caller can DEBIT the transmitted power to (1-R)*power (energy conserved: R+T=1,
+    physics_verify ok=true 12/12). Returns 0.0 -- a no-op -- unless ghost modeling is ON, so a scene
+    that didn't ask for ghosts traces byte-identical. The ghost is gated by:
+      * the scene toggle model_ghosts (gcfg[0]); OFF -> no ghost, R=0, transmitted power unchanged.
+      * ghost-depth < max_ghost_depth (gcfg[2]): a ghost may re-reflect only so many times (no
+        ghosts-of-ghosts-forever -> the segment budget is protected).
+      * ghost power R*power >= ghost_floor (gcfg[1]): a sub-floor ghost is not worth a segment.
+    The ghost direction is the specular reflection of the incident ray off the surface normal sn
+    (geometry.reflect), and it carries ghost_depth+1 so its own ghost is gated one level deeper. It
+    is a normal REFLECT child, so if it travels backward through an ISOLATOR the existing ISOLATOR
+    branch extinguishes it -- which is exactly what clears the back_reflection diagnostic."""
+    model_ghosts, ghost_floor, max_ghost_depth = gcfg
+    if not model_ghosts:
+        return 0.0
+    R = _ghost_reflectance(E, ray, sn)
+    if R <= 0.0:
+        return 0.0
+    # debit the transmitted power regardless of whether the ghost segment itself survives the
+    # floor/depth gate -- the power physically leaves the transmitted beam either way (it just
+    # isn't worth tracing as its own segment below the floor). This keeps R+T=1 exactly.
+    if ray.ghost_depth < max_ghost_depth and R * ray.power >= ghost_floor:
+        nd = geometry.reflect(ray.dir, sn)
+        g = _child(ray, E, H, nd, ray.power * R, 'GHOST', idx, t,
+                   jones=physics.scale(ray.jones, math.sqrt(R)) if ray.jones else None)
+        g.ghost_depth = ray.ghost_depth + 1
+        stack.append(g)
+    return R
 
 
 def _w_at(ray, t):
@@ -490,6 +541,13 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
     elems = [o for o in scene.objects
              if getattr(o, "optics", None) and o.optics.is_optical]
     order = _order_list(scene)
+
+    # A9 ghost back-reflection config (OPT-IN). Default OFF -> gcfg[0] is False -> _spawn_ghost is a
+    # no-op everywhere, so every existing scene traces BYTE-IDENTICAL. Only turned on explicitly.
+    sopt = getattr(scene, 'optics', None)
+    gcfg = (bool(getattr(sopt, 'model_ghosts', False)),
+            float(getattr(sopt, 'ghost_floor', 1.0e-3)),
+            int(getattr(sopt, 'max_ghost_depth', 2))) if sopt else (False, 1.0e-3, 2)
 
     stack = []
     sid = 0
@@ -769,8 +827,13 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             # transmitted POWER near the edge changes with angle.
             aoi = math.acos(min(1.0, abs(ray.dir.dot(sn))))
             T = _transmission(op, ray.wl, aoi)
-            stack.append(_child(ray, E, H, ray.dir, ray.power * T, 'TRANSMIT', idx, t,
-                                jones=physics.scale(J, math.sqrt(max(T, 0.0))) if J else None))
+            # A9: a Fresnel ghost off the filter's front face; the transmitted power is debited by
+            # (1-Rg) BEFORE the spectral T (the ghost is the surface reflection, independent of the
+            # coating's spectral transmission). model_ghosts OFF -> Rg=0 -> unchanged.
+            Rg = _spawn_ghost(stack, gcfg, ray, E, H, sn, idx, t)
+            pT = ray.power * (1.0 - Rg) * T
+            stack.append(_child(ray, E, H, ray.dir, pT, 'TRANSMIT', idx, t,
+                                jones=physics.scale(J, math.sqrt(max((1.0 - Rg) * T, 0.0))) if J else None))
         elif et == 'PINHOLE':
             Tc = _clip_T(ray, E, t)
             stack.append(_child(ray, E, H, ray.dir, ray.power * Tc, 'TRANSMIT', idx, t,
@@ -991,8 +1054,11 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 T_out = physics.fresnel_transmit_power(1.0, n_g, math.asin(min(1.0, n_g * math.sin(theta_e))))
                 stack.append(_prism_exit_ray(glass_ray, E, He, Vector(d_out), opl_e,
                                              ray.power * T_in * T_out, idx))
-        else:  # LENS / PASSTHROUGH
-            stack.append(_child(ray, E, H, ray.dir, ray.power, 'TRANSMIT', idx, t))
+        else:  # LENS / PASSTHROUGH (the canonical A9 transmissive face: an uncoated window / lens)
+            # A9: a low-power Fresnel ghost peels back off the surface; the transmitted beam is
+            # debited to (1-R)*power so R+T=1. With model_ghosts OFF, Rg=0 -> power unchanged.
+            Rg = _spawn_ghost(stack, gcfg, ray, E, H, sn, idx, t)
+            stack.append(_child(ray, E, H, ray.dir, ray.power * (1.0 - Rg), 'TRANSMIT', idx, t))
 
     return segments
 

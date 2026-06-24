@@ -834,6 +834,23 @@ def lens(name, loc, axis, coll=None, focal=100.0, radius=14.0, lens_type='AUTO')
     return o
 
 
+def window(name, loc, axis, coll=None, radius=14.0, thickness=4.0, refractive_index=1.5168,
+           ar_coated=False):
+    """A flat optical WINDOW: a thin glass plate (no focal power) that transmits the beam straight
+    through. Optically a PASSTHROUGH carrying a refractive_index -- so when scene ghost-modeling is on
+    (A9) its uncoated front face peels off the ~4% Fresnel back-reflection (the ghost). ``ar_coated``
+    swaps that for the element's small AR residual. Ports IN/OUT on the optical axis (+/- thickness/2)."""
+    o = _disc(name, radius, thickness, coll)
+    o.data.materials.clear()
+    o.data.materials.append(MATS["lens"]())              # clear glass slab
+    _tag(o, 'PASSTHROUGH', clear_aperture=radius, refractive_index=refractive_index,
+         ar_coated=ar_coated)
+    _add_port(o, "IN", 'IN', (0, 0, -thickness * 0.5), (0, 0, -1), radius)
+    _add_port(o, "OUT", 'OUT', (0, 0, thickness * 0.5), (0, 0, 1), radius)
+    _set_matrix(o, Vector(loc), _z_to(axis))
+    return o
+
+
 def waveplate(name, loc, axis, coll=None, kind='HWP', fast_axis=0.0, design_wl=None, waveplate_order='ZERO'):
     ret = 90.0 if str(kind).upper() == 'QWP' else 180.0      # QWP=90deg, HWP=180deg retardance
     # the ORDER only sets the mesh thickness cue (zero-order thin, multi/achromatic thicker); the ports
