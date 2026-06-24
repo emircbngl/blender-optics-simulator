@@ -886,6 +886,89 @@ def aperture(name, loc, axis, coll=None, radius=14.0):
     return o
 
 
+# Re-entrancy guard for the live-iris regen: regenerate_iris() temporarily creates+deletes a throwaway
+# iris object, which can fire depsgraph/property updates; this flag makes any nested regen request a no-op
+# so a single aperture change never recurses (the update callback also reads it).
+_REGEN_BUSY = False
+
+
+def regenerate_iris(obj):
+    """Rebuild an iris/aperture element's BLADE MESH in place to its current clear_aperture (the opening
+    r_open), so the polygonal multi-leaf opening closes/opens live as the aperture is animated. The optics
+    are untouched: the element's ports + clear_aperture (the values the tracer reads) are left exactly as
+    they are -- only the visible mesh datablock + its material slots are swapped to the new opening.
+
+    Reuses the D2 `_iris`/`_iris_blade` builders (no second blade builder): a fresh iris mesh is built at the
+    new r_open into a throwaway object, its mesh + material slots are transplanted onto `obj`, and the old
+    mesh (and the temp object) are freed. `obj.optics.iris_blades` (the cosmetic 10-12 leaf count) is honored.
+
+    Safe to call from a property update callback: guarded against re-entrancy, no-ops if the context has no
+    usable view_layer, and uses a private temp collection so it never perturbs the user's scene/selection
+    permanently. Returns True if it regenerated, False if it safely no-opped."""
+    global _REGEN_BUSY
+    if _REGEN_BUSY:
+        return False
+    op = getattr(obj, "optics", None)
+    if obj is None or obj.type != 'MESH' or op is None or not op.is_optical:
+        return False
+    if op.element_type != 'APERTURE':            # the realistic iris IS the APERTURE element (no separate IRIS type)
+        return False
+    # update callbacks run in a restricted context: the bpy.ops _iris uses need a view_layer to resolve an
+    # active object. If we don't have one, bail cleanly (the next full build will produce the correct mesh).
+    if getattr(bpy.context, "view_layer", None) is None:
+        return False
+
+    r_open = max(0.1, float(op.clear_aperture))   # the opening radius == the aperture the tracer reads
+    blades = int(getattr(op, "iris_blades", 12) or 12)
+    _REGEN_BUSY = True
+    tmp_coll = None
+    tmp = None
+    try:
+        # remember selection/active so the regen leaves the user's context as it found it
+        prev_active = bpy.context.view_layer.objects.active
+        prev_sel = [o for o in bpy.context.view_layer.objects if o.select_get()]
+        tmp_coll = bpy.data.collections.new("OpticsIrisRegen_tmp")
+        bpy.context.scene.collection.children.link(tmp_coll)
+        # build a fresh iris mesh at the new opening, reusing the exact D2 builder (same depth as aperture())
+        tmp = _iris(obj.name + "__regen", r_open, tmp_coll, depth=3.0, blades=blades)
+        tmp.data.materials[0] = MATS["ap"]()      # match aperture(): slot 0 housing (accents 1-3 kept by render)
+
+        # transplant the fresh mesh + material slots onto the live object, then free the old mesh datablock
+        old_mesh = obj.data
+        new_mesh = tmp.data
+        old_name = old_mesh.name if old_mesh is not None else new_mesh.name
+        obj.data = new_mesh                        # swap geometry (ports/optics/matrix_world all untouched)
+        tmp.data = None                            # detach so deleting tmp doesn't free the now-shared mesh
+        if old_mesh is not None and old_mesh.users == 0:
+            bpy.data.meshes.remove(old_mesh)
+        new_mesh.name = old_name                   # reclaim the stable datablock name (old freed above)
+        # keep the IN/OUT ports' clear_aperture in lock-step with the element opening so the optics fully track
+        # a live/animated radius change (the tracer's element-plane lookup uses the port aperture). At build
+        # time these already equal r_open, so this is a no-op there -> the example scenes stay byte-identical.
+        for p in op.ports:
+            if p.role in ('IN', 'OUT') and abs(p.clear_aperture - r_open) > 1e-9:
+                p.clear_aperture = r_open
+        return True
+    except Exception:
+        return False
+    finally:
+        # tear down the throwaway object + collection and restore selection/active
+        try:
+            if tmp is not None and tmp.name in bpy.data.objects:
+                bpy.data.objects.remove(tmp, do_unlink=True)
+            if tmp_coll is not None and tmp_coll.name in bpy.data.collections:
+                bpy.data.collections.remove(tmp_coll)
+        except Exception:
+            pass
+        try:
+            for o in bpy.context.view_layer.objects:
+                o.select_set(o in prev_sel)
+            bpy.context.view_layer.objects.active = prev_active
+        except Exception:
+            pass
+        _REGEN_BUSY = False
+
+
 def crystal(name, loc, beam_dir, coll=None, size=14.0, nl_process='NONE'):
     """A nonlinear (e.g. BBO) crystal block. With nl_process SHG/SPDC it is a real TRANSMISSIVE chi(2)
     element (IN/OUT on the pump axis) and the tracer emits the converted beam(s): SHG at lambda/2, SPDC

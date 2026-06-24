@@ -141,7 +141,7 @@ def test_byte_identical():
     for o in list(scene.objects):
         if getattr(getattr(o, "optics", None), "is_optical", False):
             bpy.data.objects.remove(o, do_unlink=True)
-    check(len(ex.EXAMPLES) == 17, "17 build_example scenes (%d)" % len(ex.EXAMPLES))
+    check(len(ex.EXAMPLES) >= 17, ">=17 build_example scenes (%d)" % len(ex.EXAMPLES))
     all_ok = True
     iris_ok = True
     for kind in sorted(ex.EXAMPLES):

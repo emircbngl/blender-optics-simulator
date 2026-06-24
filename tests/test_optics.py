@@ -241,6 +241,68 @@ for _o in list(_gc.objects):
     eg.drop_example_object(_o)
 bpy.data.collections.remove(_gc)
 
+print("[live iris: clear_aperture update= regenerates the blade mesh to the new opening (animatable)]")
+# Setting an iris/APERTURE element's clear_aperture fires elements_generic.regenerate_iris(), which rebuilds
+# the multi-leaf blade mesh to the new opening in place -- the blades CLOSE/OPEN live. It is mesh-only: ports
+# + clear_aperture (what the tracer reads) track the radius but the rebuild is optically inert (a fresh build
+# at the new radius is byte-identical), so the 18 example scenes are unaffected.
+_lc = bpy.data.collections.new("LIVEIRIS"); sc.collection.children.link(_lc)
+
+
+def _iris_open_r(o):         # polygon-corner radius of the matte-black leaves = the opening the leaves form
+    return min((math.hypot(v.co.x, v.co.y) for v in o.data.vertices), default=0.0)
+
+
+_li = eg.aperture("LI_iris", (0, 0, 0), (0, 0, 1), coll=_lc, radius=14.0)
+_li_mesh0 = _li.data
+_li_open0 = _iris_open_r(_li)
+_li.optics.clear_aperture = 8.0          # stop down -> the leaves close
+bpy.context.view_layer.update()
+_li_open_close = _iris_open_r(_li)
+_li_mesh_close = _li.data
+_li.optics.clear_aperture = 20.0         # open up -> the leaves open
+bpy.context.view_layer.update()
+_li_open_wide = _iris_open_r(_li)
+check("live iris: blade opening tracks the aperture (8<14<20)",
+      _li_open_close < _li_open0 < _li_open_wide,
+      "%.2f / %.2f / %.2f" % (_li_open_close, _li_open0, _li_open_wide))
+check("live iris: blade opening sits at the set r_open (~+0.75 mm leaf-corner)",
+      all(abs(_o - _r) < max(1.2, _r * 0.06)
+          for _o, _r in ((_li_open_close, 8.0), (_li_open_wide, 20.0))),
+      "%.2f@8 %.2f@20" % (_li_open_close, _li_open_wide))
+check("live iris: element clear_aperture (the tracer's clip radius) tracks the set radius",
+      abs(_li.optics.clear_aperture - 20.0) < 1e-6, "%.3f" % _li.optics.clear_aperture)
+check("live iris: IN/OUT ports' clear_aperture track the radius too (optics follows, not the mesh)",
+      all(abs(_p.clear_aperture - 20.0) < 1e-6 for _p in _li.optics.ports),
+      str([round(_p.clear_aperture, 3) for _p in _li.optics.ports]))
+check("live iris: the blade mesh was actually rebuilt+swapped (not relabeled)",
+      _li.data is not _li_mesh0 and _li_mesh_close is not _li.data)
+# optically inert: dialing back to the build radius restores the exact build-time ports (digest stable)
+_li_ports_wide = _ports_str = sorted(
+    (p.role, round(p.clear_aperture, 6), tuple(round(c, 6) for c in p.local_position),
+     tuple(round(c, 6) for c in p.local_normal)) for p in _li.optics.ports)
+_li.optics.clear_aperture = 14.0
+bpy.context.view_layer.update()
+_li_ports_back = sorted(
+    (p.role, round(p.clear_aperture, 6), tuple(round(c, 6) for c in p.local_position),
+     tuple(round(c, 6) for c in p.local_normal)) for p in _li.optics.ports)
+_li_fresh = eg.aperture("LI_fresh", (200, 0, 0), (0, 0, 1), coll=_lc, radius=14.0)
+_li_ports_fresh = sorted(
+    (p.role, round(p.clear_aperture, 6), tuple(round(c, 6) for c in p.local_position),
+     tuple(round(c, 6) for c in p.local_normal)) for p in _li_fresh.optics.ports)
+check("live iris: dialing 14->8->20->14 restores the fresh-build ports exactly (mesh regen is optically inert)",
+      _li_ports_back == _li_ports_fresh, "%s vs %s" % (_li_ports_back, _li_ports_fresh))
+# the callback is a no-op on non-iris elements: a lens keeps its single mesh when clear_aperture changes
+_li_lens = eg.lens("LI_lens", (100, 0, 0), (0, 0, 1), coll=_lc, focal=50)
+_li_lens_mesh = _li_lens.data
+_li_lens.optics.clear_aperture = 5.0
+bpy.context.view_layer.update()
+check("live iris: clear_aperture update is a no-op on non-iris elements (lens mesh untouched)",
+      _li_lens.data is _li_lens_mesh)
+for _o in list(_lc.objects):
+    eg.drop_example_object(_o)
+bpy.data.collections.remove(_lc)
+
 print("[element variants: lens_type / bs_form / coating]")
 _vc = bpy.data.collections.new("VARTEST"); sc.collection.children.link(_vc)
 

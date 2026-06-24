@@ -162,6 +162,25 @@ def _monitor_update(self, context):
         pass
 
 
+def _iris_regen_update(self, context):
+    """The clear aperture changed on an iris/aperture element -> regenerate its multi-leaf BLADE MESH so the
+    polygonal opening closes/opens to the new radius, live in the viewport and animatable. The optics are
+    untouched: the element's ports + clear_aperture (the values the tracer reads) are NOT changed here -- only
+    the visible mesh is rebuilt. So a radius change is byte-identical to a fresh build at that radius, and the
+    18 example scenes stay byte-identical (their iris radii never change at build time -> the mesh just rebuilds
+    to the same opening). elements_generic.regenerate_iris() is itself re-entrancy- and restricted-context-safe
+    (no-ops for non-iris elements, during its own temp build, or when no view_layer is available), so this is
+    safe to fire from any context including animation playback and example builds."""
+    try:
+        from . import elements_generic
+        obj = self.id_data                           # the Object owning this clear_aperture (not necessarily active)
+        if obj is not None and getattr(obj, "optics", None) and obj.optics.is_optical \
+                and obj.optics.element_type == 'APERTURE':
+            elements_generic.regenerate_iris(obj)
+    except Exception:
+        pass
+
+
 # --- property groups --------------------------------------------------------
 
 class OpticalPort(PropertyGroup):
@@ -253,7 +272,11 @@ class OpticalElementProps(PropertyGroup):
                ('PELLICLE', "Pellicle", "A thin membrane (negligible ghost / dispersion)")])
     split_ratio: FloatProperty(name="Reflect fraction", default=0.5, min=0.0, max=1.0)
     prism_angle: FloatProperty(name="Prism angle (deg)", default=45.0)
-    clear_aperture: FloatProperty(name="Clear aperture (mm)", default=12.7, min=0.0)
+    # The clear aperture (the radius the tracer clips the beam to). On an iris/APERTURE element this is also the
+    # LIVE opening: the update callback regenerates the multi-leaf blade mesh so the polygonal opening closes/
+    # opens to the new radius (animatable). For every other element type the callback is an immediate no-op, so
+    # only the mesh of an iris ever moves -- the optics (ports + this value) are read identically by the tracer.
+    clear_aperture: FloatProperty(name="Clear aperture (mm)", default=12.7, min=0.0, update=_iris_regen_update)
     reflectivity: FloatProperty(name="Reflectivity", default=1.0, min=0.0, max=1.0)
     # mirror CURVATURE (variant): a curved mirror focuses on reflection with f = R/2 (VERIFIED:
     # spherical-mirror-focal-length, physics_verify 4/4). FLAT = no focal power (the historic behavior).
