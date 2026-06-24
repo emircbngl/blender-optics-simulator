@@ -334,6 +334,14 @@ class OpticalElementProps(PropertyGroup):
                     "surface onto the reflected beam (Tier-1 geometric surface-figure -> Zernike OPD, "
                     "waves), so a downstream wavefront sensor reads the surface figure. "
                     "OFF (default) -> no imprint, byte-identical; a flat surface imprints ~0")
+    # ZONAL "sensor render" sampling level: the px grid resolution across the footprint diameter used by
+    # the on-demand DENSE wavefront map (optics.wfs_zonal_render). Higher px -> finer Nyquist (= px/(2*2w)
+    # lp/mm), so high-spatial-frequency figure the 15-mode modal map cannot carry is resolved. Diagnostic
+    # only -> never touches the trace -> byte-identical.
+    imprint_zonal_px: IntProperty(
+        name="Zonal sampling (px)", default=160, min=16, max=512,
+        description="Dense sampling level for the zonal wavefront 'sensor render' (grid across the beam "
+                    "footprint). Higher -> finer detail (Nyquist = px / (2*footprint)). On-demand only")
 
     # --- physics-layer parameters (read by the polarization / wavelength engine) ---
     pol_type: EnumProperty(name="Source polarization",

@@ -412,6 +412,40 @@ def _plane_fit(u, v, z):
     return aug[0][3], aug[1][3], aug[2][3]
 
 
+def _build_world_bvhtree(E):
+    """BVHTree of element E's WORLD-space evaluated mesh (modifiers applied), or None if the mesh is
+    missing / empty / unbuildable. Extracted so the MODAL imprint (_surface_imprint_coeffs) and the DENSE
+    ZONAL field (surface_imprint_field) probe the byte-identical surface through one code path."""
+    try:
+        import bmesh
+        from mathutils.bvhtree import BVHTree
+    except Exception:
+        return None
+    bm = bmesh.new()
+    try:
+        try:
+            deps = bpy.context.evaluated_depsgraph_get()
+            bm.from_object(E, deps)                            # evaluated (modifiers applied)
+        except Exception:
+            if E.data is None:
+                bm.free()
+                return None
+            bm.from_mesh(E.data)
+        if not bm.faces:
+            bm.free()
+            return None
+        bm.transform(E.matrix_world)
+        tree = BVHTree.FromBMesh(bm)
+    except Exception:
+        try:
+            bm.free()
+        except Exception:
+            pass
+        return None
+    bm.free()
+    return tree
+
+
 def _surface_imprint_coeffs(E, ray, H, sn, t):
     """Zernike wavefront-error coeffs (WAVES, length-15) imprinted on REFLECTION by element E's actual
     mesh surface over the incident Gaussian footprint, or None to skip (no imprint -> byte-identical).
@@ -444,34 +478,9 @@ def _surface_imprint_coeffs(E, ray, H, sn, t):
     w = _w_at(ray, t)
     if w <= 1e-9:
         return None                                           # no Gaussian footprint -> nothing to sample
-    try:
-        import bmesh
-        from mathutils.bvhtree import BVHTree
-    except Exception:
+    tree = _build_world_bvhtree(E)                            # world-space evaluated mesh (shared helper)
+    if tree is None:
         return None
-    # build a BVHTree of E's world-space evaluated mesh (mirror the optomech pattern)
-    bm = bmesh.new()
-    try:
-        try:
-            deps = bpy.context.evaluated_depsgraph_get()
-            bm.from_object(E, deps)                            # evaluated (modifiers applied)
-        except Exception:
-            if E.data is None:
-                bm.free()
-                return None
-            bm.from_mesh(E.data)
-        if not bm.faces:
-            bm.free()
-            return None
-        bm.transform(E.matrix_world)
-        tree = BVHTree.FromBMesh(bm)
-    except Exception:
-        try:
-            bm.free()
-        except Exception:
-            pass
-        return None
-    bm.free()
 
     d = ray.dir.normalized()
     e1v, e2v = physics.transverse_basis((d.x, d.y, d.z))      # disc basis PERP to the beam axis
@@ -524,6 +533,122 @@ def _surface_imprint_coeffs(E, ray, H, sn, t):
     if not any(abs(c) > 1e-12 for c in coeffs):
         return None                                           # flat surface -> ~0 -> skip (byte-identical)
     return coeffs
+
+
+def surface_imprint_field(E, H, d, w, wl_nm, px=128, detrend=True):
+    """DENSE ZONAL surface-figure -> wavefront map (NO modal fit). Sample reflective element E's ACTUAL
+    world-space mesh over the incident Gaussian footprint on a px*px Cartesian grid and return the RAW
+    round-trip optical-path field W(x,y) in WAVES -- the SAME verified physics as the modal imprint
+    (W = 2*(depth - reference plane); reflection traverses the surface-depth deviation twice, the cos(AOI)
+    folded into the parallel-to-beam raycast distance), but rendered ZONALLY instead of projected onto the
+    15 Noll Zernikes. The modal path (_surface_imprint_coeffs) is a 15-mode LOW-PASS of exactly this field;
+    the zonal field preserves the surface's mid/high-spatial-frequency figure up to the grid's Nyquist
+    limit, which a 15-mode fit cannot represent.
+
+    ON-DEMAND ONLY. This is never called inside trace_scene, so every scene still traces byte-identical;
+    it is the engine behind the user-facing "sensor render" (ao.zonal_wavefront_at / the WFS operator).
+    Independent of imprint_surface (that flag gates the TRACE-path modal aberr; the zonal map is an
+    explicit diagnostic the user requests on any reflective mesh).
+
+    Args:
+      E        reflective element object (its world-space mesh IS the optical surface)
+      H        chief-ray hit point on E (world; the footprint centre)
+      d        incident ray direction (world; normalized internally)
+      w        footprint radius (mm; the 1/e^2 Gaussian radius at the hit)
+      wl_nm    wavelength (nm) for the mm -> waves conversion
+      px       grid resolution across the footprint DIAMETER (the "chosen sampling level"); higher = finer
+      detrend  remove the best-fit reference plane (piston + x/y tilt) so a flat/tilted mirror reads ~0
+
+    Returns a dict, or None on failure (no mesh / no footprint / <6 hits):
+      field            px*px numpy array of W in waves; NaN OUTSIDE the disc or where a probe MISSES
+      mask             px*px bool, True where field is valid
+      rms_waves        RMS of W over valid samples (the honest zonal RMS -- full spatial content)
+      pv_waves         peak-to-valley of W over valid samples
+      hit_frac         valid samples / in-disc grid points (sampling completeness; <1 -> mesh gaps)
+      n_hit            number of valid samples
+      px               the grid resolution used
+      footprint_mm     footprint DIAMETER (2*w) in mm
+      nyquist_lp_mm    grid Nyquist spatial frequency (px-1)/(2*footprint_mm) line-pairs/mm. This is the
+                       SAMPLING cap; the EFFECTIVE resolvable resolution is min(this, the mesh facet
+                       density), so a coarsely-tessellated surface can be mesh-limited below this.
+    """
+    if w is None or w <= 1e-9 or wl_nm is None or wl_nm <= 0.0 or px < 4:
+        return None
+    try:
+        import numpy as np
+    except Exception:
+        return None
+    tree = _build_world_bvhtree(E)
+    if tree is None:
+        return None
+    d = Vector(d).normalized()
+    e1v, e2v = physics.transverse_basis((d.x, d.y, d.z))      # disc basis PERP to the beam axis
+    e1 = Vector(e1v)
+    e2 = Vector(e2v)
+    Hc = Vector(H)
+    field = np.full((px, px), np.nan, dtype=float)
+    ax = np.linspace(-1.0, 1.0, px)                           # normalized footprint coords u,v in [-1,1]
+    us = []
+    vs = []
+    zs = []
+    cells = []
+    n_in = 0
+    for iy in range(px):
+        v = float(ax[iy])
+        for ix in range(px):
+            u = float(ax[ix])
+            if u * u + v * v > 1.0:
+                continue                                      # outside the circular footprint -> stays NaN
+            n_in += 1
+            P = Hc + e1 * (u * w) + e2 * (v * w)
+            origin = P - d * _IMPRINT_BACKUP                  # back up so the probe starts outside the mesh
+            loc, nrm, fidx, dist = tree.ray_cast(origin, d)
+            if loc is None:
+                continue                                      # this footprint point misses the mesh -> NaN
+            depth = (Vector(loc) - origin).dot(d)             # along-beam distance to the surface (mm)
+            us.append(u)
+            vs.append(v)
+            zs.append(depth)
+            cells.append((iy, ix))
+    # gate on COVERAGE, not a raw count: a dense zonal map over a footprint that barely clips the mesh
+    # (a handful of hits) would return a confident-looking RMS over a non-representative sliver. Require
+    # both >=6 hits and >=10% of the in-disc grid to land on the surface, else the map is not meaningful.
+    if len(zs) < 6 or n_in == 0 or float(len(zs)) / float(n_in) < 0.10:
+        return None
+    # DETREND against the footprint's best-fit reference plane (piston + x/y tilt) -- a flat mirror returns
+    # a linear depth ramp (its overall fold orientation, already carried by geometry.reflect), NOT figure
+    # error; subtracting it makes a flat surface read EXACTLY 0. Same reference as the modal path.
+    if detrend:
+        a0, au, av = _plane_fit(us, vs, zs)
+    else:
+        a0 = au = av = 0.0
+    lam_mm = wl_nm * 1.0e-6                                   # wavelength in mm (wl is nm)
+    rms2 = 0.0
+    wmin = None
+    wmax = None
+    for k, (iy, ix) in enumerate(cells):
+        # round-trip OPD in beam-path mm -> waves: W = 2*(depth - reference plane). A protruding (closer)
+        # point has a SMALLER along-beam depth -> negative W (advanced); a recess is positive (retarded).
+        wv = 2.0 * (zs[k] - (a0 + au * us[k] + av * vs[k])) / lam_mm
+        field[iy, ix] = wv
+        rms2 += wv * wv
+        wmin = wv if wmin is None else (wv if wv < wmin else wmin)
+        wmax = wv if wmax is None else (wv if wv > wmax else wmax)
+    n_hit = len(cells)
+    footprint_mm = 2.0 * w
+    return {
+        "field": field,
+        "mask": ~np.isnan(field),
+        "rms_waves": math.sqrt(rms2 / n_hit),
+        "pv_waves": (wmax - wmin) if (wmax is not None and wmin is not None) else 0.0,
+        "hit_frac": float(n_hit) / float(n_in),
+        "n_hit": n_hit,
+        "px": px,
+        "footprint_mm": footprint_mm,
+        # grid Nyquist: px samples span the diameter with spacing footprint/(px-1), so f_Nyq = (px-1)/(2D)
+        # (oracle-verified P_min = 2D/(px-1)). Effective resolution = min(this, mesh facet density).
+        "nyquist_lp_mm": (px - 1) / (2.0 * footprint_mm) if footprint_mm > 0.0 else 0.0,
+    }
 
 
 def _clip_axis_world(E, roll_deg):

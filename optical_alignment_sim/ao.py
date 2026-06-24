@@ -104,6 +104,74 @@ def publish_wavefront(det, segs):
 
 
 # --------------------------------------------------------------------------- #
+# ZONAL ("sensor render"): a DENSE, raw-field surface-figure wavefront map.
+#
+# wavefront_image above RE-SUMS 15 Noll Zernikes -- a modal LOW-PASS, correct for
+# smooth optics + the AO loop but unable to carry high-spatial-frequency figure.
+# The zonal map renders the surface's RAW optical-path field W(x,y) DIRECTLY (sampled
+# on a px*px grid via tracer.surface_imprint_field), so mid/high-frequency relief that
+# the 15-mode fit smooths away survives, up to the grid's Nyquist limit. It is an
+# ON-DEMAND diagnostic: it does NOT touch the trace, so every scene stays byte-identical.
+# Same verified physics (W = 2*(depth - reference plane)); the only difference from the
+# modal path is NO projection onto 15 modes -- no new optical law.
+# --------------------------------------------------------------------------- #
+
+def zonal_wavefront_image(field, vmax=None, bg=(0.05, 0.05, 0.06, 1.0)):
+    """False-colour RGBA (HxWx4 float32) of a RAW zonal wavefront field W(x,y) in waves (NaN outside the
+    pupil / where probes missed), on the SAME diverging blue(low) -> green(zero) -> red(high) scale as
+    wavefront_image. ``vmax`` (waves) sets +-full-scale; None -> auto from the field's max |W| (zonal maps
+    have a wide dynamic range, so a fixed +-1 would saturate). Unlike wavefront_image (15-mode modal
+    re-sum), this maps the field DIRECTLY -- no low-pass."""
+    import numpy as np
+    F = np.asarray(field, dtype=float)
+    valid = ~np.isnan(F)
+    if vmax is None:
+        vmax = float(np.nanmax(np.abs(F))) if valid.any() else 1.0
+    vmax = vmax or 1.0
+    t = np.clip(0.5 + 0.5 * np.where(valid, F, 0.0) / vmax, 0.0, 1.0)   # W=0 -> 0.5 (uniform mid-colour)
+    h, wd = F.shape
+    arr = np.empty((h, wd, 4), dtype='float32')
+    arr[:] = bg                                              # outside the pupil / missed probes
+    arr[..., 0] = np.where(valid, t, arr[..., 0])
+    arr[..., 1] = np.where(valid, 1.0 - np.abs(2.0 * t - 1.0), arr[..., 1])
+    arr[..., 2] = np.where(valid, 1.0 - t, arr[..., 2])
+    arr[..., 3] = 1.0
+    return arr
+
+
+def zonal_wavefront_at(scene, element_name, segs, px=128, detrend=True):
+    """On-demand DENSE zonal surface-figure map for a reflective element, reconstructing the incident ray
+    (hit point H, direction d, footprint w) from the traced segments -- the "sensor render" entry point.
+    Returns tracer.surface_imprint_field(...)'s dict (plus ``element``/``wavelength_nm``) or None if
+    nothing reaches the element / it has no usable mesh. Does NOT re-trace or mutate the scene
+    (byte-identical) and BYPASSES the 15-mode modal fit, so the map shows real spatial-frequency content."""
+    import bpy
+    from mathutils import Vector
+    best = None
+    for s in segs:
+        if s.get("to") == element_name:
+            if best is None or s.get("power", 0.0) > best.get("power", 0.0):
+                best = s
+    if best is None:
+        return None
+    E = bpy.data.objects.get(element_name)
+    if E is None or best.get("p1") is None or best.get("p2") is None:
+        return None
+    p1 = Vector(best["p1"])
+    p2 = Vector(best["p2"])                                  # segment END = chief-ray hit on the element
+    d = p2 - p1                                              # incident direction
+    if d.length < 1e-9:
+        return None
+    w = best.get("w_mm", 0.0) or 0.0
+    wl = best.get("wavelength", 632.8) or 632.8
+    out = tracer.surface_imprint_field(E, p2, d, w, wl, px=px, detrend=detrend)
+    if out is not None:
+        out["element"] = element_name
+        out["wavelength_nm"] = wl
+    return out
+
+
+# --------------------------------------------------------------------------- #
 # B5 - the textbook AO control loop: interaction matrix B, reconstructor R=B+,
 #       leaky integrator x_{k+1}=leak*x_k - g*R*w_k, Kolmogorov ABERRATOR(r0).
 #
@@ -493,7 +561,73 @@ class OPTICS_OT_dm_flatten(Operator):
         return {'FINISHED'}
 
 
-_classes = (OPTICS_OT_ao_close_loop, OPTICS_OT_dm_flatten)
+class OPTICS_OT_wfs_zonal_render(Operator):
+    bl_idname = "optics.wfs_zonal_render"
+    bl_label = "Render Zonal Wavefront Map"
+    bl_description = ("Sensor render: sample the ACTIVE reflective element's actual mesh surface densely "
+                      "over the beam footprint and write a ZONAL wavefront map (raw optical-path field, "
+                      "no 15-mode modal low-pass) so high-spatial-frequency figure is faithful. "
+                      "On-demand only -- does not touch the trace")
+    bl_options = {'REGISTER'}
+
+    px: IntProperty(name="Sampling level (px)", default=160, min=16, max=512,
+                    description="Grid resolution across the footprint diameter; higher -> finer Nyquist")
+
+    def invoke(self, context, event):
+        ob = context.object
+        if ob is not None and getattr(ob, "optics", None) is not None:
+            self.px = getattr(ob.optics, "imprint_zonal_px", self.px)
+        return context.window_manager.invoke_props_dialog(self, width=320)
+
+    def draw(self, context):
+        self.layout.prop(self, "px")
+
+    def execute(self, context):
+        scene = context.scene
+        ob = context.object
+        if (ob is None or getattr(ob, "optics", None) is None
+                or ob.optics.element_type not in ('MIRROR', 'PRISM_MIRROR')):
+            self.report({'ERROR'}, "Select a reflective element (mirror)")
+            return {'CANCELLED'}
+        from . import scan
+        segs = scan._trace(scene)
+        tracer.cached_segments = segs
+        fld = zonal_wavefront_at(scene, ob.name, segs, px=int(self.px))
+        if fld is None:
+            self.report({'ERROR'}, "No beam reaches %s, or it has no usable mesh footprint" % ob.name)
+            return {'CANCELLED'}
+        try:
+            ob.optics.imprint_zonal_px = int(self.px)
+        except Exception:
+            pass
+        import numpy as np
+        img = np.flipud(zonal_wavefront_image(fld["field"]))    # Blender pixels are bottom-up
+        h, wd = img.shape[0], img.shape[1]
+        bi = bpy.data.images.get("zonal_wavefront") or bpy.data.images.new("zonal_wavefront", wd, h, alpha=True)
+        if tuple(bi.size) != (wd, h):
+            bpy.data.images.remove(bi)
+            bi = bpy.data.images.new("zonal_wavefront", wd, h, alpha=True)
+        bi.pixels.foreach_set(img.astype('float32').ravel())
+        import os
+        out = os.path.join(bpy.app.tempdir or "/tmp", "zonal_wavefront.png")
+        bi.filepath_raw = out
+        bi.file_format = 'PNG'
+        bi.save()
+        # also push the map to any wavefront-sensor monitor so it shows in the bench monitor window
+        wfs = next((o.name for o in scene.objects if getattr(o, "optics", None)
+                    and o.optics.element_type == 'WAVEFRONT_SENSOR'), None)
+        cap = ("ZONAL %s  RMS=%.3f PV=%.3f waves  %dpx  Nyq=%.2f lp/mm  hits=%.0f%%"
+               % (ob.name, fld["rms_waves"], fld["pv_waves"], fld["px"],
+                  fld["nyquist_lp_mm"], 100.0 * fld["hit_frac"]))
+        if wfs is not None:
+            monitor.set_frame(wfs, zonal_wavefront_image(fld["field"]), cap)
+            scene.optics.monitor_show = True
+        tracer._tag_redraw()
+        self.report({'INFO'}, cap + "  ->  " + out)
+        return {'FINISHED'}
+
+
+_classes = (OPTICS_OT_ao_close_loop, OPTICS_OT_dm_flatten, OPTICS_OT_wfs_zonal_render)
 
 
 def register():

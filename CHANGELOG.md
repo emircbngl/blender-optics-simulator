@@ -11,7 +11,7 @@ aperture / detector / circulator component build-out, an upgraded adaptive-optic
 read-only error-detection layer. Every new formula is machine-verified against the physicist
 Docker oracle before shipping, and every existing scene traces byte-identical (the port-based
 data model: behavior reads element properties × `matrix_world`, never the mesh). Regression
-**215 → 304** checks.
+**215 → 314** checks.
 
 ### Added — bench intelligence (placement / correction / error detection)
 - **Generic auto-aligner** (`optics_api.auto_align` + MCP tool) — a scene-agnostic linearized
@@ -39,6 +39,13 @@ data model: behavior reads element properties × `matrix_world`, never the mesh)
   sphere→defocus, saddle→astigmatism, tilt/flat→0. A GEOMETRIC (Tier-1) OPD imprint, NOT wave diffraction;
   the modal reconstruction is a low-pass fit — faithful for smooth optical figures, a caricature for a
   high-spatial-frequency surface. Default off → existing scenes byte-identical.
+- **Zonal "sensor render"** (`imprint_zonal_px` + the mirror panel's *Sensor render* button /
+  `ao.zonal_wavefront_at`) — an on-demand DENSE wavefront map: it samples the SAME verified field
+  (`W = 2·Δdepth`) on a `px × px` grid and renders it RAW, with NO 15-mode projection, so mid/high-
+  spatial-frequency figure (e.g. polishing ripple) the modal map low-passes away survives — up to the grid
+  Nyquist `(px-1)/(2·footprint)` (oracle-verified). The honest companion to the modal imprint: faithful for
+  real optical figures; a knight's relief renders as a geometrically-real but optically-meaningless map.
+  On-demand only → the trace stays byte-identical. (See `docs/img/zonal-wavefront.png`.)
 
 ### Added — components
 - **Dispersing prisms** (equilateral / Littrow / Pellin-Broca / Amici) on real Sellmeier glasses

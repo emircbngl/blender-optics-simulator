@@ -181,6 +181,12 @@ class OPTICS_PT_tag(Panel):
             pcol.prop(props, "mirror_curve")
             if props.mirror_curve != 'FLAT':
                 pcol.prop(props, "radius_curv")
+            ibx = pcol.box()
+            ibx.prop(props, "imprint_surface")
+            ibx.label(text="Surface figure -> reflected wavefront", icon='MOD_WAVE')
+            zrow = ibx.row(align=True)
+            zrow.prop(props, "imprint_zonal_px", text="Zonal px")
+            zrow.operator("optics.wfs_zonal_render", text="Sensor render", icon='IMAGE_BACKGROUND')
         pcol.prop(props, "clear_aperture")
 
 

@@ -1801,6 +1801,94 @@ _cf_off = _imp_scene("IMP_off", lambda x, y: 3.0 * math.exp(-((x - 15) ** 2 + (y
 check("imprint: OFF on the same mesh reads flat (opt-in -> default byte-identical)",
       physics.wavefront_rms(_cf_off) < 1e-9, "%.6f waves" % physics.wavefront_rms(_cf_off))
 
+print("[zonal sensor-render: DENSE raw-field surface-figure map (no 15-mode modal low-pass)]")
+# The zonal path samples the SAME verified physics (W=2*(depth-reference plane)) on a px*px grid and renders
+# the RAW field -- NO projection onto 15 Zernikes. For a LOW-ORDER surface it AGREES with the modal map;
+# for a HIGH-spatial-frequency surface it carries content the 15-mode fit cannot represent. On-demand only.
+
+
+def _imp_zonal(name, surf_fn, px=80, aoi_deg=8.0, nx=41, half=70.0):
+    """Build laser -> reflective mesh (surf_fn) -> WFS, trace, and return (zonal-field-dict, modal-coeffs).
+    nx/half set the SURFACE mesh resolution; a high-spatial-frequency surf_fn needs a fine mesh (else the
+    mesh itself aliases the figure -- the mesh Nyquist must exceed the figure frequency)."""
+    for _o in list(sc.objects):
+        if getattr(getattr(_o, "optics", None), "is_optical", False):
+            bpy.data.objects.remove(_o, do_unlink=True)
+    _c = _IG.example_collection(name)
+    F = _Vec((0.0, 0.0, 0.0)); d_in = _Vec((1.0, 0.0, 0.0))
+    dev = math.radians(180.0 - 2.0 * aoi_deg)
+    d_out = _Vec((math.cos(dev), math.sin(dev), 0.0)).normalized()
+    _las = _IG.source("Laser", F - d_in * 400.0, d_in, _c, wavelength=632.8, length=44.0, radius=10.0)
+    _las.optics.waist_um = 9000.0                          # wide ~collimated beam (~Ø18 mm footprint)
+    _m = _IG.mirror("REFL", F, d_in, d_out, _c, size=150.0)
+    _m.optics.imprint_surface = True
+    _imp_replace_surface(_m, surf_fn, half=half, nx=nx)
+    _wfs = _IG.wavefront_sensor("WFS", F + d_out * 300.0, d_out, _c, size=90.0)
+    bpy.context.view_layer.update()
+    _segs = scan._trace(sc)
+    _fld = ao.zonal_wavefront_at(sc, _m.name, _segs, px=px)
+    _cf = ao._aberr_at(_segs, _wfs.name) or [0.0] * physics.N_ZERNIKE
+    for _o in list(_c.objects):
+        _IG.drop_example_object(_o)
+    bpy.data.collections.remove(_c)
+    return _fld, _cf
+
+
+# (i) FLAT surface -> zonal field reads ~0 (the reference-plane detrend zeroes a flat/tilted mirror)
+_zf_flat, _ = _imp_zonal("ZON_flat", lambda x, y: 0.0)
+check("zonal: FLAT surface -> ~0 field (plane detrend)",
+      _zf_flat is not None and _zf_flat["rms_waves"] < 2.0e-2,
+      None if _zf_flat is None else "RMS %.5f waves, hits %.0f%%" % (_zf_flat["rms_waves"], 100.0 * _zf_flat["hit_frac"]))
+# (ii) SPHERICAL cap -> zonal AGREES with the modal map (low-order: ratio ~1); dense sampling is complete
+_zf_sph, _cf_sph2 = _imp_zonal("ZON_sph", lambda x, y: (x * x + y * y) / (2.0 * 4000.0))
+_mrms_sph = physics.wavefront_rms(_cf_sph2)
+_zrat = (_zf_sph["rms_waves"] / _mrms_sph) if (_zf_sph and _mrms_sph > 1e-6) else 0.0
+check("zonal: SPHERE -> zonal RMS agrees with modal (low-order, 0.5<ratio<2) + full sampling",
+      _zf_sph is not None and 0.5 < _zrat < 2.0 and _zf_sph["hit_frac"] > 0.9,
+      None if _zf_sph is None else "zonal %.3f / modal %.3f = %.2fx, hits %.0f%%"
+      % (_zf_sph["rms_waves"], _mrms_sph, _zrat, 100.0 * _zf_sph["hit_frac"]))
+# (iii) HIGH-spatial-frequency ripple (period ~2.5 mm, ~7 cycles across the Ø18 mm footprint) -> the 15-mode
+#       modal fit CANNOT carry it (RMS collapses), but the zonal field DOES -> zonal RMS >> modal RMS. THE
+#       point. NB the SURFACE mesh must be fine (nx=201 -> 0.4 mm) or it aliases the ripple before sampling.
+_ripple = lambda x, y: 0.0015 * math.sin(x / 0.398)        # period 2*pi*0.398 ~= 2.5 mm
+_zf_rip, _cf_rip = _imp_zonal("ZON_rip", _ripple, px=96, nx=201, half=40.0)
+_mrms_rip = physics.wavefront_rms(_cf_rip)
+check("zonal: HIGH-FREQ ripple -> zonal RMS >> modal-15 RMS (zonal carries what modal low-passes away)",
+      _zf_rip is not None and _zf_rip["rms_waves"] > 0.1 and _zf_rip["rms_waves"] > 3.0 * _mrms_rip,
+      None if _zf_rip is None else "zonal %.3f vs modal %.3f waves (%.1fx)"
+      % (_zf_rip["rms_waves"], _mrms_rip, _zf_rip["rms_waves"] / max(_mrms_rip, 1e-6)))
+# (iv) sampling metadata sane: Nyquist comfortably above the ripple frequency (~0.286 lp/mm) -> not aliased
+check("zonal: Nyquist (px/2footprint) resolves the ripple (Nyq >> 0.286 lp/mm) + high hit fraction",
+      _zf_rip is not None and _zf_rip["nyquist_lp_mm"] > 1.0 and _zf_rip["hit_frac"] > 0.9,
+      None if _zf_rip is None else "Nyq %.2f lp/mm, %d px, footprint %.1f mm, hits %.0f%%"
+      % (_zf_rip["nyquist_lp_mm"], _zf_rip["px"], _zf_rip["footprint_mm"], 100.0 * _zf_rip["hit_frac"]))
+# (v) byte-identical: an on-demand zonal render must not perturb the subsequent normal trace. Build a LIVE
+#     scene, trace, RENDER zonal on the real mirror (assert it actually produced a map), trace again,
+#     compare -- so the check proves something (an empty scene would make it vacuous).
+for _o in list(sc.objects):
+    if getattr(getattr(_o, "optics", None), "is_optical", False):
+        bpy.data.objects.remove(_o, do_unlink=True)
+_cbi = _IG.example_collection("ZON_bi")
+_Fb = _Vec((0.0, 0.0, 0.0)); _dib = _Vec((1.0, 0.0, 0.0))
+_dvb = math.radians(180.0 - 16.0); _dob = _Vec((math.cos(_dvb), math.sin(_dvb), 0.0)).normalized()
+_lb = _IG.source("Laser", _Fb - _dib * 400.0, _dib, _cbi, wavelength=632.8, length=44.0, radius=10.0)
+_lb.optics.waist_um = 9000.0
+_mb = _IG.mirror("REFL", _Fb, _dib, _dob, _cbi, size=150.0); _mb.optics.imprint_surface = True
+_imp_replace_surface(_mb, lambda x, y: (x * x + y * y) / (2.0 * 6000.0))
+_IG.wavefront_sensor("WFS", _Fb + _dob * 300.0, _dob, _cbi, size=90.0)
+bpy.context.view_layer.update()
+_bi1 = scan._trace(sc)
+_zz = ao.zonal_wavefront_at(sc, _mb.name, _bi1, px=64)
+_bi2 = scan._trace(sc)
+check("zonal: on-demand render leaves the trace byte-identical (live scene, render confirmed)",
+      _zz is not None and len(_bi1) == len(_bi2) and len(_bi1) > 0
+      and all((a.get("p2") - b.get("p2")).length < 1e-9 for a, b in zip(_bi1, _bi2)
+              if a.get("p2") is not None and b.get("p2") is not None),
+      "%d==%d segs, render=%s" % (len(_bi1), len(_bi2), "ok" if _zz else "None"))
+for _o in list(_cbi.objects):
+    _IG.drop_example_object(_o)
+bpy.data.collections.remove(_cbi)
+
 oas.unregister()
 
 passed = sum(1 for _, ok in _checks if ok)
