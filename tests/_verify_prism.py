@@ -240,7 +240,7 @@ def test_byte_identical():
     for o in list(scene.objects):
         if getattr(getattr(o, "optics", None), "is_optical", False):
             bpy.data.objects.remove(o, do_unlink=True)
-    existing = [k for k in ex.EXAMPLES if k != 'prism']
+    existing = [k for k in ex.EXAMPLES if k not in ('prism', 'beam_router')]   # exclude C3 + C4 prism examples
     check(len(existing) == 14, "exactly 14 existing (non-prism) examples (%d)" % len(existing))
     all_ok = True
     for kind in sorted(existing):

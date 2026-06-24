@@ -303,6 +303,24 @@ def build_prism_spectrometer(context):
     return "OpticsExample_Prism"
 
 
+def build_beam_router(context):
+    """A beam-ROUTING bench (C4): a penta prism folds the beam by a clean, constant 90 deg, then a rhomboid
+    prism laterally displaces it WITHOUT changing its direction (output exactly parallel to input). The penta
+    deflection is INVARIANT under whole-prism tilt (its defining property -- two internal mirrors at a fixed
+    45 deg dihedral), and the rhomboid is a pure lateral offset (two parallel reflections). Neither disperses
+    (the fold is a fixed product of plane reflections, not material dispersion). The headline C4 demo."""
+    coll = G.example_collection("OpticsExample_BeamRouter")
+    X = Vector((1, 0, 0))
+    G.source("ROUTE_Laser", (-180, 0, 0), X, coll, wavelength=550.0)
+    # penta folds +X -> -Y by a constant 90 deg
+    G.prism("ROUTE_Penta", (0, 0, 0), X, coll, prism_type='PENTA', face_mm=30.0, depth_mm=26.0)
+    Yn = Vector((0, -1, 0))
+    # a rhomboid in the folded (-Y) leg: laterally offsets the beam, output still along -Y (parallel)
+    G.prism("ROUTE_Rhomboid", (0, -140, 0), Yn, coll, prism_type='RHOMBOID', face_mm=30.0, depth_mm=26.0)
+    G.detector("ROUTE_Screen", (0, -320, 0), Yn, coll, size=80.0)
+    return "OpticsExample_BeamRouter"
+
+
 EXAMPLES = {
     'mach_zehnder': ("Mach-Zehnder Interferometer", build_mach_zehnder),
     'michelson':    ("Michelson Interferometer", build_michelson),
@@ -319,6 +337,7 @@ EXAMPLES = {
     'dhm':          ("Digital Holographic Microscope (vertical, off-axis Mach-Zehnder)", build_dhm),
     'aom':          ("Acousto-Optic Deflector (Bragg cell: 0th + deflected +1 order)", build_aom),
     'prism':        ("Dispersing Prism Spectrometer (equilateral, fans the spectrum)", build_prism_spectrometer),
+    'beam_router':  ("Beam Router (penta 90 deg fold + rhomboid lateral offset)", build_beam_router),
 }
 
 

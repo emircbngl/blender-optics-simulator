@@ -427,6 +427,61 @@ for _o in list(_pcoll.objects):
     eg.drop_example_object(_o)
 bpy.data.collections.remove(_pcoll)
 
+print("[routing prisms: penta/rhomboid/right-angle/Dove folds (C4, reflection-law reuse + Dove 2x oracle)]")
+from mathutils import Matrix as _RM
+_rcoll = bpy.data.collections.new("ROUTETEST"); sc.collection.children.link(_rcoll)
+
+
+def _route_build(_pt, **_kw):
+    for _o in list(sc.objects):
+        if getattr(getattr(_o, "optics", None), "is_optical", False):
+            bpy.data.objects.remove(_o, do_unlink=True)
+    eg.source("RT_S", (-150, 0, 0), _PV((1, 0, 0)), _rcoll)
+    _p = eg.prism("RT_P", (0, 0, 0), _PV((1, 0, 0)), _rcoll, prism_type=_pt, **_kw)
+    bpy.context.view_layer.update()
+    return _p
+
+
+def _route_defl():
+    _ex = [s for s in scan._trace(sc) if s.get("from") == "RT_P" and s.get("kind") == "TRANSMIT"]
+    if not _ex:
+        return None, None
+    _d = (_PV(_ex[-1]["p2"]) - _PV(_ex[-1]["p1"])).normalized()
+    return math.degrees(math.acos(max(-1.0, min(1.0, _d.dot(_PV((1, 0, 0))))))), _ex[-1]
+
+
+_rp = _route_build('RIGHT_ANGLE'); _rdefl, _ = _route_defl()
+check("routing right-angle: 90 deg deflection + parity FLIP (ODD)",
+      _rdefl is not None and abs(_rdefl - 90.0) < 1e-2 and _rp.optics.prism_parity == 'ODD',
+      "defl=%.4f parity=%s" % (_rdefl if _rdefl is not None else -1, _rp.optics.prism_parity))
+_rp = _route_build('PENTA'); _rdefl, _ = _route_defl()
+check("routing penta: 90 deg deflection + parity EVEN",
+      _rdefl is not None and abs(_rdefl - 90.0) < 1e-2 and _rp.optics.prism_parity == 'EVEN',
+      "defl=%.4f parity=%s" % (_rdefl if _rdefl is not None else -1, _rp.optics.prism_parity))
+_pentadevs = []
+for _tilt in (-5.0, 0.0, 5.0):                       # the DEFINING penta property: 90 deg invariant of tilt
+    _rp = _route_build('PENTA')
+    _bar = (_rp.matrix_world.to_3x3() @ _PV((1.0, 0.0, 0.0))).normalized()
+    _piv = _rp.matrix_world.translation.copy()
+    _rp.matrix_world = (_RM.Translation(_piv) @ _RM.Rotation(math.radians(_tilt), 4, _bar)
+                        @ _RM.Translation(-_piv) @ _rp.matrix_world)
+    bpy.context.view_layer.update()
+    _td, _ = _route_defl(); _pentadevs.append(_td)
+check("routing penta tilt-invariance: stays 90 deg under +-5 deg whole-prism tilt (< 1e-3)",
+      all(v is not None and abs(v - 90.0) < 1e-3 for v in _pentadevs), "devs=%s" % _pentadevs)
+_route_build('RHOMBOID'); _rdefl, _res = _route_defl()
+_roff = math.hypot(_res["p1"][1], _res["p1"][2]) if _res else 0.0
+check("routing rhomboid: output parallel (0 deg) + real lateral offset",
+      _rdefl is not None and _rdefl < 1e-3 and _roff > 5.0,
+      "defl=%.5f offset=%.2f" % (_rdefl if _rdefl is not None else -1, _roff))
+_rp = _route_build('DOVE', roll_deg=15.0); _rdefl, _ = _route_defl()
+check("routing Dove: in-line (0 deg) + image rotation = 2x roll (15->30)",
+      _rdefl is not None and _rdefl < 1e-2 and abs(2.0 * _rp.optics.prism_roll_deg - 30.0) < 1e-9,
+      "defl=%.4f img=%.1f" % (_rdefl if _rdefl is not None else -1, 2.0 * _rp.optics.prism_roll_deg))
+for _o in list(_rcoll.objects):
+    eg.drop_example_object(_o)
+bpy.data.collections.remove(_rcoll)
+
 print("[microscope objective: f_obj = f_tube/M, focal power (oracle-VERIFIED)]")
 optics_api.build_example("microscope")
 _msegs = scan._trace(sc)

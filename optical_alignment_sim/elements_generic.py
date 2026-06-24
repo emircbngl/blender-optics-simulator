@@ -387,6 +387,102 @@ def _quad_prism(name, quad_yz, depth_mm, coll):
     return _poly_prism(name, quad_yz, depth_mm, coll)
 
 
+# --- C4 beam-ROUTING prism geometry -----------------------------------------
+# A routing prism is a glass solid whose internal interaction is one or more PLANE REFLECTIONS off internal
+# mirror faces (geometry.reflect, the verified reflection law), bracketed by the C3 entry/exit Snell. Each
+# builder below returns a dict the prism() builder consumes:
+#   poly_yz   : the cross-section polygon (Y-Z plane, CCW) extruded along local X -> the cosmetic glass bar
+#   d_in_local: the EXTERNAL incoming beam direction in the prism's local frame (so axis = that beam)
+#   entry/exit: (position, outward-normal) of the air-glass faces (entry normal faces the incoming beam)
+#   folds     : ordered [(name, position, inward-mirror-normal), ...] internal reflecting faces
+# Convention: the in-glass chief ray runs along local +Z between folds; +Y is "up", local X is the bar axis.
+# Normals are 3-vectors in the X=0 plane. The deflection is a fixed product of reflections (no dispersion).
+
+def _routing_prism_geom(prism_type, face_mm):
+    """Local-frame geometry of a C4 routing prism (see the section header). Returns the dict the prism()
+    builder turns into a mesh + ports. The chief ray enters the entry face, folds off the listed internal
+    faces (geometry.reflect, in order), and exits the exit face -- a fixed product of plane reflections."""
+    s = face_mm
+    h = s * 0.5
+    if prism_type == 'RIGHT_ANGLE':
+        # Right-triangle: beam in +Z through the back (entry) face, one 45 deg hypotenuse fold sends it to
+        # +Y, out the top (exit) face. 1 reflection -> 90 deg deflection, image handedness FLIPS.
+        # Verts (Y,Z): bottom-back B(-h,-h), bottom-front... use a clean right triangle.
+        poly = [(-h, -h), (h, -h), (-h, h)]            # right-angle at (-h,-h); hypotenuse from (h,-h)->(-h,h)
+        d_in = Vector((0.0, 0.0, 1.0))
+        entry = (Vector((0.0, 0.0, -h)), Vector((0.0, 0.0, -1.0)))     # back face, normal -Z (beam enters +Z)
+        nfold = Vector((0.0, 1.0, -1.0)).normalized()                 # hypotenuse: reflect(+Z)=+Y
+        fold_pt = Vector((0.0, 0.0, 0.0))                             # on the hypotenuse, on the +Z ray
+        folds = [("FOLD1", fold_pt, nfold)]
+        exit = (Vector((0.0, h, 0.0)), Vector((0.0, 1.0, 0.0)))       # top face, normal +Y (beam exits +Y)
+    elif prism_type == 'PENTA':
+        # Pentagonal: beam in +Z, two mirror faces at a fixed 45 deg DIHEDRAL fold it to -Y. The 90 deg
+        # deflection is INVARIANT under whole-prism tilt about the bar axis (the defining penta property:
+        # two mirrors at dihedral beta rotate any in-plane ray by 2*beta = 90 deg). Parity PRESERVED.
+        n1 = Vector((0.0, math.cos(math.radians(110.0)), math.sin(math.radians(110.0))))   # face 1 normal
+        n2 = Vector((0.0, math.cos(math.radians(155.0)), math.sin(math.radians(155.0))))   # face 2 (dihedral 45)
+        d_in = Vector((0.0, 0.0, 1.0))
+        entry = (Vector((0.0, 0.0, -h)), Vector((0.0, 0.0, -1.0)))     # entry face normal -Z
+        # fold 1 sits on the +Z ray at z=0; the mid ray then runs to fold 2, placed along that mid direction.
+        f1 = Vector((0.0, 0.0, 0.0))
+        mid = (Vector((0.0, 0.0, 1.0)) - 2.0 * Vector((0.0, 0.0, 1.0)).dot(n1) * n1).normalized()
+        f2 = f1 + mid * (s * 0.45)
+        folds = [("FOLD1", f1, n1), ("FOLD2", f2, n2)]
+        exit = (Vector((0.0, -h, 0.0)), Vector((0.0, -1.0, 0.0)))      # exit face normal -Y (out -Y, 90 deg)
+        # pentagon silhouette (Y,Z) enclosing the two fold faces + the entry/exit; cosmetic.
+        poly = [(-h, -h), (h * 0.2, -h), (h, -h * 0.2), (h * 0.2, h), (-h, h * 0.2)]
+    elif prism_type == 'RHOMBOID':
+        # Parallelogram: two PARALLEL 45 deg faces. +Z in -> fold1 (+Z->+Y) -> fold2 (+Y->+Z) -> out +Z.
+        # Output is EXACTLY PARALLEL to the input (0 deg deviation); the beam is laterally displaced in +Y by
+        # the face separation. 2 parallel reflections -> parity PRESERVED.
+        d_in = Vector((0.0, 0.0, 1.0))
+        sep = s * 0.7                                                  # lateral offset between the two faces
+        n1 = Vector((0.0, 1.0, -1.0)).normalized()                    # reflect(+Z)=+Y
+        n2 = Vector((0.0, -1.0, 1.0)).normalized()                    # parallel to n1, reflect(+Y)=+Z
+        f1 = Vector((0.0, -sep * 0.5, 0.0))
+        f2 = Vector((0.0, sep * 0.5, 0.0))
+        folds = [("FOLD1", f1, n1), ("FOLD2", f2, n2)]
+        entry = (Vector((0.0, -sep * 0.5, -h)), Vector((0.0, 0.0, -1.0)))   # entry face (lower), normal -Z
+        exit = (Vector((0.0, sep * 0.5, h)), Vector((0.0, 0.0, 1.0)))       # exit face (upper), normal +Z
+        # parallelogram cross-section: a slanted bar from lower-back to upper-front.
+        poly = [(-sep * 0.5 - h * 0.5, -h), (-sep * 0.5 + h * 0.5, -h),
+                (sep * 0.5 + h * 0.5, h), (sep * 0.5 - h * 0.5, h)]
+    elif prism_type == 'DOVE':
+        # Trapezoid: the beam enters the tilted left face, the chief ray runs along +Z inside, TIRs off the
+        # long bottom face (normal +Y) -- which leaves the chief-ray DIRECTION +Z (in-line, 0 deg deviation) --
+        # and exits the tilted right face. The through image ROTATES at 2x the prism roll (handled by the
+        # tracer via prism_roll_deg; geometric 2x-reduction of the in-plane reflection law). 1 reflection.
+        d_in = Vector((0.0, 0.0, 1.0))                                # design beam in-line along +Z
+        a = math.radians(45.0)
+        nE = Vector((0.0, math.sin(a), -math.cos(a)))                 # entry (left) face tilted 45 deg
+        nO = Vector((0.0, math.sin(a), math.cos(a)))                  # exit (right) face tilted 45 deg
+        entry = (Vector((0.0, h * 0.5, -h)), nE)
+        exit = (Vector((0.0, h * 0.5, h)), nO)
+        folds = [("FOLD1", Vector((0.0, -h, 0.0)), Vector((0.0, 1.0, 0.0)))]   # long bottom TIR face, normal +Y
+        # Dove trapezoid (Y,Z): wide bottom, short top, 45 deg end faces.
+        top = s * 0.25
+        poly = [(-h, -h), (-h, h), (h, h - (h - top)), (h, -h)]
+        # simpler clean trapezoid: bottom long, slanted ends
+        poly = [(-h, -h - top), (h, -h), (h, h), (-h, h + top)]
+    else:  # ROOF (Amici roof): 90 deg deflect via a 90 deg roof (two faces), retro-ish parity flip + split.
+        # Two roof faces symmetric about the Y-Z plane, each 45 deg from the virtual (right-angle) hypotenuse;
+        # the chief ray on the ridge reflects off both -> net +Z->+Y (90 deg), 2 reflections.
+        d_in = Vector((0.0, 0.0, 1.0))
+        n1 = Vector((-1.0, 1.0, -1.0)).normalized()                   # roof face 1 (off-axis in -X)
+        n2 = Vector((1.0, 1.0, -1.0)).normalized()                    # roof face 2 (off-axis in +X)
+        # normalize the X component to the verified (+-0.707,0.5,-0.5):
+        n1 = Vector((-math.sqrt(0.5), 0.5, -0.5)).normalized()
+        n2 = Vector((math.sqrt(0.5), 0.5, -0.5)).normalized()
+        entry = (Vector((0.0, 0.0, -h)), Vector((0.0, 0.0, -1.0)))
+        f1 = Vector((0.0, 0.0, 0.0))
+        mid = (Vector((0.0, 0.0, 1.0)) - 2.0 * Vector((0.0, 0.0, 1.0)).dot(n1) * n1).normalized()
+        f2 = f1 + mid * (s * 0.2)
+        folds = [("FOLD1", f1, n1), ("FOLD2", f2, n2)]
+        exit = (Vector((0.0, h, 0.0)), Vector((0.0, 1.0, 0.0)))
+        poly = [(-h, -h), (h, -h), (h, 0.0), (-h, h)]                 # right-angle-ish silhouette
+    return {"poly": poly, "d_in": d_in, "entry": entry, "exit": exit, "folds": folds}
+
+
 def _tri_prism_yz(name, tri_yz, depth_mm, coll):
     """A triangular prism bar from an EXPLICIT (y,z) cross-section (e.g. the asymmetric Littrow right-triangle),
     extruded along local X by ``depth_mm``."""
@@ -765,6 +861,32 @@ def prism(name, loc, axis, coll=None, prism_type='EQUILATERAL', apex_deg=60.0,
     A = float(apex_deg)
     n_d = physics.sellmeier_n(design_wl, glass)
     b = math.radians(A / 2.0)
+
+    # --- C4 beam-ROUTING prisms (right-angle / penta / Dove / roof / rhomboid): a glass solid whose internal
+    # interaction is a fixed product of PLANE REFLECTIONS (the verified reflection law), not material dispersion.
+    # All geometry comes from _routing_prism_geom; the FOLD faces are carried as REFLECT ports the tracer reads. ---
+    if prism_type in ('RIGHT_ANGLE', 'PENTA', 'DOVE', 'ROOF', 'RHOMBOID'):
+        g = _routing_prism_geom(prism_type, face_mm)
+        o = _poly_prism(name, g["poly"], depth_mm, coll)
+        o.data.materials.clear(); o.data.materials.append(MATS["prism"]())
+        _bevel(o, 0.3, 1)
+        in_pos, nE = g["entry"]
+        out_pos, nO = g["exit"]
+        _tag(o, 'PRISM', clear_aperture=face_mm * 0.5, prism_type=prism_type, apex_angle_deg=A,
+             prism_glass=glass, prism_glass2=glass2, prism_design_wl=design_wl, prism_roll_deg=roll_deg)
+        _add_port(o, "IN", 'IN', in_pos, nE, face_mm * 0.5)
+        _add_port(o, "OUT", 'OUT', out_pos, nO, face_mm * 0.5)
+        for (fname, fpos, fnrm) in g["folds"]:             # internal mirror faces (role REFLECT)
+            _add_port(o, fname, 'REFLECT', fpos, fnrm, face_mm * 0.5)
+        # orient: map the local incoming-beam direction onto the world ``axis`` (so axis = the incoming beam).
+        d_in_local = g["d_in"]
+        R = Vector(d_in_local).normalized().rotation_difference(Vector(axis).normalized()).to_matrix()
+        if roll_deg:                                        # roll about the optical (incoming-beam) axis
+            R = R @ Matrix.Rotation(math.radians(roll_deg), 3, Vector(d_in_local).normalized())
+        # place so the ENTRY-FACE CENTER lands at ``loc`` (a beam aimed at loc along axis hits the entry face).
+        _set_matrix(o, Vector(loc) - (R @ in_pos), R)
+        return o
+
     tir_n = None                                           # Pellin-Broca internal TIR-fold face normal (else unused)
     tir_pos = None
     cem_n = None                                           # Amici cemented crown/flint interface normal (else unused)

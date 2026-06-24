@@ -391,7 +391,15 @@ class OpticalElementProps(PropertyGroup):
         items=[('EQUILATERAL', "Equilateral (dispersing)", "Two-surface Snell; spectrum fans, min deviation at A=60 deg"),
                ('LITTROW', "Littrow (autocollimating)", "Refract -> coated back-reflect -> refract; ~2x dispersion, retro"),
                ('PELLIN_BROCA', "Pellin-Broca (constant 90 deg)", "Refract -> internal TIR -> refract; selected lambda always exits at 90 deg"),
-               ('AMICI', "Amici (direct-vision)", "Cemented crown/flint; zero net deviation at lambda0, still disperses")])
+               ('AMICI', "Amici (direct-vision)", "Cemented crown/flint; zero net deviation at lambda0, still disperses"),
+               # --- C4 beam-ROUTING prisms: fixed products of plane reflections (no dispersion by design;
+               # used near a design wavelength). Each fold is geometry.reflect() off an internal mirror face;
+               # parity (image handedness) flips once per reflection (odd -> flip, even -> preserve). ---
+               ('RIGHT_ANGLE', "Right-angle (90 deg fold)", "1 internal reflection: 90 deg deflection, image handedness FLIPS"),
+               ('PENTA', "Penta (constant 90 deg)", "2 reflections: 90 deg deflection INVARIANT under whole-prism tilt, parity PRESERVED"),
+               ('DOVE', "Dove (image rotator)", "1 internal reflection, in-line (0 deg deviation); image ROTATES at 2x the prism roll"),
+               ('ROOF', "Amici roof (retro + flip)", "2 reflections off a 90 deg roof: retro-ish, parity flip"),
+               ('RHOMBOID', "Rhomboid (lateral offset)", "2 parallel reflections: pure LATERAL OFFSET, output exactly PARALLEL to input")])
     apex_angle_deg: FloatProperty(name="Apex angle (deg)", default=60.0, min=1.0, max=170.0,
         description="The prism's refracting (apex) angle; 60 deg for an equilateral dispersing prism")
     prism_glass: EnumProperty(name="Prism glass", default='N-SF11',
@@ -407,6 +415,14 @@ class OpticalElementProps(PropertyGroup):
         items=[('N-SF11', "N-SF11 (dense flint)", ""), ('F2', "F2 (flint)", ""), ('N-F2', "N-F2 (lead-free flint)", "")])
     prism_design_wl: FloatProperty(name="Prism design wavelength (nm)", default=589.3, min=1.0,
         description="The selected wavelength: Pellin-Broca deviates it by exactly 90 deg; Amici passes it undeviated")
+    # routing-prism roll (C4): rolls the prism about its optical (long) axis. For a DOVE prism this is the
+    # headline image-rotation drive -- the through image rotates by 2x this roll (theta_img = 2*theta_roll,
+    # a pure reduction of the in-plane reflection law). Inert for the other routing/dispersing types.
+    prism_roll_deg: FloatProperty(name="Prism roll (deg)", default=0.0,
+        description="Roll the prism about its optical axis. For a Dove prism the through-image rotates by 2x this")
+    # routing-prism image parity (C4, computed by the tracer): "EVEN" = handedness preserved (even # of
+    # internal reflections: penta, rhomboid), "ODD" = flipped (odd #: right-angle, Dove, roof). Output only.
+    prism_parity: StringProperty(name="Image parity", default="")
     is_monitor: BoolProperty(default=False)        # live sensor-monitor target (fringe recomputed live)
     sensor_px: IntProperty(name="Sensor resolution (px)", default=256, min=16, max=1024)
     pixel_size_um: FloatProperty(name="Pixel size (um)", default=5.0, min=0.1)

@@ -862,11 +862,13 @@ def validate(scene):
         Blender mesh-overlap (BVHTree) check, so it catches mount/holder/base/optic collisions the cheap
         post-distance proxies above miss (e.g. two mounts placed too close so their bodies pass through).
     Use it after dress() (regression gate + get_state['warnings']) to KNOW the geometry is valid."""
+    # the penta-prism deflection invariant is a pure BEAM-physics property (a trace post-pass), independent
+    # of bench DRESSING -- run it even on an undressed bench so a broken routing-prism fold is always caught.
     if not is_dressed(scene):
-        return []
+        return _penta_deflection_issues(scene)
     elems = _optical_objects(scene)
     if not elems:
-        return []
+        return _penta_deflection_issues(scene)
     _bh, _ref, board_top_z = _vertical_chain(scene, elems)
     holder_top = board_top_z + BASE_H + HOLDER_H
     grouped = set()
@@ -923,7 +925,46 @@ def validate(scene):
                     break
     # 4. real mesh-level collision: any two parts from DIFFERENT support clusters that interpenetrate
     issues += _interpenetration_issues(scene)
+    # 5. penta-prism deflection invariant: a penta prism MUST deflect the beam by exactly 90 deg, and that
+    #    deflection is INVARIANT under whole-prism tilt (its defining property -- two mirrors at a fixed 45 deg
+    #    dihedral rotate any in-plane ray by 2*45 = 90 deg). If a penta in the scene is traced at anything but
+    #    90 deg, its fold geometry is broken -- flag it (the routing-prism analogue of the periscope invariants).
+    issues += _penta_deflection_issues(scene)
     return issues
+
+
+def _penta_deflection_issues(scene, tol_deg=1e-2):
+    """For every PENTA routing prism in the scene, trace the chief ray through it and assert the input->output
+    deflection is 90 deg (the penta invariant). Returns {kind:'penta_deflection'} issues for any that deviate.
+    Read-only (a trace post-pass); the deflection is a fixed product of the verified reflection law."""
+    import math
+    from mathutils import Vector
+    from . import tracer
+    pentas = [o for o in _optical_objects(scene)
+              if getattr(o.optics, 'element_type', '') == 'PRISM'
+              and getattr(o.optics, 'prism_type', '') == 'PENTA']
+    if not pentas:
+        return []
+    try:
+        segs = tracer.trace_scene(scene, mode=scene.optics.trace_mode,
+                                  max_segments=scene.optics.max_segments, max_depth=scene.optics.max_depth)
+    except Exception:
+        return []
+    out = []
+    for p in pentas:
+        ins = [s for s in segs if s.get("to") == p.name]
+        exs = [s for s in segs if s.get("from") == p.name and s.get("kind") == "TRANSMIT"]
+        if not ins or not exs:
+            continue
+        din = (Vector(ins[0]["p2"]) - Vector(ins[0]["p1"]))
+        dout = (Vector(exs[-1]["p2"]) - Vector(exs[-1]["p1"]))
+        if din.length < 1e-9 or dout.length < 1e-9:
+            continue
+        defl = math.degrees(math.acos(max(-1.0, min(1.0, din.normalized().dot(dout.normalized())))))
+        if abs(defl - 90.0) > tol_deg:
+            out.append({"kind": "penta_deflection", "element": p.name,
+                        "detail": "penta deflects %.4f deg (must be 90 deg; fold geometry broken)" % defl})
+    return out
 
 
 def validate_all(scene):

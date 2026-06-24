@@ -65,6 +65,15 @@ def _find_port(props, role):
     return None
 
 
+def _find_port_named(props, name):
+    """Look up a port by NAME (e.g. a routing prism's 'FOLD1'/'FOLD2' internal mirror faces, which all
+    share the REFLECT role so a role lookup is ambiguous)."""
+    for p in props.ports:
+        if p.name == name:
+            return p
+    return None
+
+
 def _first_in(props):
     return _find_port(props, 'IN')
 
@@ -388,6 +397,42 @@ def _prism_exit_ray(glass_ray, E, He, d_out, opl_exit, power, parent_idx):
     return _Ray(He, d_out, power, glass_ray.depth + 1, E, glass_ray.wl, 'TRANSMIT', parent_idx,
                 jones=nj, opl=opl_exit, q=glass_ray.q, src_id=glass_ray.src_id, coh=glass_ray.coh,
                 evec=nev, m2=glass_ray.m2)
+
+
+# C4 routing-prism fold faces, in ORDER, by prism_type. Each is a port NAME (role REFLECT) carrying the
+# world geometry of one internal mirror face the chief ray reflects off (geometry.reflect). A routing prism
+# is thus a fixed PRODUCT of plane reflections + the C3 entry/exit Snell: the number of folds sets the image
+# parity (EVEN = handedness preserved, ODD = flipped). corner-cube is the existing RETROREFLECTOR (not here).
+_ROUTING_FOLDS = {
+    'RIGHT_ANGLE': ('FOLD1',),                  # 1 reflection -> 90 deg, parity FLIP
+    'DOVE':        ('FOLD1',),                  # 1 reflection -> in-line; image rotates 2x roll
+    'PENTA':       ('FOLD1', 'FOLD2'),          # 2 reflections -> constant 90 deg, tilt-invariant, parity preserved
+    'ROOF':        ('FOLD1', 'FOLD2'),          # 2 reflections off a 90 deg roof -> retro-ish, parity flip
+    'RHOMBOID':    ('FOLD1', 'FOLD2'),          # 2 PARALLEL reflections -> pure lateral offset, output parallel
+}
+
+
+def _route_fold(glass_ray, E, fold_faces, segments, parent_idx, n_glass):
+    """Fold an in-glass ray through a routing prism's internal mirror faces IN ORDER. Each fold is a single
+    geometry.reflect() off the face's world normal -- the verified reflection law -- with the segment break
+    taken at the face's port-plane crossing; the in-glass OPL advances by n*L per leg (_glass_seg). Returns
+    the post-fold in-glass ray (ready for the exit-face Snell refraction), or None if a leg cannot be solved.
+    Polarization rides along via reflect_field (ideal-mirror rs=1, rp=-1, like the C3 LITTROW/P-B folds)."""
+    ray = glass_ray
+    for (fpt, fnrm) in fold_faces:
+        hb = _ray_plane(ray.p1, ray.dir, fpt, fnrm)
+        Hb = hb[0] if hb is not None else (ray.p1 + ray.dir * 1.0)
+        gseg, opl_b, _qd = _glass_seg(ray, Hb, E, n_glass, 'GLASS')
+        segments.append(gseg)
+        d_fold = geometry.reflect(ray.dir, fnrm)
+        if ray.evec is not None:
+            ev, _do = physics.reflect_field(ray.evec, ray.dir, fnrm, 1.0, -1.0)
+        else:
+            ev = None
+        ray = _Ray(Hb, d_fold, ray.power, ray.depth + 1, E, ray.wl, 'GLASS', parent_idx,
+                   jones=ray.jones, opl=opl_b, q=ray.q, src_id=ray.src_id, coh=ray.coh,
+                   evec=ev, m2=ray.m2)
+    return ray
 
 
 def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
@@ -819,6 +864,52 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                     continue
                 stack.append(_prism_exit_ray(flint_ray, E, He, Vector(d_out), opl_e,
                                              ray.power * T_in, idx))
+            elif ptype in _ROUTING_FOLDS:
+                # C4 beam-ROUTING prism: refract air->glass at the entry face (already in glass_ray), then
+                # fold the chief ray off N internal mirror faces (geometry.reflect, the verified reflection
+                # law) IN ORDER, then refract glass->air at the exit face. The fold COUNT sets the image
+                # parity (EVEN # -> handedness preserved: penta/rhomboid; ODD -> flipped: right-angle/Dove/
+                # roof). No dispersion BY DESIGN -- the deflection is a fixed product of plane reflections,
+                # so it is wavelength-independent (n(lambda) only shifts the tiny entry/exit refraction).
+                folds = []
+                ok = True
+                for pname in _ROUTING_FOLDS[ptype]:
+                    fp = _find_port_named(op, pname)
+                    if fp is None:
+                        ok = False
+                        break
+                    folds.append((geometry.world_port(E, fp.local_position),
+                                  geometry.world_normal(E, fp.local_normal)))
+                if not ok:
+                    continue
+                folded = _route_fold(glass_ray, E, folds, segments, idx, n_g)
+                # exit-face Snell glass->air
+                he = _ray_plane(folded.p1, folded.dir, exit_pt, ex_n)
+                He = he[0] if he is not None else (folded.p1 + folded.dir * 1.0)
+                gseg, opl_e, _qd = _glass_seg(folded, He, E, n_g, 'GLASS')
+                segments.append(gseg)
+                theta_e = math.acos(min(1.0, abs(folded.dir.dot(ex_n))))   # in-glass exit incidence
+                d_out = physics.refract_dir((folded.dir.x, folded.dir.y, folded.dir.z),
+                                            (ex_n.x, ex_n.y, ex_n.z), n_g, 1.0)
+                if d_out is None:                              # TIR at the exit face (over-tilted): dump (Tier-1)
+                    continue
+                T_out = physics.fresnel_transmit_power(1.0, n_g, math.asin(min(1.0, n_g * math.sin(theta_e))))
+                # record the image parity (EVEN folds preserve handedness, ODD flip it). The Amici ROOF is the
+                # textbook exception: its two roof faces add a TRANSVERSE (left-right) image flip on top of the
+                # 2-reflection deflection, so its net handedness is ODD despite an even fold count (the "roof
+                # flips the image" property -- the reason a roof prism is used in erecting systems).
+                if ptype == 'ROOF':
+                    op.prism_parity = "ODD"
+                else:
+                    op.prism_parity = "EVEN" if (len(folds) % 2 == 0) else "ODD"
+                if ptype == 'DOVE':
+                    # the through image rotates at 2x the prism's roll angle: theta_img = 2*theta_roll
+                    # (physics_verify ok=true 4/4: DIMENSIONAL + SYMBOLIC solve + NUMERIC 30->60 / 15->30).
+                    # A pure reduction of the in-plane reflection law; recorded as metadata (the chief-ray
+                    # tracer is single-ray, so image ORIENTATION is not a ray-direction effect, only this).
+                    op.meas_text = "image_rotation %.3f deg (2x roll)" % (2.0 * getattr(op, 'prism_roll_deg', 0.0))
+                stack.append(_prism_exit_ray(folded, E, He, Vector(d_out),
+                                             opl_e, ray.power * T_in * T_out, idx))
             else:
                 # EQUILATERAL: refract in -> straight in-glass leg -> refract out the exit face.
                 he = _ray_plane(glass_ray.p1, glass_ray.dir, exit_pt, ex_n)
