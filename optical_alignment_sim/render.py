@@ -110,6 +110,7 @@ RENDER_DESCRIPTORS = {
     'POWER_METER':       ('dark',  None),
     'WAVEFRONT_SENSOR':  ('dark',  None),
     'ISOLATOR':          ('dark',  (0.30, 0.30, 0.34)),
+    'CIRCULATOR':        ('dark',  (0.30, 0.30, 0.34)),   # dark anodized hub (C6, like the isolator body)
     'APERTURE':          ('dark',  (0.05, 0.05, 0.06)),
     'PINHOLE':           ('dark',  (0.05, 0.05, 0.06)),
     'SLIT':              ('metal', (0.62, 0.64, 0.70)),   # polished slit jaws (C5)

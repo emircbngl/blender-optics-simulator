@@ -1616,6 +1616,42 @@ def isolator(name, loc, axis, coll=None, radius=9.0, length=40.0):
     return o
 
 
+def circulator(name, loc, p1_dir, coll=None, n_ports=3, radius=16.0, height=20.0,
+               isolation_db=20.0, port_ca=7.0):
+    """A NON-RECIPROCAL N-port fiber-optic CIRCULATOR (C6): a short cylindrical hub whose N ports sit on N
+    distinct radial faces, 360/N deg apart in the local XY plane, each pointing OUTWARD. A ray entering port
+    Pi is routed by the tracer to the NEXT port P(i+1) in the cycle (P1->P2->P3->...->P1); a small isolation
+    leak (isolation_db) goes to the PREVIOUS port. The mount maps local +X onto ``p1_dir`` so P1's OUTWARD
+    face looks along p1_dir (a beam fired back along -p1_dir enters P1). The ports advance COUNTER-CLOCKWISE
+    in the local XY plane (looking down +Z), so P1->P2->P3 is a clean geometric cycle. Pol-independent at the
+    ray level. Built ENTIRELY from the existing port machinery -- no new geometry primitive."""
+    n = max(int(n_ports), 2)
+    o = _disc(name, radius, height, coll)                # squat cylindrical hub, axis = local Z
+    o.data.materials.clear(); o.data.materials.append(MATS["iso"]())   # dark anodized circulator body
+    _tag(o, 'CIRCULATOR', clear_aperture=port_ca, isolation_db=isolation_db)
+    for i in range(n):
+        ang = 2.0 * math.pi * i / n                      # P1 at +X (ang=0), advancing CCW about +Z
+        nrm = (math.cos(ang), math.sin(ang), 0.0)        # OUTWARD radial normal of port P(i+1)
+        pos = (nrm[0] * radius, nrm[1] * radius, 0.0)    # on the cylindrical flank
+        # a small raised face-bezel marking each port aperture (cosmetic; the trace reads the port, not this).
+        # _bored_disc's face axis is +Z; rotate it so the disc faces OUTWARD along nrm, then offset to the flank.
+        bz = _bored_disc(name + "_p%d" % (i + 1), port_ca + 1.4, 2.4, port_ca * 0.6, coll)
+        rot = _z_to(Vector(nrm)).to_3x3()
+        for v in bz.data.vertices:
+            v.co = rot @ v.co + Vector(pos)
+        bz.data.materials.append(MATS["bezel"]())
+        _join(o, bz)
+        _add_port(o, "P%d" % (i + 1), 'IN', pos, nrm, port_ca)
+    # map local +X -> p1_dir and local +Z -> world up (0,0,1): _basis(x,y) sets +Z = x cross y, so choose
+    # y = up cross p1_dir (the in-plane axis) to land +Z on up. P1's face then looks along p1_dir.
+    up = Vector((0.0, 0.0, 1.0))
+    y_axis = up.cross(Vector(p1_dir))
+    if y_axis.length < 1e-6:                              # p1_dir is vertical: pick any horizontal y
+        y_axis = Vector((0.0, 1.0, 0.0))
+    _set_matrix(o, Vector(loc), _basis(p1_dir, y_axis))
+    return o
+
+
 def fiber_collimator(name, loc, direction, coll=None, wavelength=632.8, length=30.0, radius=6.0):
     """A fiber-coupled collimator that launches a beam along `direction` (source-like)."""
     o = _disc(name, radius, length, coll)

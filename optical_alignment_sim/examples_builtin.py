@@ -431,6 +431,28 @@ def build_quad_tracker(context):
     return "OpticsExample_QuadTracker"
 
 
+def build_circulator_router(context):
+    """A 3-port fiber-CIRCULATOR router (C6): the ONE genuinely non-reciprocal tracer topology. A source
+    fires back into port P1; the circulator routes that beam OUT of the NEXT port P2 (the cyclic P1->P2->P3
+    route) onto the main detector, while a small ISOLATION leak (20 dB -> 1%%) emerges from the PREVIOUS port
+    P3 onto a side monitor. The device is NON-RECIPROCAL: a beam into P2 would exit P3 (NOT back to P1) -- the
+    defining property a reciprocal splitter cannot reproduce. P1/P2/P3 sit on three radial faces 120 deg
+    apart; each leg is aimed along its port's outward normal, so rotating the hub re-routes the whole bench."""
+    coll = G.example_collection("OpticsExample_Circulator")
+    X = Vector((1, 0, 0))
+    # the hub: P1 faces +X (out along p1_dir); P2 at +120 deg, P3 at +240 deg (CCW about +Z)
+    G.circulator("CIRC_Hub", (0, 0, 0), X, coll, n_ports=3, isolation_db=20.0)
+    # a source on the +X side firing BACK (-X) into P1's outward face
+    G.source("CIRC_Laser", (140, 0, 0), Vector((-1, 0, 0)), coll, wavelength=1550.0)
+    # P2's outward normal is at +120 deg in XY -> (-0.5, +0.866, 0); the main routed beam goes there
+    p2 = Vector((math.cos(math.radians(120.0)), math.sin(math.radians(120.0)), 0.0))
+    G.detector("CIRC_Out", (p2 * 150.0), p2, coll, size=44.0)
+    # P3's outward normal is at +240 deg -> (-0.5, -0.866, 0); the dim 1%% isolation leak lands here
+    p3 = Vector((math.cos(math.radians(240.0)), math.sin(math.radians(240.0)), 0.0))
+    G.detector("CIRC_Iso", (p3 * 120.0), p3, coll, size=30.0)
+    return "OpticsExample_Circulator"
+
+
 EXAMPLES = {
     'mach_zehnder': ("Mach-Zehnder Interferometer", build_mach_zehnder),
     'michelson':    ("Michelson Interferometer", build_michelson),
@@ -453,6 +475,7 @@ EXAMPLES = {
     'green_doubler': ("Green Doubler (KTP SHG: 1064 IR -> 532 green + dichroic split)", build_green_doubler),
     'spdc_source':  ("Type-II SPDC Source (BBO: 405 -> degenerate 810 signal/idler twins)", build_spdc_source),
     'quad_tracker': ("Quadrant Beam Tracker (4-quadrant 2-axis position error + camera image)", build_quad_tracker),
+    'circulator':   ("Fiber Circulator Router (non-reciprocal P1->P2->P3 cyclic routing)", build_circulator_router),
 }
 
 

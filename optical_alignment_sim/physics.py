@@ -853,6 +853,14 @@ def coherence_length_mm(wavelength_nm, linewidth_nm):
     return lam * lam / (linewidth_nm * NM_TO_MM)
 
 
+def db_to_linear(db):
+    """Convert an isolation/attenuation figure in decibels to its linear POWER ratio:
+    10^(-db/10). The standard dB->linear for a power quantity. Used by the C6 circulator's
+    port-to-port isolation leak (iso=20 dB -> 0.01, 30 dB -> 0.001, 0 dB -> 1.0, 10 dB -> 0.1).
+    Dimensionless in, dimensionless out (a pure ratio). physics_verify ok=true."""
+    return 10.0 ** (-db / 10.0)
+
+
 def cavity_finesse(R):
     """Fabry-Perot finesse from mirror (intensity) reflectivity R."""
     R = max(0.0, min(R, 0.999999))

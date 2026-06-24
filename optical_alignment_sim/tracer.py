@@ -102,6 +102,16 @@ def interaction_surface(obj):
     return None, None, 0.0
 
 
+def _circulator_ports(props):
+    """The circulator's cyclic port list (P1, P2, P3, ...) in CYCLE ORDER. Every port carries role 'IN'
+    (each face both receives and emits a beam -- the routing is non-reciprocal by direction, not by a
+    fixed in/out face). Ordered by NAME (P1/P2/P3...) so the cycle Pi -> P(i+1) is unambiguous; the
+    builder lays them out on distinct faces, so a ray entering one face is matched to exactly one port."""
+    ps = [p for p in props.ports if p.role == 'IN']
+    ps.sort(key=lambda p: p.name)
+    return ps
+
+
 def _ray_plane(p0, d, plane_pt, plane_n):
     denom = d.dot(plane_n)
     if abs(denom) < 1e-9:
@@ -132,6 +142,25 @@ def _find_next(elems, ray, mode, order):
     best = None
     for E in candidates:
         if E is ray.from_obj:
+            continue
+        # A CIRCULATOR is an N-port router: a ray may ENTER via any of its port FACES, so every IN port is a
+        # candidate interaction surface (not the single IN plane the other elements expose). Test each port
+        # plane; the nearest one the ray crosses INTO (traveling against the port's outward normal) is the
+        # entry. Reuses the same ray-plane + clear-aperture gate as every other element.
+        if E.optics.element_type == 'CIRCULATOR':
+            for p in _circulator_ports(E.optics):
+                sp = geometry.world_port(E, p.local_position)
+                sn = geometry.world_normal(E, p.local_normal)
+                if ray.dir.dot(sn) >= 0.0:                 # outward normal: only faces the ray enters INTO count
+                    continue
+                hit = _ray_plane(ray.p1, ray.dir, sp, sn)
+                if hit is None:
+                    continue
+                H, t = hit
+                ca = p.clear_aperture or E.optics.clear_aperture
+                if (H - sp).length <= max(ca, 0.0) + 1e-3:
+                    if best is None or t < best[0]:
+                        best = (t, E, H, sn)
             continue
         sp, sn, ca = interaction_surface(E)
         if sp is None:
@@ -730,6 +759,39 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 stack.append(_child(ray, E, _emit_pt(woff), ray.dir, ray.power * eff * 0.5, 'IDLER', idx, t,
                                     jones=ji, q=q_conv, wl=wco))
             continue                                         # NONE / unhandled: pump dumped
+
+        if et == 'CIRCULATOR':
+            # NON-RECIPROCAL N-port cyclic router (a fiber-optic circulator). A ray entering port Pi EXITS
+            # from the NEXT port P(i+1) in the cycle (P1->P2->P3->...->P1). It is non-reciprocal: a ray into
+            # P2 exits P3, NOT back to P1 -- the defining property. A small ISOLATION leak goes to the
+            # PREVIOUS port P(i-1) at power T * 10^(-isolation_db/10) (physics.db_to_linear, the standard
+            # dB->linear). Pol-INDEPENDENT at the ray level: the Jones vector passes through UNCHANGED (a real
+            # free-space circulator is PBS+Faraday+HWP, but the chief-ray topology just routes ports). This is
+            # a pure ROUTING topology over the existing port machinery -- NO new optical formula but the
+            # dimensionless isolation ratio. Each child leaves FROM its port's world position along that
+            # port's OUTWARD normal (world_port / world_normal), so a rotated mount re-aims every leg.
+            ports = _circulator_ports(op)
+            N = len(ports)
+            if N >= 2:
+                # identify the ENTRY port: the one whose world position is nearest the hit point H (the
+                # face the ray actually crossed). _find_next already gated H to a single port's aperture.
+                entry = min(range(N), key=lambda k: (geometry.world_port(E, ports[k].local_position) - H).length)
+                T_thru = min(max(getattr(op, 'element_transmittance', 1.0), 0.0), 1.0)   # universal insertion loss (default 1.0)
+                iso_lin = physics.db_to_linear(max(getattr(op, 'isolation_db', 20.0), 0.0))
+                nxt = ports[(entry + 1) % N]                # main path -> NEXT port (the cyclic route)
+                prv = ports[(entry - 1) % N]                # isolation leak -> PREVIOUS port (non-reciprocity is here)
+                # main child: full through power from P(i+1) along its outward normal. Jones carried UNCHANGED.
+                Pn = geometry.world_port(E, nxt.local_position)
+                Dn = geometry.world_normal(E, nxt.local_normal)
+                stack.append(_child(ray, E, Pn, Dn, ray.power * T_thru, 'CIRC_OUT', idx, t, jones=ray.jones))
+                # isolation child: the small directivity leak from P(i-1). Same energy bookkeeping as the
+                # through path scaled by the dB ratio; pol carried unchanged (sqrt for the field amplitude).
+                if prv is not nxt and ray.power * T_thru * iso_lin >= 1e-9:
+                    Pp = geometry.world_port(E, prv.local_position)
+                    Dp = geometry.world_normal(E, prv.local_normal)
+                    stack.append(_child(ray, E, Pp, Dp, ray.power * T_thru * iso_lin, 'CIRC_ISO', idx, t,
+                                        jones=physics.scale(ray.jones, math.sqrt(iso_lin)) if ray.jones else None))
+            continue
 
         if et in TERMINAL:
             continue

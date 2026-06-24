@@ -30,6 +30,7 @@ ELEMENT_TYPES = [
     ('FILTER',       "Optical Filter",             "Longpass / shortpass / bandpass / ND (pass-through)"),
     ('ATTENUATOR',   "Attenuator",                 "Pass-through attenuator"),
     ('ISOLATOR',     "Optical Isolator",           "One-way pass-through (Faraday isolator)"),
+    ('CIRCULATOR',   "Optical Circulator",         "Non-reciprocal N-port cyclic router: Pi -> P(i+1), with a small isolation leak to P(i-1)"),
     ('APERTURE',     "Aperture",                   "Beam stop / aperture"),
     ('PINHOLE',      "Pinhole",                    "Spatial-filter pinhole (pass-through)"),
     ('FIBER_COLLIMATOR', "Fiber Collimator",       "Fiber-coupled collimator used as a beam source"),
@@ -429,6 +430,15 @@ class OpticalElementProps(PropertyGroup):
                ('AG', "Silver", ""), ('AU', "Gold", "")], default='DIELECTRIC')
     design_wl: FloatProperty(name="Design wavelength (nm)", default=633.0, min=1.0)  # spec point; 0 would null a waveplate
     cavity_spacing_mm: FloatProperty(name="Cavity spacing (mm)", default=0.05, min=1e-4)
+    # C6 fiber-circulator port isolation: the directivity figure in dB. A ray entering port Pi exits the
+    # NEXT port P(i+1) at the through transmittance; a SMALL leak goes to the PREVIOUS port P(i-1) at power
+    # T * 10^(-isolation_db/10) (physics.db_to_linear). 20 dB -> 1% leak, 30 dB -> 0.1%, 0 dB -> full leak.
+    # The device is NON-RECIPROCAL: P1->P2, P2->P3, P3->P1 (a ray into P2 does NOT return to P1).
+    isolation_db: FloatProperty(
+        name="Isolation (dB)", default=20.0, min=0.0, soft_max=60.0,
+        description="Circulator port-to-port isolation (directivity) in dB. The leakage to the PREVIOUS "
+                    "port in the cycle is the through power x 10^(-isolation_db/10): 20 dB -> 1%%, 30 dB "
+                    "-> 0.1%%, 0 dB -> full leak. Higher = cleaner routing")
     # nonlinear-crystal chi(2) family (C7). Every child wavelength is exact photon-frequency / ENERGY
     # conservation, each oracle-VERIFIED (tests/_verify_nlcrystal.py): SHG lam/2, THG lam/3, SFG/DFG
     # 1/l3=1/l1+-1/l2, OPO pump->signal+idler. SPDC: degenerate signal+idler at 2*lam. NONE: pump dump

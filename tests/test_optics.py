@@ -1654,6 +1654,53 @@ for _o in list(_qc.objects):
     eg.drop_example_object(_o)
 bpy.data.collections.remove(_qc)
 
+print("[C6 fiber circulator: NON-RECIPROCAL cyclic router Pi->P(i+1) + dB->linear isolation leak]")
+check("C6 db_to_linear(20)=0.01 / 30=0.001 / 0=1.0 / 10=0.1 (oracle-VERIFIED 10^(-db/10))",
+      abs(physics.db_to_linear(20.0) - 0.01) < 1e-12 and abs(physics.db_to_linear(30.0) - 0.001) < 1e-12
+      and abs(physics.db_to_linear(0.0) - 1.0) < 1e-12 and abs(physics.db_to_linear(10.0) - 0.1) < 1e-12)
+# build a bare 3-port circulator and fire a ray into each port; assert the cyclic, non-reciprocal routing
+_cc = bpy.data.collections.new("C6TEST"); sc.collection.children.link(_cc)
+for _o in list(sc.objects):
+    if getattr(getattr(_o, "optics", None), "is_optical", False):
+        bpy.data.objects.remove(_o, do_unlink=True)
+from optical_alignment_sim import geometry as _C6geo
+from mathutils import Vector as _C6V
+_hub = eg.circulator("C6_H", (0, 0, 0), _C6V((1, 0, 0)), _cc, n_ports=3, isolation_db=20.0)
+
+
+def _c6_exit_port(p1):
+    return min(_hub.optics.ports,
+              key=lambda pp: (_C6geo.world_port(_hub, pp.local_position) - _C6V(p1)).length).name
+
+
+_c6_route = {}
+for _entry in ("P1", "P2", "P3"):
+    _p = next(pp for pp in _hub.optics.ports if pp.name == _entry)
+    _wp = _C6geo.world_port(_hub, _p.local_position); _wn = _C6geo.world_normal(_hub, _p.local_normal)
+    for _o in list(sc.objects):
+        if _o.name == "C6_SRC":
+            bpy.data.objects.remove(_o, do_unlink=True)
+    eg.source("C6_SRC", _wp + _wn * 120.0, -_wn, _cc)
+    bpy.context.view_layer.update()
+    _segs = tracer.trace_scene(sc, mode=sc.optics.trace_mode,
+                               max_segments=sc.optics.max_segments, max_depth=sc.optics.max_depth)
+    _outs = [s for s in _segs if s.get("from") == "C6_H"]
+    _main = next((s for s in _outs if s["kind"] == "CIRC_OUT"), None)
+    _iso = next((s for s in _outs if s["kind"] == "CIRC_ISO"), None)
+    _c6_route[_entry] = (_c6_exit_port(_main["p1"]) if _main else None, _main["power"] if _main else None,
+                         _c6_exit_port(_iso["p1"]) if _iso else None, _iso["power"] if _iso else None)
+check("C6 cyclic route: P1->P2, P2->P3, P3->P1 (the wrap), each at full through power",
+      _c6_route["P1"][0] == "P2" and _c6_route["P2"][0] == "P3" and _c6_route["P3"][0] == "P1"
+      and all(abs(_c6_route[k][1] - 1.0) < 1e-6 for k in _c6_route), str(_c6_route))
+check("C6 NON-RECIPROCAL: P2->P3 (a reciprocal device would send P2->P1)",
+      _c6_route["P2"][0] == "P3" and _c6_route["P2"][0] != "P1")
+check("C6 isolation leak -> PREVIOUS port at power*10^(-20/10): P1->P3, P2->P1, P3->P2 @ 0.01",
+      _c6_route["P1"][2] == "P3" and _c6_route["P2"][2] == "P1" and _c6_route["P3"][2] == "P2"
+      and all(abs(_c6_route[k][3] - 0.01) < 1e-6 for k in _c6_route), str(_c6_route))
+for _o in list(_cc.objects):
+    eg.drop_example_object(_o)
+bpy.data.collections.remove(_cc)
+
 print("[anim: camera-orbit primitive — render-free (the actual render is verified locally)]")
 # Do NOT call bpy.ops.render.render here: EEVEE under headless xvfb aborts on the CI box (exit 134).
 # Test the deterministic new logic instead -- the orbit camera primitive render_sequence sweeps.
