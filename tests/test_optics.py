@@ -1620,6 +1620,40 @@ check("place_on_rail rejects a non-rail element", "error" in optics_api.place_on
 optomech.strip(sc)
 check("strip removes the rail too", not any(o.name.startswith("BENCH_Rail_") for o in sc.objects))
 
+print("[C8 detector material/mode + readout: R(l)=qe*l/1239.8, APD F(M), quadrant erf (oracle-VERIFIED)]")
+check("C8 responsivity InGaAs@1550 == qe*l/1239.8 (~1 A/W)",
+      abs(physics.responsivity('InGaAs', 1550.0) - physics.detector_qe('InGaAs', 1550.0) * 1550.0 / physics.HC_OVER_E_eVnm) < 1e-9)
+check("C8 APD excess-noise F(M=10,k=0.02)=2.062 (oracle-verified)",
+      abs(physics.apd_excess_noise(10.0, 0.02) - 2.062) < 1e-9)
+check("C8 APD F(M,k=1)=M and F(M,k=0)=2-1/M (McIntyre limits)",
+      abs(physics.apd_excess_noise(5.0, 1.0) - 5.0) < 1e-9 and abs(physics.apd_excess_noise(10.0, 0.0) - 1.9) < 1e-9)
+check("C8 quadrant_fraction == 1 - knife_transmission (the verified erf sibling)",
+      all(abs(physics.quadrant_fraction(_o, 1.0) - (1.0 - physics.knife_transmission(_o, 0.0, 1.0))) < 1e-12 for _o in (-0.5, 0.0, 0.7)))
+# quadrant ground-truth: an injected transverse offset is recovered by the quadrant Sx/Sy signal
+_qc = bpy.data.collections.new("C8TEST"); sc.collection.children.link(_qc)
+for _o in list(sc.objects):
+    if getattr(getattr(_o, "optics", None), "is_optical", False):
+        bpy.data.objects.remove(_o, do_unlink=True)
+from mathutils import Matrix as _C8M, Vector as _C8V
+_qs = eg.source("C8_S", (-150, 0, 0), _C8V((1, 0, 0)), _qc, wavelength=1550.0)
+_qd = eg.detector("C8_D", (120, 0, 0), _C8V((1, 0, 0)), _qc, size=30.0)
+_qd.optics.readout_topology = 'QUADRANT'; _qd.optics.det_material = 'InGaAs'; _qd.optics.quadrant_gap_mm = 0.0
+_qsb = _qs.matrix_world.translation.copy(); _qsig = []
+for _dy in (-4.0, 0.0, 4.0):
+    _qs.matrix_world = _C8M.Translation((_qsb.x, _qsb.y + _dy, _qsb.z)) @ _qs.matrix_world.to_3x3().to_4x4()
+    bpy.context.view_layer.update()
+    tracer.cached_segments = tracer.trace_scene(sc, mode=sc.optics.trace_mode,
+                                                max_segments=sc.optics.max_segments, max_depth=sc.optics.max_depth)
+    alignment.refresh_report(sc)
+    _qsig.append((_qd.optics.meas_quad_x, _qd.optics.meas_quad_y))
+_qax = ([s[0] for s in _qsig] if abs(_qsig[0][0] - _qsig[2][0]) >= abs(_qsig[0][1] - _qsig[2][1])
+        else [s[1] for s in _qsig])
+check("C8 quadrant recovers an injected transverse offset (monotone, ~0 centred, saturates)",
+      abs(_qax[1]) < 0.05 and _qax[0] < _qax[2] and abs(_qax[0]) > 0.3 and abs(_qax[2]) > 0.3, str([round(v, 3) for v in _qax]))
+for _o in list(_qc.objects):
+    eg.drop_example_object(_o)
+bpy.data.collections.remove(_qc)
+
 print("[anim: camera-orbit primitive — render-free (the actual render is verified locally)]")
 # Do NOT call bpy.ops.render.render here: EEVEE under headless xvfb aborts on the CI box (exit 134).
 # Test the deterministic new logic instead -- the orbit camera primitive render_sequence sweeps.

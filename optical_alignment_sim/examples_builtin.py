@@ -410,6 +410,27 @@ def build_beam_profiler(context):
     return "OpticsExample_BeamProfiler"
 
 
+def build_quad_tracker(context):
+    """A beam-position / pointing tracker (C8): a source hits a steering mirror, which folds the beam onto a
+    4-QUADRANT detector that reads the 2-axis position error Sx=(A+D-B-C)/Sigma, Sy=(A+B-C-D)/Sigma (the erf
+    of the Gaussian over the four quadrants -- the knife-edge sibling). A pick-off splitter sends a copy to a
+    CAMERA detector whose I(x,y)=Sum|E|^2 readout images the beam spot. Tilting the mirror walks the spot
+    across the quadrant, and Sx/Sy track the offset (monotonic, correct sign, ~linear near center) -- the
+    standard auto-alignment error sensor that feeds the A6/A7 steering solvers. All readout is a post-process
+    overlay on the existing trace; the segment geometry/power is unchanged."""
+    coll = G.example_collection("OpticsExample_QuadTracker")
+    X = Vector((1, 0, 0))
+    Y = Vector((0, 1, 0))
+    G.source("QT_Laser", (-220, 0, 0), X, coll, wavelength=632.8)
+    # a 50/50 pick-off: TRANSMIT continues to the quadrant, REFLECT (+Y) goes to the camera
+    G.beamsplitter("QT_Pickoff", (-60, 0, 0), X, Y, coll, split=0.5)
+    # the quadrant detector straight ahead -- the 2-axis position-error sensor
+    G.detector("QT_Quad", (140, 0, 0), X, coll, size=20.0, readout='QUADRANT')
+    # a camera off the pick-off leg -- images the beam profile (rectangular sensor)
+    G.detector("QT_Camera", (-60, 150, 0), Y, coll, size=24.0, readout='CAMERA')
+    return "OpticsExample_QuadTracker"
+
+
 EXAMPLES = {
     'mach_zehnder': ("Mach-Zehnder Interferometer", build_mach_zehnder),
     'michelson':    ("Michelson Interferometer", build_michelson),
@@ -431,6 +452,7 @@ EXAMPLES = {
     'back_reflection': ("Back-Reflection / Ghost Beam (uncoated window 4% ghost + isolator)", build_back_reflection),
     'green_doubler': ("Green Doubler (KTP SHG: 1064 IR -> 532 green + dichroic split)", build_green_doubler),
     'spdc_source':  ("Type-II SPDC Source (BBO: 405 -> degenerate 810 signal/idler twins)", build_spdc_source),
+    'quad_tracker': ("Quadrant Beam Tracker (4-quadrant 2-axis position error + camera image)", build_quad_tracker),
 }
 
 

@@ -130,11 +130,98 @@ def measure(segs, name, analyzer='NONE'):
     return total, vis, strongest
 
 
-def _measure_detector(props, segs, name):
+def _beam_offset_on_plane(segs, name, obj):
+    """Power-weighted centroid (xc, yc) of the beams reaching detector ``obj``, expressed in its IN-face
+    (u, v) transverse plane (mm, relative to the detector center), plus a representative spot radius w.
+
+    Reads the SAME per-segment hit point p2 / power / qd the trace already produced -- a pure readout.
+    Returns (xc, yc, w) or None if no geometry is available. Used by the C8 quadrant + lateral-PSD
+    position readouts: the quadrant signal is erf(sqrt2*xc/w) per axis (the knife-edge sibling)."""
+    if obj is None:
+        return None
+    from . import scan
+    incoming = [s for s in segs if s.get("to") == name]
+    if not incoming:
+        return None
+    c, n, u, v = scan._detector_plane(obj)
+    sw = 0.0
+    sx = 0.0
+    sy = 0.0
+    w_acc = 0.0
+    for s in incoming:
+        p = max(s.get("power", 0.0), 0.0)
+        if p <= 0.0:
+            continue
+        hit = Vector(s["p2"]) - c
+        sx += p * hit.dot(u)
+        sy += p * hit.dot(v)
+        sw += p
+        w_acc += p * s.get("w_mm", 0.0)
+    if sw <= 1e-12:
+        return None
+    return sx / sw, sy / sw, (w_acc / sw)
+
+
+def _detector_readout(props, segs, name, obj, power, strongest):
+    """C8 readout overlays from the existing power/jones/qd (the trace is untouched):
+      * photocurrent/voltage  V = G*R(lambda)*P  (biased/amplified), I = M*R(lambda)*P (APD),
+        or a saturating photon count (SPAD) -- responsivity R(lambda) per material;
+      * quadrant / lateral-PSD 2-axis position error from the beam centroid offset on the sensor."""
+    # --- responsivity-weighted photocurrent / voltage (per material + mode) ---
+    wl = strongest.get("wavelength", props.wavelength) if strongest else props.wavelength
+    R = physics.responsivity(props.det_material, wl)
+    G = props.det_gain
+    mode = props.det_mode
+    if mode == 'APD':
+        # I = M*R*P; the excess-noise F(M) is carried as a readout-quality note (it scales the noise,
+        # not the mean signal). M is the avalanche gain (det_gain reused as M).
+        props.meas_current = G * R * power
+    elif mode == 'SPAD':
+        # photon-counting: count rate saturates toward the SPAD ceiling (1 - exp(-rate/max)).
+        rate = R * power * max(G, 1.0)
+        cap = max(props.det_spad_max, 1.0)
+        props.meas_current = cap * (1.0 - math.exp(-rate / cap))
+    else:                                            # biased / amplified: linear V = G*R*P
+        props.meas_current = G * R * power
+
+    # --- quadrant / lateral-PSD position readout ---
+    props.meas_quad_x = 0.0
+    props.meas_quad_y = 0.0
+    if props.readout_topology in ('QUADRANT', 'PSD'):
+        off = _beam_offset_on_plane(segs, name, obj)
+        if off is not None:
+            xc, yc, w = off
+            if props.readout_topology == 'QUADRANT':
+                # quadrant erf signals Sx=erf(sqrt2*xc/w), Sy=erf(sqrt2*yc/w): monotonic 2-axis
+                # position error, the knife-edge sibling (the gap shrinks the effective offset).
+                gap = props.quadrant_gap_mm
+                Sx, Sy, _abcd = physics.quadrant_signals(_gap_offset(xc, gap), _gap_offset(yc, gap),
+                                                         max(w, 1e-6))
+                props.meas_quad_x = Sx
+                props.meas_quad_y = Sy
+            else:                                    # lateral PSD: raw power-weighted centroid (mm)
+                props.meas_quad_x = xc
+                props.meas_quad_y = yc
+
+
+def _gap_offset(o, gap):
+    """Shift a centroid offset by the quadrant dead-gap half-width toward zero (the gap blinds the
+    detector to motion within +/-gap), saturating at 0 inside the gap. Ideal detector (gap=0) is a no-op."""
+    if gap <= 0.0:
+        return o
+    if o > gap:
+        return o - gap
+    if o < -gap:
+        return o + gap
+    return 0.0
+
+
+def _measure_detector(props, segs, name, obj=None):
     """Write a detector's measured power, polarization, fringe visibility, and spot."""
     power, vis, strongest = measure(segs, name, props.analyzer)
     if power < 0.0:
         props.meas_power, props.meas_pol, props.meas_visibility, props.meas_text = -1.0, "", -1.0, ""
+        props.meas_current, props.meas_quad_x, props.meas_quad_y = -1.0, 0.0, 0.0
         return
     props.meas_power = power
     props.meas_visibility = vis
@@ -161,6 +248,8 @@ def _measure_detector(props, segs, name):
     loss = ("  %.1f dB" % (-10.0 * math.log10(power))) if power > 1e-12 else ""
     spot = ("spot w=%.3f mm" % strongest.get("w_mm", 0.0)) if strongest else ""
     props.meas_text = (spot + loss).strip()
+    # C8 readout overlays (photocurrent + quadrant/PSD position) -- pure post-process on power/qd
+    _detector_readout(props, segs, name, obj, power, strongest)
 
 
 def refresh_report(scene):
@@ -181,7 +270,7 @@ def refresh_report(scene):
         if scene.optics.auto_color:
             obj.color = COLOR.get(state, COLOR['UNKNOWN'])
         if props.element_type in tracer.TERMINAL:
-            _measure_detector(props, segs, obj.name)
+            _measure_detector(props, segs, obj.name, obj)
         report.append({"name": obj.name, "type": props.element_type,
                        "pos_err_mm": round(pos_err, 4), "ang_err_deg": round(ang_err, 4),
                        "state": state, "next": nxt, "mech": props.mech_state})

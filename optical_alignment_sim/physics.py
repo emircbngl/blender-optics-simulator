@@ -694,6 +694,109 @@ def knife_transmission(e_mm, xc_mm, w_mm):
     return 0.5 * (1.0 - math.erf(math.sqrt(2.0) * (e_mm - xc_mm) / w_mm))
 
 
+# --- detector responsivity + readout topology (C8) --------------------------
+# A photodiode converts optical power P to a photocurrent I = R(lambda)*P, where the responsivity
+#   R(lambda) = qe(material, lambda) * lambda[nm] / 1239.8   (A/W)
+# 1239.8 = hc/e in eV*nm, so lambda/1239.8 = E_photon^{-1} in (eV)^{-1}; at unit quantum efficiency
+# every absorbed photon yields one electron, giving the ideal R = eta*lambda/1239.8. The clean ratio
+# R(lambda)=eta*lambda/1239.8 is oracle-VERIFIED (physics_verify ok=true 5/5: eta=1,lambda=1239.8->1.0
+# A/W; lambda=619.9->0.5; eta=0.8,lambda=1550->1.00016; DIMENSIONAL dimensionless ratio*eta). The
+# per-material quantum-efficiency band qe(material,lambda) below is a SIMPLE TIER-1 MODELING CHOICE
+# (a smooth trapezoidal window over each detector's usable spectral range with a representative peak
+# QE), NOT a digitized datasheet curve -- it gives a realistic R(lambda) SHAPE (Si peaks vis/NIR,
+# InGaAs/Ge cover NIR/SWIR) for the readout overlay, not an absolute calibrated responsivity.
+
+HC_OVER_E_eVnm = 1239.8                       # hc/e in eV*nm: E_photon[eV] = 1239.8 / lambda[nm]
+
+# Per-material quantum-efficiency band: (lambda_lo, lambda_full_lo, lambda_full_hi, lambda_hi nm, peak_qe).
+# QE ramps 0->peak across [lo, full_lo], holds peak across [full_lo, full_hi], ramps peak->0 across
+# [full_hi, hi], and is 0 outside [lo, hi]. Ranges are the standard usable windows of each photodiode
+# material (Si ~190-1100 nm, InGaAs ~800-1700 nm standard / ext to ~2600, Ge ~600-1800 nm).
+DETECTOR_QE = {
+    'Si':     (190.0, 500.0, 950.0, 1100.0, 0.90),     # silicon: visible + near-IR, peak ~700-900 nm
+    'InGaAs': (800.0, 1100.0, 1650.0, 1700.0, 0.80),   # standard InGaAs: telecom NIR/SWIR
+    'Ge':     (600.0, 1100.0, 1550.0, 1800.0, 0.65),   # germanium: broad NIR/SWIR, lower peak QE
+}
+
+
+def detector_qe(material, wl_nm):
+    """Quantum efficiency eta in [0, peak] of a photodiode ``material`` at wavelength ``wl_nm`` (nm),
+    from the trapezoidal usable-band model in DETECTOR_QE (0 outside the band). TIER-1 SHAPE, not a
+    datasheet digitization -- captures which materials respond where (Si vis/NIR, InGaAs/Ge NIR/SWIR)."""
+    band = DETECTOR_QE.get(material, DETECTOR_QE['Si'])
+    lo, flo, fhi, hi, peak = band
+    if wl_nm <= lo or wl_nm >= hi:
+        return 0.0
+    if wl_nm < flo:
+        return peak * (wl_nm - lo) / (flo - lo)
+    if wl_nm > fhi:
+        return peak * (hi - wl_nm) / (hi - fhi)
+    return peak
+
+
+def responsivity(material, wl_nm):
+    """Photodiode responsivity R(lambda) = qe(material, lambda) * lambda[nm] / 1239.8 in A/W
+    (amps of photocurrent per watt of optical power). The lambda/1239.8 ratio is the inverse
+    photon energy in eV^-1; at unit QE that is the ideal one-electron-per-photon responsivity
+    (oracle-VERIFIED clean ratio). qe(material, lambda) bands it to each material's window."""
+    return detector_qe(material, wl_nm) * wl_nm / HC_OVER_E_eVnm
+
+
+def apd_excess_noise(M, k):
+    """APD excess-noise factor F(M) = k*M + (2 - 1/M)*(1 - k) (McIntyre), with M the avalanche gain
+    and k the ionization-coefficient ratio (k~0.02 Si, ~0.4 InGaAs, ~0.9 Ge). F=2-1/M at k=0 (ideal,
+    single-carrier multiplication) and F=M at k=1 (worst case). Oracle-VERIFIED ok=true 6/6
+    (M=10,k=0.02->2.062; M=100,k=0.02->3.9502; k=0->1.9; k=1->10; DIMENSIONAL dimensionless)."""
+    if M <= 0.0:
+        return 1.0
+    return k * M + (2.0 - 1.0 / M) * (1.0 - k)
+
+
+def quadrant_fraction(offset_mm, w_mm):
+    """Fraction of a Gaussian beam (1/e^2 intensity radius ``w_mm``, centered ``offset_mm`` from the
+    quadrant boundary) lying on the POSITIVE side of one straight gap line:
+
+        f(offset, w) = (1/2) * [1 + erf(sqrt(2) * offset / w)]      (the knife-edge sibling)
+
+    The half-plane fraction of the 1-D marginal Gaussian I(x) ~ exp(-2 x^2/w^2): f=1/2 when the beam is
+    centered on the line (offset=0), -> 1 as the beam moves fully onto the positive side, -> 0 fully onto
+    the negative side. Same sqrt(2)-in-NUMERATOR erf scale as slit/knife (1/e^2 convention sigma=w/2),
+    so it is exactly 1 - knife_transmission(offset, 0, w). A 2-axis quadrant detector multiplies the two
+    independent marginal fractions (X-gap and Y-gap) to get each quadrant's power weight. The erf
+    decomposition was verified by DIRECT Gaussian integration (erf is not in the oracle sandbox), <1e-6
+    vs the integrated Gaussian -- see tests/_verify_detector.py."""
+    if w_mm <= 1e-9:
+        return 1.0 if offset_mm >= 0.0 else 0.0
+    return 0.5 * (1.0 + math.erf(math.sqrt(2.0) * offset_mm / w_mm))
+
+
+def quadrant_signals(xc_mm, yc_mm, w_mm):
+    """Normalized 2-axis position signals (Sx, Sy) of a quadrant detector for a Gaussian beam of 1/e^2
+    radius ``w_mm`` whose centroid sits at (xc, yc) relative to the quadrant cross (the gap origin).
+
+    The four quadrant powers are products of the two independent marginal half-plane fractions:
+        fx = quadrant_fraction(xc, w)   (fraction with local x > 0)
+        fy = quadrant_fraction(yc, w)   (fraction with local y > 0)
+        A (+x,+y)=fx*fy   B (-x,+y)=(1-fx)*fy   C (-x,-y)=(1-fx)*(1-fy)   D (+x,-y)=fx*(1-fy)
+    The standard difference-over-sum readouts then collapse to the single-axis erf signals:
+        Sx = (A + D - B - C)/Sigma = 2*fx - 1 = erf(sqrt2 * xc / w)
+        Sy = (A + B - C - D)/Sigma = 2*fy - 1 = erf(sqrt2 * yc / w)
+    (Sigma = A+B+C+D = 1.) Each is monotonic in its offset, zero at center, correct sign, and ~linear
+    (slope 2*sqrt(2/pi)/w) near center -- a true 2-axis position-error sensor for the A6/A7 solvers."""
+    fx = quadrant_fraction(xc_mm, w_mm)
+    fy = quadrant_fraction(yc_mm, w_mm)
+    A = fx * fy
+    B = (1.0 - fx) * fy
+    C = (1.0 - fx) * (1.0 - fy)
+    D = fx * (1.0 - fy)
+    total = A + B + C + D
+    if total <= 1e-12:
+        return 0.0, 0.0, (A, B, C, D)
+    Sx = (A + D - B - C) / total
+    Sy = (A + B - C - D) / total
+    return Sx, Sy, (A, B, C, D)
+
+
 # --- Zernike wavefront (modal adaptive optics) ------------------------------
 # Noll-indexed, RMS-normalized Zernike polynomials over the unit disk (j = 1..15:
 # piston, tip/tilt, defocus, astigmatism, coma, trefoil, spherical, secondary astig,

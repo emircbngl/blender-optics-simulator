@@ -542,6 +542,35 @@ class OpticalElementProps(PropertyGroup):
     sensor_exposure: FloatProperty(name="Exposure (0 = ideal)", default=0.0, min=0.0)
     sensor_read_noise: FloatProperty(name="Read noise (counts)", default=5.0, min=0.0)
     sensor_well_depth: FloatProperty(name="Saturation (counts)", default=4000.0, min=1.0)
+    # --- detector material / mode / readout topology (C8) ---------------------------------------
+    # READOUT overlays on the existing per-segment power/jones/qd -- they never change the beam TRACE.
+    # Defaults reproduce today's behavior exactly: Si + biased + gain 1 -> photocurrent overlay only;
+    # POINT topology -> the legacy scalar power readout (meas_power) is untouched.
+    det_material: EnumProperty(name="Detector material", default='Si',
+        items=[('Si', "Silicon (Si)", "Visible + near-IR (190-1100 nm); peak QE ~700-900 nm"),
+               ('InGaAs', "InGaAs", "NIR/SWIR telecom (800-1700 nm); peak QE ~1550 nm"),
+               ('Ge', "Germanium (Ge)", "Broad NIR/SWIR (600-1800 nm); lower peak QE")],
+        description="Photodiode material -> responsivity band R(lambda)=qe(material,lambda)*lambda/1239.8 A/W")
+    det_mode: EnumProperty(name="Detector mode", default='biased',
+        items=[('biased', "Biased / photovoltaic", "Linear: V = G*R(lambda)*P (the legacy power readout)"),
+               ('amplified', "Amplified (transimpedance)", "Linear with extra gain: V = G*R(lambda)*P"),
+               ('APD', "Avalanche (APD)", "I = M*R(lambda)*P with excess-noise F(M)=kM+(2-1/M)(1-k)"),
+               ('SPAD', "Single-photon (SPAD)", "Photon counting; saturates at high flux (Geiger mode)")],
+        description="Readout mode: linear (biased/amplified), avalanche (APD), or photon-counting (SPAD)")
+    det_gain: FloatProperty(name="Detector gain (G / M)", default=1.0, min=0.0,
+        description="Transimpedance gain G (biased/amplified) or avalanche multiplication M (APD)")
+    det_k: FloatProperty(name="APD ionization ratio k", default=0.02, min=0.0, max=1.0,
+        description="APD ionization-coefficient ratio for the McIntyre excess-noise F(M) (Si~0.02, InGaAs~0.4, Ge~0.9)")
+    det_spad_max: FloatProperty(name="SPAD saturation count", default=1.0e6, min=1.0,
+        description="SPAD maximum count rate; the photon-counting readout saturates toward this ceiling")
+    readout_topology: EnumProperty(name="Readout topology", default='POINT',
+        items=[('POINT', "Point (single-element)", "One active area -> a single scalar power/photocurrent (legacy default)"),
+               ('QUADRANT', "Quadrant (4-element)", "Four quadrants -> 2-axis position error Sx=(A+D-B-C)/Sigma, Sy=(A+B-C-D)/Sigma"),
+               ('PSD', "Lateral PSD", "Continuous position-sensing detector -> power-weighted centroid (x, y)"),
+               ('CAMERA', "Camera (imaging)", "2-D pixel array -> intensity image I(x,y)=Sum|E|^2 (reuses the fringe array)")],
+        description="Detector READOUT topology: point power, quadrant 2-axis error, lateral PSD centroid, or camera image")
+    quadrant_gap_mm: FloatProperty(name="Quadrant/PSD gap (mm)", default=0.0, min=0.0,
+        description="Dead-gap half-width between quadrant segments (0 = ideal, no gap)")
     # adaptive optics (modal Zernike): aberrator injects, deformable mirror subtracts, sensor reads
     aberr_spec: FloatVectorProperty(name="Aberration (waves)", size=15, default=[0.0] * 15)
     dm_command: FloatVectorProperty(name="DM command (waves)", size=15, default=[0.0] * 15)
@@ -567,6 +596,10 @@ class OpticalElementProps(PropertyGroup):
     meas_pol: StringProperty(default="")           # e.g. "linear 45deg, DOP 1.00"
     meas_visibility: FloatProperty(default=-1.0)   # fringe visibility (-1 = N/A)
     meas_text: StringProperty(default="")          # freeform extra (spot size, budget, ...)
+    # C8 readout overlays (computed from the SAME power/jones/qd; the trace is untouched)
+    meas_current: FloatProperty(default=-1.0)      # photocurrent/voltage V or I = G*R(lambda)*P readout (-1 = N/A)
+    meas_quad_x: FloatProperty(default=0.0)        # quadrant/PSD position-error X signal (normalized)
+    meas_quad_y: FloatProperty(default=0.0)        # quadrant/PSD position-error Y signal (normalized)
 
 
 def _grid_units_update(self, context):

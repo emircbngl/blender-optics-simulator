@@ -624,9 +624,19 @@ def _grooved_plate(name, size, depth, coll, n=34):
     return o
 
 
-def _sensor_box(name, size, depth, coll, active=0.55, lenslets=0):
+def _sensor_box(name, size, depth, coll, active=0.55, lenslets=0, chip='inset'):
     """A detector head: a dark body box (slot 0) with a recessed active-area inset on its +Z (sensor)
-    face in slot 1. With lenslets>0 the inset carries an NxN micro-lens grid (Shack-Hartmann look)."""
+    face in slot 1. With lenslets>0 the inset carries an NxN micro-lens grid (Shack-Hartmann look).
+
+    ``chip`` selects the active-area SHAPE (C8 detector-hero details; purely cosmetic -- the tracer
+    reads ports, not the active mesh, so all variants trace identically):
+      'inset'    -- the legacy square recessed pad (DEFAULT; byte-identical to before).
+      'round'    -- a round photodiode chip (a flat disc).
+      'quadrant' -- a 4-quadrant chip split by a cross-shaped dead gap (the position sensor).
+      'psd'      -- a lateral-PSD pad with four edge electrode strips.
+      'thermal'  -- a matte-black thermopile/thermal disc (broad absorber, recessed).
+      'rect'     -- a rectangular (camera) sensor, 16:9-ish.
+    """
     import math
     bm = bmesh.new(); bmesh.ops.create_cube(bm, size=1.0)
     for v in bm.verts:
@@ -635,6 +645,7 @@ def _sensor_box(name, size, depth, coll, active=0.55, lenslets=0):
     o.data.materials.append(MATS["det"]())               # slot 0: body (caller may overwrite)
     o.data.materials.append(MATS["sensor"]())            # slot 1: active area / lenslets
     a = size * active
+    zc = depth * 0.5 - 0.3                                # active-area recess plane (just below +Z face)
 
     def _add_detail(builder):                            # join a slot-1 sub-mesh by face range
         sub = builder()
@@ -645,9 +656,55 @@ def _sensor_box(name, size, depth, coll, active=0.55, lenslets=0):
     def _inset():
         ab = bmesh.new(); bmesh.ops.create_cube(ab, size=1.0)
         for v in ab.verts:
-            v.co = Vector((v.co.x * a, v.co.y * a, v.co.z * 1.2)) + Vector((0.0, 0.0, depth * 0.5 - 0.3))
+            v.co = Vector((v.co.x * a, v.co.y * a, v.co.z * 1.2)) + Vector((0.0, 0.0, zc))
         return _bm_obj(name + "_act", ab, coll)
-    _add_detail(_inset)
+
+    def _round_chip(rad=a, zh=1.2, zoff=zc, tag="_act"):
+        cb = bmesh.new()
+        bmesh.ops.create_cone(cb, cap_ends=True, segments=40, radius1=rad, radius2=rad, depth=zh)
+        for v in cb.verts:
+            v.co = Vector((v.co.x, v.co.y, v.co.z + zoff))
+        return _bm_obj(name + tag, cb, coll)
+
+    def _quad_block(sx, sy):                             # one of the four quadrant pads (cross gap between)
+        g = a * 0.06                                     # half the dead-gap width
+        hw = (a - g) * 0.5
+        qb = bmesh.new(); bmesh.ops.create_cube(qb, size=1.0)
+        for v in qb.verts:
+            v.co = Vector((v.co.x * hw, v.co.y * hw, v.co.z * 1.2)) + \
+                Vector((sx * (hw + g), sy * (hw + g), zc))
+        return _bm_obj(name + "_q", qb, coll)
+
+    def _edge_strip(sx, sy):                            # PSD edge electrode (thin bar along one edge)
+        long_x = (sy != 0)
+        lw, lh = (a * 0.92, a * 0.10) if long_x else (a * 0.10, a * 0.92)
+        eb = bmesh.new(); bmesh.ops.create_cube(eb, size=1.0)
+        for v in eb.verts:
+            v.co = Vector((v.co.x * lw, v.co.y * lh, v.co.z * 1.0)) + \
+                Vector((sx * a * 0.9, sy * a * 0.9, zc + 0.1))
+        return _bm_obj(name + "_e", eb, coll)
+
+    def _rect_chip():
+        ab = bmesh.new(); bmesh.ops.create_cube(ab, size=1.0)
+        for v in ab.verts:
+            v.co = Vector((v.co.x * a, v.co.y * a * 0.56, v.co.z * 1.2)) + Vector((0.0, 0.0, zc))
+        return _bm_obj(name + "_act", ab, coll)
+
+    if chip == 'round':
+        _add_detail(_round_chip)
+    elif chip == 'thermal':                              # broad matte-black absorber disc, deeper recess
+        _add_detail(lambda: _round_chip(rad=a * 1.04, zh=0.8, zoff=zc - 0.4, tag="_therm"))
+    elif chip == 'rect':
+        _add_detail(_rect_chip)
+    elif chip == 'quadrant':
+        for (sx, sy) in ((1, 1), (-1, 1), (-1, -1), (1, -1)):
+            _add_detail(lambda sx=sx, sy=sy: _quad_block(sx, sy))
+    elif chip == 'psd':
+        _add_detail(_inset)                              # the continuous sensitive pad
+        for (sx, sy) in ((0, 1), (0, -1), (1, 0), (-1, 0)):
+            _add_detail(lambda sx=sx, sy=sy: _edge_strip(sx, sy))
+    else:
+        _add_detail(_inset)
 
     if lenslets:
         zc = depth * 0.5 + 0.7
@@ -799,11 +856,16 @@ def beamsplitter(name, loc, in_dir, reflect_dir, coll=None, split=0.5, pbs=False
     return o
 
 
-def detector(name, loc, beam_dir, coll=None, size=22.0):
-    """A detector/camera whose sensor faces the incoming beam."""
-    o = _sensor_box(name, size, 8.0, coll, active=0.5)    # body + recessed active-area on +Z
+def detector(name, loc, beam_dir, coll=None, size=22.0, readout='POINT'):
+    """A detector/camera whose sensor faces the incoming beam. ``readout`` picks the C8 readout topology
+    + matching active-area chip: POINT (square pad), QUADRANT (4-quadrant cross), PSD (lateral pad),
+    CAMERA (rectangular sensor). The chip is cosmetic -- the trace is identical for every topology."""
+    chip = {'QUADRANT': 'quadrant', 'PSD': 'psd', 'CAMERA': 'rect'}.get(readout, 'inset')
+    o = _sensor_box(name, size, 8.0, coll, active=0.5, chip=chip)    # body + recessed active-area on +Z
     o.data.materials[0] = MATS["det"]()
     _tag(o, 'DETECTOR', is_detector=True, clear_aperture=size * 0.5)
+    if readout and readout != 'POINT':
+        o.optics.readout_topology = readout
     facing = -Vector(beam_dir).normalized()
     _add_port(o, "IN", 'IN', (0, 0, 4.0), (0, 0, 1), size * 0.5)
     _set_matrix(o, Vector(loc), _z_to(facing))   # +Z (IN normal) -> faces the beam
@@ -1505,19 +1567,26 @@ def fiber_collimator(name, loc, direction, coll=None, wavelength=632.8, length=3
     return o
 
 
-def photodiode(name, loc, beam_dir, coll=None, size=14.0):
-    """A point photodiode whose sensor faces the incoming beam; terminates it."""
-    o = _sensor_box(name, size, 6.0, coll, active=0.4)   # small round-ish active chip on +Z
+def photodiode(name, loc, beam_dir, coll=None, size=14.0, readout='POINT', material='Si', mode='biased'):
+    """A photodiode whose sensor faces the incoming beam; terminates it. ``readout`` picks the C8 readout
+    topology + active chip (POINT=round chip, QUADRANT=4-quadrant cross, PSD=lateral pad); ``material``
+    {Si,InGaAs,Ge} and ``mode`` {biased,amplified,APD,SPAD} set the responsivity-weighted photocurrent."""
+    chip = {'QUADRANT': 'quadrant', 'PSD': 'psd'}.get(readout, 'round')
+    o = _sensor_box(name, size, 6.0, coll, active=0.4, chip=chip)   # round active chip (or 4-quadrant) on +Z
     o.data.materials[0] = MATS["det"]()
     _tag(o, 'PHOTODIODE', is_detector=True, clear_aperture=size * 0.5)
+    if readout and readout != 'POINT':
+        o.optics.readout_topology = readout
+    o.optics.det_material = material
+    o.optics.det_mode = mode
     _add_port(o, "IN", 'IN', (0, 0, 3.0), (0, 0, 1), size * 0.5)
     _set_matrix(o, Vector(loc), _z_to(-Vector(beam_dir).normalized()))
     return o
 
 
 def power_meter(name, loc, beam_dir, coll=None, size=20.0):
-    """A power-meter sensor head facing the incoming beam; terminates it."""
-    o = _sensor_box(name, size, 10.0, coll, active=0.62)   # broad thermopile-style active disc
+    """A power-meter sensor head facing the incoming beam; terminates it (matte-black thermal disc)."""
+    o = _sensor_box(name, size, 10.0, coll, active=0.62, chip='thermal')   # broad thermopile-style absorber
     o.data.materials[0] = MATS["det"]()
     _tag(o, 'POWER_METER', is_detector=True, clear_aperture=size * 0.5)
     _add_port(o, "IN", 'IN', (0, 0, 5.0), (0, 0, 1), size * 0.5)
