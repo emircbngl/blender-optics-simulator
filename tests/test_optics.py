@@ -606,6 +606,100 @@ for _o in list(_a9c.objects):
     eg.drop_example_object(_o)
 bpy.data.collections.remove(_a9c)
 
+print("[A10 fringe disambiguation: pol vs coherence vs crossed-polarizer; no false positives on dark ports]")
+import optical_alignment_sim.diagnostics as _a10diag
+_A10K = {"pol_mismatch", "coherence_mismatch", "crossed_polarizer"}
+
+
+def _a10_clear():
+    for _o in list(sc.objects):
+        if getattr(getattr(_o, "optics", None), "is_optical", False):
+            bpy.data.objects.remove(_o, do_unlink=True)
+
+
+def _a10_flags():
+    tracer.cached_segments = scan._trace(sc)
+    return [i for i in _a10diag.run_diagnostics(sc) if i.get("kind") in _A10K]
+
+
+_a10c = bpy.data.collections.new("A10TEST"); sc.collection.children.link(_a10c)
+_A10X, _A10Y = _PV((1, 0, 0)), _PV((0, 1, 0))
+_A10L = 200.0
+
+
+def _a10_mz(hwp_fast=None, analyzer='NONE'):
+    """Mach-Zehnder, H source. Optional HWP in the top arm (rotates its pol) + a detector analyzer.
+    Bright port A10_D0, dark port A10_D1. Names are A10_* so they never collide with build_example."""
+    _a10_clear()
+    _s = eg.source("A10_L", (-150, 0, 0), _A10X, _a10c)
+    _s.optics.pol_type = 'LINEAR'; _s.optics.pol_angle = 0.0
+    eg.beamsplitter("A10_BS1", (0, 0, 0), _A10X, _A10Y, _a10c)
+    eg.mirror("A10_Mtop", (0, _A10L, 0), _A10Y, _A10X, _a10c)
+    if hwp_fast is not None:
+        eg.waveplate("A10_HWP", (_A10L * 0.5, _A10L, 0), _A10X, _a10c, kind='HWP', fast_axis=hwp_fast, design_wl=632.8)
+    eg.mirror("A10_Mbot", (_A10L, 0, 0), _A10X, _A10Y, _a10c)
+    eg.beamsplitter("A10_BS2", (_A10L, _A10L, 0), _A10X, _A10Y, _a10c)
+    _d0 = eg.detector("A10_D0", (2 * _A10L, _A10L, 0), _A10X, _a10c)
+    _d1 = eg.detector("A10_D1", (_A10L, 2 * _A10L, 0), _A10Y, _a10c)
+    if analyzer != 'NONE':
+        _d0.optics.analyzer = analyzer; _d1.optics.analyzer = analyzer
+    bpy.context.view_layer.update()
+
+
+def _a10_michelson(linewidth_nm=0.0, stage_mm=0.0):
+    """Michelson, finite source linewidth (-> finite Lc) + a translation-stage arm (OPD = 2*stage_mm)."""
+    _a10_clear()
+    _s = eg.source("A10_L", (-150, 0, 0), _A10X, _a10c)
+    _s.optics.pol_type = 'LINEAR'; _s.optics.pol_angle = 0.0; _s.optics.linewidth_nm = linewidth_nm
+    eg.beamsplitter("A10_BS", (0, 0, 0), _A10X, _A10Y, _a10c)
+    eg.mirror("A10_Mfix", (0, 180.0, 0), _A10Y, -_A10Y, _a10c)
+    _mst = eg.mirror("A10_Mstage", (180.0, 0, 0), _A10X, -_A10X, _a10c)
+    eg.add_translation_dof(_mst, (1, 0, 0), -80.0, 80.0, stage_mm)
+    mounts.compose_pose(_mst)
+    eg.detector("A10_D", (0, -180.0, 0), -_A10Y, _a10c)
+    bpy.context.view_layer.update()
+
+
+# (1) healthy interferometers must be CLEAN -- the destructive-interference DARK PORT is NOT a fault.
+for _hk in ("mach_zehnder", "michelson", "dhm"):
+    optics_api.build_example(_hk)
+    tracer.cached_segments = scan._trace(sc)
+    _hf = [i for i in _a10diag.run_diagnostics(sc) if i.get("kind") in _A10K]
+    check("A10 healthy %s emits ZERO A10 flags (dark port is a phase null, not a fault)" % _hk,
+          len(_hf) == 0, str([(i["kind"], i["element"]) for i in _hf]))
+
+# (2) pol_mismatch: a HWP@45 rotates the top arm to V (orthogonal) -> fires; clears at HWP@0.
+_a10_mz(hwp_fast=45.0)
+_pf = {i["kind"] for i in _a10_flags()}
+check("A10 pol_mismatch FIRES on orthogonal arms (and not coherence/crossed)",
+      "pol_mismatch" in _pf and "coherence_mismatch" not in _pf and "crossed_polarizer" not in _pf, str(sorted(_pf)))
+_a10_mz(hwp_fast=0.0)
+check("A10 pol_mismatch CLEARS when the arm is rotated back parallel (HWP@0)",
+      not any(i["kind"] in _A10K for i in _a10_flags()))
+
+# (3) coherence_mismatch: finite Lc + a large stage OPD -> fires; clears when the stage is centred.
+_a10_michelson(linewidth_nm=2.0, stage_mm=40.0)            # OPD = 80 mm >> Lc ~ 0.2 mm
+_cf = {i["kind"] for i in _a10_flags()}
+check("A10 coherence_mismatch FIRES on OPD>>Lc (and not pol/crossed)",
+      "coherence_mismatch" in _cf and "pol_mismatch" not in _cf and "crossed_polarizer" not in _cf, str(sorted(_cf)))
+_a10_michelson(linewidth_nm=2.0, stage_mm=0.0)
+check("A10 coherence_mismatch CLEARS when OPD < Lc (stage centred)",
+      not any(i["kind"] in _A10K for i in _a10_flags()))
+
+# (4) crossed_polarizer: arms H, analyzer V -> fires (each arm Malus-killed); clears when uncrossed (H).
+_a10_mz(hwp_fast=None, analyzer='V')
+_xf = {i["kind"] for i in _a10_flags()}
+check("A10 crossed_polarizer FIRES on a crossed analyzer (arms H, analyzer V)", "crossed_polarizer" in _xf, str(sorted(_xf)))
+_a10_mz(hwp_fast=None, analyzer='H')      # uncrossed + the dark port A10_D1 is a phase null -> must be SILENT
+check("A10 crossed_polarizer CLEARS when uncrossed, AND a dark port with an aligned analyzer stays "
+      "silent (the fixed bug: phase null != Malus extinction)",
+      not any(i["kind"] in _A10K for i in _a10_flags()))
+
+_a10_clear()
+for _o in list(_a10c.objects):
+    eg.drop_example_object(_o)
+bpy.data.collections.remove(_a10c)
+
 print("[microscope objective: f_obj = f_tube/M, focal power (oracle-VERIFIED)]")
 optics_api.build_example("microscope")
 _msegs = scan._trace(sc)

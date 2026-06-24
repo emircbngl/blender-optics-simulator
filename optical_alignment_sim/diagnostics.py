@@ -40,6 +40,23 @@ Wave-2 B2 adds one more (an open-loop DESIGN check, still a read-only post-pass)
                          no longer collimated (collimation error). Uses only the
                          lens focals + the traced separation; the design math lives
                          in design.py (oracle-verified afocal ABCD).
+
+Wave-3 A10 adds a fringe-disambiguation check (a read-only post-pass, NO new physics):
+  A10 pol_mismatch     - at a detector reached by >=2 beams of the SAME source
+      coherence_mismatch (same src_id), the fringes are "dead" (low visibility). The sim
+      crossed_polarizer  KNOWS why -- it has each beam's Jones vector, OPL and coherence:
+                         . the two arms are orthogonally polarized (Jones overlap ~0)
+                           -> pol_mismatch (fix: a HWP to rotate one arm);
+                         . the arms are co-polarized but OPD > coherence length
+                           (fringe_envelope < ~0.1) -> coherence_mismatch (fix: equalize
+                           the arm lengths);
+                         . a crossed polarizer/analyzer extinguished the light (measure()
+                           at the Malus extinction floor) -> crossed_polarizer.
+                         Pure REUSE: reads the already-traced jones/opl/coh and calls the
+                         oracle-verified physics.interfere / fringe_envelope / Malus
+                         (M_polarizer) / Jones-overlap + alignment.measure. No formula is
+                         added. A well-aligned interferometer (high overlap AND envelope)
+                         emits NOTHING.
 """
 from __future__ import annotations
 
@@ -47,7 +64,7 @@ import math
 
 from mathutils import Vector
 
-from . import geometry, tracer, alignment
+from . import geometry, tracer, alignment, physics
 
 
 # --- tolerances (module-level so callers / tests can read them) -------------
@@ -536,6 +553,149 @@ def _back_reflection_and_ghost_hits(scene, segs):
 
 
 # ---------------------------------------------------------------------------
+# A10 - fringe disambiguation (pol vs coherence vs crossed-polarizer)
+# ---------------------------------------------------------------------------
+
+# A10 thresholds (module-level so callers / tests can read them). NONE introduces a new
+# formula -- they only set where a REUSED, oracle-verified quantity counts as "dead":
+#   * the Jones overlap is the SAME normalized |<Ja|Jb>| physics.interfere uses for its
+#     fringe contrast (0 = orthogonal arms, 1 = identical polarization);
+#   * the envelope is physics.fringe_envelope(OPD, Lc) (the verified coherence decay);
+#   * the extinction floor is the Malus leak of physics.M_polarizer (amp^2 = 1/extinction).
+_A10_OVERLAP_DEAD = 0.1      # |<Ja|Jb>| <= this -> arms ~orthogonally polarized (pol_mismatch)
+_A10_OVERLAP_LIVE = 0.5      # |<Ja|Jb>| >= this -> co-polarized enough that LOW envelope is the cause
+_A10_ENVELOPE_DEAD = 0.1     # fringe_envelope(OPD, Lc) < this -> OPD washed the fringes (coherence_mismatch)
+_A10_EXTINCT_FRAC = 0.02     # per-arm analyzed power / raw arriving power <= this -> Malus extinction
+
+
+def _jones_of(seg):
+    """Reconstruct a complex Jones (Ex, Ey) from a segment's stored 4-float jones, or None.
+    Mirrors alignment.measure's (re,im,re,im) unpacking exactly -- no new convention."""
+    j = seg.get("jones")
+    if not j:
+        return None
+    return (complex(j[0], j[1]), complex(j[2], j[3]))
+
+
+def _fringe_disambiguation(scene, segs):
+    """A10: at every detector reached by >=2 beams of the SAME source, separate the
+    physically-distinct causes of a DEAD (low-visibility) fringe.
+
+    The two arms of an interferometer share a `src_id` (a beam keeps its source's id
+    through every split), so grouping the incoming segments by src_id -- exactly the
+    grouping alignment.measure() uses -- reconstitutes the interfering pair. For each
+    same-source group of >=2 beams we read the per-beam Jones / OPL / coherence the
+    tracer already stored and classify, REUSING only verified kernels:
+
+      crossed_polarizer  - the detector's analyzer projects EACH arm individually to ~0:
+                           the SUM of the per-arm analyzer-projected powers (the incoherent,
+                           NON-interfered analyzed power) collapses to the Malus extinction
+                           floor relative to the raw arriving power -- a crossed analyzer
+                           killed the light arm-by-arm. Reported first (it masks the other
+                           two: there is no fringe to disambiguate once the light is gone).
+                           Distinguished from a healthy destructive-interference DARK PORT
+                           (where each arm passes the analyzer at full power but the two
+                           cancel by PHASE): the dark port has HIGH per-arm analyzed power
+                           and is silently a healthy null, not a fault. Needs an analyzer to
+                           cross -- with analyzer=='NONE' a low power is interference, never
+                           a crossed polarizer.
+      pol_mismatch       - the normalized Jones overlap |<Ja|Jb>| of the two strongest
+                           arms is ~0 (orthogonally polarized): they cannot interfere.
+                           This is the SAME overlap physics.interfere weights its cross
+                           term by. Fix: a HWP to rotate one arm back parallel.
+      coherence_mismatch - the arms ARE co-polarized (overlap high) but the OPD exceeds
+                           the coherence length, so physics.fringe_envelope(OPD, Lc) < 0.1
+                           washes the fringes out. Fix: equalize the arm lengths.
+
+    A healthy interferometer (high overlap AND high envelope, light not extinguished)
+    matches none of these -> emits nothing. READ-ONLY: mutates neither scene nor trace.
+    """
+    issues = []
+    by_name = {o.name: o for o in scene.objects
+               if getattr(o, "optics", None) and o.optics.is_optical}
+    terminals = [o for o in by_name.values()
+                 if o.optics.element_type in tracer.TERMINAL
+                 and o.optics.element_type != 'BEAM_DUMP']
+
+    for det in terminals:
+        incoming = [s for s in segs if s.get("to") == det.name]
+        if len(incoming) < 2:
+            continue                                  # one (or no) beam -> no fringe to disambiguate
+        # group by source: same-source beams share src_id (set at emission, inherited through
+        # every split) -- the same grouping alignment.measure() coheres beams within.
+        groups = {}
+        for s in incoming:
+            groups.setdefault(s.get("src_id", -1), []).append(s)
+        for sid, group in groups.items():
+            if len(group) < 2:
+                continue                              # need >=2 SAME-source beams to interfere
+
+            # the two strongest arms (by stored power) are the interfering pair, mirroring
+            # how physics.interfere picks its two beams for the visibility/overlap.
+            pair = sorted(group, key=lambda s: s.get("power", 0.0), reverse=True)[:2]
+            Ja, Jb = _jones_of(pair[0]), _jones_of(pair[1])
+            if Ja is None or Jb is None:
+                continue                              # no polarization carried -> nothing to read
+
+            # --- crossed_polarizer (Malus extinction): the analyzer kills each arm
+            # INDIVIDUALLY. We must NOT use alignment.measure() here -- that returns the
+            # INTERFERED power, which also goes to ~0 at a healthy destructive-interference
+            # DARK PORT (the arms cancel by PHASE, not by polarization). Instead sum the
+            # per-arm analyzer-projected powers INCOHERENTLY (no cross terms): a crossed
+            # analyzer drives this Malus sum to the extinction floor regardless of phase,
+            # while a dark fringe keeps it high (each arm passes -> it is a healthy null,
+            # not a fault). With analyzer=='NONE' there is nothing to cross, so a low power
+            # is interference darkness, never a crossed polarizer.
+            analyzer = det.optics.analyzer
+            raw_p = sum(physics.intensity(_jones_of(s) or (0j, 0j)) for s in incoming)
+            M = physics.analyzer_matrix(analyzer)          # None for 'NONE'
+            if M is not None and raw_p > DARK_FLOOR:
+                # incoherent sum of every incoming arm's power AFTER the analyzer projection
+                analyzed_p = sum(physics.intensity(physics.apply(M, _jones_of(s) or (0j, 0j)))
+                                 for s in incoming)
+                if 0.0 <= analyzed_p <= _A10_EXTINCT_FRAC * raw_p:
+                    issues.append(_issue(
+                        "crossed_polarizer", det.name,
+                        "%s: a crossed polarizer/analyzer extinguished the beam (per-arm analyzed "
+                        "power=%.3g <= %.0f%% of arriving %.3g, Malus floor -- each arm killed "
+                        "individually, not an interference null) -- uncross the analyzer/polarizer"
+                        % (det.name, analyzed_p, 100.0 * _A10_EXTINCT_FRAC, raw_p),
+                        "WARN"))
+                    continue                          # the light is gone -> no fringe to classify further
+
+            # --- normalized Jones overlap of the two arms: the SAME |<Ja|Jb>|/sqrt(Ia*Ib)
+            # that physics.interfere weights its cross term by (0 = orthogonal, 1 = identical).
+            Ia, Ib = physics.intensity(Ja), physics.intensity(Jb)
+            if Ia <= 1e-12 or Ib <= 1e-12:
+                continue                              # one arm carries no power -> not a fringe fault
+            overlap = abs(Ja[0] * Jb[0].conjugate() + Ja[1] * Jb[1].conjugate()) / math.sqrt(Ia * Ib)
+
+            # --- coherence envelope of the pair: physics.fringe_envelope(OPD, Lc) (verified).
+            opd = abs(pair[0].get("opl", 0.0) - pair[1].get("opl", 0.0))
+            Lc = min(pair[0].get("coh", float('inf')), pair[1].get("coh", float('inf')))
+            env = physics.fringe_envelope(opd, Lc)
+
+            if overlap <= _A10_OVERLAP_DEAD:
+                issues.append(_issue(
+                    "pol_mismatch", det.name,
+                    "%s: the two arms are ~orthogonally polarized (Jones overlap=%.3f <= %.2f) so "
+                    "they cannot interfere -- fringes dead. fix: insert a HWP to rotate one arm "
+                    "back parallel (OPD=%.4f mm, envelope=%.3f rule out coherence)"
+                    % (det.name, overlap, _A10_OVERLAP_DEAD, opd, env),
+                    "WARN"))
+            elif overlap >= _A10_OVERLAP_LIVE and env < _A10_ENVELOPE_DEAD:
+                issues.append(_issue(
+                    "coherence_mismatch", det.name,
+                    "%s: arms co-polarized (Jones overlap=%.3f) but OPD=%.4f mm exceeds the "
+                    "coherence length Lc=%.4g mm (fringe_envelope=%.3f < %.2f) -- fringes washed "
+                    "out. fix: equalize the arm lengths"
+                    % (det.name, overlap, opd, Lc, env, _A10_ENVELOPE_DEAD),
+                    "WARN"))
+            # else: high overlap AND high envelope -> healthy fringes -> emit nothing.
+    return issues
+
+
+# ---------------------------------------------------------------------------
 # public entry point
 # ---------------------------------------------------------------------------
 
@@ -556,4 +716,5 @@ def run_diagnostics(scene):
     out += _mount_limit(scene, segs)
     out += _relay_spacing(scene, segs)
     out += _back_reflection_and_ghost_hits(scene, segs)
+    out += _fringe_disambiguation(scene, segs)
     return out
