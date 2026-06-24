@@ -105,7 +105,7 @@ GRID_IMPERIAL_MM = 25.4         # imperial breadboard pitch (1", 1/4-20)
 
 # Mechanical standards (mm). A Ø1/2" / Thorlabs-metric post is precision-ground to Ø12.7 mm and
 # shares holders across both unit systems, so we use one diameter for both (only the thread label,
-# which we don't model as geometry, differs). See docs/OPTOMECH_SYSTEMS_PLAN.md.
+# which we don't model as geometry, differs).
 POST_RADIUS = 6.35              # Ø12.7 mm optical post (TR 1/2" workhorse)
 POST_RADIUS_TALL = 12.5         # Ø25 mm (1") RS-series pillar — stiffer, for tall/raised mounts
 PILLAR_OVER_MM = 130.0          # above this post length, use the fatter Ø1" pillar (stiffness ∝ d⁴)

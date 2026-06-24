@@ -33,3 +33,8 @@ __pycache__/
 !docs/*.png
 !docs/*.jpg
 dist/
+
+docs/ROADMAP_V2.md
+docs/BENCH_INTELLIGENCE.md
+docs/COMPONENT_CATALOG.md
+docs/OPTOMECH_SYSTEMS_PLAN.md
