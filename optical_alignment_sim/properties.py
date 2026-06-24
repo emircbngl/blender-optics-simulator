@@ -411,6 +411,14 @@ class OpticalElementProps(PropertyGroup):
         description="Bandpass full-width-at-half-maximum for the order-3 super-Gaussian")
     lines_per_mm: FloatProperty(name="Grating lines/mm", default=1200.0, min=0.0)
     grating_order: IntProperty(name="Diffraction order", default=1)
+    # D3 cosmetic-only groove PROFILE: shapes the ruled surface mesh so a ruled / holographic / echelle
+    # grating is recognizable at a glance. The trace reads lines_per_mm (the single source of truth for the
+    # grating equation), NOT the mesh -- so every profile is byte-identical (ports unchanged). Mesh-only.
+    grating_profile: EnumProperty(name="Groove profile", default='RULED',
+        items=[('RULED', "Ruled (blazed sawtooth)", "Asymmetric sawtooth ridges -- the blaze profile"),
+               ('HOLOGRAPHIC', "Holographic (sinusoidal)", "Rounded sinusoidal corrugation"),
+               ('ECHELLE', "Echelle (coarse steps)", "A few coarse, steeply-tilted steps (staircase)")],
+        description="Cosmetic ruling shape only -- line density (lines/mm) drives the trace, not the mesh")
     analyzer: EnumProperty(name="Analyzer",
         items=[('NONE', "None", ""), ('H', "H linear", ""), ('V', "V linear", ""),
                ('D', "Diagonal", ""), ('A', "Anti-diagonal", ""),
@@ -455,6 +463,10 @@ class OpticalElementProps(PropertyGroup):
                ('KDP', "KDP", "Classic UV / high-power; lower deff")])
     crystal_temp_C: FloatProperty(name="Crystal temperature (C)", default=25.0)   # oven set-point
     poling_period_um: FloatProperty(name="Poling period (um)", default=6.5, min=0.0)  # QPM grating (PPLN)
+    # D3 cosmetic-only: render the PPLN poling-domain stripes as literal alternating slabs (hero) vs a flat
+    # tinted band (performance). Mesh-only -- the QPM trace reads poling_period_um, not the stripe mesh.
+    ppln_show_stripes: BoolProperty(name="Show poling stripes", default=True,
+        description="Grow literal alternating poling-domain slabs on the PPLN slab (cosmetic; trace unchanged)")
     crystal_length_mm: FloatProperty(name="Interaction length (mm)", default=10.0, min=0.01)  # L for sinc^2(dk L/2)
     nl_walkoff_mm: FloatProperty(name="Walk-off offset (mm)", default=0.6, min=0.0)  # CRITICAL transverse offset
     # microscope objective (VERIFIED microscope-objective-magnification + numerical-aperture):

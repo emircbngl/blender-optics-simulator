@@ -607,20 +607,90 @@ def _poly_prism(name, poly_yz, depth_mm, coll):
     return _bm_obj(name, bm, coll, smooth=False)
 
 
-def _grooved_plate(name, size, depth, coll, n=34):
-    """A reflective grating: a square plate with `n` parallel ruled ridges on its +Z face (a groove
-    hint -- real line density is a parameter, not meshable, so this is a visual cue of the ruling)."""
+def _groove_section_xz(profile, n, half, base_z, amp):
+    """The groove CROSS-SECTION as an open (x, z) polyline across the ruled axis (local X, from -half to
+    +half), riding just above the plate's +Z face at ``base_z``. ``n`` grooves, peak height ``amp``. The
+    profile is COSMETIC -- it shapes the ruled surface so the grating TYPE reads at a glance; the trace uses
+    the line-density parameter, never this mesh. Each profile yields a distinct vertex sequence:
+      RULED       -- asymmetric SAWTOOTH (the blaze): a long rise to a sharp apex, then a near-vertical drop.
+      HOLOGRAPHIC -- a smooth SINUSOID: rounded corrugation (several samples per period).
+      ECHELLE     -- a few COARSE staircase steps (steeply tilted risers, flat treads).
+    Returns a list of (x, z) from -half (left) to +half (right)."""
+    import math
+    pts = []
+    if profile == 'HOLOGRAPHIC':
+        # smooth sinusoidal corrugation: sample SEG points per groove so the curve reads as rounded.
+        seg = 6
+        total = n * seg
+        for i in range(total + 1):
+            x = -half + 2.0 * half * i / total
+            z = base_z + amp * 0.5 * (1.0 - math.cos(2.0 * math.pi * (i / seg)))
+            pts.append((x, z))
+    elif profile == 'ECHELLE':
+        # a few COARSE steps: each step is a flat tread then a steep riser (staircase). Use ~max(3, n//6)
+        # big steps so they read as the coarse echelle staircase, not a fine ruling.
+        steps = max(3, n // 6)
+        w = 2.0 * half / steps
+        riser = w * 0.18                                   # the steep riser is a small fraction of the tread
+        for k in range(steps):
+            x0 = -half + k * w
+            pts.append((x0, base_z))                        # tread start (low)
+            pts.append((x0 + w - riser, base_z + amp))      # ramp up the steep facet to the step apex
+            pts.append((x0 + w - riser, base_z))            # near-vertical drop back down (the riser)
+        pts.append((half, base_z))
+    else:  # 'RULED' -- asymmetric blazed sawtooth
+        w = 2.0 * half / n
+        apex = w * 0.82                                     # apex near the trailing edge -> asymmetric blaze
+        for k in range(n):
+            x0 = -half + k * w
+            pts.append((x0, base_z))                        # groove valley
+            pts.append((x0 + apex, base_z + amp))           # long blaze rise to the sharp apex
+            pts.append((x0 + w, base_z))                    # short steep drop to the next valley
+    return pts
+
+
+def _grooved_plate(name, size, depth, coll, n=34, profile='RULED'):
+    """A reflective grating: a square plate carrying a ruled surface on its +Z face. ``profile`` selects the
+    groove cross-section (RULED blazed-sawtooth / HOLOGRAPHIC sinusoid / ECHELLE coarse staircase) so the
+    grating TYPE is recognizable. The ruled relief is built as ONE extruded section (a strip swept along the
+    groove direction +Y), riding just above the +Z face -- a visual cue of the ruling. The optical line
+    density is a PARAMETER, not meshable, so this mesh is cosmetic and the trace is unchanged regardless of
+    ``profile`` (the grating's ports are set by grating(), independent of this mesh)."""
     bm = bmesh.new(); bmesh.ops.create_cube(bm, size=1.0)
     for v in bm.verts:
         v.co = Vector((v.co.x * size, v.co.y * size, v.co.z * depth))
     o = _bm_obj(name, bm, coll)
-    for k in range(n):
-        x = -size * 0.5 + size * (k + 0.5) / n
-        rb = bmesh.new(); bmesh.ops.create_cube(rb, size=1.0)
-        for v in rb.verts:
-            v.co = (Vector((v.co.x * (size / n * 0.45), v.co.y * size * 0.92, v.co.z * 0.5))
-                    + Vector((x, 0.0, depth * 0.5 + 0.22)))
-        _join(o, _bm_obj(name + "_r%d" % k, rb, coll))
+    # the ruled relief: extrude the (x,z) groove section along the groove direction (+/- Y), capped, so it
+    # reads as a continuous ruled face (echelle: a few coarse steps; holographic: rounded; ruled: sawtooth).
+    # Per-profile groove count + amplitude make the TYPE unmistakable at a glance (cosmetic, mesh-only):
+    # the ruled blaze is COARSE + DEEP so the asymmetric sawtooth reads; holographic is finer + shallower so
+    # it reads as a smooth corrugation distinct from the sharp ruled ridges.
+    half = size * 0.5
+    hy = size * 0.46                                        # the ruled band spans most of the plate in Y
+    base_z = depth * 0.5                                    # ride right on the +Z face
+    if profile == 'RULED':
+        ngr, amp = max(18, n - 6), 2.2                     # DEEP asymmetric sawtooth (clear blaze; rich mesh)
+    elif profile == 'HOLOGRAPHIC':
+        ngr, amp = n, 0.7                                  # finer, shallower rounded corrugation
+    else:  # ECHELLE -- the section builder makes its own coarse steps from n
+        ngr, amp = n, 2.6                                  # tall steeply-tilted steps (the staircase reads)
+    sect = _groove_section_xz(profile, ngr, half, base_z, amp)
+    rb = bmesh.new()
+    front = [rb.verts.new((x, -hy, z)) for (x, z) in sect]   # the section at -Y
+    back = [rb.verts.new((x, hy, z)) for (x, z) in sect]     # swept to +Y
+    for i in range(len(sect) - 1):                           # the ruled top surface (quads between sections)
+        rb.faces.new((front[i], front[i + 1], back[i + 1], back[i]))
+    # close the strip into a solid slab so it renders watertight: a floor at the face + two end + two side caps
+    flo_f = [rb.verts.new((x, -hy, base_z - 0.02)) for (x, _z) in sect]
+    flo_b = [rb.verts.new((x, hy, base_z - 0.02)) for (x, _z) in sect]
+    for i in range(len(sect) - 1):
+        rb.faces.new((flo_b[i], flo_b[i + 1], flo_f[i + 1], flo_f[i]))   # floor (downward)
+    rb.faces.new((front[0], flo_f[0], flo_b[0], back[0]))                # left end cap (-X)
+    rb.faces.new((back[-1], flo_b[-1], flo_f[-1], front[-1]))            # right end cap (+X)
+    for i in range(len(sect) - 1):                                       # -Y and +Y side skirts
+        rb.faces.new((front[i + 1], front[i], flo_f[i], flo_f[i + 1]))
+        rb.faces.new((back[i], back[i + 1], flo_b[i + 1], flo_b[i]))
+    _join(o, _bm_obj(name + "_ruled", rb, coll))
     return o
 
 
@@ -1034,17 +1104,19 @@ def regenerate_iris(obj):
 def crystal(name, loc, beam_dir, coll=None, size=14.0, nl_process='NONE',
             crystal_material='BBO', phase_matching_type='TYPE1', pm_scheme='CRITICAL',
             crystal_temp_C=25.0, poling_period_um=6.5, crystal_length_mm=None,
-            nl_lambda2_nm=532.0, oven=False):
+            nl_lambda2_nm=532.0, oven=False, ppln_show_stripes=True):
     """A nonlinear crystal block (the C7 chi(2) family). With a conversion nl_process (SHG/THG/SFG/
     DFG/OPO/SPDC) it is a real TRANSMISSIVE chi(2) element (IN/OUT on the pump axis) and the tracer
     emits the converted beam(s) at the ENERGY-conserving wavelength (each relation oracle-VERIFIED).
     With nl_process NONE it stays a pump-dump (DETECTOR terminal) -- the LEGACY behavior the Bell
     example relies on, so the NONE path is byte-identical to before C7.
 
-    A PPLN (QPM) crystal grows fine alternating poling stripes along the beam axis; ``oven`` adds a
-    simple temperature-control housing around the slab (cosmetic; the real PPLN/grating sawtooth mesh
-    detail is D3). ``crystal_length_mm`` defaults to the slab's physical +Z extent so the sinc^2(dk*L/2)
-    overlay uses the geometry the user sees."""
+    A PPLN (QPM) crystal grows fine alternating poling-domain stripes along the beam axis (D3): with
+    ``ppln_show_stripes`` they are literal alternating slabs (the hero look); set it False for a flat
+    tinted band (performance). ``oven`` adds a simple temperature-control housing around the slab. All of
+    this is COSMETIC -- the QPM trace reads ``poling_period_um``, not the stripe mesh, so the ports (hence
+    the trace) are byte-identical whether or not the stripes are drawn. ``crystal_length_mm`` defaults to
+    the slab's physical +Z extent so the sinc^2(dk*L/2) overlay uses the geometry the user sees."""
     o = _cube(name, (size * 0.6, size * 0.6, size), coll)
     o.data.materials.clear(); o.data.materials.append(MATS["bbo"]())
     conv = nl_process in ('SHG', 'THG', 'SFG', 'DFG', 'OPO', 'SPDC')
@@ -1056,16 +1128,20 @@ def crystal(name, loc, beam_dir, coll=None, size=14.0, nl_process='NONE',
              crystal_length_mm=L, nl_lambda2_nm=nl_lambda2_nm)
         _add_port(o, "IN", 'IN', (0, 0, -size * 0.5), (0, 0, -1), size)
         _add_port(o, "OUT", 'OUT', (0, 0, size * 0.5), (0, 0, 1), size)
-        # PPLN (QPM): fine alternating poling-domain stripes across the +X face, along the beam (+Z).
-        # Literal thin slabs for the hero render (line density is cosmetic -- the trace is unchanged).
-        if (crystal_material == 'PPLN' or pm_scheme == 'QPM') and poling_period_um > 0.0:
+        # PPLN (QPM): fine alternating poling-domain stripes along the beam (+Z), proud of the slab faces so
+        # the periodic poling reads. Literal slabs for the hero render; the count is a readable proxy for the
+        # poling density (cosmetic -- the QPM trace reads poling_period_um, not this mesh -> trace unchanged).
+        is_ppln = (crystal_material == 'PPLN' or pm_scheme == 'QPM') and poling_period_um > 0.0
+        if is_ppln and hasattr(o.optics, "ppln_show_stripes"):
+            o.optics.ppln_show_stripes = ppln_show_stripes
+        if is_ppln and ppln_show_stripes:
             half = size * 0.5
-            nper = max(2, min(int(size / max(poling_period_um * 1e-1, 0.6)), 24))  # readable stripe count
+            nper = max(3, min(int(size / max(poling_period_um * 1e-1, 0.6)), 26))  # readable stripe count
             step = size / (2 * nper)
             mpol = _mat("OG_ppln_pole", (0.50, 0.20, 0.72), metal=0.25, rough=0.30)
             for i in range(nper):
-                z0 = -half + (2 * i + 0.5) * step
-                stripe = _cube(name + "_pole%d" % i, (size * 0.61, size * 0.61, step * 0.9), coll)
+                z0 = -half + (2 * i + 0.5) * step          # every OTHER domain (the inverted-polarity stripe)
+                stripe = _cube(name + "_pole%d" % i, (size * 0.62, size * 0.62, step * 0.86), coll)
                 for v in stripe.data.vertices:
                     v.co.z += z0
                 stripe.data.materials.clear(); stripe.data.materials.append(mpol)
@@ -1612,16 +1688,22 @@ def dichroic(name, loc, in_dir, reflect_dir, coll=None, split=0.5, size=25.0,
     return o
 
 
-def grating(name, loc, in_dir, out_dir, coll=None, size=25.0, lines_per_mm=1200.0, order=1):
+def grating(name, loc, in_dir, out_dir, coll=None, size=25.0, lines_per_mm=1200.0, order=1,
+            grating_profile='RULED'):
     """A reflective diffraction grating. ``out_dir`` sets the surface orientation
     (the 0th-order/specular direction); the traced ``order`` beam is deflected from
-    it by the grating equation."""
+    it by the grating equation.
+
+    ``grating_profile`` is COSMETIC: it shapes the ruled surface mesh -- RULED (blazed asymmetric
+    sawtooth) / HOLOGRAPHIC (rounded sinusoid) / ECHELLE (a few coarse steeply-tilted steps) -- so the
+    grating TYPE reads at a glance. The trace reads ``lines_per_mm`` (the grating equation's source of
+    truth), NOT the mesh, so EVERY profile traces byte-identically (the ports below are profile-independent)."""
     n = (Vector(out_dir).normalized() - Vector(in_dir).normalized())
     n = n.normalized() if n.length > 1e-6 else Vector((0, 0, 1))
-    o = _grooved_plate(name, size, 5.0, coll)     # ruled ridges on +Z (visible groove hint)
+    o = _grooved_plate(name, size, 5.0, coll, profile=grating_profile)   # profiled ruling on +Z (cosmetic)
     o.data.materials.clear(); o.data.materials.append(MATS["grating"]())
     _tag(o, 'GRATING', clear_aperture=size * 0.5, reflectivity=0.8,
-         lines_per_mm=lines_per_mm, grating_order=order)
+         lines_per_mm=lines_per_mm, grating_order=order, grating_profile=grating_profile)
     _add_port(o, "IN", 'IN', (0, 0, 2.5), (0, 0, 1), size * 0.5)
     _add_port(o, "REFLECT", 'REFLECT', (0, 0, 0), (0, 0, 1), size * 0.5)
     _set_matrix(o, Vector(loc), _z_to(n))
