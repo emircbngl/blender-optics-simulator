@@ -221,9 +221,12 @@ def _dark_and_orphan(scene, segs):
     elems = [o for o in scene.objects
              if getattr(o, "optics", None) and o.optics.is_optical]
     terminals = [o for o in elems if o.optics.element_type in tracer.TERMINAL]
+    # a BEAM_DUMP is an ABSORBER, not a measurement detector: it is SUPPOSED to be dark unless it is
+    # catching a rejected beam, so a dark beam dump is not a fault (don't flag it as a dark_detector).
+    detectors = [o for o in terminals if o.optics.element_type != 'BEAM_DUMP']
 
     # dark detectors: measure() < 0 (nothing terminates here) or below the floor
-    for det in terminals:
+    for det in detectors:
         power, _vis, _strong = alignment.measure(segs, det.name, det.optics.analyzer)
         if power < 0.0:
             last = _last_reached(segs, det.name)

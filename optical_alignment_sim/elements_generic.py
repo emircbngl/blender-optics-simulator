@@ -58,6 +58,10 @@ MATS = {
     "laser":  lambda: _mat("OG_laser", (0.7, 0.05, 0.03), emit=(1.0, 0.1, 0.05)),
     "det":    lambda: _mat("OG_detector", (0.04, 0.04, 0.05), metal=0.3, rough=0.8),
     "ap":     lambda: _mat("OG_aperture", (0.06, 0.06, 0.06), metal=0.5, rough=0.6),
+    # C5 beam-conditioning apertures
+    "blade":  lambda: _mat("OG_blade", (0.62, 0.64, 0.70), metal=0.95, rough=0.18),   # polished razor blade / slit jaws
+    "trap":   lambda: _mat("OG_trap", (0.012, 0.012, 0.015), metal=0.1, rough=0.95),   # matte-black conical beam-trap cavity
+    "dumpbody": lambda: _mat("OG_dumpbody", (0.10, 0.10, 0.12), metal=0.6, rough=0.4),  # anodized beam-dump housing
     "pol":    lambda: _mat("OG_polarizer", (0.20, 0.70, 0.55), metal=0.1, rough=0.25),
     "filt":   lambda: _mat("OG_filter", (0.95, 0.45, 0.20), metal=0.0, rough=0.20),
     "iso":    lambda: _mat("OG_isolator", (0.30, 0.30, 0.34), metal=0.8, rough=0.35),
@@ -1080,6 +1084,85 @@ def pinhole(name, loc, axis, coll=None, radius=12.5):
     _add_port(o, "IN", 'IN', (0, 0, -1.0), (0, 0, -1), radius)
     _add_port(o, "OUT", 'OUT', (0, 0, 1.0), (0, 0, 1), radius)
     _set_matrix(o, Vector(loc), _z_to(axis))
+    return o
+
+
+def slit(name, loc, axis, coll=None, width=2.0, angle=0.0, radius=14.0):
+    """A SLIT (1-D aperture): a black housing carrying TWO blades whose gap = ``width`` mm, clipping the beam
+    along ONE transverse axis (rolled by ``angle`` deg about the optical axis). The tracer scales the power by
+    the VERIFIED slit erf T = erf(sqrt2 * (width/2) / w) along the clipped axis; the path is undeviated.
+    IN/OUT on +/- the optical axis, like the other inline apertures (so it chains transparently)."""
+    o = _bored_disc(name, radius + 5.0, 3.6, radius, coll)         # black ring housing with a clear central bore
+    o.data.materials.clear(); o.data.materials.append(MATS["ap"]())
+    half = max(width, 0.0) * 0.5
+    jaw_x = radius * 1.05                                          # blade spans the bore; edge sits at +/-half on Y
+    for sgn in (+1.0, -1.0):                                       # the two slit jaws (their facing edges define the gap)
+        jb = bmesh.new(); bmesh.ops.create_cube(jb, size=1.0)
+        for v in jb.verts:                                        # a thin bar; inner edge at y = sgn*half
+            v.co = (Vector((v.co.x * jaw_x, v.co.y * (radius), v.co.z * 0.8))
+                    + Vector((0.0, sgn * (radius + half), 0.0)))
+        jaw = _bm_obj(name + "_jaw%d" % (sgn > 0), jb, coll)
+        jaw.data.materials.append(MATS["blade"]())
+        _join(o, jaw)
+    # roll the whole part so the blades clip along the local-X-rolled axis (matches tracer _clip_axis_world)
+    R = _z_to(axis)
+    if angle:
+        R = R @ Matrix.Rotation(math.radians(angle), 3, Vector((0.0, 0.0, 1.0)))
+    _tag(o, 'SLIT', clear_aperture=radius, slit_width=width, slit_angle=angle)
+    _add_port(o, "IN", 'IN', (0, 0, -1.8), (0, 0, -1), radius)
+    _add_port(o, "OUT", 'OUT', (0, 0, 1.8), (0, 0, 1), radius)
+    _set_matrix(o, Vector(loc), R)
+    return o
+
+
+def knife_edge(name, loc, axis, coll=None, position=0.0, angle=0.0, radius=14.0):
+    """A KNIFE_EDGE: a razor half-plane blade mounted on a translation stage, cutting into the beam from one
+    side at transverse ``position`` mm (along the cut axis, rolled by ``angle`` deg). The tracer transmits the
+    part of the beam PAST the edge via the VERIFIED knife erf P = 0.5[1 - erf(sqrt2 (e - xc)/w)]; sweeping the
+    position traces the classic erf knife-edge profile (a KNIFE scan fits it back to the beam radius w)."""
+    o = _disc(name, radius * 0.5, 3.0, coll)                      # a small stage puck behind the blade
+    o.data.materials.clear(); o.data.materials.append(MATS["dumpbody"]())
+    # the razor: a thin wedge half-plane covering y < position (its straight edge at y = position is the knife edge)
+    kb = bmesh.new(); bmesh.ops.create_cube(kb, size=1.0)
+    for v in kb.verts:
+        # blade spans x in [-radius, radius], y in [-radius, position] (covers one half), z thin near the face
+        v.co = (Vector((v.co.x * radius, (v.co.y * 0.5 - 0.5) * (radius + position) + position * 0.5,
+                        v.co.z * 0.5)) + Vector((0.0, 0.0, 0.6)))
+    blade = _bm_obj(name + "_blade", kb, coll)
+    blade.data.materials.append(MATS["blade"]())
+    _bevel(blade, 0.15, 1)                                        # honed cutting edge
+    _join(o, blade)
+    R = _z_to(axis)
+    if angle:
+        R = R @ Matrix.Rotation(math.radians(angle), 3, Vector((0.0, 0.0, 1.0)))
+    _tag(o, 'KNIFE_EDGE', clear_aperture=radius, knife_position=position, knife_angle=angle)
+    _add_port(o, "IN", 'IN', (0, 0, -1.5), (0, 0, -1), radius)
+    _add_port(o, "OUT", 'OUT', (0, 0, 1.5), (0, 0, 1), radius)
+    _set_matrix(o, Vector(loc), R)
+    # the stage gives the knife a linear translation knob along its cut axis (the swept DOF)
+    return o
+
+
+def beam_dump(name, loc, beam_dir, coll=None, size=22.0, residual=1.0e-3):
+    """A BEAM_DUMP: a conical light trap (matte-black inner cone inside an anodized housing) that TERMINATES
+    the beam -- the textbook way to safely absorb a rejected beam (e.g. a PBS reject port). The tracer ends
+    the ray here (it is in TERMINAL); ``residual`` is the tiny leak fraction (~1e-3) carried as metadata. The
+    cone's apex faces the incoming beam so a real trap's multiple-bounce absorption reads at a glance."""
+    o = _disc(name, size * 0.5, size * 0.7, coll)                 # cylindrical housing
+    _bevel(o, 0.5, 1)
+    o.data.materials.clear(); o.data.materials.append(MATS["dumpbody"]())
+    # inner absorbing cone: apex toward the beam (+Z opening), base deep inside -> light bounces & is trapped
+    cb = bmesh.new()
+    bmesh.ops.create_cone(cb, cap_ends=True, segments=40, radius1=size * 0.42, radius2=0.0,
+                          depth=size * 0.6)
+    cone = _bm_obj(name + "_cone", cb, coll)
+    for v in cone.data.vertices:                                  # apex at +Z (toward the beam), base at -Z
+        v.co.z = -v.co.z + size * 0.05
+    cone.data.materials.append(MATS["trap"]())
+    _join(o, cone)
+    _tag(o, 'BEAM_DUMP', clear_aperture=size * 0.5, beam_dump_residual=residual)
+    _add_port(o, "IN", 'IN', (0, 0, size * 0.35), (0, 0, 1), size * 0.5)   # opening faces the beam
+    _set_matrix(o, Vector(loc), _z_to(-Vector(beam_dir).normalized()))
     return o
 
 

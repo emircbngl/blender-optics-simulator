@@ -321,6 +321,26 @@ def build_beam_router(context):
     return "OpticsExample_BeamRouter"
 
 
+def build_beam_profiler(context):
+    """A knife-edge beam profiler (C5): a lens focuses the collimated beam to a small waist, a KNIFE_EDGE on a
+    stage cuts into that focused spot, and a power meter behind it reads the transmitted power. Sweeping the
+    knife across the beam (Scan -> Knife edge) traces the erf knife-edge profile P(e) = 0.5[1 - erf(sqrt2 (e -
+    xc)/w)], whose 10-90% width fits back to the beam radius w -- the textbook way to measure a spot size. A
+    SLIT upstream conditions the beam (a 1-D erf clip), and a BEAM_DUMP safely catches a pick-off. The headline
+    C5 demo: you can SEE the razor cutting the focused beam (half blocked, half passing)."""
+    coll = G.example_collection("OpticsExample_BeamProfiler")
+    X = Vector((1, 0, 0))
+    G.source("PROF_Laser", (-220, 0, 0), X, coll, wavelength=632.8)
+    G.lens("PROF_Lens", (-120, 0, 0), X, coll, focal=120.0, radius=14.0)   # focuses to a waist near the knife
+    G.slit("PROF_Slit", (-40, 0, 0), X, coll, width=6.0)                   # 1-D conditioning aperture (mostly open)
+    # the knife edge sits near the focal waist (clean small spot -> sharp erf); cuts in from -Y
+    G.knife_edge("PROF_Knife", (0, 0, 0), X, coll, position=0.0)
+    G.power_meter("PROF_Meter", (120, 0, 0), X, coll, size=24.0)           # reads the transmitted power
+    # a beam dump off to the side, catching a (cosmetic) pick-off -- shows the conical trap terminal
+    G.beam_dump("PROF_Dump", (-40, 90, 0), Vector((0, 1, 0)), coll, size=26.0)
+    return "OpticsExample_BeamProfiler"
+
+
 EXAMPLES = {
     'mach_zehnder': ("Mach-Zehnder Interferometer", build_mach_zehnder),
     'michelson':    ("Michelson Interferometer", build_michelson),
@@ -338,6 +358,7 @@ EXAMPLES = {
     'aom':          ("Acousto-Optic Deflector (Bragg cell: 0th + deflected +1 order)", build_aom),
     'prism':        ("Dispersing Prism Spectrometer (equilateral, fans the spectrum)", build_prism_spectrometer),
     'beam_router':  ("Beam Router (penta 90 deg fold + rhomboid lateral offset)", build_beam_router),
+    'beam_profiler': ("Knife-Edge Beam Profiler (slit + knife erf scan + beam dump)", build_beam_profiler),
 }
 
 

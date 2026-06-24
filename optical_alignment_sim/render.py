@@ -112,6 +112,9 @@ RENDER_DESCRIPTORS = {
     'ISOLATOR':          ('dark',  (0.30, 0.30, 0.34)),
     'APERTURE':          ('dark',  (0.05, 0.05, 0.06)),
     'PINHOLE':           ('dark',  (0.05, 0.05, 0.06)),
+    'SLIT':              ('metal', (0.62, 0.64, 0.70)),   # polished slit jaws (C5)
+    'KNIFE_EDGE':        ('metal', (0.62, 0.64, 0.70)),   # honed razor blade (C5)
+    'BEAM_DUMP':         ('dark',  (0.02, 0.02, 0.03)),   # matte-black conical light trap (C5)
     'SOURCE':            ('dark',  (0.12, 0.13, 0.15)),
     'FIBER_COLLIMATOR':  ('dark',  (0.13, 0.14, 0.16)),
 }

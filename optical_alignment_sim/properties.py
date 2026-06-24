@@ -45,6 +45,9 @@ ELEMENT_TYPES = [
     ('OBJECTIVE',    "Microscope Objective",       "High-NA objective; focal power f_obj = f_tube/M, magnifies + focuses"),
     ('AOM',          "Acousto-Optic Modulator",    "Bragg cell: deflects the +1 order by theta = lambda*f_a/v_s + frequency-shifts it by f_a"),
     ('PRISM',        "Dispersing Prism",           "Refractive material-dispersion prism (equilateral / Littrow / Pellin-Broca / Amici); fans a white beam by wavelength"),
+    ('SLIT',         "Slit",                       "1-D (anisotropic) aperture: a pair of blades clipping the Gaussian along ONE transverse axis (T = erf(sqrt2 b/w))"),
+    ('BEAM_DUMP',    "Beam Dump",                  "Terminal full-absorber (conical light trap); the ray ends here (power -> residual ~1e-3) -- safely dumps a rejected beam"),
+    ('KNIFE_EDGE',   "Knife Edge",                 "Half-plane blade on a stage; transmits the beam past the edge (P = 0.5[1-erf(sqrt2(e-xc)/w)]); sweep -> erf profile -> beam radius"),
 ]
 
 PORT_ROLES = [
@@ -423,6 +426,23 @@ class OpticalElementProps(PropertyGroup):
     # routing-prism image parity (C4, computed by the tracer): "EVEN" = handedness preserved (even # of
     # internal reflections: penta, rhomboid), "ODD" = flipped (odd #: right-angle, Dove, roof). Output only.
     prism_parity: StringProperty(name="Image parity", default="")
+    # --- C5 beam-conditioning apertures: SLIT (1-D erf clip) / BEAM_DUMP (terminal) / KNIFE_EDGE (half-plane) ---
+    # All animatable. The tracer scales power by the verified 1-D erf clips (slit_transmission / knife_transmission,
+    # physics_verify ok=true 8/8) using the ray's incident Gaussian radius on the CLIPPED axis. BEAM_DUMP carries
+    # only a residual leak. slit_angle rolls the slit's clipped axis about the optical axis (0 = clip along local X).
+    slit_width: FloatProperty(name="Slit width (mm)", default=2.0, min=0.0,
+        description="FULL slit opening (blade gap); the half-width b = slit_width/2. T = erf(sqrt2 * b / w_x) "
+                    "clips the Gaussian along the slit axis. 0 -> closed (blocks), large -> fully open")
+    slit_angle: FloatProperty(name="Slit angle (deg)", default=0.0,
+        description="Roll of the slit's clipped axis about the optical axis (0 = blades clip along local X, "
+                    "so the slit is vertical; 90 = clip along local Y)")
+    knife_position: FloatProperty(name="Knife position (mm)", default=0.0,
+        description="Transverse position of the knife edge on its stage (the clipped axis). Sweeping this "
+                    "across the beam traces the erf knife-edge profile P(e) = 0.5[1 - erf(sqrt2 (e - xc)/w)]")
+    knife_angle: FloatProperty(name="Knife angle (deg)", default=0.0,
+        description="Roll of the knife's cut axis about the optical axis (0 = the blade cuts along local X)")
+    beam_dump_residual: FloatProperty(name="Beam-dump residual", default=1.0e-3, min=0.0, max=1.0,
+        description="Tiny fraction of power leaking through a conical beam trap (~1e-3); the ray still TERMINATES")
     is_monitor: BoolProperty(default=False)        # live sensor-monitor target (fringe recomputed live)
     sensor_px: IntProperty(name="Sensor resolution (px)", default=256, min=16, max=1024)
     pixel_size_um: FloatProperty(name="Pixel size (um)", default=5.0, min=0.1)

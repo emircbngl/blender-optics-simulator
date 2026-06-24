@@ -482,6 +482,73 @@ for _o in list(_rcoll.objects):
     eg.drop_example_object(_o)
 bpy.data.collections.remove(_rcoll)
 
+print("[C5 apertures: SLIT erf(sqrt2 b/w) + KNIFE 0.5[1-erf(sqrt2(e-xc)/w)] + BEAM_DUMP (oracle-VERIFIED 8/8 each)]")
+# pure helpers: the sqrt2-in-NUMERATOR erf clips (roadmap's erf(b/sqrt2 w) was WRONG; physics_verify ok=true)
+check("slit_transmission T(b=w) = erf(sqrt2) = 0.95450", abs(physics.slit_transmission(1.0, 1.0) - 0.9544997361036416) < 1e-9)
+check("slit_transmission opens 0->1 (closed b->0, open b->inf)",
+      physics.slit_transmission(1e-6, 1.0) < 1e-5 and physics.slit_transmission(20.0, 1.0) > 0.9999999)
+check("knife_transmission P=1/2 at e=xc; ->1 retracted, ->0 inserted",
+      abs(physics.knife_transmission(0.0, 0.0, 1.0) - 0.5) < 1e-12
+      and physics.knife_transmission(-10.0, 0.0, 1.0) > 0.9999999 and physics.knife_transmission(10.0, 0.0, 1.0) < 1e-9)
+_c5 = bpy.data.collections.new("C5TEST"); sc.collection.children.link(_c5)
+
+
+def _c5_clear():
+    """Strip ALL optical objects so a stray leftover source from a prior section can't co-illuminate the C5
+    meter (a second beam adds power -> P0>1 -> distorts the knife-edge erf fit) -- the other sections do the same."""
+    for _o in list(sc.objects):
+        if getattr(getattr(_o, "optics", None), "is_optical", False):
+            bpy.data.objects.remove(_o, do_unlink=True)
+
+
+_c5_clear()
+# SLIT trace: traced transmission matches erf(sqrt2 b/w) at the incident beam radius
+eg.source("C5_S", (-150, 0, 0), _PV((1, 0, 0)), _c5)
+_SL = eg.slit("C5_SL", (0, 0, 0), _PV((1, 0, 0)), _c5, width=2.0)
+eg.detector("C5_D", (150, 0, 0), _PV((1, 0, 0)), _c5)
+bpy.context.view_layer.update()
+_w_sl = next((s["w_mm"] for s in scan._trace(sc) if s.get("to") == "C5_SL"), None)
+_SL.optics.slit_width = 1.0
+bpy.context.view_layer.update()
+_p_sl = next((s["power"] for s in scan._trace(sc) if s.get("from") == "C5_SL" and s.get("kind") == "TRANSMIT"), None)
+check("SLIT traced power matches erf(sqrt2 b/w) at the incident w",
+      _p_sl is not None and _w_sl is not None and abs(_p_sl - physics.slit_transmission(0.5, _w_sl)) < 2e-3,
+      "traced=%.5f analytic=%.5f" % (_p_sl or -1, physics.slit_transmission(0.5, _w_sl) if _w_sl else -1))
+_c5_clear()
+# KNIFE scan: the swept erf curve fits back to the input beam radius w (collimated -> resolved spot)
+_S2 = eg.source("C5_S2", (-150, 0, 0), _PV((1, 0, 0)), _c5); _S2.optics.waist_um = 800.0
+_KN = eg.knife_edge("C5_KN", (0, 0, 0), _PV((1, 0, 0)), _c5, position=0.0)
+eg.power_meter("C5_M", (150, 0, 0), _PV((1, 0, 0)), _c5, size=24.0)
+bpy.context.view_layer.update()
+_w_kn = next((s["w_mm"] for s in scan._trace(sc) if s.get("to") == "C5_KN"), None)
+_xs, _ps = [], []
+for _i in range(81):
+    _e = -3.0 + 6.0 * _i / 80.0
+    _KN.optics.knife_position = _e
+    bpy.context.view_layer.update()
+    _pp, _, _ = alignment.measure(scan._trace(sc), "C5_M", "NONE")
+    _xs.append(_e); _ps.append(max(_pp, 0.0))
+_KN.optics.knife_position = 0.0
+_fit = scan.knife_fit(_xs, _ps)
+check("KNIFE scan fit recovers the input beam radius w (< 3%)",
+      _fit is not None and _w_kn is not None and abs(_fit["w_mm"] - _w_kn) / _w_kn < 0.03,
+      "fit w=%.4f vs input w=%.4f" % (_fit["w_mm"] if _fit else -1, _w_kn or -1))
+_c5_clear()
+# BEAM_DUMP: terminates the ray + the A4 energy budget still balances
+eg.source("C5_S3", (-150, 0, 0), _PV((1, 0, 0)), _c5)
+eg.beam_dump("C5_BD", (0, 0, 0), _PV((1, 0, 0)), _c5)
+bpy.context.view_layer.update()
+_dseg = scan._trace(sc)
+import optical_alignment_sim.diagnostics as _diag
+tracer.cached_segments = _dseg
+_dev = [i for i in _diag.run_diagnostics(sc) if i.get("kind") == "energy_violation"]
+check("BEAM_DUMP terminates the ray + A4 budget balances (no leaving seg, 0 energy_violations)",
+      len([s for s in _dseg if s.get("from") == "C5_BD"]) == 0 and len(_dev) == 0,
+      "leaving=%d violations=%d" % (len([s for s in _dseg if s.get("from") == "C5_BD"]), len(_dev)))
+for _o in list(_c5.objects):
+    eg.drop_example_object(_o)
+bpy.data.collections.remove(_c5)
+
 print("[microscope objective: f_obj = f_tube/M, focal power (oracle-VERIFIED)]")
 optics_api.build_example("microscope")
 _msegs = scan._trace(sc)

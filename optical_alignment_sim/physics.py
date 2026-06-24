@@ -543,6 +543,48 @@ def gouy_phase(q):
     return math.atan2(q.real, q.imag)
 
 
+# --- 1-D aperture clips: slit + knife-edge (C5) -----------------------------
+# Siblings of the verified circular-aperture clip _clip_T = 1 - exp(-2 a^2/w^2) (tracer.py): the SAME 1/e^2
+# intensity-radius convention I(x) ~ exp(-2 x^2/w^2) (w = 1/e^2 radius), but a ONE-dimensional (anisotropic)
+# clip along a single transverse axis. With the substitution u = sqrt(2) x / w the Gaussian's erf scale is
+# sqrt(2)/w (sigma = w/2, so x/(sqrt(2) sigma) = sqrt(2) x / w) -- the sqrt(2) is in the NUMERATOR.
+# physics_verify ok=true (slit 8/8, knife 8/8, physicist-python:latest) by DIRECT Gaussian integration:
+#   slit:  integral_{-b}^{b} I dx / integral_{-inf}^{inf} I dx = erf(sqrt(2) b / w)
+#   knife: integral_{e}^{inf} I dx / integral_{-inf}^{inf} I dx = (1/2)[1 - erf(sqrt(2)(e-xc)/w)]
+# (NB: the roadmap's slit form erf(b/(sqrt(2) w)) was WRONG -- sqrt(2) in the denominator -- and inconsistent
+# with its own knife formula; the oracle + the Gaussian integral confirm sqrt(2)-in-numerator. See physics_learn.)
+
+def slit_transmission(b_mm, w_mm):
+    """Power transmission of a 1-D slit of half-width ``b_mm`` (a pair of blades at +/-b) clipping a Gaussian
+    of 1/e^2 intensity radius ``w_mm`` ALONG the slit's clipped axis:
+
+        T = erf(sqrt(2) * b / w)      (VERIFIED: physics_verify ok=true 8/8)
+
+    The fraction of a 1-D Gaussian I(x) ~ exp(-2 x^2/w^2) passing through |x| <= b. Monotone in b: T -> 0 as
+    the slit closes (b -> 0) and T -> 1 as it opens (b -> inf); the half-power slit is b ~ 0.4769 w. The
+    along-axis SIBLING of the circular-aperture clip 1 - exp(-2 a^2/w^2). A degenerate/zero w or b returns 1
+    (no Gaussian / no blades -> nothing to clip), matching _clip_T."""
+    if w_mm <= 1e-9 or b_mm <= 0.0:
+        return 1.0
+    return math.erf(math.sqrt(2.0) * b_mm / w_mm)
+
+
+def knife_transmission(e_mm, xc_mm, w_mm):
+    """Power transmitted PAST a knife-edge (half-plane blade) whose edge sits at transverse position ``e_mm``,
+    cutting into a Gaussian of 1/e^2 intensity radius ``w_mm`` centered at ``xc_mm`` (the beam chief-ray on the
+    clipped axis). The blade transmits the part of the beam with x > e:
+
+        P(e) = (1/2) * [1 - erf(sqrt(2) * (e - xc) / w)]    (VERIFIED: physics_verify ok=true 8/8)
+
+    Sweeping the edge across the beam traces the classic erf knife-edge profile: P = 1/2 at e = xc (the edge
+    bisects the beam), P -> 1 as e -> -inf (blade retracted, whole beam passes), P -> 0 as e -> +inf (blade
+    fully inserted). A scan.py KNIFE scan fits this curve back to the beam radius w (the 10-90% width). A
+    degenerate/zero w returns 1 (no Gaussian to clip)."""
+    if w_mm <= 1e-9:
+        return 1.0
+    return 0.5 * (1.0 - math.erf(math.sqrt(2.0) * (e_mm - xc_mm) / w_mm))
+
+
 # --- Zernike wavefront (modal adaptive optics) ------------------------------
 # Noll-indexed, RMS-normalized Zernike polynomials over the unit disk (j = 1..15:
 # piston, tip/tilt, defocus, astigmatism, coma, trefoil, spherical, secondary astig,
@@ -740,6 +782,26 @@ if __name__ == "__main__":
         fails.append("Gouy(z)=%.4f" % gouy_phase(qz))
     if not (gouy_phase(q_propagate(qw, abcd_free(1000.0 * zR))) > 1.56):   # ~pi/2 far field
         fails.append("Gouy far field not ->pi/2")
+
+    # C5 slit + knife erf clips (1-D siblings of the circular 1-exp(-2a^2/w^2); physics_verify ok=true 8/8).
+    # slit T = erf(sqrt2 b/w): b=w -> 0.95450, half-power at b~0.4769w; ->1 open, ->0 closed.
+    if not close(slit_transmission(1.0, 1.0), 0.9544997361036416, 1e-9):
+        fails.append("slit T(b=w)=%.6f" % slit_transmission(1.0, 1.0))
+    if not close(slit_transmission(0.5, 1.0), 0.6826894921370861, 1e-9):
+        fails.append("slit T(b=0.5w)=%.6f" % slit_transmission(0.5, 1.0))
+    if not close(slit_transmission(0.33724487509804085, 1.0), 0.5, 1e-9):    # half-power half-width b/w=erfinv(.5)/sqrt2
+        fails.append("slit half-power b/w=%.6f" % slit_transmission(0.33724487509804085, 1.0))
+    if not (slit_transmission(20.0, 1.0) > 0.9999999 and slit_transmission(1e-6, 1.0) < 1e-5):
+        fails.append("slit open/closed limits")
+    # knife P = 0.5(1-erf(sqrt2(e-xc)/w)): 1/2 at e=xc, ->1 e->-inf, ->0 e->+inf; P(e)+P(2xc-e)=1 antisymmetry.
+    if not close(knife_transmission(0.0, 0.0, 1.0), 0.5, 1e-12):
+        fails.append("knife P(e=xc)=%.6f" % knife_transmission(0.0, 0.0, 1.0))
+    if not close(knife_transmission(0.5, 0.0, 1.0), 0.1586552539314570, 1e-9):
+        fails.append("knife P(e=0.5w)=%.6f" % knife_transmission(0.5, 0.0, 1.0))
+    if not close(knife_transmission(0.5, 0.0, 1.0) + knife_transmission(-0.5, 0.0, 1.0), 1.0, 1e-12):
+        fails.append("knife antisymmetry P(e)+P(-e)!=1")
+    if not (knife_transmission(-10.0, 0.0, 1.0) > 0.9999999 and knife_transmission(10.0, 0.0, 1.0) < 1e-9):
+        fails.append("knife retracted/inserted limits")
 
     # Coherence: Lc for 632.8nm, 1pm linewidth ~ 0.4 m; envelope ~1 at 0 OPD
     Lc = coherence_length_mm(632.8, 1e-3)

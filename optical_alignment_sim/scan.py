@@ -23,13 +23,17 @@ SCAN_ITEMS = [
     ('STAGE', "OPD stage (mm)", "Sweep the active element's translation knob"),
     ('WAVEPLATE', "Waveplate angle (deg)", "Sweep the active waveplate's fast-axis angle"),
     ('WAVELENGTH', "Wavelength (nm)", "Sweep every source's wavelength"),
+    ('KNIFE', "Knife edge (mm)", "Sweep the active KNIFE_EDGE across the beam -> erf profile -> beam radius w"),
 ]
 
 
 def _detectors(scene):
+    # measurement terminals only -- a BEAM_DUMP (C5) is an absorber, not a readout, so it never appears in
+    # the scan/fringe/sensor-window detector set (it has no analyzer + carries no pattern to record).
     return [o for o in scene.objects
             if getattr(o, "optics", None) and o.optics.is_optical
-            and o.optics.element_type in tracer.TERMINAL]
+            and o.optics.element_type in tracer.TERMINAL
+            and o.optics.element_type != 'BEAM_DUMP']
 
 
 def _lit_detectors(scene, segs):
@@ -131,6 +135,45 @@ def _beam_chain(segs, det_name):
     return list(reversed(chain))
 
 
+def knife_fit(xs, ps):
+    """Fit a swept knife-edge transmission curve {edge position e (mm) -> transmitted power fraction P} back
+    to the beam radius w and center xc, using the VERIFIED model P(e) = (P0/2)[1 - erf(sqrt2 (e - xc)/w)]
+    (physics.knife_transmission; physics_verify ok=true 8/8). Returns {w_mm, xc_mm, P0, w10_90_mm} or None.
+
+    Method: (1) normalize by the curve's high plateau P0 (max P, the un-cut beam); (2) read the 10/50/90%
+    edge positions by linear interpolation of the (monotone-decreasing) profile -- e50 -> xc, and the 10-90
+    knife-edge width relation e10 - e90 = sqrt2 * erfinv(0.8) * w gives w = (e10 - e90)/(sqrt2 erfinv(0.8)).
+    The 10-90 width -> w factor is the classic knife-edge beam-radius readout (no scipy: erfinv(0.8) is a
+    pinned constant). xc is the 50% crossing. Robust to the power floor (sub-1e-4 tail is clipped to 0)."""
+    import math
+    pts = sorted(zip(xs, ps))
+    e = [p[0] for p in pts]
+    P = [max(p[1], 0.0) for p in pts]
+    P0 = max(P) if P else 0.0
+    if P0 <= 1e-9 or len(e) < 3:
+        return None
+    f = [pi / P0 for pi in P]                       # normalized transmission, ~1 (retracted) -> ~0 (inserted)
+
+    def cross(level):
+        """edge position e where the (decreasing) normalized profile crosses ``level`` (linear interp)."""
+        for i in range(1, len(f)):
+            a, b = f[i - 1], f[i]
+            if (a - level) * (b - level) <= 0.0 and abs(a - b) > 1e-12:
+                t = (a - level) / (a - b)
+                return e[i - 1] + t * (e[i] - e[i - 1])
+        return None
+
+    e90, e50, e10 = cross(0.9), cross(0.5), cross(0.1)
+    if e90 is None or e10 is None:
+        return None
+    # 10-90 width = e10 - e90 (e10 is deeper-inserted -> larger e, lower P) ; w = width / (sqrt2 * erfinv(0.8))
+    width = abs(e10 - e90)
+    ERFINV_0_8 = 0.9061938024368233                 # pinned (erfinv(0.8)); the 10-90 knife width -> 1/e^2 radius
+    w = width / (math.sqrt(2.0) * ERFINV_0_8)
+    xc = e50 if e50 is not None else 0.5 * (e10 + e90)
+    return {"w_mm": w, "xc_mm": xc, "P0": P0, "w10_90_mm": width}
+
+
 def beam_profile_data(scene, det_name="", samples=24):
     """Gaussian spot radius w(z) along the beam path source -> detector. Within a free-space
     segment q(z) = q_end - (L - z), so w(z) = beam_radius(q) sampled from each segment's
@@ -218,7 +261,8 @@ def _scan_range_for(self, context):
     """Re-derive the sweep range whenever the kind changes (incl. INSIDE the dialog --
     without this, switching to Wavelength kept the stage range and swept sources to 0 nm)."""
     self.lo, self.hi = {'WAVEPLATE': (0.0, 180.0),
-                        'WAVELENGTH': (400.0, 700.0)}.get(self.kind, (0.0, 0.002))
+                        'WAVELENGTH': (400.0, 700.0),
+                        'KNIFE': (-3.0, 3.0)}.get(self.kind, (0.0, 0.002))
 
 
 class OPTICS_OT_scan(Operator):
@@ -265,6 +309,18 @@ class OPTICS_OT_scan(Operator):
 
             def sweep_set(x):
                 obj.optics.fast_axis_deg = x
+        elif self.kind == 'KNIFE':
+            knife = obj if (obj and obj.optics.element_type == 'KNIFE_EDGE') else next(
+                (o for o in scene.objects if getattr(o, "optics", None) and o.optics.is_optical
+                 and o.optics.element_type == 'KNIFE_EDGE'), None)
+            if knife is None:
+                self.report({'ERROR'}, "Select (or place) a KNIFE_EDGE to sweep")
+                return {'CANCELLED'}
+            orig = knife.optics.knife_position
+            restore.append(lambda: setattr(knife.optics, 'knife_position', orig))
+
+            def sweep_set(x):
+                knife.optics.knife_position = x
         else:  # WAVELENGTH
             srcs = [o for o in scene.objects if getattr(o, "optics", None) and o.optics.is_optical
                     and (o.optics.is_source or o.optics.element_type in ('SOURCE', 'FIBER_COLLIMATOR'))]
@@ -302,16 +358,29 @@ class OPTICS_OT_scan(Operator):
             context.view_layer.update()
             tracer.cached_segments = _trace(scene)
 
+        # KNIFE scan: fit the strongest detector's swept erf curve back to the beam radius w (the headline
+        # readout -- the 10-90% knife-edge width -> w). Reported in the operator message + the CSV header.
+        fit_msg = ""
+        if self.kind == 'KNIFE':
+            best = max(series.items(), key=lambda kv: max(kv[1]) if kv[1] else 0.0, default=(None, []))
+            fit = knife_fit(xs, best[1]) if best[0] else None
+            if fit is not None:
+                fit_msg = "  fit w=%.4f mm (xc=%.3f, 10-90%% width=%.4f mm) @ %s" % (
+                    fit["w_mm"], fit["xc_mm"], fit["w10_90_mm"], best[0])
+
         base = os.path.join(tempfile.gettempdir(), "optics_scan")
         _render_plot(xs, series, base + ".png", title="Scan: %s" % self.kind)
         import csv
         with open(base + ".csv", "w", newline="") as f:
             w = csv.writer(f)                                  # quote names with commas (detector 'D, main')
+            if fit_msg:
+                f.write("#" + fit_msg.strip() + "\n")
             w.writerow(["x"] + list(series.keys()))
             for i, x in enumerate(xs):
                 w.writerow(["%.6g" % x] + ["%.6g" % series[k][i] for k in series])
         _show_monitor(context)
-        self.report({'INFO'}, "Scan %s: %d steps -> bottom-left window (+ %s.png/.csv)" % (self.kind, n, base))
+        self.report({'INFO'}, "Scan %s: %d steps -> bottom-left window (+ %s.png/.csv)%s"
+                    % (self.kind, n, base, fit_msg))
         return {'FINISHED'}
 
 

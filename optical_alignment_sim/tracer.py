@@ -29,8 +29,9 @@ cached_segments = []
 # Elements whose beam interaction happens at the REFLECT port plane (not the IN plane).
 REFLECTIVE = ('MIRROR', 'PRISM_MIRROR', 'BEAMSPLITTER', 'DICHROIC', 'GRATING', 'RETROREFLECTOR',
               'DEFORMABLE_MIRROR')
-# Elements that absorb the beam (no outgoing ray).
-TERMINAL = ('DETECTOR', 'PHOTODIODE', 'POWER_METER', 'WAVEFRONT_SENSOR')
+# Elements that absorb the beam (no outgoing ray). BEAM_DUMP is a conical light trap (C5): the ray ENDS,
+# leaving only a tiny residual leak (beam_dump_residual ~1e-3) so the A4 energy budget still balances.
+TERMINAL = ('DETECTOR', 'PHOTODIODE', 'POWER_METER', 'WAVEFRONT_SENSOR', 'BEAM_DUMP')
 
 
 class _Ray:
@@ -244,6 +245,56 @@ def _clip_T(ray, E, t):
     if w <= 1e-9 or a <= 0.0:
         return 1.0
     return 1.0 - math.exp(-2.0 * a * a / (w * w))
+
+
+def _w_at(ray, t):
+    """Incident Gaussian (1/e^2 intensity) radius at the element plane the ray hits in time t, or 0
+    when there is no Gaussian carried on the ray (returns 0 -> the caller treats the clip as a no-op)."""
+    if ray.q is None:
+        return 0.0
+    return physics.beam_radius_m2(physics.q_propagate(ray.q, physics.abcd_free(t)), ray.wl, ray.m2)
+
+
+def _clip_axis_world(E, roll_deg):
+    """World unit vector of a 1-D aperture's CLIPPED transverse axis: the element's local +X rolled by
+    ``roll_deg`` about its optical axis (local +Z), then mapped to world. The slit's blades clip the beam
+    along this axis (slit_angle); the knife's edge is perpendicular to it (knife_angle)."""
+    r = math.radians(roll_deg)
+    ax_local = Vector((math.cos(r), math.sin(r), 0.0))
+    return (E.matrix_world.to_3x3() @ ax_local).normalized()
+
+
+def _slit_T(ray, E, H, t):
+    """Power transmission of a 1-D SLIT (a pair of blades at +/-b on the clipped axis) on the ray's incident
+    Gaussian: T = erf(sqrt2 * b / w) of the part within |x| <= b, MINUS the chief-ray's offset off the slit
+    center (so a beam walking off the slit axis is clipped harder). b = slit_width/2, w the incident radius on
+    the clipped axis (the model's Gaussian is circular, so the along-axis radius == w). Reuses the VERIFIED
+    physics.slit_transmission. A degenerate (no-Gaussian) ray passes (1.0)."""
+    w = _w_at(ray, t)
+    if w <= 1e-9:
+        return 1.0
+    b = max(E.optics.slit_width, 0.0) * 0.5
+    axis = _clip_axis_world(E, E.optics.slit_angle)
+    center = E.matrix_world.translation
+    off = abs((H - center).dot(axis))                  # chief-ray offset along the clipped axis (~0 if centered)
+    # transmit the band [off - b, off + b]: T = 0.5(erf(sqrt2(off+b)/w) + erf(sqrt2(b-off)/w)). When off=0 this
+    # reduces to erf(sqrt2 b/w) (the verified centered slit); off>0 shifts the band off the beam, clipping more.
+    return 0.5 * (math.erf(math.sqrt(2.0) * (off + b) / w) + math.erf(math.sqrt(2.0) * (b - off) / w))
+
+
+def _knife_T(ray, E, H, t):
+    """Power transmitted PAST a KNIFE_EDGE on its stage: P = 0.5[1 - erf(sqrt2 (e - xc)/w)], where e is the edge
+    position (knife_position) on the cut axis, xc the beam chief-ray position on that axis, and w the incident
+    radius. Reuses the VERIFIED physics.knife_transmission. Sweeping e across the beam traces the erf profile a
+    KNIFE scan fits back to w. A degenerate (no-Gaussian) ray passes (1.0)."""
+    w = _w_at(ray, t)
+    if w <= 1e-9:
+        return 1.0
+    axis = _clip_axis_world(E, E.optics.knife_angle)
+    center = E.matrix_world.translation
+    xc = (H - center).dot(axis)                        # chief-ray position on the cut axis (relative to stage center)
+    e = E.optics.knife_position
+    return physics.knife_transmission(e, xc, w)
 
 
 # base-10 absorbance at a Schott catalog "cut" wavelength: internal transmittance tau = 0.5 there
@@ -541,6 +592,20 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             Tc = _clip_T(ray, E, t)
             stack.append(_child(ray, E, H, ray.dir, ray.power * Tc, 'TRANSMIT', idx, t,
                                 jones=physics.scale(J, math.sqrt(Tc)) if J else None))
+            continue
+        if et == 'SLIT':
+            # 1-D (anisotropic) clip: scale power by the verified slit erf along the clipped axis. The path is
+            # undeviated (a slit transmits straight through); only the transmitted POWER changes with the width.
+            Tc = _slit_T(ray, E, H, t)
+            stack.append(_child(ray, E, H, ray.dir, ray.power * Tc, 'TRANSMIT', idx, t,
+                                jones=physics.scale(J, math.sqrt(max(Tc, 0.0))) if J else None))
+            continue
+        if et == 'KNIFE_EDGE':
+            # half-plane clip: scale power by the verified knife erf (the part of the beam past the edge). The
+            # path is undeviated; sweeping knife_position across the beam gives the erf knife-edge profile.
+            Tc = _knife_T(ray, E, H, t)
+            stack.append(_child(ray, E, H, ray.dir, ray.power * Tc, 'TRANSMIT', idx, t,
+                                jones=physics.scale(J, math.sqrt(max(Tc, 0.0))) if J else None))
             continue
         if et == 'RETROREFLECTOR':
             # Corner cube: angle-insensitive retroreflection d_out = -d_in. A flat-mirror
