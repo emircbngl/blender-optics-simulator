@@ -323,6 +323,17 @@ class OpticalElementProps(PropertyGroup):
                     "multiplied by T, so the element absorbs (1-T) of what passes through. "
                     "Generalizes the ATTENUATOR / colored-glass loss to every transmissive element. "
                     "1.0 (default) -> no absorption, byte-identical")
+    # --- SURFACE-FIGURE -> WAVEFRONT IMPRINT: when a REFLECTIVE element has this ON, the reflected beam
+    # carries the Zernike wavefront error imprinted by the element's ACTUAL MESH surface over the beam
+    # footprint (Tier-1 GEOMETRIC OPD = 2*surface-depth deviation, fit to orthonormal Noll Zernikes, in
+    # waves), so a downstream wavefront sensor reads the surface figure. DEFAULT OFF -> no imprint -> every
+    # scene byte-identical; a FLAT surface imprints ~0. NOT a wave-diffraction calculation.
+    imprint_surface: BoolProperty(
+        name="Imprint surface figure", default=False,
+        description="On a REFLECTIVE element, stamp the wavefront error of this element's ACTUAL MESH "
+                    "surface onto the reflected beam (Tier-1 geometric surface-figure -> Zernike OPD, "
+                    "waves), so a downstream wavefront sensor reads the surface figure. "
+                    "OFF (default) -> no imprint, byte-identical; a flat surface imprints ~0")
 
     # --- physics-layer parameters (read by the polarization / wavelength engine) ---
     pol_type: EnumProperty(name="Source polarization",

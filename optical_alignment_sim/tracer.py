@@ -345,8 +345,12 @@ def _spawn_coating(stack, ray, E, H, sn, idx, t):
     if R <= 0.0:
         return 0.0
     nd = geometry.reflect(ray.dir, sn)
+    # an imprint_surface coating pickoff also carries the entry-face surface figure (opt-in; None when
+    # imprint_surface is off -> the pickoff is unchanged). MIRROR is the must; this is the optional extra.
+    imp = _surface_imprint_coeffs(E, ray, H, sn, t)
+    ab = _aberr_combine(ray.aberr, imp, 1.0) if imp is not None else None
     c = _child(ray, E, H, nd, ray.power * R, 'REFLECT', idx, t,
-               jones=physics.scale(ray.jones, math.sqrt(R)) if ray.jones else None)
+               jones=physics.scale(ray.jones, math.sqrt(R)) if ray.jones else None, aberr=ab)
     stack.append(c)
     return R
 
@@ -357,6 +361,169 @@ def _w_at(ray, t):
     if ray.q is None:
         return 0.0
     return physics.beam_radius_m2(physics.q_propagate(ray.q, physics.abcd_free(t)), ray.wl, ray.m2)
+
+
+# --- SURFACE-FIGURE -> WAVEFRONT IMPRINT (opt-in, gated by op.imprint_surface) -------------------
+# Honest Tier-1 GEOMETRIC imprint: a reflective element's ACTUAL mesh surface stamps an optical-path-
+# difference (NOT a wave-diffraction calc) onto the reflected beam over its Gaussian footprint, fit to
+# the (oracle-verified) orthonormal Noll Zernikes. The reflected child carries that as extra `aberr`
+# (waves), so a downstream wavefront sensor reads the element's surface figure. DEFAULT OFF -> no
+# imprint -> existing scenes trace byte-identical; a FLAT surface imprints ~0.
+_IMPRINT_RINGS = 6                 # polar footprint grid: 6 rings ...
+_IMPRINT_SPOKES = 16               # ... x 16 spokes (+ center) = 97 samples inside the disc
+_IMPRINT_BACKUP = 50.0             # mm: back the probe ray up along -ray.dir before ray_cast, so it
+                                   # starts safely outside the mesh and hits the front surface
+
+
+def _plane_fit(u, v, z):
+    """Least-squares plane z ~ a0 + au*u + av*v over matched (u,v,z) samples. Returns (a0, au, av).
+    Used to detrend the footprint depths against their best-fit reference plane (so a flat-but-tilted
+    surface imprints 0). Solves the 3x3 normal equations directly (small, always well-conditioned for a
+    non-degenerate footprint); falls back to the mean if the system is singular (e.g. all points colinear)."""
+    n = len(z)
+    if n == 0:
+        return 0.0, 0.0, 0.0
+    Suu = Suv = Svv = Su = Sv = Sz = Suz = Svz = 0.0
+    for i in range(n):
+        ui, vi, zi = u[i], v[i], z[i]
+        Suu += ui * ui; Suv += ui * vi; Svv += vi * vi
+        Su += ui; Sv += vi; Sz += zi
+        Suz += ui * zi; Svz += vi * zi
+    # normal equations M [a0, au, av]^T = b, with M symmetric:
+    #   [ n   Su  Sv ] [a0]   [ Sz  ]
+    #   [ Su  Suu Suv] [au] = [ Suz ]
+    #   [ Sv  Suv Svv] [av]   [ Svz ]
+    M = [[float(n), Su, Sv], [Su, Suu, Suv], [Sv, Suv, Svv]]
+    b = [Sz, Suz, Svz]
+    aug = [M[r][:] + [b[r]] for r in range(3)]
+    for col in range(3):                                      # Gaussian elimination, partial pivoting
+        piv = max(range(col, 3), key=lambda r: abs(aug[r][col]))
+        if abs(aug[piv][col]) < 1e-15:
+            return Sz / n, 0.0, 0.0                           # singular -> just the mean (piston only)
+        aug[col], aug[piv] = aug[piv], aug[col]
+        pv = aug[col][col]
+        for k in range(col, 4):
+            aug[col][k] /= pv
+        for r in range(3):
+            if r != col and aug[r][col]:
+                f = aug[r][col]
+                for k in range(col, 4):
+                    aug[r][k] -= f * aug[col][k]
+    return aug[0][3], aug[1][3], aug[2][3]
+
+
+def _surface_imprint_coeffs(E, ray, H, sn, t):
+    """Zernike wavefront-error coeffs (WAVES, length-15) imprinted on REFLECTION by element E's actual
+    mesh surface over the incident Gaussian footprint, or None to skip (no imprint -> byte-identical).
+
+    Algorithm (the verified physics is reused, no new oracle-checked law):
+      1. Footprint radius w = _w_at(ray, t); skip if w<=0 (no Gaussian carried).
+      2. Build a BVHTree of E's WORLD-space evaluated mesh (the optomech bmesh/BVHTree pattern). Skip if
+         the mesh is missing/empty or all probes miss.
+      3. Sample a polar grid of points P inside the disc of radius w centered at H, in the plane PERP to
+         ray.dir (basis e1,e2 = physics.transverse_basis(ray.dir)). For each P, cast a probe ray PARALLEL
+         to ray.dir (from P backed up _IMPRINT_BACKUP along -ray.dir) onto the tree; the along-beam
+         distance to the surface, projected onto ray.dir, is the surface depth d_i at that footprint point.
+      4. Detrend against the footprint's best-fit REFERENCE PLANE (piston + x/y tilt), not just the mean:
+         dd_i = d_i - plane(u_i, v_i). The surface is tilted at the AOI to the probe, so a flat mesh returns
+         a linear depth RAMP -- that ramp is the mirror's overall orientation (the fold, already carried by
+         geometry.reflect), NOT figure error; removing it makes a flat surface imprint EXACTLY 0. The
+         round-trip optical-path error is W_i = 2*dd_i  (the beam traverses the surface-depth deviation
+         TWICE on reflection). This along-beam OPD is the direct measure of the same effect the oracle-
+         verified reflection_wavefront_error W=2h*cos(theta) describes for a normal-height h: the cos(theta)
+         projection is folded into the parallel-to-beam raycast distance (a sloped surface returns a longer
+         along-beam d), so 2*dd is the round-trip wavefront error in beam-path mm.
+      5. Normalize footprint radius rho=r/w (<=1), theta per sample, coeffs = physics.fit_zernike(...).
+         Convert mm -> WAVES (the aberr/WFS convention) via /(wl_nm*1e-6), drop piston, return the vector.
+
+    Robust: returns None (a no-op, no aberr change) on any of: imprint off, w<=0, no/empty mesh, <6
+    surviving samples, a degenerate fit (all-zero)."""
+    op = E.optics
+    if not getattr(op, 'imprint_surface', False):
+        return None                                           # default OFF -> byte-identical
+    w = _w_at(ray, t)
+    if w <= 1e-9:
+        return None                                           # no Gaussian footprint -> nothing to sample
+    try:
+        import bmesh
+        from mathutils.bvhtree import BVHTree
+    except Exception:
+        return None
+    # build a BVHTree of E's world-space evaluated mesh (mirror the optomech pattern)
+    bm = bmesh.new()
+    try:
+        try:
+            deps = bpy.context.evaluated_depsgraph_get()
+            bm.from_object(E, deps)                            # evaluated (modifiers applied)
+        except Exception:
+            if E.data is None:
+                bm.free()
+                return None
+            bm.from_mesh(E.data)
+        if not bm.faces:
+            bm.free()
+            return None
+        bm.transform(E.matrix_world)
+        tree = BVHTree.FromBMesh(bm)
+    except Exception:
+        try:
+            bm.free()
+        except Exception:
+            pass
+        return None
+    bm.free()
+
+    d = ray.dir.normalized()
+    e1v, e2v = physics.transverse_basis((d.x, d.y, d.z))      # disc basis PERP to the beam axis
+    e1 = Vector(e1v)
+    e2 = Vector(e2v)
+    samples = []                                              # (rho, theta, depth_along_beam_mm)
+    # polar grid: center + (rings x spokes) inside the unit disc, rho in (0,1]
+    grid = [(0.0, 0.0)]
+    for ir in range(1, _IMPRINT_RINGS + 1):
+        rr = ir / float(_IMPRINT_RINGS)
+        for isp in range(_IMPRINT_SPOKES):
+            th = 2.0 * math.pi * isp / float(_IMPRINT_SPOKES)
+            grid.append((rr, th))
+    for rho, theta in grid:
+        r = rho * w
+        P = H + e1 * (r * math.cos(theta)) + e2 * (r * math.sin(theta))
+        origin = P - d * _IMPRINT_BACKUP                      # back up so the probe starts outside the mesh
+        loc, nrm, fidx, dist = tree.ray_cast(origin, d)
+        if loc is None:
+            continue                                          # this footprint point misses the mesh -> drop
+        depth = (Vector(loc) - origin).dot(d)                 # along-beam distance to the surface (mm)
+        samples.append((rho, theta, depth))
+    if len(samples) < 6:
+        return None                                           # too few hits to fit -> no imprint
+
+    rho_l = [s[0] for s in samples]
+    th_l = [s[1] for s in samples]
+    # DETREND against the best-fit REFERENCE PLANE of the footprint, not just the mean depth. The
+    # surface is tilted at the angle of incidence relative to the probe (which is parallel to the beam),
+    # so a perfectly FLAT mesh returns along-beam depths that vary LINEARLY across the disc -- that ramp
+    # is the mirror's overall orientation (the fold geometry, already carried by geometry.reflect), NOT a
+    # figure error. Subtracting the least-squares plane (piston + x/y tilt over the footprint coordinates
+    # u=rho*cos(theta), v=rho*sin(theta)) removes that ramp, so a flat surface imprints EXACTLY 0 and only
+    # the deviation FROM flat (the true surface figure) survives. This is the physically correct reference:
+    # tip/tilt of the whole mirror is alignment; figure is departure from the reference plane.
+    u_l = [rho_l[i] * math.cos(th_l[i]) for i in range(len(samples))]
+    v_l = [rho_l[i] * math.sin(th_l[i]) for i in range(len(samples))]
+    z_l = [s[2] for s in samples]
+    a0, au, av = _plane_fit(u_l, v_l, z_l)                    # depth ~ a0 + au*u + av*v (reference plane)
+    # round-trip OPD in beam-path mm: W = 2*(depth - reference_plane). A protruding (closer) point has a
+    # SMALLER along-beam depth, so its W is negative -> the beam there is advanced; a recessed point is
+    # positive -> retarded. (Sign is consistent; only relative figure matters for the WFS readout.)
+    W_mm = [2.0 * (z_l[i] - (a0 + au * u_l[i] + av * v_l[i])) for i in range(len(samples))]
+    lam_mm = ray.wl * 1.0e-6                                  # wavelength in mm (wl is nm)
+    if lam_mm <= 0.0:
+        return None
+    W_waves = [wmm / lam_mm for wmm in W_mm]                  # mm -> waves (the aberr/WFS convention)
+    coeffs = physics.fit_zernike(rho_l, th_l, W_waves)
+    coeffs[0] = 0.0                                           # drop piston (a constant OPD is no aberration)
+    if not any(abs(c) > 1e-12 for c in coeffs):
+        return None                                           # flat surface -> ~0 -> skip (byte-identical)
+    return coeffs
 
 
 def _clip_axis_world(E, roll_deg):
@@ -830,6 +997,11 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 stack.append(_child(ray, E, H, nd, ray.power * op.reflectivity, 'REFLECT', idx, t, jones=None))
         elif et in ('MIRROR', 'PRISM_MIRROR'):
             nd = geometry.reflect(ray.dir, sn)
+            # SURFACE-FIGURE IMPRINT (opt-in, default off): sample E's actual mesh over the Gaussian
+            # footprint and stamp its Zernike surface figure onto the reflected wavefront (sign +1, like
+            # an ABERRATOR). None -> no change -> byte-identical; a flat surface -> ~0.
+            imp = _surface_imprint_coeffs(E, ray, H, sn, t)
+            ab = _aberr_combine(ray.aberr, imp, 1.0) if imp is not None else None
             if ray.evec is not None and getattr(op, 'coating', 'DIELECTRIC') != 'DIELECTRIC':
                 # metal mirror: exact s/p Fresnel in the TRUE plane of incidence (d x n),
                 # so off-axis reflection rotates azimuth / adds the right s-p phase
@@ -837,7 +1009,7 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 rs, rp = physics.fresnel_reflect(1.0, physics.METALS.get(op.coating, physics.METALS['AL']), theta)
                 ev, _do = physics.reflect_field(ray.evec, ray.dir, sn, rs, rp)
                 pw = sum((c * c.conjugate()).real for c in ev)
-                stack.append(_child(ray, E, H, nd, pw, 'REFLECT', idx, t, evec=ev))
+                stack.append(_child(ray, E, H, nd, pw, 'REFLECT', idx, t, evec=ev, aberr=ab))
             elif ray.evec is not None:
                 # dielectric / ideal mirror: exact 3-D reflection with the Fresnel sign
                 # convention rp = -rs (a perfect conductor has rs=-1, rp=+1), so at normal
@@ -845,9 +1017,9 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 # arms transform identically -> visibility stays 1)
                 a = math.sqrt(max(op.reflectivity, 0.0))
                 ev, _do = physics.reflect_field(ray.evec, ray.dir, sn, a, -a)
-                stack.append(_child(ray, E, H, nd, ray.power * op.reflectivity, 'REFLECT', idx, t, evec=ev))
+                stack.append(_child(ray, E, H, nd, ray.power * op.reflectivity, 'REFLECT', idx, t, evec=ev, aberr=ab))
             else:
-                stack.append(_child(ray, E, H, nd, ray.power * op.reflectivity, 'REFLECT', idx, t, jones=None))
+                stack.append(_child(ray, E, H, nd, ray.power * op.reflectivity, 'REFLECT', idx, t, jones=None, aberr=ab))
         elif et == 'GRATING':
             nd = _diffract(ray.dir, sn, ray.wl, op.lines_per_mm, op.grating_order)
             if nd is None:

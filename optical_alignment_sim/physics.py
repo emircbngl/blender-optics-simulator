@@ -843,6 +843,87 @@ def wavefront_rms(coeffs):
     return math.sqrt(sum([c * c for c in coeffs[1:]]))
 
 
+def reflection_wavefront_error(h, aoi_rad):
+    """Wavefront (optical-path) error imprinted on REFLECTION by a surface-height deviation ``h``
+    (along the surface normal, relative to a reference plane), at angle of incidence ``aoi_rad``:
+
+        W = 2 * h * cos(theta_i)        (oracle-VERIFIED: physics_verify ok=true, 6/6)
+
+    The factor 2 is because the beam traverses the height deviation TWICE on reflection (in + out);
+    cos(theta_i) projects the doubled normal-direction path onto the optical axis. At normal incidence
+    (theta=0) W = 2h; at 60 deg W = 2h*0.5 = h; at 45 deg W = 2h*(sqrt2/2) = h*sqrt(2). The phase is
+    phi = (2*pi/lambda)*W = (4*pi/lambda)*h*cos(theta_i). DIMENSIONAL: W,h length; theta angle.
+    This is the GEOMETRIC (Tier-1) surface-sag -> wavefront imprint -- an optical-path-difference over
+    the footprint, NOT a wave-diffraction calculation. The W=2h*cos(theta) relation IS the verified part."""
+    return 2.0 * h * math.cos(aoi_rad)
+
+
+def fit_zernike(rho, theta, W, n_modes=N_ZERNIKE):
+    """Least-squares fit of a SAMPLED wavefront to the orthonormal Noll Zernike coefficients.
+
+    Given matched samples (rho_i, theta_i, W_i) over the unit disk, return the coefficient vector
+    ``a`` (length ``n_modes``, in the same units as W) minimizing sum_i (W_i - sum_j a_j Z_j(rho_i,theta_i))^2.
+
+    Uses numpy.linalg.lstsq when numpy is available (the tracer runs inside Blender, which ships it),
+    with a pure-Python normal-equations + Gaussian-elimination fallback so physics.py stays importable
+    by a bare interpreter (its self-test convention). Because the RMS-normalized Zernikes are orthonormal
+    over the disk, a clean (noise-free) over-determined sample set recovers the injected coefficients to
+    machine precision (round-trip < 1e-6; see the gate-A proof). Samples must be INSIDE the unit disk
+    (rho <= 1); the caller normalizes the footprint radius to rho=1 before calling."""
+    n = min(len(rho), len(theta), len(W))
+    if n == 0:
+        return [0.0] * n_modes
+    # design matrix A[i][j] = Z_{j+1}(rho_i, theta_i)  (j = 0..n_modes-1 -> Noll j=1..n_modes)
+    try:
+        import numpy as np
+        A = np.empty((n, n_modes), dtype=float)
+        for i in range(n):
+            r, th = rho[i], theta[i]
+            for j in range(n_modes):
+                A[i, j] = zernike(j + 1, r, th)
+        b = np.asarray(W[:n], dtype=float)
+        coeffs, *_ = np.linalg.lstsq(A, b, rcond=None)
+        return [float(c) for c in coeffs]
+    except Exception:
+        pass
+    # pure-Python fallback: solve the normal equations (A^T A) x = A^T b by Gaussian elimination.
+    rows = [[zernike(j + 1, rho[i], theta[i]) for j in range(n_modes)] for i in range(n)]
+    # A^T A (n_modes x n_modes, symmetric) and A^T b (n_modes)
+    ata = [[0.0] * n_modes for _ in range(n_modes)]
+    atb = [0.0] * n_modes
+    for i in range(n):
+        ri = rows[i]
+        wi = W[i]
+        for a in range(n_modes):
+            atb[a] += ri[a] * wi
+            ra = ri[a]
+            row_a = ata[a]
+            for bcol in range(a, n_modes):
+                row_a[bcol] += ra * ri[bcol]
+    for a in range(n_modes):                              # mirror the symmetric upper triangle
+        for bcol in range(a):
+            ata[a][bcol] = ata[bcol][a]
+    # Gaussian elimination with partial pivoting on the augmented [A^T A | A^T b]
+    M = [ata[r][:] + [atb[r]] for r in range(n_modes)]
+    for col in range(n_modes):
+        piv = max(range(col, n_modes), key=lambda r: abs(M[r][col]))
+        if abs(M[piv][col]) < 1e-12:
+            continue                                      # singular column -> leave that coeff at 0
+        M[col], M[piv] = M[piv], M[col]
+        pv = M[col][col]
+        inv = 1.0 / pv
+        for k in range(col, n_modes + 1):
+            M[col][k] *= inv
+        for r in range(n_modes):
+            if r == col:
+                continue
+            f = M[r][col]
+            if f:
+                for k in range(col, n_modes + 1):
+                    M[r][k] -= f * M[col][k]
+    return [M[r][n_modes] for r in range(n_modes)]
+
+
 # --- coherence --------------------------------------------------------------
 
 def coherence_length_mm(wavelength_nm, linewidth_nm):
@@ -1260,6 +1341,38 @@ if __name__ == "__main__":
         fails.append("Zernike norm <Z4,Z4>=%.3f" % _zdot(4, 4))
     if abs(_zdot(4, 6)) > 0.02 or abs(_zdot(2, 3)) > 0.02:
         fails.append("Zernike orthogonality")
+
+    # reflection wavefront error W = 2 h cos(theta) (oracle-VERIFIED ok=true 6/6):
+    # theta=0 -> 2h, theta=60 -> h, theta=45 -> h*sqrt2
+    if not close(reflection_wavefront_error(1.0, 0.0), 2.0, 1e-12):
+        fails.append("reflection_wavefront_error(h=1,0deg)=%.6f != 2" % reflection_wavefront_error(1.0, 0.0))
+    if not close(reflection_wavefront_error(1.0, math.radians(60.0)), 1.0, 1e-12):
+        fails.append("reflection_wavefront_error(h=1,60deg)=%.6f != 1" % reflection_wavefront_error(1.0, math.radians(60.0)))
+    if not close(reflection_wavefront_error(1.0, math.radians(45.0)), math.sqrt(2.0), 1e-12):
+        fails.append("reflection_wavefront_error(h=1,45deg)=%.6f != sqrt2" % reflection_wavefront_error(1.0, math.radians(45.0)))
+
+    # fit_zernike ROUND-TRIP: synthesize a wavefront from a KNOWN coeff vector, sample it, fit,
+    # and recover the SAME coefficients to < 1e-6 (gate A). Inject defocus+astig+coma+spherical.
+    inj = [0.0] * N_ZERNIKE
+    inj[3] = 0.42        # defocus  (j=4)
+    inj[5] = -0.31       # astig0   (j=6)
+    inj[7] = 0.18        # comaX    (j=8)
+    inj[10] = 0.09       # spherical(j=11)
+    _rs, _ts, _ws = [], [], []
+    _G = 41
+    for _i in range(_G):
+        for _j in range(_G):
+            _x = (_i + 0.5) / _G * 2.0 - 1.0
+            _y = (_j + 0.5) / _G * 2.0 - 1.0
+            _r = math.hypot(_x, _y)
+            if _r > 1.0:
+                continue
+            _th = math.atan2(_y, _x)
+            _rs.append(_r); _ts.append(_th); _ws.append(zernike_value(inj, _r, _th))
+    rec = fit_zernike(_rs, _ts, _ws)
+    if max(abs(rec[k] - inj[k]) for k in range(N_ZERNIKE)) > 1e-6:
+        fails.append("fit_zernike round-trip max err %.2e (want <1e-6)"
+                     % max(abs(rec[k] - inj[k]) for k in range(N_ZERNIKE)))
 
     if fails:
         print("PHYSICS SELFTEST FAILED:")

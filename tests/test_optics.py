@@ -1717,6 +1717,90 @@ check("orbit camera stays finite + off-centre",
 check("render_sequence is wired (optics_api + anim)",
       hasattr(optics_api, "render_sequence") and hasattr(_anim, "render_sequence"))
 
+print("[surface-figure -> wavefront imprint: opt-in mesh figure stamped on the reflected wavefront]")
+# A REFLECTIVE element with imprint_surface=True stamps its ACTUAL MESH surface figure (Tier-1 geometric
+# round-trip OPD = 2*depth-deviation, detrended against the footprint reference plane, fit to the verified
+# Noll Zernikes, in waves) onto the reflected beam, so a downstream WFS reads it. Default OFF -> byte-id.
+from optical_alignment_sim import elements_generic as _IG
+import bmesh as _ibm
+
+
+def _imp_replace_surface(E, surf_fn, half=70.0, nx=41):
+    """Replace reflective element E's mesh with the grid surface z=surf_fn(x,y) over [-half,half]^2 (local
+    frame; local +Z = the coated front). E keeps its optics/ports/matrix_world."""
+    b = _ibm.new()
+    vv = [[None] * nx for _ in range(nx)]
+    for iy in range(nx):
+        for ix in range(nx):
+            x = -half + 2.0 * half * ix / (nx - 1)
+            y = -half + 2.0 * half * iy / (nx - 1)
+            vv[iy][ix] = b.verts.new((x, y, surf_fn(x, y)))
+    b.verts.ensure_lookup_table()
+    for iy in range(nx - 1):
+        for ix in range(nx - 1):
+            b.faces.new((vv[iy][ix], vv[iy][ix + 1], vv[iy + 1][ix + 1], vv[iy + 1][ix]))
+    _ibm.ops.recalc_face_normals(b, faces=b.faces)
+    old = E.data
+    me = bpy.data.meshes.new(E.name + "_surf"); b.to_mesh(me); b.free()
+    E.data = me
+    if old is not None and old.users == 0:
+        bpy.data.meshes.remove(old)
+
+
+def _imp_scene(name, surf_fn, imprint, aoi_deg=8.0):
+    """Laser -> reflective element (mesh = surf_fn) at near-normal AOI -> WFS; return the WFS Zernike vec."""
+    for _o in list(sc.objects):                            # clear any optics left from prior example builds
+        if getattr(getattr(_o, "optics", None), "is_optical", False):
+            bpy.data.objects.remove(_o, do_unlink=True)
+    _c = _IG.example_collection(name)
+    F = _Vec((0.0, 0.0, 0.0)); d_in = _Vec((1.0, 0.0, 0.0))
+    dev = math.radians(180.0 - 2.0 * aoi_deg)             # mirror deviation = 180-2*AOI (near-normal)
+    d_out = _Vec((math.cos(dev), math.sin(dev), 0.0)).normalized()
+    _las = _IG.source("Laser", F - d_in * 400.0, d_in, _c, wavelength=632.8, length=44.0, radius=10.0)
+    _las.optics.waist_um = 9000.0                         # wide ~collimated beam (big footprint)
+    _m = _IG.mirror("REFL", F, d_in, d_out, _c, size=150.0)
+    _m.optics.imprint_surface = imprint
+    _imp_replace_surface(_m, surf_fn)
+    _wfs = _IG.wavefront_sensor("WFS", F + d_out * 300.0, d_out, _c, size=90.0)
+    bpy.context.view_layer.update()
+    _segs = scan._trace(sc)
+    _cf = ao._aberr_at(_segs, _wfs.name)                  # use the REAL object name (Blender may .NNN-suffix)
+    for _o in list(_c.objects):
+        _IG.drop_example_object(_o)
+    bpy.data.collections.remove(_c)
+    return _cf or [0.0] * physics.N_ZERNIKE
+
+
+_NM = physics.ZERNIKE_NAMES
+# (i) FLAT surface, imprint ON -> ~0 (the flat-mirror byte-identical guarantee; only the sub-mwave fit floor)
+_cf_flat = _imp_scene("IMP_flat", lambda x, y: 0.0, True)
+check("imprint: FLAT surface reads ~0 (lambda/100 floor)", physics.wavefront_rms(_cf_flat) < 1.0e-2,
+      "%.5f waves" % physics.wavefront_rms(_cf_flat))
+# (ii) SPHERICAL cap -> defocus dominant
+_cf_sph = _imp_scene("IMP_sph", lambda x, y: (x * x + y * y) / (2.0 * 4000.0), True)
+_jd_sph = max(range(2, physics.N_ZERNIKE + 1), key=lambda j: abs(_cf_sph[j - 1]))
+check("imprint: SPHERICAL cap -> dominant Zernike is defocus", _NM.get(_jd_sph) == "defocus",
+      "Z%d %s" % (_jd_sph, _NM.get(_jd_sph)))
+# (iii) SADDLE x^2-y^2 -> astig0 dominant (a genuine figure mode, not removed by the plane reference)
+_cf_ast = _imp_scene("IMP_ast", lambda x, y: (x * x - y * y) / (2.0 * 5000.0), True)
+_jd_ast = max(range(2, physics.N_ZERNIKE + 1), key=lambda j: abs(_cf_ast[j - 1]))
+check("imprint: SADDLE surface -> dominant Zernike is astig0", _NM.get(_jd_ast) == "astig0",
+      "Z%d %s" % (_jd_ast, _NM.get(_jd_ast)))
+# (iv) an IRREGULAR mesh -> non-flat, multi-mode WFS
+_cf_irr = _imp_scene("IMP_irr", lambda x, y: 3.0 * math.exp(-((x - 15) ** 2 + (y - 8) ** 2) / 648.0)
+                     - 2.0 * math.exp(-((x + 20) ** 2 + (y + 12) ** 2) / 968.0)
+                     + 1.4 * math.sin(x / 30.0) * math.cos(y / 24.0), True)
+check("imprint: irregular mesh -> non-flat multi-mode wavefront",
+      physics.wavefront_rms(_cf_irr) > 1.0e-2
+      and sum(1 for k in range(1, physics.N_ZERNIKE) if abs(_cf_irr[k]) > 1e-3) >= 3,
+      "RMS %.3f, %d modes" % (physics.wavefront_rms(_cf_irr),
+                              sum(1 for k in range(1, physics.N_ZERNIKE) if abs(_cf_irr[k]) > 1e-3)))
+# (v) OPT-IN: the SAME irregular mesh with imprint_surface OFF reads exactly flat (default off)
+_cf_off = _imp_scene("IMP_off", lambda x, y: 3.0 * math.exp(-((x - 15) ** 2 + (y - 8) ** 2) / 648.0)
+                     + 1.4 * math.sin(x / 30.0), False)
+check("imprint: OFF on the same mesh reads flat (opt-in -> default byte-identical)",
+      physics.wavefront_rms(_cf_off) < 1e-9, "%.6f waves" % physics.wavefront_rms(_cf_off))
+
 oas.unregister()
 
 passed = sum(1 for _, ok in _checks if ok)
