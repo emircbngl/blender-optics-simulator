@@ -606,6 +606,95 @@ for _o in list(_a9c.objects):
     eg.drop_example_object(_o)
 bpy.data.collections.remove(_a9c)
 
+print("[A11 universal coating: paintable reflectance pickoff + neutral absorber; R+T+A=1; byte-identical defaults]")
+import optical_alignment_sim.diagnostics as _a11diag
+
+
+def _a11_clear():
+    for _o in list(sc.objects):
+        if getattr(getattr(_o, "optics", None), "is_optical", False):
+            bpy.data.objects.remove(_o, do_unlink=True)
+
+
+_a11c = bpy.data.collections.new("A11TEST"); sc.collection.children.link(_a11c)
+# coating_reflectance=0.30 on a tilted window -> a 0.30 REFLECT pickoff + a 0.70 transmitted beam
+_a11_clear()
+eg.source("A11_S", (-150, 0, 0), _PV((1, 0, 0)), _a11c)
+_a11tilt = math.radians(20.0)
+_a11w = eg.window("A11_W", (0, 0, 0), _PV((math.cos(_a11tilt), math.sin(_a11tilt), 0.0)), _a11c, radius=16.0)
+_a11w.optics.coating_reflectance = 0.30
+eg.detector("A11_D", (170, 0, 0), _PV((1, 0, 0)), _a11c)
+_a11pdir = _PV((-math.cos(2 * _a11tilt), -math.sin(2 * _a11tilt), 0.0))
+eg.detector("A11_SAMP", tuple(_a11pdir * 130.0), _a11pdir, _a11c, size=60.0)
+bpy.context.view_layer.update()
+_a11s = scan._trace(sc)
+_a11pk = [s for s in _a11s if s.get("kind") == "REFLECT" and s.get("from") == "A11_W"]
+_a11pT = next((s["power"] for s in _a11s if s.get("from") == "A11_W" and s.get("kind") == "TRANSMIT"), None)
+check("A11 coating_reflectance=0.30 spawns ONE pickoff of power 0.30",
+      len(_a11pk) == 1 and abs(_a11pk[0]["power"] - 0.30) < 1e-6,
+      "pickoff=%.5f" % (_a11pk[0]["power"] if _a11pk else -1))
+check("A11 onward transmit debited to 0.70 (R+T=1)", _a11pT is not None and abs(_a11pT - 0.70) < 1e-6,
+      "transmit=%.5f" % (_a11pT or -1))
+check("A11 pickoff goes the reflected direction onto the 2nd detector",
+      len([s for s in _a11s if s.get("kind") == "REFLECT" and s.get("from") == "A11_W" and s.get("to") == "A11_SAMP"]) == 1)
+tracer.cached_segments = _a11s
+check("A11 energy budget balances with the 30% pickoff (0 energy_violations)",
+      len([i for i in _a11diag.run_diagnostics(sc) if i.get("kind") == "energy_violation"]) == 0)
+# element_transmittance=0.5 -> the onward power is halved (universal neutral absorber)
+_a11_clear()
+eg.source("A11_S", (-150, 0, 0), _PV((1, 0, 0)), _a11c)
+_a11w = eg.window("A11_W", (0, 0, 0), _PV((1, 0, 0)), _a11c)
+_a11w.optics.element_transmittance = 0.5
+eg.detector("A11_D", (150, 0, 0), _PV((1, 0, 0)), _a11c)
+bpy.context.view_layer.update()
+_a11sa = scan._trace(sc)
+_a11pTa = next((s["power"] for s in _a11sa if s.get("from") == "A11_W" and s.get("kind") == "TRANSMIT"), None)
+check("A11 element_transmittance=0.5 halves the onward power (absorbs 0.5)",
+      _a11pTa is not None and abs(_a11pTa - 0.5) < 1e-6, "transmit=%.5f" % (_a11pTa or -1))
+# both together: R=0.30 + Ta=0.5 -> pickoff 0.30, transmit 0.35, absorbed 0.35 (R + T_onward + A = 1)
+_a11_clear()
+eg.source("A11_S", (-150, 0, 0), _PV((1, 0, 0)), _a11c)
+_a11w = eg.window("A11_W", (0, 0, 0), _PV((math.cos(_a11tilt), math.sin(_a11tilt), 0.0)), _a11c, radius=16.0)
+_a11w.optics.coating_reflectance = 0.30
+_a11w.optics.element_transmittance = 0.5
+eg.detector("A11_D", (170, 0, 0), _PV((1, 0, 0)), _a11c)
+eg.detector("A11_SAMP", tuple(_a11pdir * 130.0), _a11pdir, _a11c, size=60.0)
+bpy.context.view_layer.update()
+_a11sb = scan._trace(sc)
+_a11pkb = [s for s in _a11sb if s.get("kind") == "REFLECT" and s.get("from") == "A11_W"]
+_a11pTb = next((s["power"] for s in _a11sb if s.get("from") == "A11_W" and s.get("kind") == "TRANSMIT"), None)
+_a11pkbp = _a11pkb[0]["power"] if _a11pkb else -1
+_a11abs = 1.0 - _a11pkbp - (_a11pTb or 0)
+check("A11 R=0.30 + Ta=0.5 -> R+T_onward+A = 0.30+0.35+0.35 = 1 (energy conserved)",
+      abs(_a11pkbp - 0.30) < 1e-6 and abs((_a11pTb or 0) - 0.35) < 1e-6 and abs(_a11abs - 0.35) < 1e-6,
+      "pickoff=%.4f transmit=%.4f absorbed=%.4f" % (_a11pkbp, _a11pTb or -1, _a11abs))
+# defaults R=0,T=1 -> a window spawns NO pickoff and transmits full power (byte-identical to before A11)
+_a11_clear()
+eg.source("A11_S", (-150, 0, 0), _PV((1, 0, 0)), _a11c)
+eg.window("A11_W", (0, 0, 0), _PV((1, 0, 0)), _a11c)
+eg.detector("A11_D", (150, 0, 0), _PV((1, 0, 0)), _a11c)
+bpy.context.view_layer.update()
+_a11s0 = scan._trace(sc)
+_a11p0 = next((s["power"] for s in _a11s0 if s.get("from") == "A11_W" and s.get("kind") == "TRANSMIT"), None)
+check("A11 defaults (R=0,T=1) -> no pickoff, full power transmit (byte-identical)",
+      len([s for s in _a11s0 if s.get("kind") == "REFLECT" and s.get("from") == "A11_W"]) == 0
+      and _a11p0 is not None and abs(_a11p0 - 1.0) < 1e-9)
+# composition: a coated MIRROR is NOT given a 2nd reflection (the coating is skipped on reflective types)
+_a11_clear()
+eg.source("A11_S", (-150, 0, 0), _PV((1, 0, 0)), _a11c)
+_a11m = eg.mirror("A11_M", (0, 0, 0), (1, 0, 0), (0, 1, 0), _a11c)
+_a11m.optics.coating_reflectance = 0.30
+eg.detector("A11_D", (0, 150, 0), _PV((0, -1, 0)), _a11c)
+bpy.context.view_layer.update()
+tracer.cached_segments = scan._trace(sc)
+check("A11 coating on a MIRROR adds no 2nd reflection (no double-count on reflective types)",
+      len([s for s in tracer.cached_segments if s.get("kind") == "REFLECT" and s.get("from") == "A11_M"]) == 1
+      and len([i for i in _a11diag.run_diagnostics(sc) if i.get("kind") == "energy_violation"]) == 0)
+_a11_clear()
+for _o in list(_a11c.objects):
+    eg.drop_example_object(_o)
+bpy.data.collections.remove(_a11c)
+
 print("[A10 fringe disambiguation: pol vs coherence vs crossed-polarizer; no false positives on dark ports]")
 import optical_alignment_sim.diagnostics as _a10diag
 _A10K = {"pol_mismatch", "coherence_mismatch", "crossed_polarizer"}

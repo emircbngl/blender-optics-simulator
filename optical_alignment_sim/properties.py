@@ -277,6 +277,28 @@ class OpticalElementProps(PropertyGroup):
         description="Residual per-surface power reflectance of an AR coating (~0.0025 for a "
                     "broadband AR-V, ~0.001 for a V-coat at the design line). The ghost power "
                     "fraction when ar_coated is on")
+    # --- A11 UNIVERSAL coating: a paintable HR/partial reflective coating + neutral absorber on ANY
+    # element (generalizes the A9 ghost from a fixed ~4% Fresnel to a controllable, user-set pickoff,
+    # and the ATTENUATOR/colored-glass loss to a universal transmittance). Both are DEFAULT-NEUTRAL
+    # (R=0, T=1) so an element that doesn't set them traces BYTE-IDENTICAL. The tracer applies them only
+    # on the TRANSMISSIVE/generic interaction (LENS/PASSTHROUGH/window + FILTER/ATTENUATOR), NOT on
+    # inherently splitting/reflecting types (MIRROR/BS/DICHROIC/GRATING already conserve energy via their
+    # own split) -- so the coating is never double-counted. Energy: R(pickoff) + T_onward + A = incident.
+    coating_reflectance: FloatProperty(
+        name="Coating reflectance (R)", default=0.0, min=0.0, max=1.0,
+        description="Universal reflective coating on ANY element's ENTRY face: the fraction R of "
+                    "incident power peeled off as a controlled REFLECT pickoff child "
+                    "(direction = reflect(ray.dir, entry_normal)); the onward beam is debited to "
+                    "(1-R). Turns a plain window into an R%% beam pickoff, or paints an HR/partial "
+                    "coating on any transmissive face. 0 (default) -> no pickoff, byte-identical. "
+                    "Composes ADDITIVELY with the A9 ghost (total reflected = ghost R + this R) and "
+                    "is SKIPPED on mirrors/beamsplitters (they already reflect/split)")
+    element_transmittance: FloatProperty(
+        name="Element transmittance (T)", default=1.0, min=0.0, max=1.0,
+        description="Universal neutral absorber on ANY element: the onward (transmitted) power is "
+                    "multiplied by T, so the element absorbs (1-T) of what passes through. "
+                    "Generalizes the ATTENUATOR / colored-glass loss to every transmissive element. "
+                    "1.0 (default) -> no absorption, byte-identical")
 
     # --- physics-layer parameters (read by the polarization / wavelength engine) ---
     pol_type: EnumProperty(name="Source polarization",

@@ -298,6 +298,30 @@ def _spawn_ghost(stack, gcfg, ray, E, H, sn, idx, t):
     return R
 
 
+def _spawn_coating(stack, ray, E, H, sn, idx, t):
+    """A11: spawn the explicit USER-SET reflective-coating PICKOFF at a transmissive face, and return R
+    (= the element's coating_reflectance) so the caller can DEBIT the onward power. This is the
+    controllable generalization of the A9 ghost: instead of a fixed ~4% parasitic Fresnel reflection, R
+    is whatever the user painted on coating_reflectance (0..1), so a plain window becomes an R-fraction
+    beam pickoff and any face can carry an HR/partial coating.
+
+    Returns 0.0 -- a no-op -- when coating_reflectance is 0 (the default), so an element that didn't ask
+    for a coating traces BYTE-IDENTICAL. The pickoff is a normal REFLECT child off the ENTRY-face normal
+    sn (geometry.reflect, the same geometry the A9 ghost uses); its power is R*ray.power and the field is
+    scaled by sqrt(R). It carries the parent's ghost_depth (it is an explicit beam, not a parasitic one),
+    so it is NOT gated by the ghost floor/depth -- a user pickoff always fires. The onward power debit is
+    left to the caller so a single (1-Rg-R)*T multiply covers the ghost + coating + absorber together
+    (R_ghost + R_coating + T_onward + A = incident, energy conserved, the A4 budget stays balanced)."""
+    R = min(max(getattr(E.optics, 'coating_reflectance', 0.0), 0.0), 1.0)
+    if R <= 0.0:
+        return 0.0
+    nd = geometry.reflect(ray.dir, sn)
+    c = _child(ray, E, H, nd, ray.power * R, 'REFLECT', idx, t,
+               jones=physics.scale(ray.jones, math.sqrt(R)) if ray.jones else None)
+    stack.append(c)
+    return R
+
+
 def _w_at(ray, t):
     """Incident Gaussian (1/e^2 intensity) radius at the element plane the ray hits in time t, or 0
     when there is no Gaussian carried on the ray (returns 0 -> the caller treats the clip as a no-op)."""
@@ -827,13 +851,17 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             # transmitted POWER near the edge changes with angle.
             aoi = math.acos(min(1.0, abs(ray.dir.dot(sn))))
             T = _transmission(op, ray.wl, aoi)
-            # A9: a Fresnel ghost off the filter's front face; the transmitted power is debited by
-            # (1-Rg) BEFORE the spectral T (the ghost is the surface reflection, independent of the
-            # coating's spectral transmission). model_ghosts OFF -> Rg=0 -> unchanged.
+            # A9: a Fresnel ghost off the filter's front face; A11: an explicit user-set coating pickoff
+            # (coating_reflectance) off the same face + a universal absorber (element_transmittance). The
+            # transmitted power is debited by (1-Rg-Rc)*Ta BEFORE the spectral T (the surface reflections
+            # are independent of the coating's spectral transmission). All default-neutral -> unchanged.
             Rg = _spawn_ghost(stack, gcfg, ray, E, H, sn, idx, t)
-            pT = ray.power * (1.0 - Rg) * T
+            Rc = _spawn_coating(stack, ray, E, H, sn, idx, t)
+            Ta = min(max(getattr(op, 'element_transmittance', 1.0), 0.0), 1.0)
+            onward = max(1.0 - Rg - Rc, 0.0) * Ta
+            pT = ray.power * onward * T
             stack.append(_child(ray, E, H, ray.dir, pT, 'TRANSMIT', idx, t,
-                                jones=physics.scale(J, math.sqrt(max((1.0 - Rg) * T, 0.0))) if J else None))
+                                jones=physics.scale(J, math.sqrt(max(onward * T, 0.0))) if J else None))
         elif et == 'PINHOLE':
             Tc = _clip_T(ray, E, t)
             stack.append(_child(ray, E, H, ray.dir, ray.power * Tc, 'TRANSMIT', idx, t,
@@ -1055,10 +1083,18 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 stack.append(_prism_exit_ray(glass_ray, E, He, Vector(d_out), opl_e,
                                              ray.power * T_in * T_out, idx))
         else:  # LENS / PASSTHROUGH (the canonical A9 transmissive face: an uncoated window / lens)
-            # A9: a low-power Fresnel ghost peels back off the surface; the transmitted beam is
-            # debited to (1-R)*power so R+T=1. With model_ghosts OFF, Rg=0 -> power unchanged.
+            # A9: a low-power parasitic Fresnel ghost peels back off the surface. A11: an explicit
+            # user-set reflective coating (coating_reflectance) peels a controlled pickoff off the SAME
+            # entry face, and a universal absorber (element_transmittance) attenuates the onward beam.
+            # The transmitted beam is debited to (1-Rg-Rc)*Ta so Rg + Rc + T_onward + A = incident (energy
+            # conserved). All three default-neutral (Rg=0 with ghosts off, Rc=0, Ta=1) -> power unchanged,
+            # so an ordinary window/lens still traces BYTE-IDENTICAL.
             Rg = _spawn_ghost(stack, gcfg, ray, E, H, sn, idx, t)
-            stack.append(_child(ray, E, H, ray.dir, ray.power * (1.0 - Rg), 'TRANSMIT', idx, t))
+            Rc = _spawn_coating(stack, ray, E, H, sn, idx, t)
+            Ta = min(max(getattr(op, 'element_transmittance', 1.0), 0.0), 1.0)
+            onward = max(1.0 - Rg - Rc, 0.0) * Ta
+            stack.append(_child(ray, E, H, ray.dir, ray.power * onward, 'TRANSMIT', idx, t,
+                                jones=physics.scale(J, math.sqrt(onward)) if J else None))
 
     return segments
 
