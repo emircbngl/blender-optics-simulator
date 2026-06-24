@@ -795,6 +795,61 @@ check("white-light packet bright at OPD=0", c0 > 0.8, "c0=%.3f" % c0)
 check("window washes out at OPD>>Lc", 0.35 < c1 < 0.65, "c1=%.3f" % c1)   # incoherent lines -> 0.5
 sc.optics.max_segments = _msave
 
+print("[B4 tilt-null solver: recover fx=tilt/lambda, drive fringe freq -> 0, peak visibility]")
+from optical_alignment_sim import solvers, mounts as _mounts, elements_generic as _G
+# B4-byte-identical: importing/holding the tilt_null solver must not perturb a normal trace
+optics_api.build_example("michelson")
+_b4_segs0 = scan._trace(sc)
+_ = (solvers.tilt_null, solvers.tilt_estimate)                  # reference the public surface
+_b4_segs1 = scan._trace(sc)
+_b4_p0, _b4_v0, _ = alignment.measure(_b4_segs0, "MI_D", "NONE")
+_b4_p1, _b4_v1, _ = alignment.measure(_b4_segs1, "MI_D", "NONE")
+check("B4: tilt_null import is inert (michelson trace unchanged)",
+      len(_b4_segs0) == len(_b4_segs1) and abs(_b4_p0 - _b4_p1) < 1e-9 and abs(_b4_v0 - _b4_v1) < 1e-9)
+# B4-estimator: a known injected tilt prints the analytic fringe frequency fx = tilt/lambda
+optics_api.build_example("michelson")
+optics_api.set_mount("MI_M_stage", "KM100")
+_b4stage = sc.objects["MI_M_stage"]
+_G.add_translation_dof(_b4stage, (1, 0, 0), -0.02, 0.02, 0.0)   # restore the OPD piston knob
+sc.objects["MI_Laser"].optics.waist_um = 1500.0                # wide collimated beam -> many fringes
+bpy.context.view_layer.update()
+_b4det = sc.objects["MI_D"]
+for _d in _b4stage.optics.dofs:
+    if _d.kind == "TILT":
+        _d.current = 0.02
+_mounts.compose_pose(_b4stage); bpy.context.view_layer.update()
+_b4seg = scan._trace(sc)
+_b4field, _b4px = solvers._sensor_field(_b4det, _b4seg)
+_b4arr, _ = scan._fringe_array(_b4det, _b4seg, _b4field, _b4px, norm='self')
+_b4wl = next((s.get("wavelength", 632.8) for s in _b4seg if s["to"] == "MI_D"), 632.8)
+_b4fx, _b4fy = solvers.tilt_estimate(_b4arr[..., 0], _b4wl, _b4field / _b4px)
+_b4fmag = math.hypot(_b4fx, _b4fy)
+# analytic ground truth: |f| = |d1-d2|_transverse / lambda
+_c0, _n, _u, _v = scan._detector_plane(_b4det)
+_bm = [s for s in _b4seg if s["to"] == "MI_D"]
+_d1 = (_Vec(_bm[0]["p2"]) - _Vec(_bm[0]["p1"])).normalized()
+_d2 = (_Vec(_bm[1]["p2"]) - _Vec(_bm[1]["p1"])).normalized()
+_b4ana = math.hypot((_d1.dot(_u) - _d2.dot(_u)) / (_b4wl * 1e-6),
+                    (_d1.dot(_v) - _d2.dot(_v)) / (_b4wl * 1e-6))
+check("B4: tilt_estimate recovers fx=tilt/lambda from the fringe image",
+      abs(_b4fmag - _b4ana) / max(_b4ana, 1e-9) < 0.18, "est=%.3f ana=%.3f cyc/mm" % (_b4fmag, _b4ana))
+# B4-solve: run the solver -> fringe frequency driven down, single broad fringe, visibility peaked
+_b4res = optics_api.tilt_null(detector="MI_D", mirrors=[["MI_M_stage", "TILT"]], piston_steps=25)
+check("B4: solver runs + reports a convergence history",
+      _b4res.get("ok") and len(_b4res.get("history", [])) >= 2, str(_b4res.get("error", _b4res.get("history"))))
+_hh = _b4res["history"]
+check("B4: fringe frequency driven down toward zero (dense -> broad)",
+      _b4res["fringe_freq_after"] < _b4res["fringe_freq_before"] * 0.6,
+      "%.3f -> %.3f cyc/mm" % (_b4res["fringe_freq_before"], _b4res["fringe_freq_after"]))
+check("B4: history is monotonically non-increasing to the null",
+      all(_hh[i + 1] <= _hh[i] + 0.05 for i in range(len(_hh) - 1)), str(_hh))
+check("B4: final pattern is a single broad fringe (count collapses to ~1)",
+      _b4res["fringe_count_after"] < _b4res["fringe_count_before"] / 3.0
+      and _b4res["fringe_count_after"] < 1.2,
+      "count %.2f -> %.2f" % (_b4res["fringe_count_before"], _b4res["fringe_count_after"]))
+check("B4: high fringe visibility after the piston search",
+      _b4res["visibility_after"] > 0.85, "V=%.3f" % _b4res["visibility_after"])
+
 print("[adaptive optics]")
 optics_api.build_example("adaptive_optics")
 m = optics_api.ao_measure("AO_WFS")

@@ -441,6 +441,397 @@ def influence_solve(scene, actuators, targets=None, y_target=None,
 
 
 # --------------------------------------------------------------------------- #
+# B4 - interferometer tilt-null solver (fringe-frequency measurement)
+# --------------------------------------------------------------------------- #
+# The benchtop ritual "spread the fringes to a single null": two interfering arms
+# whose wavefronts differ by a relative TILT print a dense straight-fringe pattern,
+# I(x,y) = I1 + I2 + 2*sqrt(I1 I2) cos(k (OPD0 + tilt_x x + tilt_y y)), k = 2pi/lambda.
+# The fringe spatial frequency along an axis is fx = tilt_x / lambda (cycles per mm);
+# nulling the tilt drives (fx,fy) -> 0, i.e. a single broad fringe. We:
+#   (1) recover (fx,fy) from the 2-D fringe image (scan._fringe_array) by a phase-ramp
+#       fit (per-axis analytic-signal lag-one phase -- unbiased near zero, robust to the
+#       Gaussian spot envelope after a high-pass), then
+#   (2) drive the two steering tip/tilt DOFs with the SAME influence-matrix engine the
+#       aperture solvers use, but with y = [fx, fy] and y_target = [0, 0], until |f| -> 0,
+#   (3) run a 1-DOF piston (OPD translation) search to peak the fringe visibility.
+#
+# The fringe kernel (physics.interfere) and the 2-D fringe array (scan._fringe_array)
+# are reused verbatim; the ONE new relation, fx = tilt_x / lambda, is physics_verified.
+
+
+def _hilbert_axis(x, axis):
+    """1-D analytic signal of a real array along `axis` (the discrete Hilbert transform:
+    double the positive-frequency half-spectrum, zero the negative). Used to read the
+    fringe carrier's local phase ramp without a scipy dependency."""
+    n = x.shape[axis]
+    Xf = _np.fft.fft(x, axis=axis)
+    h = _np.zeros(n)
+    if n % 2 == 0:
+        h[0] = h[n // 2] = 1.0
+        h[1:n // 2] = 2.0
+    else:
+        h[0] = 1.0
+        h[1:(n + 1) // 2] = 2.0
+    shape = [1, 1]
+    shape[axis] = n
+    return _np.fft.ifft(Xf * h.reshape(shape), axis=axis)
+
+
+def _boxblur(a, k):
+    """Separable moving-average blur (radius k) via cumulative sums -- the smooth Gaussian
+    spot envelope estimate we subtract to high-pass the fringes (no scipy)."""
+    c = _np.cumsum(_np.pad(a, ((k, k), (0, 0)), mode='edge'), axis=0)
+    a = (c[2 * k:] - c[:-2 * k]) / (2.0 * k)
+    c = _np.cumsum(_np.pad(a, ((0, 0), (k, k)), mode='edge'), axis=1)
+    return (c[:, 2 * k:] - c[:, :-2 * k]) / (2.0 * k)
+
+
+def tilt_estimate(fringe_image, wavelength_nm, pixel_pitch_mm, floor=0.06):
+    """Recover the fringe spatial frequency (fx, fy) in CYCLES PER MM from a 2-D fringe
+    intensity image, i.e. the relative wavefront tilt via fx = tilt_x / lambda (the
+    physics_verified B4 relation -- here returned as the directly measurable frequency).
+
+    `fringe_image` is a 2-D float array (the intensity channel of scan._fringe_array, rows
+    index the detector v-axis, columns the u-axis). `pixel_pitch_mm` is the physical pixel
+    pitch (sensor field / resolution). Method: mask to the lit spot, subtract a blurred
+    copy to remove the Gaussian envelope, then for EACH axis build the 1-D analytic signal
+    and read the power-weighted lag-one phase -> the mean carrier frequency along that axis
+    (an unbiased phase-ramp fit, far more robust than a single 2-D FFT peak when the spot
+    envelope dominates the spectrum). Returns (fx, fy) cyc/mm; (0, 0) for an unlit frame.
+
+    `wavelength_nm` is accepted so a caller can convert back to an angular tilt
+    tilt_x = fx * lambda (radians) if desired; the frequency itself is wavelength-free."""
+    if _np is None:
+        return 0.0, 0.0
+    img = _np.asarray(fringe_image, dtype=float)
+    if img.ndim != 2 or img.size == 0:
+        return 0.0, 0.0
+    px = img.shape[0]
+    mx = float(img.max())
+    if mx <= 1e-12:
+        return 0.0, 0.0
+    mask = img > floor * mx
+    if int(mask.sum()) < 25:
+        return 0.0, 0.0
+    k = max(3, px // 10)
+    hp = (img - _boxblur(img, k)) * mask
+    pitch = pixel_pitch_mm if pixel_pitch_mm > 1e-12 else 1.0
+
+    def axis_freq(axis):
+        z = _hilbert_axis(hp, axis)
+        if axis == 0:                                # rows -> v carrier (fy)
+            prod = z[1:, :] * _np.conj(z[:-1, :])
+            w = mask[1:, :] & mask[:-1, :]
+        else:                                        # cols -> u carrier (fx)
+            prod = z[:, 1:] * _np.conj(z[:, :-1])
+            w = mask[:, 1:] & mask[:, :-1]
+        s = (prod * w).sum()
+        ph = float(_np.angle(s)) if abs(s) > 1e-20 else 0.0
+        return ph / (2.0 * math.pi * pitch)
+
+    return axis_freq(1), axis_freq(0)
+
+
+# the detector element-types that carry a recordable fringe pattern (TERMINALs minus the
+# wavefront sensor, which records a Zernike map, and the beam dump, which records nothing).
+def _fringe_detectors(scene):
+    out = []
+    for obj in scene.objects:
+        op = getattr(obj, "optics", None)
+        if op and op.is_optical and op.element_type in tracer.TERMINAL \
+                and op.element_type not in ('WAVEFRONT_SENSOR', 'BEAM_DUMP'):
+            out.append(obj)
+    return out
+
+
+def _resolve_fringe_detector(scene, detector, segs):
+    """The named detector, else the lit terminal receiving the most (>=2) interfering beams."""
+    if detector is not None:
+        obj = detector if not isinstance(detector, str) else scene.objects.get(detector)
+        if obj is not None and getattr(obj, "optics", None):
+            return obj
+    best, best_n = None, 1
+    for d in _fringe_detectors(scene):
+        n = sum(1 for s in segs if s.get("to") == d.name)
+        if n > best_n:
+            best, best_n = d, n
+    return best
+
+
+def _sensor_field(det, segs=None):
+    """(field_mm, px) for the tilt-null sensor. The field MUST span the recombined spot (a
+    few beam radii) so the straight tilt-fringes are sampled across the overlap region -- the
+    detector's tiny default photodiode field (e.g. 1.28 mm) crops the beam and corrupts the
+    fringe-frequency scale. We size the field to ~6x the beam radius reaching the detector
+    (clamped into [4, 20] mm), at a fixed 192 px so the pixel pitch is a clean field/px."""
+    px = 192
+    w = 0.0
+    if segs is not None:
+        ws = [s.get("w_mm", 0.0) for s in segs if s.get("to") == det.name]
+        w = max(ws) if ws else 0.0
+    if w <= 1e-6:
+        w = max(getattr(det.optics, "clear_aperture", 0.0) * 0.12, 0.6)
+    field = max(4.0, min(6.0 * w, 20.0))
+    return field, px
+
+
+def _fringe_state(scene, det, field_mm, px, ref_extent_mm=None):
+    """Trace, synthesize the detector fringe image, and read (fx, fy, |f|, visibility,
+    fringe_count, image). The single measurement front-end the tilt-null loop calls.
+
+    `ref_extent_mm` is the aperture width the fringe count is reckoned over (the recombined
+    beam diameter): fringe_count = |f| * ref_extent. Passing a FIXED reference keeps the count
+    comparable across iterations (the lit-spot mask widens as the fringes broaden, which would
+    otherwise inflate the count); when omitted the current lit-spot extent is used."""
+    from . import scan as _scan
+    segs = _retrace(scene)
+    res = _scan._fringe_array(det, segs, field_mm, px, norm='self')
+    arr = res[0] if isinstance(res, tuple) else res
+    beams = [s for s in segs if s.get("to") == det.name]
+    wl = beams[0].get("wavelength", 632.8) if beams else 632.8
+    if arr is None:
+        return {"fx": 0.0, "fy": 0.0, "fmag": 0.0, "visibility": -1.0,
+                "fringe_count": 0.0, "image": None, "n_beams": len(beams),
+                "lit_extent": 0.0}
+    inten = arr[..., 0]
+    pitch = field_mm / px
+    fx, fy = tilt_estimate(inten, wl, pitch)
+    fmag = math.hypot(fx, fy)
+    _p, vis, _s = alignment.measure(segs, det.name, det.optics.analyzer)
+    lit = 0.0
+    if _np is not None:
+        mask = inten > 0.06 * float(inten.max() or 1.0)
+        if mask.any():
+            ys, xs = _np.where(mask)
+            lit = max((xs.max() - xs.min()), (ys.max() - ys.min())) * pitch
+    else:
+        lit = field_mm
+    extent = ref_extent_mm if ref_extent_mm else lit
+    return {"fx": fx, "fy": fy, "fmag": fmag, "visibility": float(vis),
+            "fringe_count": fmag * float(extent), "image": inten,
+            "n_beams": len(beams), "lit_extent": float(lit)}
+
+
+def _auto_tilt_actuators(scene, det, segs):
+    """Pick the two steering DOFs to null the tilt: the tip+tilt of the LAST steerable
+    mirror on the beam path that reaches `det` (the recombining-arm mirror -- tilting it
+    walks the recombined wavefront's tilt with minimal beam walk-off). Falls back to the
+    nearest steerable element upstream of the detector."""
+    order = _beam_order(scene, segs)
+    rank = {n: i for i, n in enumerate(order)}
+    det_rank = rank.get(det.name, len(order))
+    cand = []
+    for obj in scene.objects:
+        op = getattr(obj, "optics", None)
+        if not op or not op.is_optical:
+            continue
+        if op.element_type != 'MIRROR':
+            continue
+        if not any(d.kind in ('TIP', 'TILT') for d in op.dofs):
+            continue
+        r = rank.get(obj.name, -1)
+        if r < det_rank:
+            cand.append((r, obj))
+    if not cand:
+        return []
+    cand.sort(key=lambda t: t[0])
+    obj = cand[-1][1]                                 # closest steerable mirror upstream of det
+    return [ControlDOF(obj, d) for d in obj.optics.dofs if d.kind in ('TIP', 'TILT')]
+
+
+def _piston_dof(scene, det, segs):
+    """The OPD translation knob: a TRANS_* DOF on an element in one interfering arm reaching
+    `det` (the Michelson stage mirror). Returns a ControlDOF or None."""
+    names = {s.get("from") for s in segs if s.get("to") == det.name}
+    # walk the parent chain so upstream arm elements (the stage mirror) are included
+    for s in list(segs):
+        if s.get("to") == det.name:
+            cur = s
+            guard = 0
+            while cur is not None and guard < 64:
+                if cur.get("from"):
+                    names.add(cur.get("from"))
+                p = cur.get("parent", -1)
+                cur = segs[p] if (p is not None and 0 <= p < len(segs)) else None
+                guard += 1
+    for name in names:
+        obj = scene.objects.get(name) if name else None
+        op = getattr(obj, "optics", None) if obj else None
+        if not op:
+            continue
+        for d in op.dofs:
+            if d.kind.startswith('TRANS'):
+                return ControlDOF(obj, d)
+    return None
+
+
+def tilt_null(scene, detector=None, mirrors=None, gain=1.0, eps=0.04,
+              max_iters=8, delta=0.4, piston_steps=21):
+    """Interferometer tilt-null solver (B4): drive the relative wavefront tilt between two
+    interfering arms to zero (dense fringes -> one broad fringe), then a 1-DOF piston search
+    sets the visibility. ON-DEMAND only (it MOVES DOFs); a normal trace never enters here.
+
+    Reads the 2-D fringe image at `detector` (scan._fringe_array), estimates the fringe
+    frequency (fx, fy) = tilt/lambda (tilt_estimate), and drives the two steering tip/tilt
+    DOFs with the influence-matrix engine (calibrate dy/du by poking + re-tracing, then
+    u <- u - gain*A_pinv*(y - 0)) until |f| -> 0. Finally sweeps the OPD/piston DOF to peak
+    the fringe visibility.
+
+      * `detector`: the recombination detector (name/object); auto-picked (the lit terminal
+        with the most interfering beams) when omitted.
+      * `mirrors`: the steering actuators -- names / [name, kind] pairs / ControlDOF, as
+        resolve_controls accepts; auto-picked (the recombining-arm mirror's tip+tilt) when
+        omitted.
+
+    Returns {ok, detector, tilt_before/after (deg), fringe_freq_before/after (cyc/mm),
+    fringe_count_before/after, visibility_before/after, iterations, converged, history,
+    controls, piston}. `history` is the per-iteration |f| (cyc/mm), monotone to the null."""
+    if _np is None:
+        return {"ok": False, "error": "tilt_null requires numpy (the fringe FFT)"}
+    segs = _retrace(scene)
+    det = _resolve_fringe_detector(scene, detector, segs)
+    if det is None:
+        return {"ok": False, "error": "no fringe detector with interfering beams found"}
+
+    if mirrors is None:
+        controls = _auto_tilt_actuators(scene, det, segs)
+    else:
+        controls = resolve_controls(scene, mirrors)
+        controls = [c for c in controls if c.dof.kind in ('TIP', 'TILT')]
+    if not controls:
+        return {"ok": False, "error": "no tip/tilt steering DOFs resolved to null the tilt"}
+    for c in controls:
+        c._ensure_base()
+
+    field_mm, px = _sensor_field(det, segs)
+    wl = next((s.get("wavelength", 632.8) for s in segs if s.get("to") == det.name), 632.8)
+    lam_mm = wl * 1.0e-6
+    # reference aperture for the fringe count = the recombined beam diameter (2w) at the
+    # detector, so "count = |f| * diameter" is comparable across iterations (the lit spot
+    # widens as the fringes broaden, which would otherwise inflate a spot-mask count).
+    w_det = max((s.get("w_mm", 0.0) for s in segs if s.get("to") == det.name), default=0.0)
+    ref_extent = 2.0 * w_det if w_det > 1e-6 else field_mm
+
+    def state():
+        return _fringe_state(scene, det, field_mm, px, ref_extent)
+
+    st0 = state()
+    if st0["n_beams"] < 2:
+        return {"ok": False, "error": "detector '%s' has < 2 interfering beams (no fringes)"
+                % det.name}
+    r0 = st0["fmag"]
+    history = [round(r0, 6)]
+
+    # The single-frame fringe frequency is UNSIGNED -- a real intensity image cannot tell
+    # +tilt from -tilt (cos is even), so |f|(u) is a V-shaped well with its minimum at the
+    # null. A linear influence-matrix inverse would not know which way is downhill across the
+    # V; instead we Gauss-Newton-descend |f| directly: finite-difference d|f|/du with a SMALL
+    # poke, step toward the floor along -grad, and line-search-backtrack so a step never makes
+    # the fringes denser. The floor (~one fringe across the aperture) is the optical null:
+    # below one fringe the tilt is unmeasurable, which IS "a single broad fringe".
+    floor = max(eps, 0.85 / ref_extent if ref_extent > 1e-6 else eps)   # cyc/mm at <1 fringe
+    poke = min(delta, 0.05)
+
+    def fmag_now():
+        return state()["fmag"]
+
+    converged = r0 <= floor
+    it = 0
+    while it < max_iters and not converged:
+        it += 1
+        f0 = fmag_now()
+        base = [c.value for c in controls]
+        grad = []
+        for j, c in enumerate(controls):
+            old = c.value
+            probe = geometry.clamp(old + poke, c.dof.min_val, c.dof.max_val)
+            if abs(probe - old) < 1e-9:
+                probe = geometry.clamp(old - poke, c.dof.min_val, c.dof.max_val)
+            step = probe - old
+            c.value = probe
+            _apply(controls)
+            fp = fmag_now()
+            c.value = old
+            _apply(controls)
+            grad.append((fp - f0) / step if abs(step) > 1e-12 else 0.0)
+        gnorm2 = sum(g * g for g in grad)
+        if gnorm2 < 1e-12:
+            break
+        # Gauss-Newton step to drive f0 -> floor along the gradient of |f|
+        scale = gain * (f0 - floor) / gnorm2
+        improved = False
+        for frac in (1.0, 0.5, 0.25, 0.1):
+            for c, b, g in zip(controls, base, grad):
+                c.value = geometry.clamp(b - frac * scale * g, c.dof.min_val, c.dof.max_val)
+            _apply(controls)
+            f1 = fmag_now()
+            if f1 < f0 - 1e-4:
+                improved = True
+                break
+        if not improved:                               # restore + stop (at the well bottom)
+            for c, b in zip(controls, base):
+                c.value = b
+            _apply(controls)
+            history.append(round(f0, 6))
+            break
+        history.append(round(f1, 6))
+        if f1 <= floor:
+            converged = True
+
+    # --- 1-DOF piston / OPD search: peak the fringe visibility on the now-broad fringe ----
+    piston_info = None
+    st_mid = state()
+    vis_before_piston = st_mid["visibility"]
+    pist = _piston_dof(scene, det, segs)
+    if pist is not None and piston_steps and piston_steps > 1:
+        pist._ensure_base()
+        lo, hi = pist.dof.min_val, pist.dof.max_val
+        # search a +-2-wavelength window about the current OPD (fine enough to cross a fringe)
+        span = min(max(hi - lo, 0.0), 4.0 * lam_mm) or (4.0 * lam_mm)
+        base_x = pist.value
+        best_v, best_x = -2.0, base_x
+        for i in range(piston_steps):
+            x = geometry.clamp(base_x - 0.5 * span + span * i / (piston_steps - 1), lo, hi)
+            pist.value = x
+            _apply([pist])
+            sv = state()["visibility"]
+            if sv > best_v:
+                best_v, best_x = sv, x
+        pist.value = best_x
+        _apply([pist])
+        piston_info = {"dof": pist.label, "set_mm": round(best_x, 6),
+                       "visibility": round(best_v, 4)}
+
+    st_after = state()
+    # tilt magnitude (radians/deg) = fringe freq (cyc/mm) * lambda (mm/cyc)
+    tilt_before_deg = math.degrees(r0 * lam_mm)
+    tilt_after_deg = math.degrees(st_after["fmag"] * lam_mm)
+    return {
+        "ok": True,
+        "detector": det.name,
+        "tilt_before_deg": round(tilt_before_deg, 8),
+        "tilt_after_deg": round(tilt_after_deg, 8),
+        "fringe_freq_before": round(r0, 6),
+        "fringe_freq_after": round(st_after["fmag"], 6),
+        "fringe_count_before": round(st0["fringe_count"], 4),
+        "fringe_count_after": round(st_after["fringe_count"], 4),
+        "visibility_before": round(st0["visibility"], 4),
+        "visibility_after": round(st_after["visibility"], 4),
+        "visibility_before_piston": round(vis_before_piston, 4),
+        "iterations": it,
+        # nulled <=> at the ~1-fringe optical floor: |f| reached the floor OR the fringe count
+        # collapsed to ~1 across the aperture (a single broad fringe; sub-fringe tilt is
+        # unmeasurable from one intensity frame).
+        "converged": bool(converged or st_after["fringe_count"] < 1.15),
+        "history": history,
+        "controls": [c.label for c in controls],
+        "piston": piston_info,
+        "floor": round(floor, 6),
+        "sensor": {"field_mm": round(field_mm, 4), "px": px, "ref_extent_mm": round(ref_extent, 4)},
+    }
+
+
+# --------------------------------------------------------------------------- #
 # auto-pick helpers (genericity: works on ANY setup when args are omitted)
 # --------------------------------------------------------------------------- #
 

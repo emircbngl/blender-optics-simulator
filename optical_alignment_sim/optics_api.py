@@ -254,6 +254,32 @@ def auto_align(actuators=None, targets=None, gain=1.0, eps=0.02, max_iters=8):
     return res
 
 
+def tilt_null(detector=None, mirrors=None, gain=1.0, eps=0.04, max_iters=8, piston_steps=21):
+    """Interferometer tilt-null solver (B4): the benchtop "spread the fringes to a single
+    null" ritual, automated. Recovers the relative wavefront TILT between two interfering
+    arms from the 2-D fringe pattern at `detector` (the fringe spatial frequency fx = tilt/lambda),
+    drives the two steering mirror tip/tilt DOFs until the fringe frequency -> 0 (dense
+    tilt-fringes collapse to one broad fringe), then runs a 1-DOF piston/OPD search to peak
+    the fringe visibility.
+
+    GENERIC: with no arguments it auto-picks the recombination detector (the lit terminal with
+    the most interfering beams) and the recombining-arm mirror's tip+tilt. Or name them:
+      * `detector`: the recombination detector element name.
+      * `mirrors`: steering actuators -- element names / [name, kind] / [name, [kinds]] pairs.
+
+    This MOVES the steering (and piston) DOFs -- only when called; a normal trace never invokes
+    it (the 18 examples trace byte-identical until this runs). Returns
+    {ok, detector, tilt_before_deg/after_deg, fringe_freq_before/after (cyc/mm),
+    fringe_count_before/after, visibility_before/after, iterations, converged, history,
+    controls, piston, floor, sensor}."""
+    scene = _scene()
+    res = solvers.tilt_null(scene, detector=detector, mirrors=mirrors, gain=gain,
+                            eps=eps, max_iters=max_iters, piston_steps=piston_steps)
+    tracer.cached_segments = _trace(scene)
+    alignment.refresh_report(scene)
+    return res
+
+
 def check_mechanics():
     return {"worst": mounts.check_mechanics(_scene())}
 

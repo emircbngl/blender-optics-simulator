@@ -258,6 +258,36 @@ def auto_align(actuators: list = None, targets: list = None,
 
 
 @mcp.tool()
+def tilt_null(detector: str = "", mirrors: list = None,
+              gain: float = 1.0, eps: float = 0.04, max_iters: int = 8,
+              piston_steps: int = 21) -> str:
+    """Interferometer tilt-null solver (B4): automate the benchtop "spread the fringes to a
+    single null". It reads the 2-D fringe pattern at the recombination detector, recovers the
+    relative wavefront TILT between the two interfering arms (the fringe spatial frequency
+    fx = tilt/lambda, cycles/mm), drives the two steering mirror tip/tilt DOFs until the fringe
+    frequency -> 0 (dense tilt-fringes collapse to one broad fringe), then runs a 1-DOF piston
+    (OPD) search to peak the fringe visibility.
+
+    GENERIC: with no args it auto-picks the detector (the lit terminal with the most interfering
+    beams) and the recombining-arm mirror's tip+tilt. Or name them:
+      * detector: the recombination detector element name.
+      * mirrors: steering actuators -- element names, or [name, kind] / [name, [kinds]] pairs.
+
+    A single intensity frame cannot tell +tilt from -tilt (cos is even), so the solver descends
+    the (V-shaped) fringe frequency to its ~1-fringe optical floor -- below one fringe across
+    the aperture the tilt is unmeasurable, which IS a single broad fringe. This MOVES the
+    steering + piston DOFs (only when called; a normal trace never enters it). Returns
+    {ok, detector, tilt_before_deg/after_deg, fringe_freq_before/after, fringe_count_before/after,
+    visibility_before/after, iterations, converged, history, controls, piston}."""
+    args = {"gain": gain, "eps": eps, "max_iters": max_iters, "piston_steps": piston_steps}
+    if detector:
+        args["detector"] = detector
+    if mirrors:
+        args["mirrors"] = mirrors
+    return _fmt(_call("tilt_null", _wait=300.0, **args))
+
+
+@mcp.tool()
 def check_mechanics() -> str:
     """Report the worst opto-mechanical limit (post pull-out, cage-rod travel, ...)."""
     return _fmt(_call("check_mechanics"))
