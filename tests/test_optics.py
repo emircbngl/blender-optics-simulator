@@ -1102,6 +1102,51 @@ for _ in range(3):
 check("example rebuild frees meshes (no orphan growth)", len(bpy.data.meshes) <= _em0 + 2,
       "delta=%d" % (len(bpy.data.meshes) - _em0))
 
+print("[A11: parasitic (accidental) Fabry-Perot etalon detection -- reuses cavity_fsr_nm/finesse]")
+# two PARALLEL uncoated windows a known gap L apart form an ACCIDENTAL etalon; A11 flags it with the
+# FSR/finesse from the ALREADY-VERIFIED Fabry-Perot kernels (NO new physics). A wedge clears it.
+from mathutils import Vector as _A11V
+for _o in [o for o in bpy.data.objects if getattr(getattr(o, "optics", None), "is_optical", False)]:
+    bpy.data.objects.remove(_o, do_unlink=True)
+_a11c = elements_generic.example_collection("OpticsExample_A11")
+_a11X = _A11V((1, 0, 0)); _a11L = 25.0
+_a11wl = float(getattr(sc.optics, 'wavelength', 632.8) or 632.8)
+elements_generic.source("A11_S", (-150, 0, 0), _a11X, _a11c)
+_a11w1 = elements_generic.window("A11_W1", (0, 0, 0), _a11X, _a11c, radius=14.0)
+_a11w2 = elements_generic.window("A11_W2", (_a11L, 0, 0), _a11X, _a11c, radius=14.0)
+_a11w1.optics.ar_coated = False; _a11w2.optics.ar_coated = False
+elements_generic.detector("A11_D", (150, 0, 0), _a11X, _a11c)
+bpy.context.view_layer.update()
+_a11pe = [i for i in optomech.validate(sc) if i.get("kind") == "parasitic_etalon"]
+check("A11: parallel windows flag a parasitic_etalon", len(_a11pe) == 1, "got %d" % len(_a11pe))
+_a11R = physics.surface_reflectance(1.0, max(_a11w1.optics.refractive_index, 1.0))
+_a11_fsr = physics.cavity_fsr_nm(_a11wl, _a11L, 1.0)
+_a11_fin = physics.cavity_finesse(math.sqrt(_a11R * _a11R))
+check("A11: flagged FSR == cavity_fsr_nm(lambda,L,n) (reuse, no new physics)",
+      bool(_a11pe) and abs(_a11pe[0]["fsr_nm"] - _a11_fsr) < 1e-9,
+      str((_a11pe[0]["fsr_nm"], _a11_fsr)) if _a11pe else "no flag")
+check("A11: flagged finesse == cavity_finesse(R_eff) & finite",
+      bool(_a11pe) and abs(_a11pe[0]["finesse"] - _a11_fin) < 1e-9 and math.isfinite(_a11pe[0]["finesse"]))
+# tilt one window by a >30-arcmin WEDGE (0.6 deg > 0.5-deg tol) -> the parallel test breaks -> CLEARS
+_a11tw = math.radians(0.6)
+for _o in [o for o in bpy.data.objects if getattr(getattr(o, "optics", None), "is_optical", False)]:
+    bpy.data.objects.remove(_o, do_unlink=True)
+_a11c2 = elements_generic.example_collection("OpticsExample_A11w")
+elements_generic.source("A11_S", (-150, 0, 0), _a11X, _a11c2)
+elements_generic.window("A11_W1", (0, 0, 0), _a11X, _a11c2, radius=14.0)
+elements_generic.window("A11_W2", (_a11L, 0, 0),
+                        _A11V((math.cos(_a11tw), math.sin(_a11tw), 0.0)), _a11c2, radius=14.0)
+elements_generic.detector("A11_D", (150, 0, 0), _a11X, _a11c2)
+bpy.context.view_layer.update()
+_a11pe_w = [i for i in optomech.validate(sc) if i.get("kind") == "parasitic_etalon"]
+check("A11: a 30-arcmin wedge CLEARS the parasitic_etalon (fringe killer)", len(_a11pe_w) == 0,
+      "got %d" % len(_a11pe_w))
+# every canonical example stays clean (no accidental parallel flat pair self-flags)
+for _ek in ("michelson", "tube_system", "back_reflection"):
+    optics_api.build_example(_ek)
+    _epe = [i for i in optomech.validate(sc) if i.get("kind") == "parasitic_etalon"]
+    check("A11: %s emits no parasitic_etalon (no false positive)" % _ek, len(_epe) == 0, "got %d" % len(_epe))
+
 # clear stray API/library-test optical objects (RT_*, FILT_*, BS_*, MO_*, ...) so the bench sections
 # see ONLY the example optics -- with xy-stacked posts, leftover optics sharing a hole skew counts.
 _ex_objs = set()

@@ -862,13 +862,14 @@ def validate(scene):
         Blender mesh-overlap (BVHTree) check, so it catches mount/holder/base/optic collisions the cheap
         post-distance proxies above miss (e.g. two mounts placed too close so their bodies pass through).
     Use it after dress() (regression gate + get_state['warnings']) to KNOW the geometry is valid."""
-    # the penta-prism deflection invariant is a pure BEAM-physics property (a trace post-pass), independent
-    # of bench DRESSING -- run it even on an undressed bench so a broken routing-prism fold is always caught.
+    # the penta-prism deflection AND parasitic-etalon invariants are pure BEAM-physics properties (a trace /
+    # port-geometry post-pass), independent of bench DRESSING -- run them even on an undressed bench so a
+    # broken routing-prism fold or an accidental Fabry-Perot is always caught.
     if not is_dressed(scene):
-        return _penta_deflection_issues(scene)
+        return _penta_deflection_issues(scene) + _parasitic_etalon_issues(scene)
     elems = _optical_objects(scene)
     if not elems:
-        return _penta_deflection_issues(scene)
+        return _penta_deflection_issues(scene) + _parasitic_etalon_issues(scene)
     _bh, _ref, board_top_z = _vertical_chain(scene, elems)
     holder_top = board_top_z + BASE_H + HOLDER_H
     grouped = set()
@@ -930,7 +931,111 @@ def validate(scene):
     #    dihedral rotate any in-plane ray by 2*45 = 90 deg). If a penta in the scene is traced at anything but
     #    90 deg, its fold geometry is broken -- flag it (the routing-prism analogue of the periscope invariants).
     issues += _penta_deflection_issues(scene)
+    # 6. parasitic-etalon invariant: any two DISTINCT flat partial-reflector plates whose faces sit
+    #    near-parallel across an air gap form an ACCIDENTAL Fabry-Perot the user didn't design -- flag it.
+    issues += _parasitic_etalon_issues(scene)
     return issues
+
+
+# --- A11: parasitic (accidental) Fabry-Perot etalon detection ----------------
+# An UNWANTED etalon forms when two near-parallel partial reflectors face each other across a gap (two
+# uncoated windows, or a stray flat downstream of another). It imprints a spectral ripple (FSR) the user
+# never designed -- distinct from the intentional CAVITY element. A11 ONLY finds the geometry (a parallel
+# pair + the spacing L) and feeds L + R into the ALREADY-VERIFIED Fabry-Perot kernels
+# physics.cavity_fsr_nm (FSR = lambda^2/(2 n L)) and physics.cavity_finesse (F = pi*sqrt(R)/(1-R)) -- it
+# introduces NO new formula (both are __main__ self-tested in physics.py; see C12). A WEDGED surface
+# (normals tilted past PARALLEL_TOL_DEG, e.g. a 30-arcmin wedge) breaks the parallel test, so the flag
+# auto-clears -- exactly how a real bench KILLS etalon fringes with wedged windows.
+
+# Flat transmissive partial reflectors: a plane glass plate whose front/back faces back-reflect a Fresnel
+# ghost (R>0). LENS is deliberately EXCLUDED -- a lens has CURVED faces (no flat-flat etalon) and relay
+# lenses are intentional; CAVITY is excluded too (its two mirrors are the DESIGNED Fabry-Perot, not a
+# parasite). These mirror the tracer's A9 ghost-bearing transmissive faces (LENS/PASSTHROUGH/FILTER/
+# ATTENUATOR), minus the curved LENS.
+PARASITIC_PLATE_TYPES = ('PASSTHROUGH', 'FILTER', 'ATTENUATOR')
+PARALLEL_TOL_DEG = 0.5        # normals within this of parallel/anti-parallel -> an etalon pair
+
+
+def _plate_reflectance(op):
+    """Per-face power reflectance R of a flat transmissive plate (the parasitic Fresnel back-reflection),
+    reusing the SAME A9 kernel the tracer debits with: ar_reflectance when AR-coated, else the verified
+    physics.surface_reflectance(1, n) normal-incidence floor (~0.04 for uncoated air<->glass)."""
+    from . import physics
+    if getattr(op, 'ar_coated', False):
+        return min(max(getattr(op, 'ar_reflectance', 0.0025), 0.0), 1.0)
+    n2 = max(getattr(op, 'refractive_index', 1.5168), 1.0)
+    return physics.surface_reflectance(1.0, n2)
+
+
+def _parasitic_etalon_issues(scene, tol_deg=PARALLEL_TOL_DEG):
+    """Flag accidental Fabry-Perot etalons: every PAIR of DISTINCT flat partial-reflector plates whose
+    optical-axis faces are parallel/anti-parallel within ``tol_deg`` AND both have R>0. For such a pair the
+    gap L is the spacing between the two plates measured ALONG the shared normal (the projection of the
+    center-to-center vector onto the normal); the flagged ripple is fsr_nm = cavity_fsr_nm(lambda, L, n=1)
+    and finesse = cavity_finesse(sqrt(R1*R2)) (the effective two-mirror reflectance) -- BOTH reused as-is,
+    no new physics. Read-only (a port-geometry post-pass on world normals/positions via matrix_world).
+
+    A WEDGE / tilt past ``tol_deg`` between the two plates breaks the parallel test, so the flag clears --
+    the real-bench trick for killing etalon fringes. The intentional CAVITY element is NOT a candidate, so
+    its designed Fabry-Perot is never double-flagged. The thick-plate SELF-etalon (one plate's own two
+    faces) is treated as the element's intentional substrate, not a parasite -- A11 fires only on an
+    ACCIDENTAL pairing of two SEPARATE plates."""
+    from . import physics, geometry
+    plates = [o for o in _optical_objects(scene)
+              if getattr(o.optics, 'element_type', '') in PARASITIC_PLATE_TYPES]
+    if len(plates) < 2:
+        return []
+    wl = float(getattr(scene.optics, 'wavelength', 632.8) or 632.8)
+    # one representative flat face per plate: its IN port (world center + world normal). The plate's faces
+    # are parallel to each other, so the IN normal is the plate's surface orientation.
+    faces = []
+    for o in plates:
+        op = o.optics
+        ip = _find_optics_port(op, 'IN')
+        if ip is None:
+            continue
+        R = _plate_reflectance(op)
+        if R <= 0.0:
+            continue
+        center = geometry.world_port(o, ip.local_position)
+        nrm = geometry.world_normal(o, ip.local_normal)
+        faces.append((o, center, nrm, R))
+    out = []
+    for i in range(len(faces)):
+        for j in range(i + 1, len(faces)):
+            oi, ci, ni, Ri = faces[i]
+            oj, cj, nj, Rj = faces[j]
+            cosang = max(-1.0, min(1.0, ni.dot(nj)))
+            ang = math.degrees(math.acos(abs(cosang)))        # 0 deg == parallel OR anti-parallel
+            if ang > tol_deg:
+                continue                                       # wedged/tilted pair -> not an etalon
+            # gap L = |center-to-center vector projected onto the shared (averaged) normal|
+            sep = cj - ci
+            L = abs(sep.dot(ni.normalized()))
+            if L <= 1e-6:
+                continue                                       # coincident faces -> no cavity
+            L_mm = L
+            Reff = math.sqrt(max(Ri * Rj, 0.0))                # effective two-mirror reflectance
+            fsr = physics.cavity_fsr_nm(wl, L_mm, 1.0)         # REUSE verified FSR (air gap, n=1)
+            fin = physics.cavity_finesse(Reff)                 # REUSE verified finesse
+            out.append({"kind": "parasitic_etalon",
+                        "element": "%s | %s" % (oi.name, oj.name),
+                        "detail": ("accidental Fabry-Perot: %s & %s near-parallel (%.3f deg) %.2f mm apart "
+                                   "-> spectral ripple FSR=%.4f nm, finesse=%.2f (R_eff=%.4f). "
+                                   "Wedge/tilt one plate >%.2f deg to kill it."
+                                   % (oi.name, oj.name, ang, L_mm, fsr, fin, Reff, tol_deg)),
+                        "fsr_nm": fsr, "finesse": fin, "gap_mm": L_mm,
+                        "angle_deg": ang, "severity": "WARN"})
+    return out
+
+
+def _find_optics_port(op, role):
+    """First port of ``op`` with the given role (a thin local helper so optomech doesn't import the
+    tracer's _find_port just for the etalon port lookup)."""
+    for p in op.ports:
+        if p.role == role:
+            return p
+    return None
 
 
 def _penta_deflection_issues(scene, tol_deg=1e-2):
