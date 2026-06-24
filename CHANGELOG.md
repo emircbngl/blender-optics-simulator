@@ -33,6 +33,12 @@ data model: behavior reads element properties × `matrix_world`, never the mesh)
   drive the fringes to a single broad null.
 - **AO reconstructor upgrade** — interaction matrix + TSVD / damped-transpose reconstructor + leaky
   integrator + a physical Kolmogorov (Fried-`r0`) turbulence aberrator (Noll-1976 variance).
+- **Surface-figure → wavefront imprint** (`imprint_surface`, opt-in) — a reflective element samples its
+  ACTUAL mesh surface over the beam footprint (BVHTree) and imprints it onto the reflected wavefront as a
+  Zernike error a WFS reads (`W = 2·h·cos θ`, oracle-verified; least-squares Zernike fit). Verified on a
+  sphere→defocus, saddle→astigmatism, tilt/flat→0. A GEOMETRIC (Tier-1) OPD imprint, NOT wave diffraction;
+  the modal reconstruction is a low-pass fit — faithful for smooth optical figures, a caricature for a
+  high-spatial-frequency surface. Default off → existing scenes byte-identical.
 
 ### Added — components
 - **Dispersing prisms** (equilateral / Littrow / Pellin-Broca / Amici) on real Sellmeier glasses
