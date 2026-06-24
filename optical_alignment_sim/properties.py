@@ -443,6 +443,12 @@ class OpticalElementProps(PropertyGroup):
         description="Roll of the knife's cut axis about the optical axis (0 = the blade cuts along local X)")
     beam_dump_residual: FloatProperty(name="Beam-dump residual", default=1.0e-3, min=0.0, max=1.0,
         description="Tiny fraction of power leaking through a conical beam trap (~1e-3); the ray still TERMINATES")
+    # D2 cosmetic only: number of overlapping diaphragm leaves on a realistic iris (10-12). Affects ONLY the
+    # mesh (the polygonal opening's leaf count); the opening size + ports + clear_aperture are unchanged, so
+    # the tracer never reads this -- it is purely a render/look parameter.
+    iris_blades: IntProperty(name="Iris leaves", default=12, min=10, max=12,
+        description="Number of overlapping wedge leaves forming the iris polygonal opening (cosmetic only; "
+                    "the opening size is set by clear_aperture, not this)")
     is_monitor: BoolProperty(default=False)        # live sensor-monitor target (fringe recomputed live)
     sensor_px: IntProperty(name="Sensor resolution (px)", default=256, min=16, max=1024)
     pixel_size_um: FloatProperty(name="Pixel size (um)", default=5.0, min=0.1)

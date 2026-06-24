@@ -81,6 +81,11 @@ MATS = {
     "arrow":     lambda: _mat("OG_arrow", (0.90, 0.90, 0.92), metal=0.5, rough=0.30),
     "index":     lambda: _mat("OG_index", (0.92, 0.86, 0.45), metal=0.3, rough=0.30),
     "laserbody": lambda: _mat("OG_laserbody", (0.12, 0.13, 0.15), metal=0.7, rough=0.35),
+    # D2 realistic iris / pinhole accents (slot 1+, kept by the render pass)
+    "irisblade": lambda: _mat("OG_irisblade", (0.018, 0.018, 0.020), metal=0.15, rough=0.92),  # matte-black diaphragm leaves
+    "knurl":     lambda: _mat("OG_knurl", (0.14, 0.15, 0.17), metal=0.85, rough=0.42),          # knurled anodized adjuster ring
+    "engrave":   lambda: _mat("OG_engrave", (0.78, 0.80, 0.84), metal=0.6, rough=0.40),         # engraved close-arrow / index marks
+    "foil":      lambda: _mat("OG_foil", (0.020, 0.020, 0.024), metal=0.25, rough=0.85),        # blackened precision-bore foil
 }
 
 
@@ -291,16 +296,109 @@ def _bored_disc(name, radius, depth, bore, coll, seg=56):
     return o
 
 
-def _iris(name, r_open, coll, depth=3.6):
-    """An iris-diaphragm ring: black housing (outer = opening + 5 mm) with a central opening + a small
-    side adjustment lever, so it reads as an aperture stop instead of a solid puck."""
-    o = _bored_disc(name, r_open + 5.0, depth, r_open, coll)
-    lb = bmesh.new()
-    bmesh.ops.create_cube(lb, size=1.0)
-    for v in lb.verts:
-        v.co = Vector((v.co.x * 8.0, v.co.y * 2.6, v.co.z * 2.0)) + Vector((r_open + 7.0, 0.0, 0.0))
-    lev = _bm_obj(name + "_lever", lb, coll)
-    return _join(o, lev)
+def _knurled_ring(name, r_in, r_out, depth, coll, grooves=52):
+    """A knurled outer adjuster ring (bored to r_in, outer r_out) centred on +Z, with `grooves` (~40-60)
+    axial flutes around the rim. Built from CLOSED solids only -- a bored annular tube base + a ring of
+    small radial teeth joined to it -- so the result is a clean manifold mesh (the caller puts it on its
+    own material slot). The teeth read as machined knurling around the adjuster ring."""
+    n = max(40, min(60, int(grooves)))
+    base = _bored_disc(name, r_out, depth, r_in, coll, seg=n * 2)   # manifold annular tube (boolean bore)
+    for k in range(n):                                              # a ring of small radial knurl teeth
+        a = 2.0 * math.pi * k / n
+        tb = bmesh.new(); bmesh.ops.create_cube(tb, size=1.0)
+        for v in tb.verts:                                         # a thin tooth sticking out past the rim
+            v.co = Vector((v.co.x * 0.55, v.co.y * 0.55, v.co.z * (depth * 0.42)))
+        tooth = _bm_obj(name + "_t%d" % k, tb, coll)
+        tooth.matrix_world = (Matrix.Rotation(a, 4, Vector((0, 0, 1)))
+                              @ Matrix.Translation(Vector((r_out + 0.18, 0.0, 0.0))))
+        bpy.ops.object.select_all(action='DESELECT')
+        tooth.select_set(True); bpy.context.view_layer.objects.active = tooth
+        bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+        _join(base, tooth)
+    return base
+
+
+def _iris_blade(name, r_open, depth, ang, coll, blades=12):
+    """One diaphragm leaf: a thin matte-black plate covering an annular sector, its straight INNER edge a
+    chord tangent to the circle of radius r_open (so the union of `blades` such chords forms the polygonal
+    central opening), overlapping its neighbours. Rolled to azimuth `ang` (rad) about +Z, on the front face."""
+    bm = bmesh.new()
+    span = (2.0 * math.pi / blades) * 1.7              # overlap neighbours (>1 sector) -> closed polygon
+    r_out = r_open + 4.6                               # tuck the leaf root under the ring (past the wider bore)
+    a0, a1 = -span * 0.5, span * 0.5
+    t = depth * 0.26                                   # thin leaf, thick enough to catch light at the bore lip
+    z0 = depth * 0.5 - t                               # leaves sit flush on the FRONT face (read, not in shadow)
+    # the inner edge is the CHORD at perpendicular distance r_open from the axis (straight blade edge)
+    pin = [(r_open / math.cos(a), a) for a in (a0, a1)]          # chord endpoints at radius r_open/cos
+    pout = [(r_out, a0), (r_out, a1)]
+    quad = pin + [pout[1], pout[0]]
+    low = [bm.verts.new((r * math.cos(a), r * math.sin(a), z0)) for (r, a) in quad]
+    high = [bm.verts.new((r * math.cos(a), r * math.sin(a), z0 + t)) for (r, a) in quad]
+    bm.faces.new(low)
+    bm.faces.new(tuple(reversed(high)))
+    for i in range(4):
+        j = (i + 1) % 4
+        bm.faces.new((low[i], low[j], high[j], high[i]))
+    o = _bm_obj(name, bm, coll, smooth=False)
+    o.matrix_world = Matrix.Rotation(ang, 4, Vector((0, 0, 1)))
+    bpy.ops.object.select_all(action='DESELECT')
+    o.select_set(True); bpy.context.view_layer.objects.active = o
+    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
+    return o
+
+
+def _close_arrow(name, r, depth, coll):
+    """A small engraved 'close' arrow (a flat chevron) raised on the iris front face near the rim, the
+    direction-of-stop-down hint engraved on a real Thorlabs/Newport iris ring."""
+    bm = bmesh.new()
+    cx = r + 2.4                                       # on the ring band, just outside the opening
+    z = depth * 0.5 + 0.05
+    w, h = 1.7, 1.1
+    pts = [(cx - w, 0.9), (cx, 0.0), (cx - w, -0.9), (cx - w + 0.5, 0.0)]   # chevron (filled arrowhead)
+    vs = [bm.verts.new((x, y, z)) for (x, y) in pts]
+    vt = [bm.verts.new((x, y, z + 0.25)) for (x, y) in pts]
+    bm.faces.new(vs)
+    bm.faces.new(tuple(reversed(vt)))
+    for i in range(4):
+        j = (i + 1) % 4
+        bm.faces.new((vs[i], vs[j], vt[j], vt[i]))
+    # short tail bar of the arrow
+    return _bm_obj(name, bm, coll, smooth=False)
+
+
+def _iris(name, r_open, coll, depth=3.6, blades=12):
+    """A realistic multi-leaf iris diaphragm. From the optical axis out:
+      slot 0  black housing ring (theme-swapped on render) -- outer = opening + 5 mm, central opening r_open
+      slot 1  ``blades`` (10-12) overlapping matte-black wedge LEAVES forming the polygonal central opening,
+              whose inner straight edges are chords tangent to the circle of radius r_open (so resizing
+              r_open moves every leaf -> the opening tracks the aperture)
+      slot 2  a knurled anodized adjuster RING (~52 axial flutes) around the rim
+      slot 3  an engraved 'close' arrow on the front face
+    Purely cosmetic: the aperture() caller sets the ports (IN/OUT on the optical axis) and clear_aperture =
+    r_open, so the tracer is untouched. The accent slots (1-3) are kept by the realistic-render pass."""
+    # the metal housing is bored WIDER than r_open so the matte-black LEAVES (inner chord at r_open) overhang
+    # the bore lip and form the visible limiting polygon -- exactly how a real iris reads (the leaves, not the
+    # ring, are the aperture). The optical opening + ports are r_open, set by the caller (unchanged).
+    o = _bored_disc(name, r_open + 5.0, depth, r_open * 1.2, coll)  # slot 0 housing (caller may overwrite)
+    o.data.materials.append(MATS["ap"]())                         # slot 0 black housing ring (theme-swapped)
+
+    def _add_slot(builder, matkey):
+        sub = builder()
+        base = len(o.data.polygons)
+        _join(o, sub)
+        idx = len(o.data.materials)
+        o.data.materials.append(MATS[matkey]())
+        for p in o.data.polygons[base:]:
+            p.material_index = idx
+
+    nb = max(10, min(12, int(blades)))
+    for k in range(nb):                                           # slot 1: the diaphragm leaves
+        _add_slot(lambda k=k: _iris_blade(name + "_leaf%d" % k, r_open, depth,
+                                          2.0 * math.pi * k / nb, coll, blades=nb), "irisblade")
+    _add_slot(lambda: _knurled_ring(name + "_knurl", r_open + 4.7, r_open + 5.0, depth, coll),
+              "knurl")                                            # slot 2: knurled adjuster ring
+    _add_slot(lambda: _close_arrow(name + "_arrow", r_open, depth, coll), "engrave")   # slot 3: close-arrow
+    return o
 
 
 def _corner_cube(name, size, coll):
@@ -755,11 +853,16 @@ def waveplate(name, loc, axis, coll=None, kind='HWP', fast_axis=0.0, design_wl=N
 
 
 def aperture(name, loc, axis, coll=None, radius=14.0):
-    """An iris/aperture stop: a black ring housing with a real central opening + a side lever (ports
-    unchanged vs the old solid puck: IN/OUT at +/-depth/2 on the optical axis)."""
-    o = _iris(name, radius, coll, depth=3.0)
-    o.data.materials.clear(); o.data.materials.append(MATS["ap"]())
+    """An iris/aperture stop: a realistic multi-leaf diaphragm -- a black housing ring, 10-12 matte-black
+    wedge LEAVES forming the polygonal opening (tracking ``radius``), a knurled adjuster ring and an
+    engraved close-arrow. Ports are unchanged vs the old solid puck: IN/OUT at +/-1.5 on the optical axis,
+    clear_aperture = radius -- so the trace is byte-identical. ``iris_blades`` is a per-object cosmetic
+    override (10-12); the default 12 reads as a standard iris."""
+    blades = 12
+    o = _iris(name, radius, coll, depth=3.0, blades=blades)
+    o.data.materials[0] = MATS["ap"]()                            # slot 0 housing only (accents 1-3 kept)
     _tag(o, 'APERTURE', clear_aperture=radius)
+    o.optics.iris_blades = blades
     _add_port(o, "IN", 'IN', (0, 0, -1.5), (0, 0, -1), radius)
     _add_port(o, "OUT", 'OUT', (0, 0, 1.5), (0, 0, 1), radius)
     _set_matrix(o, Vector(loc), _z_to(axis))
@@ -1076,10 +1179,49 @@ def optical_filter(name, loc, axis, coll=None, radius=12.5,
     return o
 
 
+def _pinhole_foil(name, r_face, depth, bore, coll, seg=56):
+    """The blackened precision-foil face of a spatial-filter pinhole: a thin recessed disc (radius r_face)
+    carrying the small central through-bore + a shallow conical bore CHAMFER (the funnel a real laser-drilled
+    foil has) raised on its front side. Built from CLOSED solids (a bored disc + a chamfer cone-ring) so the
+    result is manifold. Returns a single mesh (caller puts it on its own slot)."""
+    o = _bored_disc(name, r_face, depth, bore, coll, seg=seg)       # manifold foil disc with the through-bore
+    # the bore CHAMFER: a truncated cone (mouth wider than the bore) with its OWN through-bore boolean-cut so
+    # the axis stays clear; raised on the front face -> the laser-drilled funnel. Closed solid -> manifold.
+    mouth = min(bore * 1.9, r_face * 0.5)
+    cb = bmesh.new()
+    bmesh.ops.create_cone(cb, cap_ends=True, segments=max(24, seg // 2),
+                          radius1=bore + 0.05, radius2=mouth, depth=depth * 0.55)
+    cone = _bm_obj(name + "_chamf", cb, coll)
+    for v in cone.data.vertices:
+        v.co.z += depth * 0.5
+    hb = bmesh.new(); _cyl_bm(hb, bore, depth * 2.0, max(16, seg // 2))    # re-open the bore through the cone
+    cutter = _bm_obj(name + "_chamfbore", hb, coll)
+    for v in cutter.data.vertices:
+        v.co.z += depth * 0.5
+    m = cone.modifiers.new("bore", 'BOOLEAN'); m.operation = 'DIFFERENCE'; m.object = cutter
+    bpy.context.view_layer.objects.active = cone
+    bpy.ops.object.modifier_apply(modifier=m.name)
+    cm = cutter.data
+    bpy.data.objects.remove(cutter, do_unlink=True)
+    if cm.users == 0:
+        bpy.data.meshes.remove(cm)
+    return _join(o, cone)
+
+
 def pinhole(name, loc, axis, coll=None, radius=12.5):
-    """A spatial-filter pinhole: a thin plate with a real tiny central bore (ports unchanged)."""
-    o = _bored_disc(name, radius, 2.0, 0.6, coll)
-    o.data.materials.clear(); o.data.materials.append(MATS["ap"]())
+    """A spatial-filter pinhole that reads as a real part:
+      slot 0  an SM1 housing RING (theme-swapped on render) -- outer = radius, a recessed front well
+      slot 1  a recessed BLACKENED-FOIL face (dark matte) carrying the small central bore + a conical bore
+              CHAMFER (the laser-drilled funnel)
+    Cosmetic only: the ports (IN/OUT on the optical axis) and clear_aperture = radius are unchanged, so the
+    tracer's PINHOLE _clip_T branch sees identical inputs."""
+    o = _bored_disc(name, radius, 2.0, radius * 0.62, coll)        # slot 0 SM1 housing ring (front well bore)
+    o.data.materials.clear(); o.data.materials.append(MATS["ap"]())            # slot 0 housing (theme-swapped)
+    base = len(o.data.polygons)
+    _join(o, _pinhole_foil(name + "_foil", radius * 0.66, 1.0, 0.6, coll))     # recessed foil + chamfered bore
+    o.data.materials.append(MATS["foil"]())                                    # slot 1 blackened foil
+    for p in o.data.polygons[base:]:
+        p.material_index = 1
     _tag(o, 'PINHOLE', clear_aperture=radius)
     _add_port(o, "IN", 'IN', (0, 0, -1.0), (0, 0, -1), radius)
     _add_port(o, "OUT", 'OUT', (0, 0, 1.0), (0, 0, 1), radius)
