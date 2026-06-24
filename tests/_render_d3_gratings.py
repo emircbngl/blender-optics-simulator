@@ -56,11 +56,13 @@ def main():
               lines_per_mm=1200.0, order=1, grating_profile='HOLOGRAPHIC')
     G.grating("D3_Echelle", (0.5 * gap, 0, 0), -face, face, c, size=sz,
               lines_per_mm=80.0, order=1, grating_profile='ECHELLE')
-    # the PPLN slab: lay the beam axis (its poling stripes run along +Z) along +X so the stripes face the
-    # camera broadside; the oven housing straddles it.
-    G.crystal("D3_PPLN", (1.5 * gap + 6, 0, 0), Vector((1, 0, 0)), c, size=18.0, nl_process='SHG',
+    # the PPLN slab: its poling-domain stripes run along the beam axis, so lay that axis horizontal (+X)
+    # and stand the striped broad face toward the camera. NO oven here -- the montage shows the four
+    # PROFILES (the stripes ARE the PPLN's "profile"); the oven housing is incidental clutter that dwarfed
+    # the crystal in the four-up, so it is left off for the comparison (oven=True is still a valid build).
+    G.crystal("D3_PPLN", (1.5 * gap, 0, 0), Vector((1, 0, 0)), c, size=sz * 0.85, nl_process='SHG',
               crystal_material='PPLN', phase_matching_type='TYPE0', pm_scheme='QPM',
-              poling_period_um=6.5, crystal_length_mm=18.0, oven=True, ppln_show_stripes=True)
+              poling_period_um=6.5, crystal_length_mm=sz * 0.85, oven=False, ppln_show_stripes=True)
 
     scene.optics.realistic_optics = True
     scene.optics.bg_preset = 'DARK'
