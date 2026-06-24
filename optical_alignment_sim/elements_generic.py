@@ -969,17 +969,59 @@ def regenerate_iris(obj):
         _REGEN_BUSY = False
 
 
-def crystal(name, loc, beam_dir, coll=None, size=14.0, nl_process='NONE'):
-    """A nonlinear (e.g. BBO) crystal block. With nl_process SHG/SPDC it is a real TRANSMISSIVE chi(2)
-    element (IN/OUT on the pump axis) and the tracer emits the converted beam(s): SHG at lambda/2, SPDC
-    degenerate signal+idler at 2*lambda (both formulas oracle-VERIFIED). With nl_process NONE it stays a
-    pump-dump (DETECTOR terminal) -- the legacy behavior the Bell example relies on."""
+def crystal(name, loc, beam_dir, coll=None, size=14.0, nl_process='NONE',
+            crystal_material='BBO', phase_matching_type='TYPE1', pm_scheme='CRITICAL',
+            crystal_temp_C=25.0, poling_period_um=6.5, crystal_length_mm=None,
+            nl_lambda2_nm=532.0, oven=False):
+    """A nonlinear crystal block (the C7 chi(2) family). With a conversion nl_process (SHG/THG/SFG/
+    DFG/OPO/SPDC) it is a real TRANSMISSIVE chi(2) element (IN/OUT on the pump axis) and the tracer
+    emits the converted beam(s) at the ENERGY-conserving wavelength (each relation oracle-VERIFIED).
+    With nl_process NONE it stays a pump-dump (DETECTOR terminal) -- the LEGACY behavior the Bell
+    example relies on, so the NONE path is byte-identical to before C7.
+
+    A PPLN (QPM) crystal grows fine alternating poling stripes along the beam axis; ``oven`` adds a
+    simple temperature-control housing around the slab (cosmetic; the real PPLN/grating sawtooth mesh
+    detail is D3). ``crystal_length_mm`` defaults to the slab's physical +Z extent so the sinc^2(dk*L/2)
+    overlay uses the geometry the user sees."""
     o = _cube(name, (size * 0.6, size * 0.6, size), coll)
     o.data.materials.clear(); o.data.materials.append(MATS["bbo"]())
-    if nl_process in ('SHG', 'SPDC'):
-        _tag(o, 'CRYSTAL', clear_aperture=size, nl_process=nl_process)
+    conv = nl_process in ('SHG', 'THG', 'SFG', 'DFG', 'OPO', 'SPDC')
+    if conv:
+        L = crystal_length_mm if crystal_length_mm is not None else size
+        _tag(o, 'CRYSTAL', clear_aperture=size, nl_process=nl_process,
+             crystal_material=crystal_material, phase_matching_type=phase_matching_type,
+             pm_scheme=pm_scheme, crystal_temp_C=crystal_temp_C, poling_period_um=poling_period_um,
+             crystal_length_mm=L, nl_lambda2_nm=nl_lambda2_nm)
         _add_port(o, "IN", 'IN', (0, 0, -size * 0.5), (0, 0, -1), size)
         _add_port(o, "OUT", 'OUT', (0, 0, size * 0.5), (0, 0, 1), size)
+        # PPLN (QPM): fine alternating poling-domain stripes across the +X face, along the beam (+Z).
+        # Literal thin slabs for the hero render (line density is cosmetic -- the trace is unchanged).
+        if (crystal_material == 'PPLN' or pm_scheme == 'QPM') and poling_period_um > 0.0:
+            half = size * 0.5
+            nper = max(2, min(int(size / max(poling_period_um * 1e-1, 0.6)), 24))  # readable stripe count
+            step = size / (2 * nper)
+            mpol = _mat("OG_ppln_pole", (0.50, 0.20, 0.72), metal=0.25, rough=0.30)
+            for i in range(nper):
+                z0 = -half + (2 * i + 0.5) * step
+                stripe = _cube(name + "_pole%d" % i, (size * 0.61, size * 0.61, step * 0.9), coll)
+                for v in stripe.data.vertices:
+                    v.co.z += z0
+                stripe.data.materials.clear(); stripe.data.materials.append(mpol)
+                _join(o, stripe)
+        if oven:
+            # a simple anodized temperature-control housing: a four-bar frame straddling the slab,
+            # open along the beam axis (so the IN/OUT faces stay clear). Cosmetic only -- it is JOINED
+            # into the crystal object so it rides the same matrix and never enters the beam path.
+            mh = MATS["iso"]()
+            bar = size * 0.28
+            for sx, sy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                jaw = _cube(name + "_oven", (bar if sy else size * 1.5,
+                                             bar if sx else size * 1.5, size * 0.66), coll)
+                for v in jaw.data.vertices:
+                    v.co.x += sx * size * 0.62
+                    v.co.y += sy * size * 0.62
+                jaw.data.materials.clear(); jaw.data.materials.append(mh)
+                _join(o, jaw)
         _set_matrix(o, Vector(loc), _z_to(Vector(beam_dir).normalized()))   # +Z = pump propagation
     else:
         _tag(o, 'DETECTOR', clear_aperture=size)

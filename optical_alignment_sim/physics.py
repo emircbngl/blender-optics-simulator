@@ -266,6 +266,102 @@ def prism_angular_dispersion(glass, apex_deg, wl_nm, dwl_nm=1.0):
     return (dm_hi - dm_lo) / (2.0 * dwl_nm)
 
 
+# --- chi(2) nonlinear frequency conversion (energy/photon-frequency conservation) ----
+# Every chi(2) child wavelength is fixed by ENERGY conservation on the photon frequencies
+# (omega = 2*pi*c/lambda, so 1/lambda is proportional to the photon energy). The relations
+# below are pure energy conservation -- index-light, exact, and each oracle-VERIFIED
+# (tests/_verify_nlcrystal.py, physics_verify ok=true):
+#   SHG  l3 = l1/2           (f3 = 2*f1)                shg-energy-conservation, 4/4
+#   THG  l3 = l1/3           (f3 = 3*f1)                thg-energy-conservation, 3/3
+#   SFG  1/l3 = 1/l1 + 1/l2  (f3 = f1 + f2)             sfg-energy-conservation, 4/4
+#   DFG  1/l3 = 1/l1 - 1/l2  (f3 = f1 - f2)             dfg-energy-conservation, 3/3
+#   OPO  1/lp = 1/ls + 1/li  (fp = fs + fi -> idler)    opo-energy-conservation, 3/3
+#   SPDC degenerate l3 = 2*l1 (the OPO special case ls=li=2*lp; the inverse of SHG).
+
+def nl_child_wavelength(process, l1, l2=None):
+    """The energy-conserving child wavelength (nm) emitted by a chi(2) crystal for a pump at
+    ``l1`` (and a second input ``l2`` for the two-input SFG/DFG/OPO processes).
+
+    All relations are exact photon-frequency conservation (oracle-VERIFIED; see the card names
+    above). For OPO ``l1`` is the pump lambda_p and ``l2`` the seeded signal lambda_s; the return
+    is the idler lambda_i. Returns None when the relation has no positive (physical) solution
+    (e.g. DFG/OPO with the inputs swapped so 1/l3 would be <= 0)."""
+    p = (process or 'NONE').upper()
+    if p == 'SHG':
+        return l1 * 0.5                          # f3 = 2 f1   -> l3 = l1/2
+    if p == 'THG':
+        return l1 / 3.0                          # f3 = 3 f1   -> l3 = l1/3
+    if p == 'SPDC':
+        return l1 * 2.0                          # degenerate down-conversion (inverse SHG)
+    if p == 'SFG':
+        if not l2:
+            return None
+        inv = 1.0 / l1 + 1.0 / l2                # f3 = f1 + f2
+        return 1.0 / inv if inv > 0.0 else None
+    if p == 'DFG':
+        if not l2:
+            return None
+        inv = 1.0 / l1 - 1.0 / l2                # f3 = f1 - f2 (l1 is the higher-frequency input)
+        return 1.0 / inv if inv > 1e-12 else None
+    if p == 'OPO':
+        if not l2:
+            return None
+        inv = 1.0 / l1 - 1.0 / l2                # 1/li = 1/lp - 1/ls (l1=pump, l2=signal)
+        return 1.0 / inv if inv > 1e-12 else None
+    return None
+
+
+def phase_match_efficiency(dk_per_mm, L_mm):
+    """The sinc^2 phase-matching factor sinc^2(dk*L/2) = (sin(x)/x)^2 with x = dk*L/2 -- the
+    physically central, temperature-tunable part of the chi(2) conversion efficiency. =1 at
+    perfect phase match (dk=0, x->0), first zero at x=pi (dk*L=2*pi). Normalized (un-normalized)
+    sinc, numpy-free. Oracle-VERIFIED (phase-match-sinc2-efficiency, 6/6 ok=true)."""
+    x = 0.5 * dk_per_mm * L_mm
+    if abs(x) < 1e-12:
+        return 1.0                               # lim_{x->0} (sin x / x)^2 = 1 (perfect phase match)
+    s = math.sin(x) / x
+    return s * s
+
+
+def nl_conversion_efficiency(deff_pm_V, L_mm, P_W, dk_per_mm=0.0,
+                             prefactor=2.0e-4, deplete=True):
+    """Low-conversion chi(2) efficiency eta ~ deff^2 * L^2 * P * sinc^2(dk*L/2), clamped into the
+    pump-depletion regime via tanh^2(sqrt(eta)) when ``deplete`` (so eta never exceeds 1).
+
+    Tier-1 MODELING CHOICE (not an oracle-verified absolute): the sinc^2(dk*L/2) phase-matching
+    SHAPE is the verified, physically central factor; ``prefactor`` is a single lumped constant
+    (units folded in) chosen so a typical green-doubler lands at a few-percent eta -- it is NOT a
+    first-principles 2*omega^2/(n^3 eps0 c^3 A) coefficient. Use it for the relative overlay /
+    tuning-curve shape, not an absolute conversion number."""
+    eta_lin = prefactor * (deff_pm_V ** 2) * (L_mm ** 2) * P_W * phase_match_efficiency(dk_per_mm, L_mm)
+    if not deplete:
+        return eta_lin
+    return math.tanh(math.sqrt(max(eta_lin, 0.0))) ** 2   # high-conversion: tanh^2(sqrt(eta_lin)) <= 1
+
+
+# Crystal-material catalog: effective nonlinear coefficient deff (pm/V, order-of-magnitude
+# literature values) + a SIMPLE LINEAR phase-mismatch temperature model dk(T) ~ dk_dT*(T - T_pm).
+# The dk_dT slope is a HONEST PLACEHOLDER (deg-1 per mm) tuned only to give a realistic sinc^2(T)
+# tuning-curve WIDTH for the scan -- it is NOT the true Sellmeier-derived dn/dT for each crystal.
+NL_CRYSTALS = {
+    # name:   (deff pm/V, dk/dT  [mm^-1 K^-1],  phase-matched T [C])
+    'BBO':  (2.0, 0.020, 25.0),
+    'KTP':  (3.6, 0.015, 25.0),
+    'LBO':  (1.2, 0.012, 148.0),     # NCPM 1064->532 near 148 C
+    'PPLN': (16.0, 0.030, 100.0),    # QPM, large deff; tight T tuning
+    'KDP':  (0.4, 0.010, 25.0),
+}
+
+
+def nl_phase_mismatch_T(crystal_material, temp_C):
+    """A simple LINEAR phase-mismatch model dk(T) = dk_dT * (T - T_pm) per mm for the TEMPERATURE
+    scan (honestly labeled: the dk_dT slope is a placeholder, not the real dn/dT). dk=0 at the
+    crystal's phase-matched temperature, so phase_match_efficiency peaks there and falls off as a
+    sinc^2 with symmetric side-lobes -- the physically central tuning-curve shape."""
+    _deff, dk_dT, T_pm = NL_CRYSTALS.get((crystal_material or 'BBO').upper(), NL_CRYSTALS['BBO'])
+    return dk_dT * (temp_C - T_pm)
+
+
 # --- Fresnel reflection (s/p amplitude + phase) -----------------------------
 
 # complex refractive indices of common mirror metals near 633 nm
@@ -885,6 +981,49 @@ if __name__ == "__main__":
     # angular dispersion is NEGATIVE under normal dispersion (deviation falls as lambda rises)
     if not (prism_angular_dispersion('N-SF11', 60.0, 550.0) < 0.0):
         fails.append("prism angular dispersion sign")
+
+    # chi(2) nonlinear conversion: every child wavelength is exact energy conservation (C7, each
+    # oracle-VERIFIED). SHG 1064->532; THG 1064->354.667; SFG 1064+532->354.667; DFG 1064-1550->3393.4;
+    # OPO pump 532 + signal 800 -> idler 1588.06; SPDC degenerate 405->810.
+    if not close(nl_child_wavelength('SHG', 1064.0), 532.0, 1e-9):
+        fails.append("nl SHG 1064->%.4f != 532" % nl_child_wavelength('SHG', 1064.0))
+    if not close(nl_child_wavelength('THG', 1064.0), 1064.0 / 3.0, 1e-9):
+        fails.append("nl THG 1064->%.4f" % nl_child_wavelength('THG', 1064.0))
+    if not close(nl_child_wavelength('SPDC', 405.0), 810.0, 1e-9):
+        fails.append("nl SPDC 405->%.4f != 810" % nl_child_wavelength('SPDC', 405.0))
+    if not close(nl_child_wavelength('SFG', 1064.0, 532.0), 354.6666667, 1e-4):
+        fails.append("nl SFG 1064+532->%.4f" % nl_child_wavelength('SFG', 1064.0, 532.0))
+    # SFG of two equal inputs reduces to SHG (1/l3 = 2/l1 -> l3 = l1/2)
+    if not close(nl_child_wavelength('SFG', 1064.0, 1064.0), 532.0, 1e-9):
+        fails.append("nl SFG degenerate != SHG")
+    if not close(nl_child_wavelength('DFG', 1064.0, 1550.0), 3393.415638, 1e-3):
+        fails.append("nl DFG 1064-1550->%.3f" % nl_child_wavelength('DFG', 1064.0, 1550.0))
+    if not close(nl_child_wavelength('OPO', 532.0, 800.0), 1588.05970, 1e-3):
+        fails.append("nl OPO p532 s800 -> idler %.3f" % nl_child_wavelength('OPO', 532.0, 800.0))
+    # OPO energy conservation closes: 1/lp == 1/ls + 1/li
+    _li = nl_child_wavelength('OPO', 532.0, 800.0)
+    if not close(1.0 / 532.0, 1.0 / 800.0 + 1.0 / _li, 1e-12):
+        fails.append("nl OPO energy not conserved")
+    # DFG/OPO with inputs that give a non-positive 1/l3 -> None (no physical child)
+    if nl_child_wavelength('DFG', 1550.0, 1064.0) is not None:
+        fails.append("nl DFG should be None when l1>l2")
+    # phase-matching sinc^2: =1 at dk=0, =0 at dk*L=2*pi (x=pi), mid value 0.7080734 at x=1, <=1 always
+    if not close(phase_match_efficiency(0.0, 10.0), 1.0, 1e-12):
+        fails.append("sinc2 perfect match != 1")
+    if not (phase_match_efficiency(2.0 * math.pi / 10.0, 10.0) < 1e-12):
+        fails.append("sinc2 first zero != 0")
+    if not close(phase_match_efficiency(2.0 / 10.0, 10.0), 0.70807341827357, 1e-9):  # x = dk*L/2 = 1.0
+        fails.append("sinc2 mid value")
+    # tuning curve peaks at the crystal's phase-matched temperature (dk=0 -> sinc^2=1)
+    _Tpm = NL_CRYSTALS['LBO'][2]
+    if not (phase_match_efficiency(nl_phase_mismatch_T('LBO', _Tpm), 10.0) > 0.999
+            and phase_match_efficiency(nl_phase_mismatch_T('LBO', _Tpm + 30.0), 10.0)
+            < phase_match_efficiency(nl_phase_mismatch_T('LBO', _Tpm + 5.0), 10.0)):
+        fails.append("nl T-tuning sinc2 does not peak at T_pm")
+    # high-conversion eta is bounded by 1 (pump depletion: tanh^2(sqrt(eta_lin)) <= 1)
+    if not (nl_conversion_efficiency(16.0, 10.0, 1e6, 0.0) <= 1.0
+            and nl_conversion_efficiency(2.0, 5.0, 1.0, 0.0) > 0.0):
+        fails.append("nl_conversion_efficiency not in (0,1]")
 
     # vector Snell: refract_dir obeys n1 sin t1 = n2 sin t2 and stays in the plane of incidence
     d_in = _rnorm((math.sin(math.radians(30.0)), 0.0, -math.cos(math.radians(30.0))))

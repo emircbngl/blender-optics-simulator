@@ -321,6 +321,44 @@ def build_beam_router(context):
     return "OpticsExample_BeamRouter"
 
 
+def build_green_doubler(context):
+    """A KTP green-doubler (C7): a 1064 nm infrared pump enters a chi(2) crystal phase-matched for
+    second-harmonic generation; ~half converts to 532 nm GREEN (l/2, energy conservation, oracle-
+    VERIFIED) while the residual IR transmits. A dichroic downstream peels the green off (reflects
+    532, passes the IR) onto the green detector; the residual IR goes to a beam dump line. The
+    canonical SHG demo -- IR in, green out of the slab. Renders as a green beam leaving the crystal."""
+    coll = G.example_collection("OpticsExample_GreenDoubler")
+    X = Vector((1, 0, 0))
+    G.source("GD_Pump", (-200, 0, 0), X, coll, wavelength=1064.0)
+    # KTP, Type-II critical phase matching at its phase-matched temperature (sinc^2=1 -> full eff)
+    G.crystal("GD_KTP", (0, 0, 0), X, coll, size=16.0, nl_process='SHG',
+              crystal_material='KTP', phase_matching_type='TYPE2', pm_scheme='CRITICAL',
+              crystal_temp_C=25.0, crystal_length_mm=16.0, oven=True)
+    # a dichroic at 45 deg that reflects the 532 green straight down (-Y) and passes the 1064 IR (+X)
+    Yn = Vector((0, -1, 0))
+    G.dichroic("GD_Dichroic", (140, 0, 0), X, Yn, coll, cut_nm=800.0, pass_type='LP')
+    G.detector("GD_Green", (140, -150, 0), Yn, coll, size=44.0)   # green (532) detector (-Y leg)
+    G.detector("GD_IR", (320, 0, 0), X, coll, size=44.0)          # residual IR (1064) line (+X)
+    return "OpticsExample_GreenDoubler"
+
+
+def build_spdc_source(context):
+    """A Type-II SPDC entanglement source (C7): a 405 nm pump enters a BBO crystal cut for Type-II
+    parametric down-conversion; each pump photon splits into a degenerate signal + idler twin at
+    810 nm (2*lambda, energy conservation, oracle-VERIFIED) in ORTHOGONAL polarizations. Critical
+    phase matching gives the characteristic walk-off offset between the twin beams (the twin-cone
+    geometry). Each photon goes to its own polarization-analyzed detector arm."""
+    coll = G.example_collection("OpticsExample_SPDC")
+    X = Vector((1, 0, 0))
+    G.source("SPDC_Pump", (-200, 0, 0), X, coll, wavelength=405.0)
+    G.crystal("SPDC_BBO", (0, 0, 0), X, coll, size=14.0, nl_process='SPDC',
+              crystal_material='BBO', phase_matching_type='TYPE2', pm_scheme='CRITICAL',
+              crystal_temp_C=25.0, crystal_length_mm=14.0)
+    # signal + idler emerge collinear (degenerate); a wide screen catches the twin spots (walk-off split)
+    G.detector("SPDC_Screen", (240, 0, 0), X, coll, size=80.0)
+    return "OpticsExample_SPDC"
+
+
 def build_back_reflection(context):
     """A back-reflection / ghost-beam bench (A9). A laser passes through an UNCOATED window (n~1.5):
     ~96% transmits to the main detector, but ~4% peels back off the front face as a parasitic Fresnel
@@ -391,6 +429,8 @@ EXAMPLES = {
     'beam_router':  ("Beam Router (penta 90 deg fold + rhomboid lateral offset)", build_beam_router),
     'beam_profiler': ("Knife-Edge Beam Profiler (slit + knife erf scan + beam dump)", build_beam_profiler),
     'back_reflection': ("Back-Reflection / Ghost Beam (uncoated window 4% ghost + isolator)", build_back_reflection),
+    'green_doubler': ("Green Doubler (KTP SHG: 1064 IR -> 532 green + dichroic split)", build_green_doubler),
+    'spdc_source':  ("Type-II SPDC Source (BBO: 405 -> degenerate 810 signal/idler twins)", build_spdc_source),
 }
 
 

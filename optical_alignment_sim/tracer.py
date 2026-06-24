@@ -642,30 +642,94 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
         op = E.optics
 
         if et == 'CRYSTAL':
-            # chi(2) nonlinear conversion. SHG -> a collinear child at lam/2 (VERIFIED
-            # second-harmonic-generation); SPDC -> degenerate signal+idler at 2*lam (VERIFIED
-            # spdc-energy-conservation). The residual pump transmits; NONE just dumps the pump.
+            # chi(2) nonlinear family (C7). Every child sits at the ENERGY-conserving wavelength
+            # (physics.nl_child_wavelength, each oracle-VERIFIED): SHG lam/2, THG lam/3, SFG/DFG
+            # 1/l3=1/l1+-1/l2, OPO pump->signal+idler, SPDC degenerate 2*lam. The residual pump
+            # transmits; NONE just dumps the pump (legacy behavior the Bell example relies on).
             proc = getattr(op, 'nl_process', 'NONE')
-            eff = getattr(op, 'nl_efficiency', 0.4)
-            if proc in ('SHG', 'SPDC'):
-                wco = ray.wl * (0.5 if proc == 'SHG' else 2.0)
-                q_conv = None
-                if ray.q is not None:
-                    # Tier-1 MODELING CHOICE (not an oracle-verified law): seed the converted beam with a
-                    # fresh Gaussian waist equal to the pump's spot size at the crystal, at the new wavelength.
-                    qpc = physics.q_propagate(ray.q, physics.abcd_free(t))
-                    q_conv = physics.q_from_waist(
-                        max(physics.beam_radius_m2(qpc, ray.wl, ray.m2), 1.0e-3), wco)
+            l2 = getattr(op, 'nl_lambda2_nm', None)
+            pmt = getattr(op, 'phase_matching_type', 'TYPE1')
+            scheme = getattr(op, 'pm_scheme', 'CRITICAL')
+            # the conversion is gated by the sinc^2(dk*L/2) phase-matching factor (the physically
+            # central, temperature-tunable part). At the crystal's phase-matched temperature dk=0 ->
+            # sinc^2=1, so the default (T=25 C, BBO T_pm=25 C) leaves the legacy efficiency UNCHANGED
+            # -> SHG/SPDC + the Bell pump-dump stay byte-identical. A TEMPERATURE scan rides this curve.
+            mat = getattr(op, 'crystal_material', 'BBO')
+            L_mm = getattr(op, 'crystal_length_mm', 10.0)
+            dk = physics.nl_phase_mismatch_T(mat, getattr(op, 'crystal_temp_C', 25.0))
+            pm_eff = physics.phase_match_efficiency(dk, L_mm)
+            eff = getattr(op, 'nl_efficiency', 0.4) * pm_eff
+
+            def _q_at(wl_out):
+                """Tier-1 MODELING CHOICE (not an oracle-verified law): seed the converted beam with a
+                fresh Gaussian waist equal to the pump's spot size at the crystal, at the new wl."""
+                if ray.q is None:
+                    return None
+                qpc = physics.q_propagate(ray.q, physics.abcd_free(t))
+                return physics.q_from_waist(
+                    max(physics.beam_radius_m2(qpc, ray.wl, ray.m2), 1.0e-3), wl_out)
+
+            # CRITICAL phase matching has spatial WALK-OFF: the extraordinary child drifts off the
+            # pump axis by a small transverse offset (NCPM/QPM ~= zero). The drift is along the first
+            # transverse basis vector; it does NOT change the wavelength/energy (only the geometry).
+            def _emit_pt(walk):
+                if walk <= 0.0 or scheme != 'CRITICAL':
+                    return H
+                u, _v = physics.transverse_basis(ray.dir)
+                return H + Vector(u) * walk
+            woff = getattr(op, 'nl_walkoff_mm', 0.0)
+
+            if proc in ('SHG', 'THG'):
+                wco = physics.nl_child_wavelength(proc, ray.wl)
+                # child Jones per phase-matching type: TYPE-I harmonic is orthogonal to the (o-pol)
+                # pump; TYPE-0 keeps the pump pol; TYPE-II is treated as TYPE-I for the single harmonic.
+                hj = (physics.jones_linear(90.0) if (pmt in ('TYPE1', 'TYPE2') and ray.jones)
+                      else ray.jones)
                 stack.append(_child(ray, E, H, ray.dir, ray.power * (1.0 - eff), 'TRANSMIT', idx, t,
                                     jones=ray.jones))       # residual unconverted pump
-                if proc == 'SHG':
-                    stack.append(_child(ray, E, H, ray.dir, ray.power * eff, 'SHG', idx, t,
-                                        jones=ray.jones, q=q_conv, wl=wco))
+                stack.append(_child(ray, E, _emit_pt(woff), ray.dir, ray.power * eff, proc, idx, t,
+                                    jones=hj, q=_q_at(wco), wl=wco))
+            elif proc in ('SFG', 'DFG'):
+                wco = physics.nl_child_wavelength(proc, ray.wl, l2)
+                if wco is not None:
+                    hj = (physics.jones_linear(90.0) if (pmt in ('TYPE1', 'TYPE2') and ray.jones)
+                          else ray.jones)
+                    stack.append(_child(ray, E, H, ray.dir, ray.power * (1.0 - eff), 'TRANSMIT', idx, t,
+                                        jones=ray.jones))   # residual unconverted pump
+                    stack.append(_child(ray, E, _emit_pt(woff), ray.dir, ray.power * eff, proc, idx, t,
+                                        jones=hj, q=_q_at(wco), wl=wco))
                 else:
-                    for nm in ('SIGNAL', 'IDLER'):          # degenerate, collinear (Tier-1)
-                        stack.append(_child(ray, E, H, ray.dir, ray.power * eff * 0.5, nm, idx, t,
-                                            jones=ray.jones, q=q_conv, wl=wco))
-            continue                                         # NONE: pump dumped
+                    continue                                 # no physical child -> pump dumped
+            elif proc == 'OPO':
+                # pump splits into a seeded signal (l2) + the energy-conserving idler.
+                wsig = l2
+                widl = physics.nl_child_wavelength('OPO', ray.wl, l2)
+                if widl is not None and wsig:
+                    # TYPE-II: signal/idler in ORTHOGONAL polarizations (the entanglement structure);
+                    # TYPE-0/I: parallel. Walk-off separates them transversely (CRITICAL).
+                    js = physics.jones_linear(0.0) if ray.jones else None
+                    ji = physics.jones_linear(90.0 if pmt == 'TYPE2' else 0.0) if ray.jones else None
+                    stack.append(_child(ray, E, H, ray.dir, ray.power * (1.0 - eff), 'TRANSMIT', idx, t,
+                                        jones=ray.jones))   # residual unconverted pump
+                    stack.append(_child(ray, E, _emit_pt(0.0), ray.dir, ray.power * eff * 0.5, 'SIGNAL',
+                                        idx, t, jones=js, q=_q_at(wsig), wl=wsig))
+                    stack.append(_child(ray, E, _emit_pt(woff), ray.dir, ray.power * eff * 0.5, 'IDLER',
+                                        idx, t, jones=ji, q=_q_at(widl), wl=widl))
+                else:
+                    continue
+            elif proc == 'SPDC':
+                wco = physics.nl_child_wavelength('SPDC', ray.wl)   # degenerate 2*lam
+                q_conv = _q_at(wco)
+                # TYPE-II SPDC: signal o-pol, idler e-pol (the polarization-entangled twin); TYPE-I both same.
+                js = physics.jones_linear(0.0) if ray.jones else ray.jones
+                ji = physics.jones_linear(90.0 if pmt == 'TYPE2' else 0.0) if ray.jones else ray.jones
+                stack.append(_child(ray, E, H, ray.dir, ray.power * (1.0 - eff), 'TRANSMIT', idx, t,
+                                    jones=ray.jones))       # residual unconverted pump
+                stack.append(_child(ray, E, H, ray.dir, ray.power * eff * 0.5, 'SIGNAL', idx, t,
+                                    jones=js, q=q_conv, wl=wco))
+                stack.append(_child(ray, E, _emit_pt(woff), ray.dir, ray.power * eff * 0.5, 'IDLER', idx, t,
+                                    jones=ji, q=q_conv, wl=wco))
+            continue                                         # NONE / unhandled: pump dumped
 
         if et in TERMINAL:
             continue

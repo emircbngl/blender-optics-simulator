@@ -421,13 +421,42 @@ class OpticalElementProps(PropertyGroup):
                ('AG', "Silver", ""), ('AU', "Gold", "")], default='DIELECTRIC')
     design_wl: FloatProperty(name="Design wavelength (nm)", default=633.0, min=1.0)  # spec point; 0 would null a waveplate
     cavity_spacing_mm: FloatProperty(name="Cavity spacing (mm)", default=0.05, min=1e-4)
-    # nonlinear-crystal chi(2) process (variant). SHG: emit lam/2 (VERIFIED second-harmonic-generation).
-    # SPDC: emit signal+idler at 2*lam degenerate (VERIFIED spdc-energy-conservation). NONE: pump dump.
+    # nonlinear-crystal chi(2) family (C7). Every child wavelength is exact photon-frequency / ENERGY
+    # conservation, each oracle-VERIFIED (tests/_verify_nlcrystal.py): SHG lam/2, THG lam/3, SFG/DFG
+    # 1/l3=1/l1+-1/l2, OPO pump->signal+idler. SPDC: degenerate signal+idler at 2*lam. NONE: pump dump
+    # (the LEGACY behavior the Bell example relies on -- must stay byte-identical, so it is the default).
     nl_process: EnumProperty(name="chi(2) process", default='NONE',
         items=[('NONE', "None (dump)", "Absorb the pump (no conversion)"),
                ('SHG', "SHG (frequency doubling)", "Emit the second harmonic at lambda/2"),
+               ('THG', "THG (frequency tripling)", "Emit the third harmonic at lambda/3"),
+               ('SFG', "SFG (sum-frequency)", "1/l3 = 1/l1 + 1/l2 (upconversion)"),
+               ('DFG', "DFG (difference-frequency)", "1/l3 = 1/l1 - 1/l2 (mid-IR generation)"),
+               ('OPO', "OPO (parametric oscillation)", "Pump splits: 1/lp = 1/ls + 1/li"),
                ('SPDC', "SPDC (down-conversion)", "Emit degenerate signal + idler at 2*lambda")])
     nl_efficiency: FloatProperty(name="Conversion efficiency", default=0.4, min=0.0, max=1.0)
+    # second input wavelength (nm) for the two-input processes (SFG/DFG) and the seeded OPO signal.
+    nl_lambda2_nm: FloatProperty(name="2nd input / signal (nm)", default=532.0, min=1.0)
+    # phase-matching realism (C7). The TYPE sets the child polarization (Jones); the SCHEME sets the
+    # walk-off (CRITICAL: a transverse offset; NCPM/QPM: ~zero). CRITICAL/NCPM are birefringent;
+    # QPM uses a poled grating (PPLN). Material + temperature tune the sinc^2(dk*L/2) phase match.
+    phase_matching_type: EnumProperty(name="Phase-matching type", default='TYPE1',
+        items=[('TYPE0', "Type-0 (e->ee / o->oo)", "All same polarization (typical PPLN/QPM)"),
+               ('TYPE1', "Type-I (o+o->e)", "Both inputs same pol; harmonic orthogonal"),
+               ('TYPE2', "Type-II (o+e->e)", "Inputs orthogonal; signal/idler split in pol (entanglement)")])
+    pm_scheme: EnumProperty(name="PM scheme", default='CRITICAL',
+        items=[('CRITICAL', "Critical (angle-tuned)", "Birefringent at an angle -> spatial WALK-OFF"),
+               ('NCPM', "Non-critical (90 deg, T-tuned)", "Propagate along an axis -> ~zero walk-off"),
+               ('QPM', "Quasi-phase-matched (poled)", "Periodic poling (PPLN) -> ~zero walk-off")])
+    crystal_material: EnumProperty(name="Crystal material", default='BBO',
+        items=[('BBO', "BBO (beta-barium borate)", "Broadband UV-Vis chi(2); SHG/SPDC"),
+               ('KTP', "KTP", "High-deff green doubler (1064->532)"),
+               ('LBO', "LBO", "Low walk-off; NCPM 1064->532 near 148 C"),
+               ('PPLN', "PPLN (periodically poled LiNbO3)", "QPM, large deff; OPO/DFG"),
+               ('KDP', "KDP", "Classic UV / high-power; lower deff")])
+    crystal_temp_C: FloatProperty(name="Crystal temperature (C)", default=25.0)   # oven set-point
+    poling_period_um: FloatProperty(name="Poling period (um)", default=6.5, min=0.0)  # QPM grating (PPLN)
+    crystal_length_mm: FloatProperty(name="Interaction length (mm)", default=10.0, min=0.01)  # L for sinc^2(dk L/2)
+    nl_walkoff_mm: FloatProperty(name="Walk-off offset (mm)", default=0.6, min=0.0)  # CRITICAL transverse offset
     # microscope objective (VERIFIED microscope-objective-magnification + numerical-aperture):
     # f_obj = f_tube/M (infinity) or tube_length/M (finite); the tracer focuses with f_obj.
     obj_mag: FloatProperty(name="Magnification (x)", default=10.0, min=1.0)

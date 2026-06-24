@@ -420,6 +420,60 @@ check("SHG crystal emits the second harmonic (1064 -> 532 nm) to the detector",
 _spdc = _wls_to_detector('SPDC', 405.0)
 check("SPDC crystal emits degenerate down-converted light (405 -> 810 nm)",
       any(abs(w - 810.0) < 1.0 for w in _spdc), str(_spdc))
+
+# C7: the rest of the chi(2) family. Every child wavelength is exact ENERGY conservation, each
+# oracle-VERIFIED (tests/_verify_nlcrystal.py): THG l/3, SFG/DFG 1/l3=1/l1+-1/l2, OPO pump->idler.
+_phys = physics
+
+
+def _wls2_to_detector(proc, pump_nm, l2_nm):
+    for _o in list(sc.objects):
+        if getattr(_o, "optics", None) and _o.optics.is_optical:
+            bpy.data.objects.remove(_o, do_unlink=True)
+    _s = eg.source("NL_S", (-80, 0, 0), (1, 0, 0), coll=_nlc); _s.optics.wavelength = pump_nm
+    eg.crystal("NL_X", (0, 0, 0), (1, 0, 0), coll=_nlc, nl_process=proc, nl_lambda2_nm=l2_nm)
+    eg.detector("NL_D", (80, 0, 0), (1, 0, 0), coll=_nlc, size=120.0)
+    bpy.context.view_layer.update()
+    segs = scan._trace(sc)
+    return sorted({round(s["wavelength"], 2) for s in segs if s.get("to") == "NL_D"})
+
+
+_thg = _wls_to_detector('THG', 1064.0)
+check("THG crystal emits the third harmonic (1064 -> 354.67 nm)",
+      any(abs(w - 1064.0 / 3.0) < 0.5 for w in _thg), str(_thg))
+_sfg = _wls2_to_detector('SFG', 1064.0, 532.0)
+check("SFG crystal sums frequencies (1064 + 532 -> 354.67 nm, 1/l3=1/l1+1/l2)",
+      any(abs(w - 354.6667) < 0.5 for w in _sfg), str(_sfg))
+_dfg = _wls2_to_detector('DFG', 1064.0, 1550.0)
+check("DFG crystal differences frequencies (1064 - 1550 -> 3393.4 nm, 1/l3=1/l1-1/l2)",
+      any(abs(w - 3393.4156) < 1.0 for w in _dfg), str(_dfg))
+_opo = _wls2_to_detector('OPO', 532.0, 800.0)
+check("OPO crystal splits the pump (532 -> signal 800 + idler 1588.06, 1/lp=1/ls+1/li)",
+      any(abs(w - 800.0) < 0.5 for w in _opo) and any(abs(w - 1588.06) < 1.0 for w in _opo), str(_opo))
+# the sinc^2(dk*L/2) phase-matching factor is verified-exact (peak 1 at dk=0, zero at dk*L=2pi)
+check("phase_match_efficiency sinc^2(dk*L/2): =1 at perfect match, =0 at the first zero",
+      abs(_phys.phase_match_efficiency(0.0, 10.0) - 1.0) < 1e-9
+      and _phys.phase_match_efficiency(2.0 * 3.141592653589793 / 10.0, 10.0) < 1e-9)
+# a TEMPERATURE detuning gates the converted power by sinc^2 -> a hotter/colder crystal converts LESS
+_Tpm = _phys.NL_CRYSTALS['LBO'][2]
+for _o in list(sc.objects):
+    if getattr(_o, "optics", None) and _o.optics.is_optical:
+        bpy.data.objects.remove(_o, do_unlink=True)
+_s = eg.source("NLT_S", (-80, 0, 0), (1, 0, 0), coll=_nlc); _s.optics.wavelength = 1064.0
+_cryT = eg.crystal("NLT_X", (0, 0, 0), (1, 0, 0), coll=_nlc, nl_process='SHG',
+                   crystal_material='LBO', crystal_length_mm=14.0, crystal_temp_C=_Tpm)
+eg.detector("NLT_D", (80, 0, 0), (1, 0, 0), coll=_nlc, size=120.0)
+
+
+def _green_pow(T):
+    _cryT.optics.crystal_temp_C = T
+    bpy.context.view_layer.update()
+    return sum(s.get("power", 0.0) for s in scan._trace(sc)
+               if s.get("to") == "NLT_D" and abs(s.get("wavelength", 0.0) - 532.0) < 1.0)
+
+
+check("TEMPERATURE tuning: converted power peaks at the phase-matched T (sinc^2(T) curve)",
+      _green_pow(_Tpm) > _green_pow(_Tpm + 25.0) and _green_pow(_Tpm) > _green_pow(_Tpm - 25.0))
 for _o in list(_nlc.objects):
     eg.drop_example_object(_o)
 bpy.data.collections.remove(_nlc)

@@ -24,6 +24,7 @@ SCAN_ITEMS = [
     ('WAVEPLATE', "Waveplate angle (deg)", "Sweep the active waveplate's fast-axis angle"),
     ('WAVELENGTH', "Wavelength (nm)", "Sweep every source's wavelength"),
     ('KNIFE', "Knife edge (mm)", "Sweep the active KNIFE_EDGE across the beam -> erf profile -> beam radius w"),
+    ('TEMPERATURE', "Crystal temperature (C)", "Sweep the active CRYSTAL's oven -> sinc^2(T) phase-matching tuning curve"),
 ]
 
 
@@ -262,7 +263,8 @@ def _scan_range_for(self, context):
     without this, switching to Wavelength kept the stage range and swept sources to 0 nm)."""
     self.lo, self.hi = {'WAVEPLATE': (0.0, 180.0),
                         'WAVELENGTH': (400.0, 700.0),
-                        'KNIFE': (-3.0, 3.0)}.get(self.kind, (0.0, 0.002))
+                        'KNIFE': (-3.0, 3.0),
+                        'TEMPERATURE': (5.0, 45.0)}.get(self.kind, (0.0, 0.002))
 
 
 class OPTICS_OT_scan(Operator):
@@ -321,6 +323,20 @@ class OPTICS_OT_scan(Operator):
 
             def sweep_set(x):
                 knife.optics.knife_position = x
+        elif self.kind == 'TEMPERATURE':
+            # sweep the active CRYSTAL's oven set-point -> the tracer gates the converted child by
+            # sinc^2(dk(T)*L/2), so the detected converted power traces the phase-matching tuning curve.
+            cry = obj if (obj and obj.optics.element_type == 'CRYSTAL') else next(
+                (o for o in scene.objects if getattr(o, "optics", None) and o.optics.is_optical
+                 and o.optics.element_type == 'CRYSTAL'), None)
+            if cry is None:
+                self.report({'ERROR'}, "Select (or place) a CRYSTAL to tune")
+                return {'CANCELLED'}
+            orig = cry.optics.crystal_temp_C
+            restore.append(lambda: setattr(cry.optics, 'crystal_temp_C', orig))
+
+            def sweep_set(x):
+                cry.optics.crystal_temp_C = x
         else:  # WAVELENGTH
             srcs = [o for o in scene.objects if getattr(o, "optics", None) and o.optics.is_optical
                     and (o.optics.is_source or o.optics.element_type in ('SOURCE', 'FIBER_COLLIMATOR'))]
