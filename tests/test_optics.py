@@ -1409,6 +1409,12 @@ check("place_relative non-optical -> error", "error" in optics_api.place_relativ
 check("scan bad kind -> error", "error" in optics_api.scan(kind="bogus"))
 _dm = _mk("RT_dm_api", (0, 0, 0)); _dm.optics.is_optical = True; _dm.optics.element_type = 'DEFORMABLE_MIRROR'
 check("ao_command bad coeffs -> error", "error" in optics_api.ao_command("RT_dm_api", ["x", 1.0]))
+# 2.3 consistency: the new read tools follow the uniform {error} contract + return a dict (never a bare value)
+check("inspect_element unknown -> error", "error" in optics_api.inspect_element("RT_NO_SUCH_ELEMENT"))
+check("inspect_beam no-beam -> error", "error" in optics_api.inspect_beam("RT_NO_SUCH_ELEMENT"))
+check("read tools return a dict (uniform contract)",
+      all(isinstance(r, dict) for r in (optics_api.diagnose(), optics_api.propose_corrections(),
+                                        optics_api.get_state(), optics_api.capabilities())))
 
 print("[bake: re-bake on path change + no mesh leak]")
 from optical_alignment_sim import bake

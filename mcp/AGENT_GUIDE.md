@@ -64,6 +64,23 @@ WFS modal channel is a 15-Zernike low-pass). Say so when it matters.
 5. The WFS image is the **modal** 15-Zernike channel (low-pass); for high-frequency figure use the **zonal** render.
 6. `swap_part` normalizes mesh orientation — solve the right orientation empirically through the actual swap path.
 
+## API conventions (so the surface is predictable)
+Every tool follows these — rely on them, and keep them if you add a tool:
+- **Which element**: `name` = the element you ACT ON (set_param, align_element, set_mount, swap_part,
+  place_*, inspect_element). `element` = the element where you SAMPLE/READ the beam (inspect_beam, scan,
+  zonal_render). Role-specific reads name the role: `sensor` (ao_measure, sensor_capture, get_wavefront),
+  `detector` (beam_profile, tilt_null), `dm` (ao_command, ao_close_loop). This is intentional, not drift.
+- **Return shape**: a MUTATION returns `{"ok": true, …}`; a READ returns a data dict (the gate-style reads
+  diagnose/propose_corrections also carry `ok`); ANY failure returns `{"error": "<message>"}` — never a raw
+  traceback, never a bare value. Check `"error" in result` before using a result.
+- **Units are in the key name**: `_mm`, `_um`, `_nm`, `_deg`, `_mrad`, `_rad`. Lengths mm, wavelengths nm,
+  angles degrees unless the suffix says otherwise. `w_mm`/`clear_aperture` are radii (see gotcha 1).
+- **Advisory ≠ applied**: diagnose / propose_corrections only REPORT (with a fix + `maybe_intentional_if` +
+  `fault_confidence`); you weigh intent and choose refuse / partial / accept. Nothing auto-applies.
+- **Read-only vs mutating**: every `inspect_*` / `get_*` / `diagnose` / `sensor_*` / `beam_profile` /
+  `propose_corrections` is byte-identical; only `align_*` / `ao_close_*` / `tilt_null` / `set_*` / `place_*`
+  / `build_*` mutate. The MCP surface == the `optics_api` public surface (a parity test enforces it).
+
 ## Connection
 The MCP server (`mcp/optics_mcp_server.py`) talks to a localhost socket bridge the Blender add-on opens on
 **127.0.0.1:9765**. Requirements: Blender running, the add-on enabled, and **View3D ▸ Sidebar ▸ Optics ▸
