@@ -693,14 +693,31 @@ def scan(kind='STAGE', lo=0.0, hi=0.002, steps=120, element=None):
 
 
 def ao_measure(sensor):
-    """Read the residual Zernike wavefront error (waves) at a wavefront sensor. {zernike, rms}."""
+    """Read the wavefront a sensor PHYSICALLY measures (waves): the modal residual (turbulence / DM /
+    surface figure) PLUS the beam's OWN curvature defocus from R(z). A clean diverging/converging beam
+    now reads its real defocus instead of a (wrong) flat RMS=0; a collimated beam still reads its modal
+    residual only. {zernike, rms, rms_modal, beam_defocus, beam_roc_mm, n_beams[, dominant_frac]} --
+    ``rms`` is the total the sensor integrates, ``rms_modal`` the DM-correctable part the AO loop drives
+    to zero, ``n_beams`` how many beams reach the sensor (the read is the strongest; >1 means a weaker
+    arm/stray is dropped)."""
     from . import ao, physics
     tracer.cached_segments = _trace(_scene())
-    c = ao._aberr_at(tracer.cached_segments, sensor)
+    wfs = bpy.data.objects.get(sensor)
+    ap = (getattr(wfs.optics, 'clear_aperture', 0.0) or 0.0) if (wfs and getattr(wfs, 'optics', None)) else 0.0
+    c, info = ao._sensor_wavefront(tracer.cached_segments, sensor, ap)
     if c is None:
         return {"error": "no beam at wavefront sensor '%s'" % sensor}
-    return {"sensor": sensor, "zernike": [round(x, 4) for x in c],
-            "rms": round(physics.wavefront_rms(c), 4)}
+    out = {"sensor": sensor, "zernike": [round(x, 4) for x in c],
+           "rms": round(physics.wavefront_rms(c), 4),
+           "rms_modal": round(info.get("modal_rms", 0.0), 4),
+           "beam_defocus": round(info.get("defocus_waves", 0.0), 4),
+           "n_beams": info.get("n_beams", 1)}
+    R = info.get("beam_roc_mm")
+    if R is not None:
+        out["beam_roc_mm"] = round(R, 1)
+    if info.get("n_beams", 1) > 1:
+        out["dominant_frac"] = round(info.get("dominant_frac", 1.0), 3)
+    return out
 
 
 def get_wavefront(sensor):

@@ -1918,6 +1918,54 @@ check("sensor: the two beams read the SAME optic DIFFERENTLY (captured area diff
       abs(_cap_col.get("captured_frac", 0.0) - _cap_div.get("captured_frac", 0.0)) > 0.2,
       "collimated %.2f vs diverging %.2f" % (_cap_col.get("captured_frac", 0), _cap_div.get("captured_frac", 0)))
 
+print("[WFS beam-curvature defocus: the sensor reads the beam's own R(z), not just the modal aberr]")
+# A clean (un-aberrated) Gaussian beam diverging onto a WFS carries DEFOCUS from its wavefront
+# curvature R(z). The modal aberr channel (_aberr_at -- what the AO loop corrects) is flat -> RMS=0;
+# the sensor READ (_sensor_wavefront / ao_measure) folds in the beam's Z4 defocus so it reads the
+# REAL wavefront a Shack-Hartmann integrates. a4 = w_s^2/(4*sqrt3*R*lambda) [waves], physics_verify
+# ok=true (a4(w=5,R=1000,lambda=632.8nm)=5.70234). Before this fix a diverging beam read RMS=0.
+def _defocus_scene(waist_um, name):
+    for _o in list(sc.objects):
+        if getattr(getattr(_o, "optics", None), "is_optical", False):
+            bpy.data.objects.remove(_o, do_unlink=True)
+    _c = _IG.example_collection(name)
+    F = _Vec((0.0, 0.0, 0.0)); d_in = _Vec((1.0, 0.0, 0.0))
+    dev = math.radians(164.0)
+    d_out = _Vec((math.cos(dev), math.sin(dev), 0.0)).normalized()
+    _las = _IG.source("DF_Laser", F - d_in * 400.0, d_in, _c, wavelength=632.8)
+    _las.optics.waist_um = waist_um                        # NO aberrator, flat mirror -> modal channel is flat
+    _m = _IG.mirror("DF_M", F, d_in, d_out, _c, size=150.0)
+    _wfs = _IG.wavefront_sensor("DF_WFS", F + d_out * 300.0, d_out, _c, size=90.0)
+    bpy.context.view_layer.update()
+    _segs = scan._trace(sc)
+    ap = _wfs.optics.clear_aperture
+    modal = ao._aberr_at(_segs, _wfs.name)
+    coeffs, info = ao._sensor_wavefront(_segs, _wfs.name, ap)
+    best = max((s for s in _segs if s.get("to") == _wfs.name), key=lambda s: s.get("power", 0.0))
+    _qd = best["qd"]; R = physics.beam_roc(complex(_qd[0], _qd[1])); w = best["w_mm"]
+    ws = min(w, ap) if ap > 0 else w
+    a4_exp = ws * ws / (4.0 * math.sqrt(3.0) * R * 632.8e-6) if math.isfinite(R) else 0.0
+    for _o in list(_c.objects):
+        _IG.drop_example_object(_o)
+    bpy.data.collections.remove(_c)
+    return modal, coeffs, info, a4_exp, R
+
+_md, _cd, _idf, _a4d, _Rd = _defocus_scene(500.0, "DF_div")     # tight waist -> diverging at the sensor
+check("WFS defocus: clean diverging beam -> modal aberr RMS ~0 (the channel the AO loop corrects)",
+      physics.wavefront_rms(_md or [0.0] * physics.N_ZERNIKE) < 1e-6,
+      "%.6f" % physics.wavefront_rms(_md or [0.0] * physics.N_ZERNIKE))
+check("WFS defocus: sensor read now picks up the beam-curvature defocus (no longer RMS=0)",
+      physics.wavefront_rms(_cd) > 1e-3, "RMS=%.5f waves, R=%.0fmm" % (physics.wavefront_rms(_cd), _Rd))
+check("WFS defocus: folded Z4 matches analytic a4 = w^2/(4 sqrt3 R lambda)",
+      abs(_cd[3] - _a4d) < 1e-4 and abs(_idf["defocus_waves"] - _a4d) < 1e-4,
+      "Z4=%.5f vs a4=%.5f" % (_cd[3], _a4d))
+_mc, _cc, _icf, _a4c, _Rc = _defocus_scene(9000.0, "DF_coll")   # wide waist -> ~collimated at the sensor
+check("WFS defocus: ~collimated beam reads ~flat (R huge -> defocus ~0)",
+      physics.wavefront_rms(_cc) < 1e-2, "RMS=%.5f waves, R=%.0fmm" % (physics.wavefront_rms(_cc), _Rc))
+_none, _ninfo = ao._sensor_wavefront([], "NoSuchSensor")
+check("WFS defocus: no beam -> _sensor_wavefront returns None (a dark WFS is not a corrected flat one)",
+      _none is None and _ninfo.get("n_beams") == 0)
+
 oas.unregister()
 
 passed = sum(1 for _, ok in _checks if ok)

@@ -98,7 +98,12 @@ def build_adaptive_optics(context):
     residual wavefront RMS to zero and watch the sensor's wavefront map flatten."""
     coll = G.example_collection("OpticsExample_AdaptiveOptics")
     X, Y = Vector((1, 0, 0)), Vector((0, 1, 0))
-    G.source("AO_Laser", (-220, 0, 0), X, coll)
+    src = G.source("AO_Laser", (-220, 0, 0), X, coll)
+    src.optics.waist_um = 1500.0     # wide + COLLIMATED reference: the WFS reads only the injected
+                                     # turbulence, not the beam's own divergence (a real AO bench
+                                     # collimates its reference; a tight 0.5mm waist would itself add
+                                     # ~0.014 waves of defocus at the sensor -- now that the WFS reads
+                                     # beam curvature, the reference must genuinely be flat)
     modes = [0.0] * 15
     modes[3] = 0.4     # defocus (Noll j=4)
     modes[5] = 0.3     # astigmatism (j=6)

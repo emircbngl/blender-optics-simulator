@@ -33,6 +33,84 @@ def _aberr_at(segs, sensor_name):
     return list(best[1]) if best[1] else [0.0] * physics.N_ZERNIKE
 
 
+def _beam_defocus_coeff(seg, sensor_aperture_mm=0.0):
+    """Noll Z4 (defocus) coefficient in WAVES carried by a Gaussian beam's OWN wavefront curvature
+    R(z) at the sensor -- the term a real Shack-Hartmann WFS integrates that the modal ``aberr``
+    channel alone omits (so a clean diverging/converging beam no longer reads RMS=0).
+
+    A fundamental Gaussian over a footprint of radius w_s has OPD W(r) = r^2/(2R) (R = beam_roc(q)
+    at the sensor segment; R>0 diverging, inf at a waist). In pupil coords rho = r/w_s that is a
+    pure defocus W = (w_s^2 / (2 R lambda)) rho^2 waves; matching the RMS-normalized Noll defocus
+    Z4 = sqrt(3)(2 rho^2 - 1) (whose rho^2 part is 2 sqrt3) gives
+
+        a4 = w_s^2 / (4 sqrt3 R lambda)   [waves]
+
+    physics_verify ok=true (a4(w_s=5mm, R=1000mm, lambda=632.8nm) = 5.70234 waves;
+    c2 = 2 sqrt3 a4 = 19.7535; DIMENSIONAL + SANITY-positive). Collimated/waist (R=inf) -> 0.
+
+    w_s is the footprint radius the sensor actually integrates: the beam radius w_mm at the sensor,
+    clipped to the clear semi-aperture when the beam OVERFILLS (a finite sensor only sees its
+    aperture -- consistent with zonal_wavefront_at_sensor's rho_max=min(1, a/w) clip)."""
+    qd = seg.get("qd")
+    if not qd:
+        return 0.0
+    R = physics.beam_roc(complex(qd[0], qd[1]))
+    if not math.isfinite(R) or abs(R) < 1e-9:
+        return 0.0                                          # collimated / at a waist -> no defocus
+    w_s = seg.get("w_mm", 0.0) or 0.0
+    if sensor_aperture_mm and sensor_aperture_mm > 0.0:
+        w_s = min(w_s, sensor_aperture_mm)                  # overfill: only the aperture is integrated
+    if w_s <= 0.0:
+        return 0.0
+    wl_mm = (seg.get("wavelength", 632.8) or 632.8) * 1e-6
+    return w_s * w_s / (4.0 * math.sqrt(3.0) * R * wl_mm)
+
+
+def _sensor_wavefront(segs, sensor_name, sensor_aperture_mm=0.0):
+    """The wavefront a WFS PHYSICALLY reads: the strongest beam's modal ``aberr`` (turbulence / DM /
+    surface figure) PLUS that beam's OWN curvature defocus from R(z) (see _beam_defocus_coeff) folded
+    into Noll Z4 -- the Z4 a real Shack-Hartmann integrates that the modal channel alone omits, so a
+    clean diverging/converging beam no longer reads a (wrong) flat RMS=0.
+
+    Returns ``(coeffs, info)``: ``coeffs`` is the 15-vector (waves) with the beam defocus in Z4;
+    ``info`` reports the breakdown (``modal_rms``, ``defocus_waves``, ``beam_roc_mm``, ``w_sensor_mm``)
+    and the multi-beam context (``n_beams`` arriving, ``dominant_frac`` of total power -- the read is
+    strongest-beam-only, so >1 beam means a weaker arm/stray is being dropped). ``coeffs`` is None if
+    NO beam reaches the sensor (a dark WFS is not a flat one).
+
+    NOTE this is the READ side (publish_wavefront / ao_measure). The AO control loop reads the modal
+    ``_aberr_at`` channel ONLY (the DM commands modal modes), so its interaction matrix stays
+    self-consistent; for a collimated reference the two coincide (defocus ~ 0)."""
+    best = None
+    total_power = 0.0
+    n_beams = 0
+    for s in segs:
+        if s.get("to") == sensor_name:
+            p = s.get("power", 0.0) or 0.0
+            total_power += p
+            n_beams += 1
+            if best is None or p > (best.get("power", 0.0) or 0.0):
+                best = s
+    if best is None:
+        return None, {"n_beams": 0}
+    coeffs = list(best.get("aberr")) if best.get("aberr") else [0.0] * physics.N_ZERNIKE
+    modal_rms = physics.wavefront_rms(coeffs)
+    a4 = _beam_defocus_coeff(best, sensor_aperture_mm)
+    if len(coeffs) > 3:
+        coeffs[3] += a4                                     # beam curvature -> Noll Z4 (defocus)
+    qd = best.get("qd")
+    R = physics.beam_roc(complex(qd[0], qd[1])) if qd else float('inf')
+    info = {
+        "n_beams": n_beams,
+        "dominant_frac": ((best.get("power", 0.0) or 0.0) / total_power) if total_power > 0 else 1.0,
+        "modal_rms": modal_rms,
+        "defocus_waves": a4,
+        "beam_roc_mm": R if math.isfinite(R) else None,
+        "w_sensor_mm": best.get("w_mm", 0.0) or 0.0,
+    }
+    return coeffs, info
+
+
 def _radial_np(n, m, rho):
     import numpy as np
     m = abs(m)
@@ -70,14 +148,9 @@ def _zern_basis(px):
     return cached
 
 
-def wavefront_image(coeffs, px=192, vmax=1.0):
-    """False-colour RGBA map (HxWx4 float32) of the wavefront W(x,y)=sum_j a_j Z_j over the
-    unit disk, on a FIXED diverging scale (+-vmax waves): blue (low) -> green (zero) -> red
-    (high). The fixed scale is deliberate - a corrected (flat) wavefront shows a uniform
-    mid-colour and a large aberration shows full colour, so the loop's flattening is visible
-    (per-frame auto-scaling would stretch even a ~0 residual to full contrast). The grid + the
-    per-mode Zernike basis are cached per px (see _zern_basis), so each call is a few
-    scalar-weighted array adds."""
+def _modal_field(coeffs, px):
+    """The reconstructed wavefront W(x,y)=sum_j a_j Z_j (waves) over a px*px unit-disk grid, plus the
+    pupil mask. Shared by wavefront_image and _wavefront_field_stats (cached basis -> a few adds)."""
     import numpy as np
     mask, basis = _zern_basis(px)
     W = np.zeros((px, px))
@@ -85,6 +158,37 @@ def wavefront_image(coeffs, px=192, vmax=1.0):
         if abs(c) < 1e-12 or j not in basis:
             continue
         W += c * basis[j]
+    return W, mask
+
+
+def _wavefront_field_stats(coeffs, px=96):
+    """(full_scale, pv) in waves of the reconstructed modal wavefront over the unit disk: full_scale =
+    max|W| (the auto colour scale), pv = max - min (peak-to-valley). The static-read caption reports
+    these the way the zonal path already does, so the viewer knows what saturated colour means."""
+    import numpy as np
+    W, mask = _modal_field(coeffs, px)
+    wd = W[mask]
+    if wd.size == 0:
+        return 1.0, 0.0
+    return float(np.max(np.abs(wd))), float(np.max(wd) - np.min(wd))
+
+
+def wavefront_image(coeffs, px=192, vmax=1.0):
+    """False-colour RGBA map (HxWx4 float32) of the wavefront W(x,y)=sum_j a_j Z_j over the
+    unit disk, on a diverging scale (+-vmax waves): blue (low) -> green (zero) -> red (high).
+
+    ``vmax`` (waves) sets +-full-scale. The FIXED default (1.0) is for the AO loop's before/after
+    frames, where a pinned scale must NOT stretch a flattened residual to full contrast (so the
+    loop's flattening stays visible). ``vmax=None`` AUTO-scales to the field's max |W|, for a STATIC
+    single-shot read (publish_wavefront / the live WFS frame) where there is no before/after context
+    and a fixed +-1 would saturate -- a 0.3-wave and a 30-wave map would look identical. The grid +
+    the per-mode Zernike basis are cached per px (see _zern_basis), so each call is a few
+    scalar-weighted array adds."""
+    import numpy as np
+    W, mask = _modal_field(coeffs, px)
+    if vmax is None:                                       # static read -> auto-scale (zonal-path behaviour)
+        wd = W[mask]
+        vmax = float(np.max(np.abs(wd))) if wd.size else 1.0
     t = np.clip(0.5 + 0.5 * W / (vmax or 1.0), 0.0, 1.0)   # W=0 -> 0.5 (uniform mid-colour)
     arr = np.empty((px, px, 4), dtype='float32')
     arr[:] = (0.05, 0.05, 0.06, 1.0)                       # outside the pupil
@@ -96,11 +200,28 @@ def wavefront_image(coeffs, px=192, vmax=1.0):
 
 
 def publish_wavefront(det, segs):
-    """Compute + publish a wavefront sensor's reconstructed map + RMS to the monitor window."""
-    coeffs = _aberr_at(segs, det.name) or [0.0] * physics.N_ZERNIKE
-    det.optics.wf_rms = physics.wavefront_rms(coeffs)
-    monitor.set_frame(det.name, wavefront_image(coeffs),
-                      "wavefront RMS=%.3f waves" % det.optics.wf_rms)
+    """Compute + publish a wavefront sensor's reconstructed map + RMS to the monitor window.
+
+    The reported wavefront is what the sensor PHYSICALLY reads -- the modal aberr PLUS the beam's own
+    curvature defocus (see _sensor_wavefront) -- on an AUTO-scaled colour map (a static read has no
+    before/after context, so a fixed +-1 scale would saturate and hide magnitude) with the colour
+    full-scale, PV, and any multi-beam/defocus context in the caption. A DARK sensor (no beam) clears
+    its frame instead of publishing a fake flat RMS=0.000 (a blocked WFS must not read as corrected)."""
+    ap = (getattr(det.optics, 'clear_aperture', 0.0) or 0.0) if getattr(det, 'optics', None) else 0.0
+    coeffs, info = _sensor_wavefront(segs, det.name, ap)
+    if coeffs is None:                                       # nothing reaches the sensor -> clear, don't fake-flat
+        monitor.set_frame(det.name, None)
+        det.optics.wf_rms = 0.0
+        return
+    rms = physics.wavefront_rms(coeffs)
+    det.optics.wf_rms = rms
+    vmax, pv = _wavefront_field_stats(coeffs)
+    cap = "wavefront RMS=%.3f  PV=%.3f  full-scale=±%.2f waves" % (rms, pv, vmax or 1.0)
+    if abs(info.get("defocus_waves", 0.0)) >= 5e-4:
+        cap += " (incl. beam defocus %.3f)" % info["defocus_waves"]
+    if info.get("n_beams", 1) > 1:
+        cap += " [%d beams, dominant %.0f%%]" % (info["n_beams"], 100.0 * info.get("dominant_frac", 1.0))
+    monitor.set_frame(det.name, wavefront_image(coeffs, vmax=vmax), cap)
 
 
 # --------------------------------------------------------------------------- #
@@ -308,9 +429,11 @@ def _np():
 
 
 def _wfs_response(scene, sensor_name):
-    """Re-trace the live scene and read the WFS residual Zernike vector (waves), or a flat
-    (zero) vector if nothing reaches the sensor. The single measurement front-end the poke +
-    the loop share -- identical to what publish_wavefront / ao_measure read."""
+    """Re-trace the live scene and read the WFS MODAL residual Zernike vector (waves) via _aberr_at,
+    or a flat (zero) vector if nothing reaches the sensor. The single measurement front-end the poke +
+    the loop share. This is the DM-correctable modal channel ONLY (turbulence/DM/figure); the static
+    read (publish_wavefront / ao_measure) additionally folds in the beam's own curvature defocus via
+    _sensor_wavefront, which the DM does not command -- for a collimated reference the two coincide."""
     from . import scan
     tracer.cached_segments = scan._trace(scene)
     c = _aberr_at(tracer.cached_segments, sensor_name)

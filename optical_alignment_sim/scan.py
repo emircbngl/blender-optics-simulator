@@ -451,10 +451,12 @@ def _fringe_array(det, segs, size_mm, px, exposure=0.0, read_noise=0.0, well_dep
     """
     if getattr(det.optics, "element_type", "") == 'WAVEFRONT_SENSOR':
         from . import ao                              # a WFS records its wavefront map, not fringes
-        coeffs = ao._aberr_at(segs, det.name)
+        ap = getattr(det.optics, 'clear_aperture', 0.0) or 0.0
+        coeffs, _info = ao._sensor_wavefront(segs, det.name, ap)   # modal aberr + beam-curvature defocus
         if coeffs is None:
             return None, 0
-        return ao.wavefront_image(coeffs, px), 1
+        vmax, _pv = ao._wavefront_field_stats(coeffs)
+        return ao.wavefront_image(coeffs, px, vmax=vmax), 1        # static read -> auto-scale (not fixed +-1)
     import numpy as np
     from mathutils import Vector
     beams = [s for s in segs if s["to"] == det.name]
