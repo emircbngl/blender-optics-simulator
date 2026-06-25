@@ -695,6 +695,59 @@ def _fringe_disambiguation(scene, segs):
     return issues
 
 
+def _beam_underfills_figure(scene, segs):
+    """A surface-figure imprint reads ONLY the patch the BEAM covers. If the incident Gaussian footprint
+    underfills the figured (imprint_surface) element's actual SURFACE EXTENT, the zonal/modal sensor render
+    samples just the central region -- the rest of the figure (the whole object) is never illuminated. WARN +
+    recommend a beam expander / collimator (the physical way to grow the beam; raising the source waist is
+    not). Read-only; uses the per-segment footprint w_mm (a RADIUS) and the element's mesh bounding extent.
+
+    Both w_mm and clear_aperture are RADII in this codebase (G.mirror sets clear_aperture = size*0.5, and
+    _vignetting plugs clear_aperture straight in as the truncation radius a). But clear_aperture is the
+    element's CLIP aperture (must exceed the beam or it vignettes) -- NOT the figure size -- so the fill
+    test compares the beam radius to the figure's actual transverse extent (~half the mesh bbox)."""
+    by_elem = {}
+    for s in segs:
+        nm = s.get("to")
+        if nm is None:
+            continue
+        E = scene.objects.get(nm)
+        if E is None or getattr(E, "optics", None) is None:
+            continue
+        op = E.optics
+        # the trace imprints a figure for a MIRROR / PRISM_MIRROR OR any coated element (coating pickoff),
+        # whenever imprint_surface is on (see tracer._spawn_coating / the reflect branches).
+        reflects = (op.element_type in ('MIRROR', 'PRISM_MIRROR')
+                    or (getattr(op, 'coating_reflectance', 0.0) or 0.0) > 0.0)
+        if not (getattr(op, 'imprint_surface', False) and reflects):
+            continue
+        w = s.get("w_mm", 0.0) or 0.0
+        if w <= 1e-6:
+            continue
+        try:
+            fig_r = 0.5 * max(E.dimensions)            # figure transverse extent ~ half the mesh bbox (radius)
+        except Exception:
+            fig_r = 0.0
+        if fig_r <= 1e-6:
+            continue
+        prev = by_elem.get(nm)                          # worst case = the SMALLEST incident footprint
+        if prev is None or w < prev[0]:
+            by_elem[nm] = (w, fig_r, E.name)
+    issues = []
+    for nm, (w, fig_r, ename) in by_elem.items():
+        fill = w / fig_r                               # beam RADIUS / figure RADIUS (like-for-like)
+        if fill < 0.9:
+            issues.append(_issue(
+                "beam_underfills_figure", ename,
+                "Beam underfills %s's figured surface: footprint radius %.1f mm vs figure radius %.1f mm "
+                "(%.0f%%). The surface-figure (zonal/modal) sensor render samples only the central patch; the "
+                "rest of the figure is never illuminated. Insert a beam EXPANDER / collimator upstream to grow "
+                "the beam to the figure size (raising the source waist alone is not physical)."
+                % (ename, w, fig_r, 100.0 * fill),
+                "WARN"))
+    return issues
+
+
 # ---------------------------------------------------------------------------
 # public entry point
 # ---------------------------------------------------------------------------
@@ -717,4 +770,5 @@ def run_diagnostics(scene):
     out += _relay_spacing(scene, segs)
     out += _back_reflection_and_ghost_hits(scene, segs)
     out += _fringe_disambiguation(scene, segs)
+    out += _beam_underfills_figure(scene, segs)
     return out

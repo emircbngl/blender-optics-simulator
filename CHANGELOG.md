@@ -57,7 +57,12 @@ data model: behavior reads element properties × `matrix_world`, never the mesh)
   render. `optics_api.zonal_render(sensor=…)` (+ MCP tool, + the *Sensor render* button on the WFS panel)
   finds the reflective element whose reflected beam actually reaches that sensor and renders ITS dense figure
   — so the map is what a real sensor measures, not data from nowhere (it errors if no reflector's beam lands
-  on the sensor). `swap_part` any mesh onto the reflector to read its figure.
+  on the sensor). `swap_part` any mesh onto the reflector to read its figure. The bench is PHYSICALLY
+  honest: a real HeNe (~0.5 mm waist) reaches the cm-scale figure through a **Galilean beam EXPANDER**
+  (afocal `f1=-5, f2=100`, spacing `f1+f2`, magnification `|f2/f1|=20`, collimated output — oracle ok=true),
+  not by cranking the source waist. A new **`beam_underfills_figure` diagnostic** warns when the footprint
+  (radius) is < 0.9× the figure's transverse extent — "insert a beam expander / collimator" — so the AI is
+  aware the beam must be grown to illuminate the whole object (both `w_mm` and `clear_aperture` are radii).
 
 ### Added — components
 - **Dispersing prisms** (equilateral / Littrow / Pellin-Broca / Amici) on real Sellmeier glasses

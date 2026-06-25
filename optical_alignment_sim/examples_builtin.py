@@ -494,17 +494,25 @@ def build_surface_figure(context):
     aoi = math.radians(12.0)
     dev = math.pi - 2.0 * aoi                                  # mirror fold = 180 - 2*AOI (oblique incidence)
     d_out = Vector((math.cos(dev), math.sin(dev), 0.0)).normalized()
-    las = G.source("SF_Laser", F - d_in * 260.0, d_in, coll, wavelength=632.8)
-    las.optics.waist_um = 9000.0                               # wide + collimated -> a big footprint on the figure
-    refl = G.mirror("SF_Reflector", F, d_in, d_out, coll, size=150.0, mirror_curve='FLAT')
+    # A real HeNe (~0.5 mm waist) CANNOT illuminate a cm-scale figure on its own -- you must PHYSICALLY grow
+    # the beam with a beam EXPANDER (raising the source waist is a cheat). A Galilean afocal expander (a
+    # diverging f1 then a converging f2 a distance f1+f2 apart) magnifies the beam by M=|f2/f1| and keeps it
+    # COLLIMATED (afocal C=0 at the f1+f2 spacing, oracle-verified). f1=-5, f2=100 -> M=20: the 0.5 mm waist
+    # becomes a ~10 mm (Ø20 mm) collimated beam that fills the figured optic. (Larger figure -> raise M.)
+    f1, f2 = -5.0, 100.0
+    sep = f1 + f2                                              # afocal spacing (signed sum) -> collimated output
+    las = G.source("SF_Laser", F - d_in * (sep + 150.0), d_in, coll, wavelength=632.8)   # native ~0.5 mm HeNe
+    G.lens("SF_BE_div", F - d_in * (sep + 110.0), d_in, coll, focal=f1, radius=6.0, lens_type='BCV')
+    G.lens("SF_BE_conv", F - d_in * 110.0, d_in, coll, focal=f2, radius=16.0, lens_type='BCX')   # recollimates
+    refl = G.mirror("SF_Reflector", F, d_in, d_out, coll, size=40.0, mirror_curve='FLAT')   # clip aper 20 >= beam 10
     old = refl.data
-    refl.data = _figured_surface_mesh("SF_ReflectorSurf")
+    refl.data = _figured_surface_mesh("SF_ReflectorSurf", half=9.0, nx=141)   # a Ø18 mm figured optic
     if old is not None and old.users == 0:
         bpy.data.meshes.remove(old)
     refl.optics.imprint_surface = True                         # stamp the figure on the reflected wavefront
-    refl.optics.clear_aperture = 160.0                         # let the wide footprint land on the figure
-    refl.optics.imprint_zonal_px = 200
-    G.wavefront_sensor("SF_WFS", F + d_out * 260.0, d_out, coll, size=95.0)   # catches the reflected beam
+    refl.optics.imprint_zonal_px = 200                         # (clear_aperture=20 from size; the Ø20 beam
+    #                                                            overfills the Ø18 figure -> whole figure lit)
+    G.wavefront_sensor("SF_WFS", F + d_out * 200.0, d_out, coll, size=40.0)   # catches the reflected beam
     return "OpticsExample_SurfaceFigure"
 
 
