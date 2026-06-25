@@ -151,8 +151,10 @@ def main():
         m_modal, m_zonal, m_mrms = _read_case(kmesh, aoi_deg=8.0, waist_um=2500.0, expander=True)
         np.save(os.path.join(OUT, "knight_modal.npy"), m_modal)
         np.save(os.path.join(OUT, "knight_zonal.npy"), m_zonal["field"])
-        meta["knight"] = {"modal_rms": m_mrms, "zonal_rms": m_zonal["rms_waves"],
-                          "zonal_pv": m_zonal["pv_waves"], "footprint_mm": m_zonal["footprint_mm"],
+        np.save(os.path.join(OUT, "knight_intensity.npy"), m_zonal["intensity"])
+        meta["knight"] = {"modal_rms": m_mrms, "zonal_rms": m_zonal["rms_gauss"],
+                          "zonal_rms_uniform": m_zonal["rms_uniform"], "zonal_pv": m_zonal["pv_waves"],
+                          "footprint_mm": m_zonal["footprint_mm"],
                           "nyquist_lp_mm": m_zonal["nyquist_lp_mm"], "hit_frac": m_zonal["hit_frac"],
                           "px": m_zonal["px"], "source": "real Staunton knight OBJ"}
         print("KNIGHT modal RMS=%.3f  zonal RMS=%.1f waves" % (m_mrms, m_zonal["rms_waves"]))
@@ -170,8 +172,10 @@ def main():
     o_modal, o_zonal, o_mrms = _read_case(omesh, aoi_deg=8.0, waist_um=9000.0, expander=False)
     np.save(os.path.join(OUT, "optic_modal.npy"), o_modal)
     np.save(os.path.join(OUT, "optic_zonal.npy"), o_zonal["field"])
-    meta["optic"] = {"modal_rms": o_mrms, "zonal_rms": o_zonal["rms_waves"],
-                     "zonal_pv": o_zonal["pv_waves"], "footprint_mm": o_zonal["footprint_mm"],
+    np.save(os.path.join(OUT, "optic_intensity.npy"), o_zonal["intensity"])
+    meta["optic"] = {"modal_rms": o_mrms, "zonal_rms": o_zonal["rms_gauss"],
+                     "zonal_rms_uniform": o_zonal["rms_uniform"], "zonal_pv": o_zonal["pv_waves"],
+                     "footprint_mm": o_zonal["footprint_mm"],
                      "nyquist_lp_mm": o_zonal["nyquist_lp_mm"], "hit_frac": o_zonal["hit_frac"],
                      "px": o_zonal["px"], "source": "figured mirror: faint astigmatism + ~2 mm MSF ripple"}
     print("OPTIC  modal RMS=%.3f  zonal RMS=%.3f waves" % (o_mrms, o_zonal["rms_waves"]))

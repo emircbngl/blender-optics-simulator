@@ -43,9 +43,13 @@ data model: behavior reads element properties × `matrix_world`, never the mesh)
   `ao.zonal_wavefront_at`) — an on-demand DENSE wavefront map: it samples the SAME verified field
   (`W = 2·Δdepth`) on a `px × px` grid and renders it RAW, with NO 15-mode projection, so mid/high-
   spatial-frequency figure (e.g. polishing ripple) the modal map low-passes away survives — up to the grid
-  Nyquist `(px-1)/(2·footprint)` (oracle-verified). The honest companion to the modal imprint: faithful for
-  real optical figures; a knight's relief renders as a geometrically-real but optically-meaningless map.
-  On-demand only → the trace stays byte-identical. (See `docs/img/zonal-wavefront.png`.)
+  Nyquist `(px-1)/(2·footprint)` (oracle-verified). The footprint is sampled as the actual **Gaussian beam**
+  (`I = exp(−2ρ²)`, oracle-verified) — the reference-plane detrend and the RMS are intensity-weighted (what
+  the beam senses; the dim 1/e² edge counts less than a top-hat would), and the map fades at the edge to show
+  the real beam. Both the beam-weighted and uniform (clear-aperture) RMS are reported. The honest companion
+  to the modal imprint: faithful for real optical figures; a knight's relief renders as a geometrically-real
+  but optically-meaningless map. On-demand only → the trace stays byte-identical. (See
+  `docs/img/zonal-wavefront.png`.)
 
 ### Added — components
 - **Dispersing prisms** (equilateral / Littrow / Pellin-Broca / Amici) on real Sellmeier glasses

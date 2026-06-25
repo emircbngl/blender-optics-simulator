@@ -30,7 +30,7 @@ fig.patch.set_facecolor("#0d0d10")
 col_titles = ["MODAL  (15 Noll Zernike re-sum — low-pass)", "ZONAL  (dense raw field — full spatial content)"]
 
 
-def _panel(ax, field, title, rms, cbar_label, clip_pct=99.0):
+def _panel(ax, field, title, rms_note, cbar_label, clip_pct=99.0, intensity=None):
     ax.set_facecolor("#0d0d10")
     finite = np.abs(field[np.isfinite(field)])
     # robust symmetric scale: clip to the clip_pct percentile so a few extreme outliers (a knight's deep
@@ -38,7 +38,14 @@ def _panel(ax, field, title, rms, cbar_label, clip_pct=99.0):
     full = float(np.nanmax(finite)) if finite.size else 1.0
     vmax = float(np.percentile(finite, clip_pct)) if finite.size else 1.0
     vmax = vmax or 1.0
-    im = ax.imshow(field, cmap="RdBu_r", vmin=-vmax, vmax=vmax, origin="lower", interpolation="nearest")
+    # FADE the map by the Gaussian beam intensity (alpha) so it shows the actual beam -- bright centre, dim
+    # 1/e^2 edge -- not a hard top-hat disc. The faded pixels blend into the dark panel background.
+    alpha = None
+    if intensity is not None:
+        a = np.where(np.isfinite(intensity), np.clip(intensity, 0.0, 1.0), 0.0)
+        alpha = np.where(np.isfinite(field), a, 0.0)
+    im = ax.imshow(field, cmap="RdBu_r", vmin=-vmax, vmax=vmax, origin="lower",
+                   interpolation="nearest", alpha=alpha)
     ax.set_title(title, color="#e8e8ea", fontsize=11, pad=7)
     ax.set_xticks([]); ax.set_yticks([])
     for s in ax.spines.values():
@@ -47,7 +54,7 @@ def _panel(ax, field, title, rms, cbar_label, clip_pct=99.0):
     cb.set_label(cbar_label, color="#b9b9c0", fontsize=8)
     cb.ax.tick_params(colors="#9a9aa2", labelsize=7)
     cb.outline.set_edgecolor("#33343a")
-    note = "RMS = %s waves" % rms
+    note = rms_note
     if clip_pct < 99.0 and full > 2.0 * vmax:                 # heavily clipped -> say so (honest)
         note += "\nscale clipped ±%.0f (full ±%.0f)" % (vmax, full)
     ax.text(0.03, 0.04, note, transform=ax.transAxes, color="#f2f2f4",
@@ -55,17 +62,24 @@ def _panel(ax, field, title, rms, cbar_label, clip_pct=99.0):
             bbox=dict(boxstyle="round,pad=0.3", fc="#000000aa", ec="none"))
 
 
+def _fmt(v):
+    return ("%.0f" % v) if abs(v) > 100 else ("%.3f" % v)
+
+
 for r, (key, rlabel) in enumerate(rows):
     modal = np.load(os.path.join(SRC, key + "_modal.npy"))
     zonal = np.load(os.path.join(SRC, key + "_zonal.npy"))
+    inten = np.load(os.path.join(SRC, key + "_intensity.npy")) if os.path.exists(
+        os.path.join(SRC, key + "_intensity.npy")) else None
     m = meta[key]
-    mr = "%.0f" % m["modal_rms"] if m["modal_rms"] > 100 else "%.3f" % m["modal_rms"]
-    zr = "%.0f" % m["zonal_rms"] if m["zonal_rms"] > 100 else "%.3f" % m["zonal_rms"]
+    mr = "RMS = %s waves" % _fmt(m["modal_rms"])
+    # zonal RMS now beam-weighted (what the Gaussian beam senses) + the uniform clear-aperture figure
+    zr = "RMS = %s waves  (beam-weighted)\n%s uniform" % (_fmt(m["zonal_rms"]), _fmt(m["zonal_rms_uniform"]))
     # the knight's OPD is extreme-tailed (PV ~1.7e5 waves) -> clip its zonal map hard so the surface relief
     # reads; a real optic is well-behaved (no clip needed).
     z_clip = 73.0 if key == "knight" else 99.0
-    _panel(axes[r][0], modal, (col_titles[0] if r == 0 else ""), mr, "waves")
-    _panel(axes[r][1], zonal, (col_titles[1] if r == 0 else ""), zr, "waves", clip_pct=z_clip)
+    _panel(axes[r][0], modal, (col_titles[0] if r == 0 else ""), mr, "waves", intensity=inten)
+    _panel(axes[r][1], zonal, (col_titles[1] if r == 0 else ""), zr, "waves", clip_pct=z_clip, intensity=inten)
     axes[r][0].set_ylabel(rlabel, color="#d8d8dc", fontsize=10, labelpad=12)
     # row footnote: sampling metadata
     axes[r][1].text(1.30, 0.5, "%dpx  ·  Ø%.0f mm\nNyquist %.2f lp/mm\nhits %.0f%%"
@@ -76,9 +90,10 @@ fig.suptitle("Surface-figure wavefront:  modal (15-mode, low-pass)  vs  zonal (d
              color="#f4f4f6", fontsize=12.5, y=0.995)
 fig.text(0.5, 0.008,
          "Same verified physics (W = 2·Δdepth on reflection); the zonal map skips the 15-mode projection, "
-         "so mid/high-spatial-frequency figure survives up to the grid Nyquist.  "
-         "A knight is NOT an optic — its map is geometrically real but optically meaningless (tens of "
-         "thousands of waves); the figured mirror is the honest use-case.",
+         "so mid/high-spatial-frequency figure survives up to the grid Nyquist.  The footprint is sampled as "
+         "the GAUSSIAN beam (I = exp(−2ρ²)) — maps fade at the dim 1/e² edge and the RMS is beam-weighted "
+         "(what the beam senses), not a top-hat.  A knight is NOT an optic — its map is geometrically real "
+         "but optically meaningless; the figured mirror is the honest use-case.",
          color="#7a7a82", fontsize=7.2, ha="center", va="bottom", wrap=True)
 fig.subplots_adjust(left=0.06, right=0.90, top=0.93, bottom=0.07, hspace=0.13, wspace=0.05)
 fig.savefig(OUT, dpi=145, facecolor=fig.get_facecolor())

@@ -116,12 +116,14 @@ def publish_wavefront(det, segs):
 # modal path is NO projection onto 15 modes -- no new optical law.
 # --------------------------------------------------------------------------- #
 
-def zonal_wavefront_image(field, vmax=None, bg=(0.05, 0.05, 0.06, 1.0)):
+def zonal_wavefront_image(field, vmax=None, bg=(0.05, 0.05, 0.06, 1.0), intensity=None):
     """False-colour RGBA (HxWx4 float32) of a RAW zonal wavefront field W(x,y) in waves (NaN outside the
     pupil / where probes missed), on the SAME diverging blue(low) -> green(zero) -> red(high) scale as
     wavefront_image. ``vmax`` (waves) sets +-full-scale; None -> auto from the field's max |W| (zonal maps
     have a wide dynamic range, so a fixed +-1 would saturate). Unlike wavefront_image (15-mode modal
-    re-sum), this maps the field DIRECTLY -- no low-pass."""
+    re-sum), this maps the field DIRECTLY -- no low-pass. ``intensity`` (the surface_imprint_field beam
+    weight, exp(-2*rho^2)) FADES each pixel toward bg by its weight, so the map shows the actual GAUSSIAN
+    beam -- bright centre, dim edge -- not a hard top-hat disc (the footprint isn't uniform)."""
     import numpy as np
     F = np.asarray(field, dtype=float)
     valid = ~np.isnan(F)
@@ -130,16 +132,24 @@ def zonal_wavefront_image(field, vmax=None, bg=(0.05, 0.05, 0.06, 1.0)):
     vmax = vmax or 1.0
     t = np.clip(0.5 + 0.5 * np.where(valid, F, 0.0) / vmax, 0.0, 1.0)   # W=0 -> 0.5 (uniform mid-colour)
     h, wd = F.shape
+    c0 = np.where(valid, t, bg[0])
+    c1 = np.where(valid, 1.0 - np.abs(2.0 * t - 1.0), bg[1])
+    c2 = np.where(valid, 1.0 - t, bg[2])
+    if intensity is not None:                                # fade the colour toward bg by the beam intensity
+        a = np.where(valid & np.isfinite(np.asarray(intensity, dtype=float)),
+                     np.clip(np.asarray(intensity, dtype=float), 0.0, 1.0), 0.0)
+        c0 = a * c0 + (1.0 - a) * bg[0]
+        c1 = a * c1 + (1.0 - a) * bg[1]
+        c2 = a * c2 + (1.0 - a) * bg[2]
     arr = np.empty((h, wd, 4), dtype='float32')
-    arr[:] = bg                                              # outside the pupil / missed probes
-    arr[..., 0] = np.where(valid, t, arr[..., 0])
-    arr[..., 1] = np.where(valid, 1.0 - np.abs(2.0 * t - 1.0), arr[..., 1])
-    arr[..., 2] = np.where(valid, 1.0 - t, arr[..., 2])
+    arr[..., 0] = c0
+    arr[..., 1] = c1
+    arr[..., 2] = c2
     arr[..., 3] = 1.0
     return arr
 
 
-def zonal_wavefront_at(scene, element_name, segs, px=128, detrend=True):
+def zonal_wavefront_at(scene, element_name, segs, px=128, detrend=True, weight='gaussian'):
     """On-demand DENSE zonal surface-figure map for a reflective element, reconstructing the incident ray
     (hit point H, direction d, footprint w) from the traced segments -- the "sensor render" entry point.
     Returns tracer.surface_imprint_field(...)'s dict (plus ``element``/``wavelength_nm``) or None if
@@ -164,7 +174,7 @@ def zonal_wavefront_at(scene, element_name, segs, px=128, detrend=True):
         return None
     w = best.get("w_mm", 0.0) or 0.0
     wl = best.get("wavelength", 632.8) or 632.8
-    out = tracer.surface_imprint_field(E, p2, d, w, wl, px=px, detrend=detrend)
+    out = tracer.surface_imprint_field(E, p2, d, w, wl, px=px, detrend=detrend, weight=weight)
     if out is not None:
         out["element"] = element_name
         out["wavelength_nm"] = wl
@@ -601,7 +611,7 @@ class OPTICS_OT_wfs_zonal_render(Operator):
         except Exception:
             pass
         import numpy as np
-        img = np.flipud(zonal_wavefront_image(fld["field"]))    # Blender pixels are bottom-up
+        img = np.flipud(zonal_wavefront_image(fld["field"], intensity=fld.get("intensity")))  # bottom-up + beam fade
         h, wd = img.shape[0], img.shape[1]
         bi = bpy.data.images.get("zonal_wavefront") or bpy.data.images.new("zonal_wavefront", wd, h, alpha=True)
         if tuple(bi.size) != (wd, h):
@@ -616,11 +626,11 @@ class OPTICS_OT_wfs_zonal_render(Operator):
         # also push the map to any wavefront-sensor monitor so it shows in the bench monitor window
         wfs = next((o.name for o in scene.objects if getattr(o, "optics", None)
                     and o.optics.element_type == 'WAVEFRONT_SENSOR'), None)
-        cap = ("ZONAL %s  RMS=%.3f PV=%.3f waves  %dpx  Nyq=%.2f lp/mm  hits=%.0f%%"
-               % (ob.name, fld["rms_waves"], fld["pv_waves"], fld["px"],
+        cap = ("ZONAL %s  RMS=%.3f waves (beam-wtd; %.3f uniform)  PV=%.3f  %dpx  Nyq=%.2f lp/mm  hits=%.0f%%"
+               % (ob.name, fld["rms_gauss"], fld["rms_uniform"], fld["pv_waves"], fld["px"],
                   fld["nyquist_lp_mm"], 100.0 * fld["hit_frac"]))
         if wfs is not None:
-            monitor.set_frame(wfs, zonal_wavefront_image(fld["field"]), cap)
+            monitor.set_frame(wfs, zonal_wavefront_image(fld["field"], intensity=fld.get("intensity")), cap)
             scene.optics.monitor_show = True
         tracer._tag_redraw()
         self.report({'INFO'}, cap + "  ->  " + out)

@@ -375,31 +375,35 @@ _IMPRINT_BACKUP = 50.0             # mm: back the probe ray up along -ray.dir be
                                    # starts safely outside the mesh and hits the front surface
 
 
-def _plane_fit(u, v, z):
-    """Least-squares plane z ~ a0 + au*u + av*v over matched (u,v,z) samples. Returns (a0, au, av).
+def _plane_fit(u, v, z, weights=None):
+    """(Weighted) least-squares plane z ~ a0 + au*u + av*v over matched (u,v,z) samples. Returns (a0, au, av).
     Used to detrend the footprint depths against their best-fit reference plane (so a flat-but-tilted
-    surface imprints 0). Solves the 3x3 normal equations directly (small, always well-conditioned for a
-    non-degenerate footprint); falls back to the mean if the system is singular (e.g. all points colinear)."""
+    surface imprints 0). ``weights`` (per-sample, e.g. Gaussian beam intensity) makes the reference plane
+    track where the beam actually is; weights=None reproduces the plain unweighted fit EXACTLY (so the modal
+    imprint path is byte-identical). Solves the 3x3 normal equations directly (small, always well-conditioned
+    for a non-degenerate footprint); falls back to the weighted mean if the system is singular."""
     n = len(z)
     if n == 0:
         return 0.0, 0.0, 0.0
-    Suu = Suv = Svv = Su = Sv = Sz = Suz = Svz = 0.0
+    Suu = Suv = Svv = Su = Sv = Sz = Suz = Svz = Sw = 0.0
     for i in range(n):
         ui, vi, zi = u[i], v[i], z[i]
-        Suu += ui * ui; Suv += ui * vi; Svv += vi * vi
-        Su += ui; Sv += vi; Sz += zi
-        Suz += ui * zi; Svz += vi * zi
-    # normal equations M [a0, au, av]^T = b, with M symmetric:
-    #   [ n   Su  Sv ] [a0]   [ Sz  ]
+        wi = weights[i] if weights is not None else 1.0
+        Suu += wi * ui * ui; Suv += wi * ui * vi; Svv += wi * vi * vi
+        Su += wi * ui; Sv += wi * vi; Sz += wi * zi
+        Suz += wi * ui * zi; Svz += wi * vi * zi
+        Sw += wi
+    # weighted normal equations M [a0, au, av]^T = b, with M symmetric (Sw = sum of weights = n unweighted):
+    #   [ Sw  Su  Sv ] [a0]   [ Sz  ]
     #   [ Su  Suu Suv] [au] = [ Suz ]
     #   [ Sv  Suv Svv] [av]   [ Svz ]
-    M = [[float(n), Su, Sv], [Su, Suu, Suv], [Sv, Suv, Svv]]
+    M = [[Sw, Su, Sv], [Su, Suu, Suv], [Sv, Suv, Svv]]
     b = [Sz, Suz, Svz]
     aug = [M[r][:] + [b[r]] for r in range(3)]
     for col in range(3):                                      # Gaussian elimination, partial pivoting
         piv = max(range(col, 3), key=lambda r: abs(aug[r][col]))
         if abs(aug[piv][col]) < 1e-15:
-            return Sz / n, 0.0, 0.0                           # singular -> just the mean (piston only)
+            return Sz / Sw, 0.0, 0.0                           # singular -> just the (weighted) mean (piston)
         aug[col], aug[piv] = aug[piv], aug[col]
         pv = aug[col][col]
         for k in range(col, 4):
@@ -535,7 +539,7 @@ def _surface_imprint_coeffs(E, ray, H, sn, t):
     return coeffs
 
 
-def surface_imprint_field(E, H, d, w, wl_nm, px=128, detrend=True):
+def surface_imprint_field(E, H, d, w, wl_nm, px=128, detrend=True, weight='gaussian'):
     """DENSE ZONAL surface-figure -> wavefront map (NO modal fit). Sample reflective element E's ACTUAL
     world-space mesh over the incident Gaussian footprint on a px*px Cartesian grid and return the RAW
     round-trip optical-path field W(x,y) in WAVES -- the SAME verified physics as the modal imprint
@@ -558,12 +562,23 @@ def surface_imprint_field(E, H, d, w, wl_nm, px=128, detrend=True):
       wl_nm    wavelength (nm) for the mm -> waves conversion
       px       grid resolution across the footprint DIAMETER (the "chosen sampling level"); higher = finer
       detrend  remove the best-fit reference plane (piston + x/y tilt) so a flat/tilted mirror reads ~0
+      weight   how the BEAM samples the footprint. 'gaussian' (default): weight every sample by the beam
+               intensity I = exp(-2*rho^2) (rho = r/w; oracle-verified), so the RMS and the reference plane
+               reflect what the GAUSSIAN beam actually senses -- the dim 1/e^2 EDGE counts far less than the
+               bright centre (the footprint is NOT a top-hat). 'uniform': flat top-hat = the clear-aperture
+               figure-metrology RMS. (The grid samples the rho<=1 disc either way; only the weighting differs.)
 
     Returns a dict, or None on failure (no mesh / no footprint / <6 hits):
       field            px*px numpy array of W in waves; NaN OUTSIDE the disc or where a probe MISSES
       mask             px*px bool, True where field is valid
-      rms_waves        RMS of W over valid samples (the honest zonal RMS -- full spatial content)
-      pv_waves         peak-to-valley of W over valid samples
+      intensity        px*px Gaussian intensity weight exp(-2*rho^2) (NaN outside) -- for fading the map so
+                       it shows the actual beam, not a hard top-hat disc
+      rms_waves        RMS per ``weight`` (gaussian = the honest "what the beam senses" RMS)
+      rms_uniform      uniform top-hat RMS over the disc (the clear-aperture figure metric)
+      rms_gauss        Gaussian-intensity-weighted RMS (what the beam measures); <= rms_uniform for edge-heavy
+                       figures (the beam's low-intensity wings carry less of the error)
+      weight           the weighting actually used ('gaussian' | 'uniform')
+      pv_waves         peak-to-valley over the disc (NOT intensity-weighted -- the full range present)
       hit_frac         valid samples / in-disc grid points (sampling completeness; <1 -> mesh gaps)
       n_hit            number of valid samples
       px               the grid resolution used
@@ -615,15 +630,22 @@ def surface_imprint_field(E, H, d, w, wl_nm, px=128, detrend=True):
     # both >=6 hits and >=10% of the in-disc grid to land on the surface, else the map is not meaningful.
     if len(zs) < 6 or n_in == 0 or float(len(zs)) / float(n_in) < 0.10:
         return None
-    # DETREND against the footprint's best-fit reference plane (piston + x/y tilt) -- a flat mirror returns
-    # a linear depth ramp (its overall fold orientation, already carried by geometry.reflect), NOT figure
-    # error; subtracting it makes a flat surface read EXACTLY 0. Same reference as the modal path.
+    # GAUSSIAN BEAM intensity weight per sample: I = exp(-2*rho^2), rho = r/w (oracle-verified). The beam
+    # senses the dim 1/e^2 EDGE far less than the bright centre, so a beam-faithful RMS + reference plane are
+    # intensity-weighted (the footprint is a Gaussian, not a top-hat). 'uniform' keeps the flat metrology fit.
+    use_gauss = (weight != 'uniform')
+    Iw = [math.exp(-2.0 * (us[k] * us[k] + vs[k] * vs[k])) for k in range(len(zs))]
+    # DETREND against the footprint's best-fit reference plane (piston + x/y tilt) -- a flat mirror returns a
+    # linear depth ramp (its overall fold orientation, already carried by geometry.reflect), NOT figure error;
+    # subtracting it makes a flat surface read EXACTLY 0. Intensity-weighted when gaussian (the plane tracks
+    # where the beam actually is). Same reference convention as the modal path.
     if detrend:
-        a0, au, av = _plane_fit(us, vs, zs)
+        a0, au, av = _plane_fit(us, vs, zs, weights=(Iw if use_gauss else None))
     else:
         a0 = au = av = 0.0
     lam_mm = wl_nm * 1.0e-6                                   # wavelength in mm (wl is nm)
-    rms2 = 0.0
+    intensity = np.full((px, px), np.nan, dtype=float)
+    su = sg = swt = 0.0                                       # uniform sum-sq, gaussian wtd sum-sq, sum-of-wts
     wmin = None
     wmax = None
     for k, (iy, ix) in enumerate(cells):
@@ -631,15 +653,24 @@ def surface_imprint_field(E, H, d, w, wl_nm, px=128, detrend=True):
         # point has a SMALLER along-beam depth -> negative W (advanced); a recess is positive (retarded).
         wv = 2.0 * (zs[k] - (a0 + au * us[k] + av * vs[k])) / lam_mm
         field[iy, ix] = wv
-        rms2 += wv * wv
+        intensity[iy, ix] = Iw[k]
+        su += wv * wv
+        sg += Iw[k] * wv * wv
+        swt += Iw[k]
         wmin = wv if wmin is None else (wv if wv < wmin else wmin)
         wmax = wv if wmax is None else (wv if wv > wmax else wmax)
     n_hit = len(cells)
+    rms_uniform = math.sqrt(su / n_hit)                      # flat top-hat (clear-aperture figure metric)
+    rms_gauss = math.sqrt(sg / swt) if swt > 0.0 else rms_uniform   # what the Gaussian beam actually senses
     footprint_mm = 2.0 * w
     return {
         "field": field,
         "mask": ~np.isnan(field),
-        "rms_waves": math.sqrt(rms2 / n_hit),
+        "intensity": intensity,
+        "rms_waves": rms_gauss if use_gauss else rms_uniform,
+        "rms_uniform": rms_uniform,
+        "rms_gauss": rms_gauss,
+        "weight": 'gaussian' if use_gauss else 'uniform',
         "pv_waves": (wmax - wmin) if (wmax is not None and wmin is not None) else 0.0,
         "hit_frac": float(n_hit) / float(n_in),
         "n_hit": n_hit,

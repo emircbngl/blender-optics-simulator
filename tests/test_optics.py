@@ -1839,14 +1839,23 @@ _zf_flat, _ = _imp_zonal("ZON_flat", lambda x, y: 0.0)
 check("zonal: FLAT surface -> ~0 field (plane detrend)",
       _zf_flat is not None and _zf_flat["rms_waves"] < 2.0e-2,
       None if _zf_flat is None else "RMS %.5f waves, hits %.0f%%" % (_zf_flat["rms_waves"], 100.0 * _zf_flat["hit_frac"]))
-# (ii) SPHERICAL cap -> zonal AGREES with the modal map (low-order: ratio ~1); dense sampling is complete
+# (ii) SPHERICAL cap -> zonal AGREES with the modal map (low-order: ratio ~1). Compare the UNIFORM zonal RMS
+#      to the modal RMS (both are uniform-disk metrics; the Noll Zernikes are orthonormal over the disc).
 _zf_sph, _cf_sph2 = _imp_zonal("ZON_sph", lambda x, y: (x * x + y * y) / (2.0 * 4000.0))
 _mrms_sph = physics.wavefront_rms(_cf_sph2)
-_zrat = (_zf_sph["rms_waves"] / _mrms_sph) if (_zf_sph and _mrms_sph > 1e-6) else 0.0
-check("zonal: SPHERE -> zonal RMS agrees with modal (low-order, 0.5<ratio<2) + full sampling",
+_zrat = (_zf_sph["rms_uniform"] / _mrms_sph) if (_zf_sph and _mrms_sph > 1e-6) else 0.0
+check("zonal: SPHERE -> uniform zonal RMS agrees with modal (low-order, 0.5<ratio<2) + full sampling",
       _zf_sph is not None and 0.5 < _zrat < 2.0 and _zf_sph["hit_frac"] > 0.9,
-      None if _zf_sph is None else "zonal %.3f / modal %.3f = %.2fx, hits %.0f%%"
-      % (_zf_sph["rms_waves"], _mrms_sph, _zrat, 100.0 * _zf_sph["hit_frac"]))
+      None if _zf_sph is None else "uniform %.3f / modal %.3f = %.2fx, hits %.0f%%"
+      % (_zf_sph["rms_uniform"], _mrms_sph, _zrat, 100.0 * _zf_sph["hit_frac"]))
+# (ii-b) BEAM SAMPLING: the footprint is a GAUSSIAN, not a top-hat. The beam-weighted (I=exp(-2 rho^2)) RMS
+#        is reported and, for the edge-heavy defocus bowl, is strictly LESS than the uniform RMS -- the dim
+#        1/e^2 wings carry less of the figure error, as the beam actually senses it.
+check("zonal: SPHERE -> beam-weighted (gaussian) RMS < uniform RMS (dim 1/e^2 wings down-weighted)",
+      _zf_sph is not None and "rms_gauss" in _zf_sph and "rms_uniform" in _zf_sph
+      and 0.0 < _zf_sph["rms_gauss"] < _zf_sph["rms_uniform"] and _zf_sph["weight"] == "gaussian",
+      None if _zf_sph is None else "gauss %.3f < uniform %.3f (%.2fx)"
+      % (_zf_sph["rms_gauss"], _zf_sph["rms_uniform"], _zf_sph["rms_gauss"] / max(_zf_sph["rms_uniform"], 1e-9)))
 # (iii) HIGH-spatial-frequency ripple (period ~2.5 mm, ~7 cycles across the Ø18 mm footprint) -> the 15-mode
 #       modal fit CANNOT carry it (RMS collapses), but the zonal field DOES -> zonal RMS >> modal RMS. THE
 #       point. NB the SURFACE mesh must be fine (nx=201 -> 0.4 mm) or it aliases the ripple before sampling.
