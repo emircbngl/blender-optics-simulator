@@ -486,6 +486,82 @@ def _figured_surface_mesh(name, half=65.0, nx=181):
     return me
 
 
+# Standard die pip layout (face value -> pip centres on a unit face, +/- corner ring at radius ~0.52).
+_DIE_PIPS = {
+    1: [(0.0, 0.0)],
+    2: [(-1, 1), (1, -1)],
+    3: [(-1, 1), (0, 0), (1, -1)],
+    4: [(-1, -1), (-1, 1), (1, -1), (1, 1)],
+    5: [(-1, -1), (-1, 1), (0, 0), (1, -1), (1, 1)],
+    6: [(-1, -1), (-1, 0), (-1, 1), (1, -1), (1, 0), (1, 1)],
+}
+
+
+def _die_face_mesh(name, half=9.0, nx=161, value=5, pip_depth_mm=0.006, pip_radius_frac=0.15):
+    """A DIE-FACE relief: a flat reflector with the ``value`` (1-6) pips as smoothly RECESSED circular
+    dimples in the standard arrangement, so the imprint reads a RECOGNIZABLE wavefront (the pip pattern --
+    a five reads as the quincunx). A modest pip depth (~6 um -> ~20 waves OPD) keeps the map readable, not
+    the tens-of-thousands-of-waves a real 3-D object gives. swap_part this onto a surface-figure reflector,
+    or use build_example('die'). Same grid construction as _figured_surface_mesh."""
+    import bmesh
+    ring = 0.52 * half                                  # pip-centre ring radius
+    centres = [(cx * ring, cy * ring) for (cx, cy) in _DIE_PIPS.get(value, _DIE_PIPS[5])]
+    pr = max(pip_radius_frac * 2.0 * half, 1e-3)         # pip radius
+    pr2 = pr * pr
+
+    def zf(x, y):
+        z = 0.0
+        for (cx, cy) in centres:
+            d2 = (x - cx) ** 2 + (y - cy) ** 2
+            if d2 < pr2:                                 # smooth dome dimple (recess): -depth*(1-(d/pr)^2)
+                z -= pip_depth_mm * (1.0 - d2 / pr2)
+        return z
+    b = bmesh.new()
+    vv = [[None] * nx for _ in range(nx)]
+    for iy in range(nx):
+        for ix in range(nx):
+            x = -half + 2.0 * half * ix / (nx - 1)
+            y = -half + 2.0 * half * iy / (nx - 1)
+            vv[iy][ix] = b.verts.new((x, y, zf(x, y)))
+    b.verts.ensure_lookup_table()
+    for iy in range(nx - 1):
+        for ix in range(nx - 1):
+            b.faces.new((vv[iy][ix], vv[iy][ix + 1], vv[iy + 1][ix + 1], vv[iy + 1][ix]))
+    bmesh.ops.recalc_face_normals(b, faces=b.faces)
+    me = bpy.data.meshes.new(name)
+    b.to_mesh(me)
+    b.free()
+    return me
+
+
+def build_die(context):
+    """RECOGNIZABLE-OBJECT wavefront sensing: a collimated beam reads a DIE FACE (the 5-pip quincunx) off a
+    reflector, so the dense ZONAL sensor map shows the recessed pips. Same bench + expander as
+    build_surface_figure (oblique reflector + Galilean afocal expander filling the face), with a die-face
+    relief instead of a polishing figure. Select SF_WFS and run 'Sensor render' / optics_api.zonal_render
+    ('DIE_WFS') to read the pips. Change the face with swap_part or by editing _die_face_mesh(value=...)."""
+    coll = G.example_collection("OpticsExample_Die")
+    F = Vector((0.0, 0.0, 0.0))
+    d_in = Vector((1.0, 0.0, 0.0))
+    aoi = math.radians(12.0)
+    dev = math.pi - 2.0 * aoi
+    d_out = Vector((math.cos(dev), math.sin(dev), 0.0)).normalized()
+    f1, f2 = -5.0, 100.0
+    sep = f1 + f2                                        # afocal -> collimated Ø20 mm beam fills the face
+    G.source("DIE_Laser", F - d_in * (sep + 150.0), d_in, coll, wavelength=632.8)
+    G.lens("DIE_BE_div", F - d_in * (sep + 110.0), d_in, coll, focal=f1, radius=6.0, lens_type='BCV')
+    G.lens("DIE_BE_conv", F - d_in * 110.0, d_in, coll, focal=f2, radius=16.0, lens_type='BCX')
+    refl = G.mirror("DIE_Reflector", F, d_in, d_out, coll, size=40.0, mirror_curve='FLAT')
+    old = refl.data
+    refl.data = _die_face_mesh("DIE_FaceSurf", half=9.0, nx=161, value=5)   # a Ø18 mm die face, the "5"
+    if old is not None and old.users == 0:
+        bpy.data.meshes.remove(old)
+    refl.optics.imprint_surface = True
+    refl.optics.imprint_zonal_px = 220
+    G.wavefront_sensor("DIE_WFS", F + d_out * 250.0, d_out, coll, size=24.0)
+    return coll.name
+
+
 def build_surface_figure(context, beam='collimated'):
     """Surface-figure WAVEFRONT SENSING: a laser strikes a FIGURED reflector at an OBLIQUE angle (AOI 12 deg)
     and a WAVEFRONT SENSOR catches the REFLECTED beam. Select the WFS (or reflector) and run 'Sensor render',
@@ -559,6 +635,7 @@ EXAMPLES = {
                               lambda ctx: build_surface_figure(ctx, beam='native')),
     'surface_figure_diverging': ("Surface-Figure: expanded NON-COLLIMATED beam (diverges, overfills sensor -> clipped)",
                                  lambda ctx: build_surface_figure(ctx, beam='diverging')),
+    'die': ("Recognizable Object: a DIE face (5-pip quincunx) read as a zonal wavefront", build_die),
 }
 
 

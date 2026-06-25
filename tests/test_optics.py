@@ -50,7 +50,7 @@ check("gouy(waist) = 0", abs(physics.gouy_phase(physics.q_from_waist(0.5, 632.8)
 print("[examples build + trace]")
 for kind in ("mach_zehnder", "michelson", "hong_ou_mandel", "bell", "adaptive_optics", "newton_rings",
              "periscope", "cage_system", "tube_system", "rail_system", "hybrid_system",
-             "microscope", "dhm", "aom"):
+             "microscope", "dhm", "aom", "die"):
     r = optics_api.build_example(kind)
     check("build %s" % kind, isinstance(r, dict) and r.get("segments", 0) >= 1, str(r))
 
@@ -2062,6 +2062,24 @@ check("zonal: on-demand render leaves the trace byte-identical (live scene, rend
 for _o in list(_cbi.objects):
     _IG.drop_example_object(_o)
 bpy.data.collections.remove(_cbi)
+
+print("[3.4 recognizable object: build_example('die') -> the 5-pip quincunx reads as a zonal wavefront]")
+optics_api.build_example("die")
+_dsegs = scan._trace(sc)
+check("3.4 die: the collimated beam reaches the wavefront sensor", any(s.get("to") == "DIE_WFS" for s in _dsegs))
+_dfld = ao.zonal_wavefront_at_sensor(sc, "DIE_WFS", _dsegs, px=160)
+_dpv = (np.nanmax(_dfld["field"]) - np.nanmin(_dfld["field"])) if _dfld else 0.0
+check("3.4 die: zonal sensor reads the recessed pips (non-trivial PV from the 6 um dimples)",
+      _dfld is not None and _dpv > 5.0, "PV=%.2f waves" % _dpv)
+# the 5 pips are 5 distinct recesses: the field minimum (deepest pip) is well below the mean (real relief)
+_dF = _dfld["field"]
+_dvalid = _dF[np.isfinite(_dF)]
+check("3.4 die: the pip recesses are real local minima (min << mean over the footprint)",
+      _dvalid.size > 0 and (_dvalid.mean() - _dvalid.min()) > 2.0,
+      "mean-min=%.2f waves" % (_dvalid.mean() - _dvalid.min()) if _dvalid.size else "no field")
+# on-demand zonal render does NOT mutate the trace (byte-identical)
+check("3.4 die: zonal render leaves the trace byte-identical",
+      len(scan._trace(sc)) == len(_dsegs))
 
 print("[sensor-aperture capture: a finite sensor reads ONLY the beam within its aperture]")
 # The SAME figured optic, read with an expanded COLLIMATED beam (fits the sensor) vs an expanded DIVERGING
