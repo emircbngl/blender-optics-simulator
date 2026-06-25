@@ -542,7 +542,7 @@ def _surface_imprint_coeffs(E, ray, H, sn, t):
     return coeffs
 
 
-def surface_imprint_field(E, H, d, w, wl_nm, px=128, detrend=True, weight='gaussian'):
+def surface_imprint_field(E, H, d, w, wl_nm, px=128, detrend=True, weight='gaussian', rho_max=1.0):
     """DENSE ZONAL surface-figure -> wavefront map (NO modal fit). Sample reflective element E's ACTUAL
     world-space mesh over the incident Gaussian footprint on a px*px Cartesian grid and return the RAW
     round-trip optical-path field W(x,y) in WAVES -- the SAME verified physics as the modal imprint
@@ -607,6 +607,10 @@ def surface_imprint_field(E, H, d, w, wl_nm, px=128, detrend=True, weight='gauss
     Hc = Vector(H)
     field = np.full((px, px), np.nan, dtype=float)
     ax = np.linspace(-1.0, 1.0, px)                           # normalized footprint coords u,v in [-1,1]
+    # rho_max < 1 = an APERTURE STOP downstream (e.g. a sensor smaller than the beam at it): only the central
+    # rho <= rho_max of the figure's footprint is carried THROUGH to / captured by the stop. A diverging beam
+    # overfills a sensor (rho_max < 1) so its outer figure is clipped; a collimated beam that fits keeps it all.
+    rmax2 = max(1e-6, min(1.0, rho_max)) ** 2
     us = []
     vs = []
     zs = []
@@ -616,8 +620,8 @@ def surface_imprint_field(E, H, d, w, wl_nm, px=128, detrend=True, weight='gauss
         v = float(ax[iy])
         for ix in range(px):
             u = float(ax[ix])
-            if u * u + v * v > 1.0:
-                continue                                      # outside the circular footprint -> stays NaN
+            if u * u + v * v > rmax2:
+                continue                                      # outside the captured footprint -> stays NaN
             n_in += 1
             P = Hc + e1 * (u * w) + e2 * (v * w)
             origin = P - d * _IMPRINT_BACKUP                  # back up so the probe starts outside the mesh
@@ -683,6 +687,8 @@ def surface_imprint_field(E, H, d, w, wl_nm, px=128, detrend=True, weight='gauss
         "n_hit": n_hit,
         "px": px,
         "footprint_mm": footprint_mm,
+        "rho_max": min(1.0, rho_max),                          # downstream-aperture capture fraction (radius)
+        "captured_frac": min(1.0, rho_max) ** 2,               # captured AREA fraction of the figure footprint
         # grid Nyquist: px samples span the diameter with spacing footprint/(px-1), so f_Nyq = (px-1)/(2D)
         # (oracle-verified P_min = 2D/(px-1)). Effective resolution = min(this, mesh facet density).
         "nyquist_lp_mm": (px - 1) / (2.0 * footprint_mm) if footprint_mm > 0.0 else 0.0,

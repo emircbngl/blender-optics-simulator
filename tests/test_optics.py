@@ -1898,6 +1898,26 @@ for _o in list(_cbi.objects):
     _IG.drop_example_object(_o)
 bpy.data.collections.remove(_cbi)
 
+print("[sensor-aperture capture: a finite sensor reads ONLY the beam within its aperture]")
+# The SAME figured optic, read with an expanded COLLIMATED beam (fits the sensor) vs an expanded DIVERGING
+# beam (overfills it). The sensor captures rho_max = aperture/w_sensor of the figure + power 1-exp(-2a^2/w^2).
+# The simulation PRODUCES the difference (Gaussian q-propagation -> different w at the sensor; the aperture
+# stop clips the diverging beam) -- the only input that differs is the beam-expander spacing.
+optics_api.build_example("surface_figure")              # afocal expander -> collimated, fits the sensor
+_cap_col = optics_api.sensor_capture("SF_WFS")
+optics_api.build_example("surface_figure_diverging")    # non-afocal expander -> diverging, overfills sensor
+_cap_div = optics_api.sensor_capture("SF_WFS")
+check("sensor: COLLIMATED beam fits -> rho_max=1, whole figure captured",
+      _cap_col.get("rho_max", 0.0) > 0.98 and _cap_col.get("captured_frac", 0.0) > 0.98
+      and _cap_col.get("aperture_applied") is True,
+      "rho_max=%.2f frac=%.2f" % (_cap_col.get("rho_max", 0), _cap_col.get("captured_frac", 0)))
+check("sensor: DIVERGING beam overfills -> rho_max<1 (figure clipped) + power<1 (beam truncated)",
+      _cap_div.get("rho_max", 1.0) < 0.9 and _cap_div.get("power_captured", 1.0) < 0.9,
+      "rho_max=%.2f power=%.2f" % (_cap_div.get("rho_max", 1), _cap_div.get("power_captured", 1)))
+check("sensor: the two beams read the SAME optic DIFFERENTLY (captured area differs >0.2)",
+      abs(_cap_col.get("captured_frac", 0.0) - _cap_div.get("captured_frac", 0.0)) > 0.2,
+      "collimated %.2f vs diverging %.2f" % (_cap_col.get("captured_frac", 0), _cap_div.get("captured_frac", 0)))
+
 oas.unregister()
 
 passed = sum(1 for _, ok in _checks if ok)

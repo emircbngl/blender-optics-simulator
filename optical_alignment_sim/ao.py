@@ -149,12 +149,14 @@ def zonal_wavefront_image(field, vmax=None, bg=(0.05, 0.05, 0.06, 1.0), intensit
     return arr
 
 
-def zonal_wavefront_at(scene, element_name, segs, px=128, detrend=True, weight='gaussian'):
+def zonal_wavefront_at(scene, element_name, segs, px=128, detrend=True, weight='gaussian', rho_max=1.0):
     """On-demand DENSE zonal surface-figure map for a reflective element, reconstructing the incident ray
     (hit point H, direction d, footprint w) from the traced segments -- the "sensor render" entry point.
     Returns tracer.surface_imprint_field(...)'s dict (plus ``element``/``wavelength_nm``) or None if
     nothing reaches the element / it has no usable mesh. Does NOT re-trace or mutate the scene
-    (byte-identical) and BYPASSES the 15-mode modal fit, so the map shows real spatial-frequency content."""
+    (byte-identical) and BYPASSES the 15-mode modal fit, so the map shows real spatial-frequency content.
+    ``rho_max`` < 1 clips the figure footprint to the central fraction a downstream aperture (a sensor) lets
+    through."""
     import bpy
     from mathutils import Vector
     best = None
@@ -174,7 +176,7 @@ def zonal_wavefront_at(scene, element_name, segs, px=128, detrend=True, weight='
         return None
     w = best.get("w_mm", 0.0) or 0.0
     wl = best.get("wavelength", 632.8) or 632.8
-    out = tracer.surface_imprint_field(E, p2, d, w, wl, px=px, detrend=detrend, weight=weight)
+    out = tracer.surface_imprint_field(E, p2, d, w, wl, px=px, detrend=detrend, weight=weight, rho_max=rho_max)
     if out is not None:
         out["element"] = element_name
         out["wavelength_nm"] = wl
@@ -201,14 +203,35 @@ def reflector_feeding(segs, sensor_name):
 def zonal_wavefront_at_sensor(scene, sensor_name, segs, px=128, detrend=True, weight='gaussian'):
     """The dense ZONAL surface-figure wavefront a WAVEFRONT SENSOR reads: find the reflective element whose
     reflected beam reaches the sensor and render ITS surface figure over the beam footprint -- the honest
-    'what the sensor measures'. Returns the field dict (+ ``element`` / ``sensor``) or None if NO reflective
-    element's beam reaches the sensor (the beam must actually land on the WFS)."""
+    'what the sensor measures'. Returns the field dict (+ ``element`` / ``sensor`` / ``w_sensor_mm`` /
+    ``sensor_aperture_mm``) or None if NO reflective element's beam reaches the sensor.
+
+    A FINITE sensor only captures the beam within its clear aperture: a point at the figure footprint radius
+    rho (beam radius w_fig) lands at the sensor at radius rho*w_sensor (the beam magnifies transverse position
+    by w_sensor/w_fig), so the sensor with semi-aperture a captures only rho <= a/w_sensor of the figure. A
+    COLLIMATED beam that fits the sensor keeps the whole figure; a DIVERGING beam that overfills the sensor
+    has its outer figure clipped -- the simulation produces the difference, not a manual mask.
+
+    ASSUMES the chief ray lands on the sensor's centre and the aperture is centred on it (the captured region
+    is a CENTRED disc rho <= a/w_sensor) -- valid for a nominally on-axis WFS, but a decentred / pointing-error
+    beam would clip an OFF-centre region this on-axis model does not capture. If the beam width at the sensor
+    is unknown (w_mm not tracked on that segment), ``aperture_applied`` is False and NO clip is applied (the
+    whole figure is returned) -- flagged rather than silently treated as a perfect capture."""
+    import bpy
     refl = reflector_feeding(segs, sensor_name)
     if refl is None:
         return None
-    out = zonal_wavefront_at(scene, refl, segs, px=px, detrend=detrend, weight=weight)
+    wfs = bpy.data.objects.get(sensor_name)
+    ap = (getattr(wfs.optics, 'clear_aperture', 0.0) or 0.0) if (wfs and getattr(wfs, 'optics', None)) else 0.0
+    w_sensor = next((s.get("w_mm", 0.0) for s in segs if s.get("to") == sensor_name), 0.0) or 0.0
+    aperture_applied = (ap > 0.0 and w_sensor > 1e-6)
+    rho_max = min(1.0, ap / w_sensor) if aperture_applied else 1.0
+    out = zonal_wavefront_at(scene, refl, segs, px=px, detrend=detrend, weight=weight, rho_max=rho_max)
     if out is not None:
         out["sensor"] = sensor_name
+        out["w_sensor_mm"] = w_sensor
+        out["sensor_aperture_mm"] = ap
+        out["aperture_applied"] = aperture_applied      # False = beam width at sensor unknown -> clip NOT applied
     return out
 
 

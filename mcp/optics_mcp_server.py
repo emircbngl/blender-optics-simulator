@@ -329,6 +329,16 @@ def zonal_render(sensor: str = "", element: str = "", px: int = 0, filepath: str
 
 
 @mcp.tool()
+def sensor_capture(sensor: str) -> str:
+    """What a wavefront SENSOR actually CAPTURES of the beam reaching it (it does NOT swallow the whole beam --
+    a beam wider than the sensor is truncated at its aperture). Returns the beam radius at the sensor, the
+    clear aperture, the captured POWER fraction, the figure-footprint fraction captured (rho_max), and the
+    captured zonal figure RMS / hit_frac. A collimated beam that fits reads the whole figure; a diverging beam
+    that overfills reads only its centre — the difference is produced by the simulation."""
+    return _fmt(_call("sensor_capture", sensor=sensor))
+
+
+@mcp.tool()
 def ao_command(dm: str, coeffs: list) -> str:
     """Set a deformable mirror's command (Zernike coefficients, in waves)."""
     return _fmt(_call("ao_command", dm=dm, coeffs=coeffs))

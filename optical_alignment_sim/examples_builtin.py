@@ -481,39 +481,48 @@ def _figured_surface_mesh(name, half=65.0, nx=181):
     return me
 
 
-def build_surface_figure(context):
-    """Surface-figure WAVEFRONT SENSING: a wide collimated laser strikes a FIGURED reflector at an OBLIQUE
-    angle (AOI 12 deg), and a WAVEFRONT SENSOR catches the REFLECTED beam -- a complete, honest bench (real
-    source, real angle, real sensor). The reflector's surface figure is imprinted on the reflected wavefront;
-    select the WFS (or the reflector) and run 'Sensor render', or call optics_api.zonal_render(sensor='SF_WFS'),
-    to read the dense ZONAL surface-figure map the sensor measures. swap_part any mesh onto SF_Reflector to
-    read its figure (a chess knight reads as the knight's side profile; a die as its pip face)."""
-    coll = G.example_collection("OpticsExample_SurfaceFigure")
+def build_surface_figure(context, beam='collimated'):
+    """Surface-figure WAVEFRONT SENSING: a laser strikes a FIGURED reflector at an OBLIQUE angle (AOI 12 deg)
+    and a WAVEFRONT SENSOR catches the REFLECTED beam. Select the WFS (or reflector) and run 'Sensor render',
+    or call optics_api.zonal_render(sensor='SF_WFS'), to read the dense ZONAL surface-figure map the sensor
+    measures. swap_part any mesh onto SF_Reflector to read its figure.
+
+    ``beam`` sets the illumination -- and the THREE cases read DIFFERENTLY (the simulation produces it, via
+    Gaussian q-propagation + the finite sensor aperture; no manual masking):
+      'native'      -- a bare ~0.5 mm HeNe, NO expander: a tiny footprint samples only a central speck of the
+                       figure (the beam_underfills_figure diagnostic fires).
+      'collimated'  -- a Galilean afocal expander (f1=-5, f2=100, spacing f1+f2=95, M=|f2/f1|=20, COLLIMATED;
+                       oracle ok=true): a Ø20 mm collimated beam fills the figure AND fits the sensor -> the
+                       sensor reads the WHOLE figure.
+      'diverging'   -- the SAME lenses at a NON-afocal spacing (70): the output keeps DIVERGING, so at the
+                       sensor the beam is wider than the sensor aperture -> the sensor clips the outer figure
+                       and reads only its CENTRE (and captures < full power)."""
+    suffix = '' if beam == 'collimated' else '_' + beam
+    coll = G.example_collection("OpticsExample_SurfaceFigure" + suffix)
     F = Vector((0.0, 0.0, 0.0))
     d_in = Vector((1.0, 0.0, 0.0))
     aoi = math.radians(12.0)
     dev = math.pi - 2.0 * aoi                                  # mirror fold = 180 - 2*AOI (oblique incidence)
     d_out = Vector((math.cos(dev), math.sin(dev), 0.0)).normalized()
-    # A real HeNe (~0.5 mm waist) CANNOT illuminate a cm-scale figure on its own -- you must PHYSICALLY grow
-    # the beam with a beam EXPANDER (raising the source waist is a cheat). A Galilean afocal expander (a
-    # diverging f1 then a converging f2 a distance f1+f2 apart) magnifies the beam by M=|f2/f1| and keeps it
-    # COLLIMATED (afocal C=0 at the f1+f2 spacing, oracle-verified). f1=-5, f2=100 -> M=20: the 0.5 mm waist
-    # becomes a ~10 mm (Ø20 mm) collimated beam that fills the figured optic. (Larger figure -> raise M.)
     f1, f2 = -5.0, 100.0
-    sep = f1 + f2                                              # afocal spacing (signed sum) -> collimated output
-    las = G.source("SF_Laser", F - d_in * (sep + 150.0), d_in, coll, wavelength=632.8)   # native ~0.5 mm HeNe
-    G.lens("SF_BE_div", F - d_in * (sep + 110.0), d_in, coll, focal=f1, radius=6.0, lens_type='BCV')
-    G.lens("SF_BE_conv", F - d_in * 110.0, d_in, coll, focal=f2, radius=16.0, lens_type='BCX')   # recollimates
+    if beam == 'native':
+        G.source("SF_Laser", F - d_in * 250.0, d_in, coll, wavelength=632.8)   # bare ~0.5 mm HeNe, no expander
+    else:
+        sep = (f1 + f2) if beam == 'collimated' else 70.0     # afocal=95 (collimated) vs 70 (non-afocal/diverging)
+        G.source("SF_Laser", F - d_in * (sep + 150.0), d_in, coll, wavelength=632.8)   # native ~0.5 mm HeNe
+        G.lens("SF_BE_div", F - d_in * (sep + 110.0), d_in, coll, focal=f1, radius=6.0, lens_type='BCV')
+        G.lens("SF_BE_conv", F - d_in * 110.0, d_in, coll, focal=f2, radius=16.0, lens_type='BCX')
     refl = G.mirror("SF_Reflector", F, d_in, d_out, coll, size=40.0, mirror_curve='FLAT')   # clip aper 20 >= beam 10
     old = refl.data
     refl.data = _figured_surface_mesh("SF_ReflectorSurf", half=9.0, nx=141)   # a Ø18 mm figured optic
     if old is not None and old.users == 0:
         bpy.data.meshes.remove(old)
     refl.optics.imprint_surface = True                         # stamp the figure on the reflected wavefront
-    refl.optics.imprint_zonal_px = 200                         # (clear_aperture=20 from size; the Ø20 beam
-    #                                                            overfills the Ø18 figure -> whole figure lit)
-    G.wavefront_sensor("SF_WFS", F + d_out * 200.0, d_out, coll, size=40.0)   # catches the reflected beam
-    return "OpticsExample_SurfaceFigure"
+    refl.optics.imprint_zonal_px = 200
+    # WFS 25 cm downstream, semi-aperture 12 mm: the COLLIMATED beam (~10 mm) fits (reads the whole figure);
+    # the DIVERGING beam grows to ~16 mm there and OVERFILLS it (the sensor clips the outer figure).
+    G.wavefront_sensor("SF_WFS", F + d_out * 250.0, d_out, coll, size=24.0)
+    return coll.name
 
 
 EXAMPLES = {
@@ -539,7 +548,12 @@ EXAMPLES = {
     'spdc_source':  ("Type-II SPDC Source (BBO: 405 -> degenerate 810 signal/idler twins)", build_spdc_source),
     'quad_tracker': ("Quadrant Beam Tracker (4-quadrant 2-axis position error + camera image)", build_quad_tracker),
     'circulator':   ("Fiber Circulator Router (non-reciprocal P1->P2->P3 cyclic routing)", build_circulator_router),
-    'surface_figure': ("Surface-Figure Wavefront Sensing (oblique laser -> figured reflector -> WFS reads it)", build_surface_figure),
+    'surface_figure': ("Surface-Figure Wavefront Sensing (expanded COLLIMATED beam -> sensor reads whole figure)",
+                       lambda ctx: build_surface_figure(ctx, beam='collimated')),
+    'surface_figure_native': ("Surface-Figure: BARE beam (no expander -> tiny footprint, reads a central speck)",
+                              lambda ctx: build_surface_figure(ctx, beam='native')),
+    'surface_figure_diverging': ("Surface-Figure: expanded NON-COLLIMATED beam (diverges, overfills sensor -> clipped)",
+                                 lambda ctx: build_surface_figure(ctx, beam='diverging')),
 }
 
 

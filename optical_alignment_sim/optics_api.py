@@ -685,7 +685,45 @@ def zonal_render(sensor="", element="", px=0, filepath=""):
     return {"element": elem, "sensor": sensor or None, "rms_gauss": round(fld["rms_gauss"], 4),
             "rms_uniform": round(fld["rms_uniform"], 4), "footprint_mm": round(fld["footprint_mm"], 2),
             "hit_frac": round(fld["hit_frac"], 3), "nyquist_lp_mm": round(fld["nyquist_lp_mm"], 3),
+            "rho_max": round(fld.get("rho_max", 1.0), 3), "captured_frac": round(fld.get("captured_frac", 1.0), 3),
+            "w_sensor_mm": round(fld.get("w_sensor_mm", 0.0), 3), "aperture_applied": fld.get("aperture_applied", True),
             "px": fld["px"], "png": out}
+
+
+def sensor_capture(sensor):
+    """What a wavefront SENSOR actually CAPTURES of the beam reaching it (the sensor does NOT swallow the whole
+    beam -- a beam wider than the sensor is truncated at its aperture). Inspection helper: returns the beam
+    radius at the sensor, the sensor's clear aperture, the captured POWER fraction (1-exp(-2a^2/w^2), the
+    Gaussian beyond the aperture is lost -- oracle-verified clip), the figure-footprint fraction the sensor
+    captures (rho_max = aperture/w_sensor, captured_frac = rho_max^2), and the captured zonal figure's RMS /
+    hit_frac. A COLLIMATED beam that fits reads the whole figure; a DIVERGING beam that overfills the sensor
+    reads only its centre -- the difference is produced by the simulation (q-propagation + this aperture stop).
+    {sensor, element, w_sensor_mm, aperture_mm, power_captured, rho_max, captured_frac, rms_gauss, hit_frac, footprint_mm}."""
+    import math
+    from . import ao
+    scene = _scene()
+    segs = _trace(scene)
+    tracer.cached_segments = segs
+    wfs = scene.objects.get(sensor)
+    if wfs is None:
+        return {"error": "sensor not found: %s" % sensor}
+    w_sensor = next((s.get("w_mm", 0.0) for s in segs if s.get("to") == sensor), 0.0) or 0.0
+    ap = (getattr(wfs.optics, 'clear_aperture', 0.0) or 0.0) if getattr(wfs, 'optics', None) else 0.0
+    power_cap = (1.0 - math.exp(-2.0 * ap * ap / (w_sensor * w_sensor))) if (w_sensor > 1e-6 and ap > 0.0) else 1.0
+    res = {"sensor": sensor, "w_sensor_mm": round(w_sensor, 3), "aperture_mm": round(ap, 3),
+           "power_captured": round(power_cap, 4)}
+    fld = ao.zonal_wavefront_at_sensor(scene, sensor, segs, px=200)
+    if fld is not None:
+        res.update({"element": fld.get("element"), "rho_max": round(fld.get("rho_max", 1.0), 3),
+                    "captured_frac": round(fld.get("captured_frac", 1.0), 3),
+                    "aperture_applied": fld.get("aperture_applied", False),
+                    "rms_gauss": round(fld["rms_gauss"], 3), "hit_frac": round(fld["hit_frac"], 3),
+                    "footprint_mm": round(fld["footprint_mm"], 2)})
+        if not fld.get("aperture_applied", False):
+            res["note"] = "beam width at sensor unknown -> aperture clip NOT applied (whole figure returned)"
+    else:
+        res["note"] = "no reflective figure feeds this sensor"
+    return res
 
 
 def ao_command(dm, coeffs):

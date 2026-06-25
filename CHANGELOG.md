@@ -11,7 +11,7 @@ aperture / detector / circulator component build-out, an upgraded adaptive-optic
 read-only error-detection layer. Every new formula is machine-verified against the physicist
 Docker oracle before shipping, and every existing scene traces byte-identical (the port-based
 data model: behavior reads element properties × `matrix_world`, never the mesh). Regression
-**215 → 315** checks.
+**215 → 318** checks.
 
 ### Added — bench intelligence (placement / correction / error detection)
 - **Generic auto-aligner** (`optics_api.auto_align` + MCP tool) — a scene-agnostic linearized
@@ -66,6 +66,16 @@ data model: behavior reads element properties × `matrix_world`, never the mesh)
   The **rendered beam now tracks the real `w(z)`** (the old visualization clamped the tube at 6 mm radius, so
   a Ø20 mm expanded beam looked Ø12 mm — visually under-illuminating an optic the sensor fully reads); the
   beam you SEE now matches the footprint the physics samples.
+- **A finite sensor captures only the beam within its aperture** — the WFS no longer swallows the whole beam.
+  A figure point at footprint radius ρ lands at the sensor at radius ρ·w_sensor (Gaussian self-similar
+  scaling), so a sensor of semi-aperture `a` captures only `rho_max = a/w_sensor` of the figure; the captured
+  POWER is `1−exp(−2a²/w²)` (oracle ok=true). So the SAME figured optic reads DIFFERENTLY under three beams,
+  and the **simulation produces the difference** (q-propagation + the aperture stop, no manual masking): the
+  `surface_figure` / `surface_figure_native` / `surface_figure_diverging` examples — a bare un-expanded beam
+  reads a central speck; an expanded COLLIMATED beam fits the sensor and reads the whole figure; an expanded
+  NON-collimated (diverging) beam overfills the sensor and reads only its clipped centre (and loses power).
+  New `optics_api.sensor_capture(sensor)` (+ MCP tool) reports w@sensor, aperture, captured power/area, and
+  whether the clip applied. See `docs/img/surface-figure-3beams.png` (the chess knight, read three ways).
 
 ### Added — components
 - **Dispersing prisms** (equilateral / Littrow / Pellin-Broca / Amici) on real Sellmeier glasses
