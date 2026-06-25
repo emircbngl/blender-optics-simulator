@@ -54,6 +54,10 @@ curated `optics_api` facade.
 
 ## Drive it with an AI agent (MCP)
 
+<p align="center">
+  <img src="docs/img/ai-loop.svg" width="92%" alt="The agent loop: READ the bench (get_state, inspect_beam, inspect_element, diagnose, detect_phenomena, propose_corrections) → JUDGE advisory corrections by user intent (refuse / partial / accept) → ACT (set_param, align, ao_close_loop) → RE-TRACE → read again. The trace is byte-identical until you act.">
+</p>
+
 1. In Blender: **Optics ▸ Simulation ▸ Start MCP Bridge** (exposes every public `optics_api`
    function on `127.0.0.1:9765`).
 2. Run the bridge server in [`mcp/`](mcp/README.md) and wire it into your MCP client.
@@ -166,6 +170,10 @@ agent-drivable:
 Everything below is produced by the add-on itself — a viewport beam trace baked to emission tubes,
 the Scan + Plot operator, the Detector Fringe Image, and the live sensor window exported to PNG.
 
+<p align="center">
+  <img src="docs/img/feature-board.png" width="92%" alt="New in v0.10.0: the WFS reads the beam's own curvature defocus; a pyramid WFS slope read; a soft-edge dichroic (R+T=1); a die face read as a zonal wavefront">
+</p>
+
 <p align="center"><b>▶ <a href="docs/img/showcase.mp4">Watch the showcase film</a></b> — build → simulate → align → wavefront → an agent driving it, end to end.</p>
 
 <p align="center">
@@ -183,6 +191,15 @@ the Scan + Plot operator, the Detector Fringe Image, and the live sensor window 
 |:---:|:---:|:---:|
 | ![Newton's rings](docs/img/newton-rings.png) | ![aberrated wavefront](docs/img/wavefront-aberrated.png) | ![flattened wavefront](docs/img/wavefront-flattened.png) |
 | a lens vs. a flat reference → concentric rings, r_m = √(mλR) | AO sensor: injected defocus + astigmatism + coma (RMS 0.56 λ) | after the closed loop → flat (RMS 0.00 λ) |
+
+**Wavefront sensing — modal *and* zonal, honest about the difference.** The same surface figure reads
+three ways through three beams; the dense zonal map keeps high-spatial-frequency relief the 15-mode
+modal fit smooths away; recognizable objects (a chess knight, a die) make the map legible.
+
+| One figure, three beams | Modal (low-pass) vs zonal (dense) | Recognizable objects |
+|:---:|:---:|:---:|
+| ![surface figure, 3 beams](docs/img/surface-figure-3beams.png) | ![zonal wavefront](docs/img/zonal-wavefront.png) | ![object wavefronts](docs/img/object-wavefronts.png) |
+| bare / collimated / diverging — a finite sensor reads only its aperture, the sim produces the difference | the 15-Zernike fit vs the raw px×px field, up to the grid Nyquist | a knight + a die read as zonal wavefronts (`build_example('die')`) |
 
 <p align="center">
   <img src="docs/img/dressed-bench.png" width="62%" alt="A Michelson interferometer on a tapped-hole breadboard: kinematic mirror mounts, a cube beamsplitter mount, posts in post-holders, all at one beam height">
@@ -224,9 +241,26 @@ frequency-shifted **+1 order** deflected by `θ = λ·f_a/v_s` — the **oracle-
 (shear-mode, `v_s ≈ 650 m/s`, `f_a = 200 MHz` → a visible ≈ 11°). Deflection angle, grating period,
 and frequency shift are all physics-checked in the sandbox.*
 
+**Components & physics.** Real ray-bending elements on real opto-mechanics — every behaviour from
+element properties, every formula oracle-verified.
+
+| Dispersing prism | Nonlinear crystal | Ruled / holographic / echelle gratings |
+|:---:|:---:|:---:|
+| ![prism dispersion](docs/img/prism-dispersion.png) | ![nonlinear crystal](docs/img/nonlinear-crystal.png) | ![grating profiles](docs/img/grating-profiles.png) |
+| vectorial Snell + real Sellmeier glasses fan white light | SHG / SPDC / OPO with phase-matching (BBO/KTP/LBO/PPLN) | ruled, holographic, echelle, and PPLN groove meshes |
+
+| Back-reflection ghost | Coating pickoff | Closing iris |
+|:---:|:---:|:---:|
+| ![ghost beam](docs/img/ghost-beam.png) | ![coating pickoff](docs/img/coating-pickoff.png) | ![iris](docs/img/iris-closing.png) |
+| opt-in Fresnel ghosts at transmissive faces; an isolator clears the `back_reflection` flag | a paintable reflectance pickoff + neutral absorber, R + T + A = 1 | a real multi-leaf iris stops down the beam (a data model, byte-identical) |
+
 ---
 
 ## Physics & scope (honest)
+
+<p align="center">
+  <img src="docs/img/architecture.svg" width="92%" alt="Architecture: each ELEMENT carries properties + a matrix_world pose (the mesh is cosmetic); the TRACER reads properties × matrix_world per element; PHYSICS adds analytic overlays (Jones/Stokes, Gaussian q-ABCD, Zernike WFS+AO, vectorial Fresnel); the READOUTS are fringes, wavefront, power, Stokes, phenomena, renders. Every core formula is machine-verified against the physicist Docker oracle.">
+</p>
 
 This is a **single-ray (chief-ray) geometric tracer** (`tracer.py`) with **analytic physics
 overlays** — Jones/Stokes polarization, Gaussian-beam ABCD propagation, and analytic interference /
