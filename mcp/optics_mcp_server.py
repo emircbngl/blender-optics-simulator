@@ -98,6 +98,18 @@ def diagnose() -> str:
 
 
 @mcp.tool()
+def propose_corrections() -> str:
+    """ADVISORY correction proposals: diagnose() that also suggests a FIX for each issue, but applies
+    NOTHING. Each proposal carries {issue, element, detail, severity, suggested_fix, tool,
+    maybe_intentional_if, fault_confidence, advisory}. These are FEEDBACK, not commands -- weigh each
+    against USER INTENT (did they ask for this on purpose? -- see 'maybe_intentional_if') and choose
+    REFUSE / PARTIAL / ACCEPT. fault_confidence is how likely a genuine fault vs a design choice
+    (crossed_polarizer ~0.3 = usually an intentional extinction; energy_violation ~0.9 = config bug).
+    The honest default is to SURFACE, not silently fix. READ-ONLY -- the trace is byte-identical."""
+    return _fmt(_call("propose_corrections"))
+
+
+@mcp.tool()
 def design_telescope(f1: float, f2: float) -> str:
     """Design an afocal two-lens telescope / beam-expander (PURE -- no scene mutation).
     Given objective focal f1 and eyepiece/relay focal f2, returns the afocal lens

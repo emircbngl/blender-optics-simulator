@@ -18,14 +18,19 @@ The loop is: **`get_state()` → decide → act (`set_param`/`place_relative`/`a
 read again.** The trace is deterministic and byte-identical until you explicitly call an `align_*`/`ao_*` solver.
 
 ## Corrections are ADVISORY — weigh user intent, then refuse / partial / accept
-`diagnose()` (and future `propose_corrections()`) tell you what looks wrong and suggest a fix. They are **not**
+`diagnose()` flags what looks wrong; **`propose_corrections()`** goes further — each issue comes with a
+`suggested_fix`, the `tool` that would apply it, a **`maybe_intentional_if`** hint (when this "fault" is actually
+a deliberate design choice), and a `fault_confidence` 0..1 (genuine fault vs design choice). They are **not**
 auto-applied. Before "fixing", ask: **did the user ask for this on purpose?** A beam that overfills a sensor, an
-underfilled figure, or a deliberately-misaligned bench may be *intended*. Evaluate the user's stated goal and the
-data, then choose:
-- **refuse** — the condition is intentional/desired; report it, don't change it.
+underfilled figure, a crossed analyzer (an extinction measurement!), a retro-reflection (a cat's-eye / Michelson
+end mirror), or a deliberately-misaligned bench may be *intended*. Read `maybe_intentional_if`, weigh the user's
+stated goal and the data, then choose:
+- **refuse** — the condition is intentional/desired (its `maybe_intentional_if` holds); report it, don't change it.
 - **partial** — apply the safe part of the fix, flag the rest for the user.
 - **accept** — apply the correction (and say what you changed and why).
-Mirror the same honesty you'd want: state assumptions, show the numbers, don't silently "improve" the bench.
+Low `fault_confidence` (e.g. `crossed_polarizer` ~0.3) → lean toward refuse/confirm; high (e.g. `energy_violation`
+~0.9, a config bug) → lean toward accept. Mirror the same honesty you'd want: state assumptions, show the numbers,
+don't silently "improve" the bench. This is the physics-honesty-gate pattern applied to bench corrections.
 
 ## Physics honesty
 Every shipped formula in this plugin is verified against the physicist oracle. When you state a result, it is

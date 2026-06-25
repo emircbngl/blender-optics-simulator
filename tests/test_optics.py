@@ -722,6 +722,40 @@ for _o in list(_a9c.objects):
     eg.drop_example_object(_o)
 bpy.data.collections.remove(_a9c)
 
+print("[1.3 propose_corrections: ADVISORY fixes the AI judges (refuse/partial/accept), never auto-applied]")
+# A deterministic fault (a normal-incidence window retro-reflects into the source -> back_reflection):
+# propose_corrections must SURFACE it as an advisory proposal with a structured fix + a
+# 'maybe_intentional_if' judge hint + advisory=True, WITHOUT mutating the trace. Mirrors the
+# physics-honesty-gate: surface + judge, never silent auto-fix.
+for _o in list(sc.objects):
+    if getattr(getattr(_o, "optics", None), "is_optical", False):
+        bpy.data.objects.remove(_o, do_unlink=True)
+_pcc = eg.example_collection("PC_test")
+sc.optics.model_ghosts = True
+eg.source("PC_S", (-150, 0, 0), _PV((1, 0, 0)), _pcc)
+eg.window("PC_W", (0, 0, 0), _PV((1, 0, 0)), _pcc)
+eg.detector("PC_D", (150, 0, 0), _PV((1, 0, 0)), _pcc)
+bpy.context.view_layer.update()
+_nseg_before = len(scan._trace(sc))
+_pc = optics_api.propose_corrections()
+check("1.3 propose_corrections is advisory + carries the refuse/partial/accept judge guidance",
+      _pc.get("advisory") is True and "refuse" in _pc.get("guidance", "").lower()
+      and "intent" in _pc.get("guidance", "").lower())
+_br_prop = next((p for p in _pc.get("proposals", []) if p.get("issue") == "back_reflection"), None)
+check("1.3 proposal surfaces back_reflection with a structured fix + judge hint + advisory flag",
+      _br_prop is not None and bool(_br_prop.get("suggested_fix")) and bool(_br_prop.get("tool"))
+      and "retro" in _br_prop.get("maybe_intentional_if", "").lower()
+      and _br_prop.get("advisory") is True and 0.0 <= _br_prop.get("fault_confidence", -1) <= 1.0,
+      str(_br_prop)[:100] if _br_prop else "no back_reflection proposal")
+check("1.3 propose_corrections is READ-ONLY (trace byte-identical)", len(scan._trace(sc)) == _nseg_before)
+_dg = optics_api.diagnose()
+check("1.3 propose_corrections enriches exactly what diagnose() detects (no re-detection drift)",
+      sorted(p["issue"] for p in _pc["proposals"]) == sorted(d["kind"] for d in _dg["diagnostics"]))
+sc.optics.model_ghosts = False
+for _o in list(_pcc.objects):
+    eg.drop_example_object(_o)
+bpy.data.collections.remove(_pcc)
+
 print("[A11 universal coating: paintable reflectance pickoff + neutral absorber; R+T+A=1; byte-identical defaults]")
 import optical_alignment_sim.diagnostics as _a11diag
 

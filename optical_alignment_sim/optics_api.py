@@ -43,8 +43,8 @@ def _trace(scene):
 # public optics_api function not listed still works and is appended to "other" so this never goes stale.
 _TOOL_GROUPS = {
     "read / inspect (the AI's eyes -- call these to SEE the bench, never guess)": [
-        "capabilities", "get_state", "diagnose", "beam_profile", "ao_measure", "get_wavefront",
-        "sensor_capture", "check_mechanics", "coupling_efficiency"],
+        "capabilities", "get_state", "diagnose", "propose_corrections", "beam_profile", "ao_measure",
+        "get_wavefront", "sensor_capture", "check_mechanics", "coupling_efficiency"],
     "build / scene": [
         "build_example", "add_component", "tag_element", "swap_part", "set_param", "set_mount"],
     "design (pure math, no scene change)": [
@@ -68,7 +68,9 @@ _WORKFLOWS = [
     "Surface-figure sensing: build_example('surface_figure'[ _native/_diverging]) -> swap_part a mesh onto "
     "SF_Reflector -> zonal_render(sensor='SF_WFS'); inspect with sensor_capture('SF_WFS').",
     "Diagnose before trusting: diagnose() flags beam-clipping / vignetting / beam-underfills-figure / energy "
-    "violations -- they are ADVISORY; weigh user intent before 'fixing'.",
+    "violations. propose_corrections() goes further -- each issue gets a suggested_fix + tool + a "
+    "'maybe_intentional_if' hint + fault_confidence. Both are ADVISORY: weigh user intent, then refuse / "
+    "partial / accept (a crossed analyzer or a retro-reflection may be the EXPERIMENT, not a fault).",
 ]
 
 _GOTCHAS = [
@@ -221,6 +223,30 @@ def diagnose():
     bad = sum(1 for d in diags if d.get("severity") == 'BAD')
     warn = sum(1 for d in diags if d.get("severity") == 'WARN')
     return {"ok": True, "diagnostics": diags, "counts": {"BAD": bad, "WARN": warn}}
+
+
+def propose_corrections():
+    """ADVISORY correction proposals over the current trace -- diagnose() that also suggests a FIX for
+    each issue, but applies NOTHING. Each proposal carries {issue, element, detail, severity,
+    suggested_fix, tool, maybe_intentional_if, fault_confidence, advisory}. The proposals are FEEDBACK,
+    not commands: weigh each against USER INTENT (did they ask for this on purpose? -- see
+    'maybe_intentional_if') and choose REFUSE (intended), PARTIAL (apply some), or ACCEPT (apply the
+    clearly-unintended ones). 'fault_confidence' is how likely the issue is a genuine fault vs a design
+    choice (e.g. crossed_polarizer ~0.3 = usually an intentional extinction measurement;
+    energy_violation ~0.9 = almost always a config bug). The honest default is to SURFACE, not silently
+    fix. READ-ONLY: the trace is byte-identical. {ok, advisory, guidance, proposals, counts}."""
+    scene = _scene()
+    tracer.cached_segments = _trace(scene)
+    props = _diagnostics.propose_corrections(scene)
+    bad = sum(1 for p in props if p.get("severity") == 'BAD')
+    warn = sum(1 for p in props if p.get("severity") == 'WARN')
+    return {"ok": True, "advisory": True,
+            "guidance": ("Proposals are ADVISORY and NOT applied. For each, weigh whether the user "
+                         "intended this configuration (see 'maybe_intentional_if'); then ACCEPT (apply "
+                         "the clearly-unintended ones), PARTIAL (apply some), or REFUSE (all intended). "
+                         "Higher fault_confidence => more likely a genuine fault than a design choice. "
+                         "Never auto-apply a low-confidence proposal without confirming intent."),
+            "proposals": props, "counts": {"BAD": bad, "WARN": warn}}
 
 
 def design_telescope(f1, f2):

@@ -772,3 +772,108 @@ def run_diagnostics(scene):
     out += _fringe_disambiguation(scene, segs)
     out += _beam_underfills_figure(scene, segs)
     return out
+
+
+# --------------------------------------------------------------------------- #
+# Correction-as-FEEDBACK (Phase 1.3): the diagnostics above DETECT problems; this layer
+# turns each into an ADVISORY proposal {suggested_fix, tool, maybe_intentional_if,
+# fault_confidence} and stops -- it NEVER applies anything. The caller (the AI) weighs the
+# proposal against USER INTENT and chooses refuse / partial / accept, exactly as the
+# physics-honesty-gate is weighed: surface + judge, never silent auto-fix. The crucial field
+# is `maybe_intentional_if` -- many "faults" are deliberate (a knife-edge IS meant to clip; a
+# crossed analyzer IS an extinction measurement), so a blind auto-fixer would break the user's
+# intent. `fault_confidence` (0..1) encodes how likely the issue is a genuine fault vs a design
+# choice (crossed_polarizer low: usually intentional; energy_violation high: almost always a bug).
+# --------------------------------------------------------------------------- #
+
+_CORRECTION_SUGGESTIONS = {
+    "beam_clipped": {
+        "action": "Re-center the beam on the element (align_element / auto_align) or widen the element's clear aperture (set_param).",
+        "tool": "align_element",
+        "maybe_intentional_if": "the clipping element is a knife-edge, iris, slit, pinhole, or beam-dump -- clipping is its PURPOSE -- or the user is deliberately apodizing / spatial-filtering.",
+        "confidence": 0.7},
+    "vignetting": {
+        "action": "Use a larger-aperture optic, or reduce the beam (a beam reducer / smaller waist) so the Gaussian wings clear the aperture.",
+        "tool": "set_param",
+        "maybe_intentional_if": "the truncation is a deliberate spatial filter / mode clean-up / soft-edge apodization.",
+        "confidence": 0.55},
+    "dark_detector": {
+        "action": "Steer a beam onto the detector (auto_align), or check for an upstream block / crossed polarizer / closed shutter.",
+        "tool": "auto_align",
+        "maybe_intentional_if": "the detector is an unused reference port, a dark-port monitor, or the bench is mid-construction.",
+        "confidence": 0.6},
+    "orphan_source": {
+        "action": "Aim the source at the first optic (align_element on the source, or place the first element on its axis).",
+        "tool": "align_element",
+        "maybe_intentional_if": "the source was just added and the downstream path is not built yet.",
+        "confidence": 0.65},
+    "energy_violation": {
+        "action": "Check the offending element's energy params: a coating R+T+A must sum to 1, a beamsplitter split_ratio in [0,1], no passive element may create power.",
+        "tool": "set_param",
+        "maybe_intentional_if": "almost never -- energy non-conservation is a model/config error, not a design choice (no gain media are modeled).",
+        "confidence": 0.9},
+    "mount_limit": {
+        "action": "Coarse-reposition the mount so the alignment DOF has travel (place_relative to recentre), then re-run the aligner.",
+        "tool": "place_relative",
+        "maybe_intentional_if": "rarely -- usually a real range-exhaustion needing a coarse pre-alignment before the fine solver.",
+        "confidence": 0.8},
+    "relay_spacing": {
+        "action": "Recompute the 4f / telescope spacing (design_4f / design_telescope) and place the lenses at f1+f2.",
+        "tool": "design_4f",
+        "maybe_intentional_if": "the layout is deliberately non-4f / non-afocal (a finite-conjugate relay or an intentionally defocused setup).",
+        "confidence": 0.55},
+    "back_reflection": {
+        "action": "Add a small tilt to walk the retro-reflection off the source axis (align_element), or insert an isolator.",
+        "tool": "align_element",
+        "maybe_intentional_if": "the element is a retroreflector / cat's-eye / a Michelson end mirror (retro-reflection is intended), or a cavity is being built.",
+        "confidence": 0.6},
+    "ghost_on_detector": {
+        "action": "Tilt the offending window / uncoated surface a few degrees to walk the ghost off the detector, or add a pickoff / baffle.",
+        "tool": "align_element",
+        "maybe_intentional_if": "the ghost path IS the measurement (a deliberate Fresnel pickoff / reference reflection).",
+        "confidence": 0.65},
+    "coherence_mismatch": {
+        "action": "Equalize the interferometer arm lengths (place_relative so OPD < Lc), or use a narrower-linewidth source.",
+        "tool": "place_relative",
+        "maybe_intentional_if": "the user is deliberately operating outside the coherence length (a white-light OPD scan, or measuring incoherent addition).",
+        "confidence": 0.6},
+    "crossed_polarizer": {
+        "action": "Rotate the analyzer or the input polarizer off extinction (set_param the analyzer / fast_axis / polarization angle).",
+        "tool": "set_param",
+        "maybe_intentional_if": "VERY OFTEN intentional -- crossed polarizers ARE an extinction / dark-field / polarization-contrast measurement. REFUSE unless the user clearly wanted light through.",
+        "confidence": 0.3},
+    "pol_mismatch": {
+        "action": "Insert a HWP (or rotate one arm's polarization) so the two arms are co-polarized and can interfere.",
+        "tool": "add_component",
+        "maybe_intentional_if": "the orthogonal polarization is deliberate (a polarization interferometer, a which-path eraser, an entanglement setup).",
+        "confidence": 0.5},
+    "beam_underfills_figure": {
+        "action": "Add a beam expander (design a Galilean / Keplerian expander) so the footprint fills the figure under test.",
+        "tool": "design_telescope",
+        "maybe_intentional_if": "the user is deliberately probing a sub-aperture / a small patch of the figure.",
+        "confidence": 0.55},
+}
+
+
+def propose_corrections(scene):
+    """ADVISORY correction proposals over the CURRENT trace. Runs the same READ-ONLY diagnostic gates
+    as run_diagnostics, then attaches to each issue a SUGGESTED fix + the tool that would apply it + a
+    ``maybe_intentional_if`` hint + a ``fault_confidence`` (0..1: how likely a genuine fault vs a
+    deliberate design choice). NOTHING is applied -- the caller (the AI) must weigh USER INTENT and
+    choose refuse / partial / accept, mirroring the physics-honesty-gate (surface + judge, never silent
+    auto-fix). Byte-identical trace. Returns a list of proposal dicts (empty == clean bench)."""
+    proposals = []
+    for d in run_diagnostics(scene):
+        s = _CORRECTION_SUGGESTIONS.get(d["kind"], {})
+        proposals.append({
+            "issue": d["kind"],
+            "element": d.get("element"),
+            "detail": d.get("detail"),
+            "severity": d.get("severity"),
+            "suggested_fix": s.get("action", "no automated suggestion -- inspect this issue manually"),
+            "tool": s.get("tool"),
+            "maybe_intentional_if": s.get("maybe_intentional_if", "(unknown -- judge from context)"),
+            "fault_confidence": s.get("confidence", 0.5),
+            "advisory": True,                       # NEVER auto-applied; the AI decides refuse/partial/accept
+        })
+    return proposals
