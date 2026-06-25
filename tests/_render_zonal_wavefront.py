@@ -157,17 +157,23 @@ def main():
                           "px": m_zonal["px"], "source": "real Staunton knight OBJ"}
         print("KNIGHT modal RMS=%.3f  zonal RMS=%.1f waves" % (m_mrms, m_zonal["rms_waves"]))
 
-    # (2) a real optic: gentle defocus + a ~3 mm mid-spatial-frequency polishing ripple (lambda-scale)
+    # (2) a real optic, MSF-dominant: a faint low-order residual (astigmatism) the 15-mode WFS happily
+    #     reports + a DOMINANT mid-spatial-frequency polishing ripple (~2 mm quasi-periodic tool marks)
+    #     that 15 Zernikes CANNOT represent. The modal map shows only the smooth astigmatism ("looks fine");
+    #     the zonal sensor render reveals the MSF ripple the modal readout is blind to. lambda-scale figure.
     def real_optic(x, y):
-        return (x * x + y * y) / (2.0 * 9000.0) + 0.0008 * math.sin(x / 0.48) + 0.0004 * math.cos(y / 0.62)
-    omesh = _grid_mesh(real_optic, half=40.0, nx=241, name="RealOpticSurf")
+        astig = 0.00040 * (x * x - y * y) / 90.0
+        msf = (0.00110 * math.sin(x / 0.34) * math.cos(y / 0.40)        # ~2.1 x 2.5 mm cross-hatch
+               + 0.00070 * math.sin((x + y) / 0.30))                    # ~1.9 mm diagonal tool marks
+        return astig + msf
+    omesh = _grid_mesh(real_optic, half=40.0, nx=281, name="RealOpticSurf")
     o_modal, o_zonal, o_mrms = _read_case(omesh, aoi_deg=8.0, waist_um=9000.0, expander=False)
     np.save(os.path.join(OUT, "optic_modal.npy"), o_modal)
     np.save(os.path.join(OUT, "optic_zonal.npy"), o_zonal["field"])
     meta["optic"] = {"modal_rms": o_mrms, "zonal_rms": o_zonal["rms_waves"],
                      "zonal_pv": o_zonal["pv_waves"], "footprint_mm": o_zonal["footprint_mm"],
                      "nyquist_lp_mm": o_zonal["nyquist_lp_mm"], "hit_frac": o_zonal["hit_frac"],
-                     "px": o_zonal["px"], "source": "figured mirror: defocus + 3 mm polishing ripple"}
+                     "px": o_zonal["px"], "source": "figured mirror: faint astigmatism + ~2 mm MSF ripple"}
     print("OPTIC  modal RMS=%.3f  zonal RMS=%.3f waves" % (o_mrms, o_zonal["rms_waves"]))
 
     json.dump(meta, open(os.path.join(OUT, "meta.json"), "w"), indent=2)

@@ -20,7 +20,7 @@ meta = json.load(open(os.path.join(SRC, "meta.json")))
 rows = []
 if os.path.exists(os.path.join(SRC, "knight_modal.npy")):
     rows.append(("knight", "Chess-knight reflector  (high-spatial-frequency relief)"))
-rows.append(("optic", "Figured mirror  (defocus + ~3 mm polishing ripple)"))
+rows.append(("optic", "Figured mirror  (faint astigmatism + ~2 mm MSF polishing ripple)"))
 
 fig, axes = plt.subplots(len(rows), 2, figsize=(9.4, 4.7 * len(rows)))
 if len(rows) == 1:
