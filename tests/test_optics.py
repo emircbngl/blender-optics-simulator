@@ -2081,6 +2081,39 @@ check("3.4 die: the pip recesses are real local minima (min << mean over the foo
 check("3.4 die: zonal render leaves the trace byte-identical",
       len(scan._trace(sc)) == len(_dsegs))
 
+print("[3.2 per-pixel polarization CCD (DoFP): single-shot linear Stokes S0/S1/S2 + DoLP/AoLP]")
+for _o in list(sc.objects):
+    if getattr(getattr(_o, "optics", None), "is_optical", False):
+        bpy.data.objects.remove(_o, do_unlink=True)
+_pcc2 = eg.example_collection("PolCam")
+_pcX = _Vec((1, 0, 0))
+_pcs = eg.source("PCC_S", (-100, 0, 0), _pcX, _pcc2)
+_pcs.optics.pol_angle = 30.0
+_pcd = eg.detector("PCC_D", (100, 0, 0), _pcX, _pcc2)
+_pcd.optics.readout_topology = 'POL_CAMERA'
+bpy.context.view_layer.update()
+_pcsegs = scan._trace(sc)
+_pc = optics_api.inspect_element(_pcd.name).get("pol_camera")
+# the DoFP camera must measure the TRUE Stokes of the arriving beam (frame-consistent with stokes())
+_pcseg = max((s for s in _pcsegs if s.get("to") == _pcd.name), key=lambda s: s.get("power", 0.0))
+_jj = _pcseg["jones"]
+_strue = physics.stokes((complex(_jj[0], _jj[1]), complex(_jj[2], _jj[3])))
+check("3.2 pol-camera DoFP reconstructs the arriving beam's linear Stokes (S0/S1/S2 == stokes, within micropolarizer extinction)",
+      _pc is not None and abs(_pc["S0"] - _strue[0]) < 5e-3 and abs(_pc["S1"] - _strue[1]) < 5e-3
+      and abs(_pc["S2"] - _strue[2]) < 5e-3, str(_pc)[:80] if _pc else "no pol_camera read")
+check("3.2 pol-camera reads DoLP~1 for a fully-polarized beam",
+      _pc is not None and abs(_pc["dolp"] - 1.0) < 1e-2, "DoLP=%.4f" % _pc["dolp"] if _pc else "none")
+check("3.2 pol-camera micro-analyzers conserve power (I0+I90 = I45+I135 = S0)",
+      _pc is not None and abs((_pc["I0"] + _pc["I90"]) - (_pc["I45"] + _pc["I135"])) < 1e-3
+      and abs((_pc["I0"] + _pc["I90"]) - _pc["S0"]) < 1e-3)
+_pcd.optics.readout_topology = 'POINT'
+bpy.context.view_layer.update()
+check("3.2 pol_camera read is opt-in (a POINT detector carries no pol_camera field)",
+      "pol_camera" not in optics_api.inspect_element(_pcd.name))
+for _o in list(_pcc2.objects):
+    eg.drop_example_object(_o)
+bpy.data.collections.remove(_pcc2)
+
 print("[sensor-aperture capture: a finite sensor reads ONLY the beam within its aperture]")
 # The SAME figured optic, read with an expanded COLLIMATED beam (fits the sensor) vs an expanded DIVERGING
 # beam (overfills it). The sensor captures rho_max = aperture/w_sensor of the figure + power 1-exp(-2a^2/w^2).

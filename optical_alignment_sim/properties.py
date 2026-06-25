@@ -608,8 +608,9 @@ class OpticalElementProps(PropertyGroup):
         items=[('POINT', "Point (single-element)", "One active area -> a single scalar power/photocurrent (legacy default)"),
                ('QUADRANT', "Quadrant (4-element)", "Four quadrants -> 2-axis position error Sx=(A+D-B-C)/Sigma, Sy=(A+B-C-D)/Sigma"),
                ('PSD', "Lateral PSD", "Continuous position-sensing detector -> power-weighted centroid (x, y)"),
-               ('CAMERA', "Camera (imaging)", "2-D pixel array -> intensity image I(x,y)=Sum|E|^2 (reuses the fringe array)")],
-        description="Detector READOUT topology: point power, quadrant 2-axis error, lateral PSD centroid, or camera image")
+               ('CAMERA', "Camera (imaging)", "2-D pixel array -> intensity image I(x,y)=Sum|E|^2 (reuses the fringe array)"),
+               ('POL_CAMERA', "Polarization camera (DoFP)", "Per-pixel micropolarizer array (0/45/90/135 deg) -> single-shot linear Stokes S0/S1/S2 + DoLP/AoLP")],
+        description="Detector READOUT topology: point power, quadrant error, PSD centroid, camera image, or DoFP polarization camera")
     quadrant_gap_mm: FloatProperty(name="Quadrant/PSD gap (mm)", default=0.0, min=0.0,
         description="Dead-gap half-width between quadrant segments (0 = ideal, no gap)")
     # adaptive optics (modal Zernike): aberrator injects, deformable mirror subtracts, sensor reads

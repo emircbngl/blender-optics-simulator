@@ -1063,7 +1063,7 @@ def inspect_element(name):
                 "wavelength_nm": round(s.get("wavelength", 632.8) or 632.8, 1)}
                for s in sorted(outgoing, key=lambda s: s.get("power", 0.0), reverse=True)]
     out_p = sum(c["power"] for c in outputs)
-    return {
+    res = {
         "element": name, "type": et,
         "role": _ELEMENT_ROLE.get(et, "(optical element)"),
         "params": params,
@@ -1072,6 +1072,15 @@ def inspect_element(name):
         "throughput": round(out_p / in_p, 4) if in_p > 1e-12 else None,
         "outputs": outputs,
     }
+    if et == 'DETECTOR' and getattr(op, 'readout_topology', 'POINT') == 'POL_CAMERA' and incoming:
+        from . import physics
+        best = max(incoming, key=lambda s: s.get("power", 0.0))
+        j = best.get("jones")                      # single-shot DoFP linear-Stokes read of the brightest beam
+        if j and len(j) >= 4:
+            dofp = physics.stokes_dofp((complex(j[0], j[1]), complex(j[2], j[3])))
+            res["pol_camera"] = {k: round(v, 5) for k, v in dofp.items()}
+            res["role"] = "polarization camera (DoFP): single-shot linear Stokes S0/S1/S2 + DoLP/AoLP"
+    return res
 
 
 def beam_profile(detector="", samples=24):

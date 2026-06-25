@@ -179,6 +179,27 @@ def polarization_state(J):
     return polarization_state_from_stokes(*stokes(J))
 
 
+def stokes_dofp(J):
+    """Single-shot LINEAR Stokes from a DIVISION-OF-FOCAL-PLANE micropolarizer array -- a per-pixel
+    polarization CCD/CMOS (e.g. Sony Polarsens). Four micro-analyzers at 0/45/90/135 deg measure
+    I0/I45/I90/I135 (Malus); the linear Stokes are reconstructed EXACTLY (== stokes()'s S0/S1/S2):
+        S0 = I0 + I90,  S1 = I0 - I90,  S2 = I45 - I135,
+        DoLP = sqrt(S1^2 + S2^2) / S0,  AoLP = 0.5*atan2(S2, S1).
+    A DoFP camera reads ONLY the linear Stokes in one shot -- S3 (circular) needs an added retarder, so
+    DoLP/AoLP is its native output. Reuses the verified M_polarizer / intensity kernels; the S0/S1/S2
+    reconstruction is identical to stokes(J)[:3] (proven in the regression). Returns the four raw
+    micro-analyzer intensities + reconstructed {S0, S1, S2, dolp, aolp_deg}."""
+    i0 = intensity(apply(M_polarizer(0.0), J))
+    i45 = intensity(apply(M_polarizer(45.0), J))
+    i90 = intensity(apply(M_polarizer(90.0), J))
+    i135 = intensity(apply(M_polarizer(135.0), J))
+    s0, s1, s2 = i0 + i90, i0 - i90, i45 - i135
+    dolp = (math.sqrt(s1 * s1 + s2 * s2) / s0) if s0 > 1e-15 else 0.0
+    aolp = 0.5 * math.degrees(math.atan2(s2, s1))
+    return {"I0": i0, "I45": i45, "I90": i90, "I135": i135,
+            "S0": s0, "S1": s1, "S2": s2, "dolp": dolp, "aolp_deg": aolp}
+
+
 # --- dispersion (Sellmeier n(lambda)) ---------------------------------------
 
 # Sellmeier coefficients (B1,B2,B3,C1,C2,C3; lambda in micron) for common glasses.
