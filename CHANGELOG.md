@@ -7,11 +7,42 @@ semantic versioning.
 ## [0.10.0] — Optics-v2
 
 The big capability expansion: an agent-facing auto-aligner, a full prism / nonlinear-crystal /
-aperture / detector / circulator component build-out, an upgraded adaptive-optics loop, and a
-read-only error-detection layer. Every new formula is machine-verified against the physicist
-Docker oracle before shipping, and every existing scene traces byte-identical (the port-based
-data model: behavior reads element properties × `matrix_world`, never the mesh). Regression
-**215 → 318** checks.
+aperture / detector / circulator component build-out, an upgraded adaptive-optics loop, a read-only
+error-detection layer, and an **AI-first correctness, skills, vision & phenomena** pass. Every new
+formula is machine-verified against the physicist Docker oracle before shipping, and every existing
+scene traces byte-identical (the port-based data model: behavior reads element properties ×
+`matrix_world`, never the mesh). Regression **215 → 357** checks.
+
+### Added — AI agent: correctness, skills, vision & phenomena
+- **Correct wavefront-sensor read** — the WFS now folds in the beam's OWN curvature defocus
+  `a₄ = w² / (4√3·R·λ)` (oracle-verified), so a clean diverging beam reads its real defocus instead of a
+  wrong RMS=0; the static read auto-scales its colour map (with PV / full-scale / fill / multi-beam
+  captions) and a dark sensor clears its frame rather than faking a flat wavefront.
+- **`propose_corrections()`** (+ MCP) — correction-as-FEEDBACK: `diagnose()` plus a `suggested_fix`,
+  `tool`, `maybe_intentional_if`, and `fault_confidence` per issue. Advisory only — the AI weighs user
+  intent and chooses refuse / partial / accept (a crossed analyzer may be the experiment, not a fault).
+- **`detect_phenomena()`** (+ MCP) — flags the optical PHENOMENA the trace's conditions MEET:
+  `two_beam_interference` and `off_axis_hologram` (carrier fringe spacing `Λ = λ/(2 sin(θ/2))`,
+  oracle-verified). Advisory + read-only.
+- **Vision tools** `inspect_beam(element)` / `inspect_element(name)` (+ MCP) — the beam's full optical
+  state (power, `w`, `R(z)`, M², divergence, waist, polarization, coherence) and what an optic does + is
+  doing now (role, params, live in/out by kind, throughput). Numeric eyes, not guesses.
+- **Pyramid wavefront sensor** `pyramid_wfs(sensor)` (+ MCP) — reads a WFS as a SLOPE sensor
+  (`Sx = dW/dx`, `Sy = dW/dy`); a unit defocus reads a radial slope `dZ4/dx = 4√3·x` (oracle-verified).
+  Tier-1 geometric (the gradient a pyramid integrates, not a diffractive 4-pupil image).
+- **Per-pixel polarization CCD (DoFP)** — `physics.stokes_dofp` reads four micro-analyzers (0/45/90/135°)
+  for single-shot linear Stokes (S0/S1/S2 + DoLP/AoLP), exposed as the `POL_CAMERA` detector readout.
+- **Soft-edge dichroic** — a finite-slope logistic `R(λ)` (with `T = 1 − R`, energy conserved exactly)
+  replaces the hard wavelength step; far from the cut it is byte-identical to the old behaviour.
+- **`build_example('die')`** — a recognizable die face (the 5-pip quincunx) read as a zonal wavefront.
+- **Five `/optics-*` skills** (`.claude/skills/`: build / align / inspect / correct / sensor-render) —
+  repeatable model-invoked workflows that sequence the MCP tools and carry the disciplines.
+- **`capabilities()`** self-describing manifest + `mcp/AGENT_GUIDE.md`, `docs/CAPABILITIES.md`,
+  `docs/TOOLING.md` — the AI's "what can I do + how + which convention" guide.
+
+### Fixed
+- **M² beam quality** persisted past the first optic (it was silently reset to 1.0 one element past any
+  source — the m2-reset keyed on the post-propagation `q` instead of the caller's fresh `q`).
 
 ### Added — bench intelligence (placement / correction / error detection)
 - **Generic auto-aligner** (`optics_api.auto_align` + MCP tool) — a scene-agnostic linearized

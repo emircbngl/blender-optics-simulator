@@ -66,10 +66,13 @@ import optics_api
 # COMPOSE — bootstrap a canonical bench in one call
 optics_api.build_example("michelson")        # full setup + live beam
 
-# READ — the agent sees ground truth, not guesses
+# READ — the agent's numeric eyes: ground truth, not guesses
 state = optics_api.get_state()               # poses, port normals, beam path, mounts, detectors
+optics_api.inspect_beam("MI_BS")             # power, w, R(z), M², divergence, polarization, coherence here
+optics_api.inspect_element("MI_BS")          # what this optic DOES + its live in/out by kind, throughput
 optics_api.beam_profile("MI_D")              # Gaussian w(z), waist, aperture clipping
-optics_api.check_mechanics()                 # post pull-out / cage-rod travel / rail extent
+optics_api.detect_phenomena()                # flags interference / off-axis-hologram conditions the trace meets
+optics_api.propose_corrections()             # advisory fixes you JUDGE (refuse / partial / accept)
 
 # WRITE — act, then the beam re-traces
 optics_api.align_all()                       # auto-tune every kinematic knob toward its target
@@ -79,7 +82,8 @@ optics_api.scan(kind="STAGE", lo=0, hi=2e-3, steps=120, element="MI_M_stage")  #
 
 # Adaptive optics: sense the wavefront, then close the loop
 optics_api.build_example("adaptive_optics")
-optics_api.ao_measure("AO_WFS")                                 # {zernike:[...], rms: 0.559}
+optics_api.ao_measure("AO_WFS")                                 # {zernike:[...], rms: 0.559} (incl. beam defocus)
+optics_api.pyramid_wfs("AO_WFS")                                # same wavefront read as a SLOPE sensor
 optics_api.ao_close_loop("AO_WFS", "AO_DM", gain=0.5, iters=15) # rms 0.559 → ~0
 
 # RENDER — photorealistic Cycles, or a turntable movie
@@ -87,11 +91,20 @@ optics_api.bake_beams()
 optics_api.render(preset="final", camera="HERO", filepath="/tmp/michelson.png")
 ```
 
-The full surface (each also an MCP tool): `get_state`, `build_example`, `trace_beam`, `tag_element`,
-`add_component`, `swap_part`, `place_relative`, `set_mount`, `align_element`, `align_all`,
-`set_param`, `check_mechanics`, `scan`, `beam_profile`, `render`, `render_sequence`, `bake_beams`,
+The full surface (each also an MCP tool): `capabilities`, `get_state`, `diagnose`,
+`propose_corrections`, `detect_phenomena`, `inspect_beam`, `inspect_element`, `beam_profile`,
+`sensor_capture`, `ao_measure`, `get_wavefront`, `pyramid_wfs`, `zonal_render`, `coupling_efficiency`,
+`check_mechanics`, `build_example`, `trace_beam`, `tag_element`, `add_component`, `swap_part`,
+`place_relative`, `set_mount`, `set_param`, `align_element`, `align_all`, `auto_align`, `tilt_null`,
+`design_telescope`, `design_4f`, `mode_match`, `scan`, `render`, `render_sequence`, `bake_beams`,
 `clear_beams`, `export_svg`, `dress_bench`, `set_grid`, `place_on_grid`, `make_cage`, `make_tube`,
-`make_rail`, `place_on_rail`, `ao_measure`, `get_wavefront`, `ao_command`, `ao_close_loop`.
+`make_rail`, `place_on_rail`, `ao_command`, `ao_close_loop`. Call `capabilities()` first — it returns a
+self-describing manifest (read [`mcp/AGENT_GUIDE.md`](mcp/AGENT_GUIDE.md) for the conventions and the
+refuse / partial / accept judgement model).
+
+Five repeatable **`/optics-*` skills** ship in [`.claude/skills/`](.claude/skills/) (build · align ·
+inspect · correct · sensor-render) — model-invoked workflows that sequence these tools and carry the
+disciplines (inspect-first, byte-identical, advisory-corrections-you-judge).
 
 For headless pipelines, `optics_api` is importable directly inside Blender
 (`blender --background --python your_script.py`).
@@ -105,10 +118,16 @@ For headless pipelines, `optics_api` is importable directly inside Blender
   Ø12.7 mm posts + post-holders, **16/30/60 mm cage** systems, **SM05/SM1/SM2 lens tubes**, and
   **dovetail rails** with carriers — all original GPL-clean procedural geometry to true functional
   dimensions.
-- **Simulate** the light — a live beam tracer with analytic overlays: polarization (Jones/Stokes),
-  interference & fringe visibility, Gaussian-beam propagation (ABCD `w(z)`, ROC, Gouy), modal Zernike
-  wavefront sensing + closed-loop **adaptive optics**, nonlinear conversion (SHG/SPDC), and
-  acousto-optic Bragg deflection.
+- **Simulate** the light — a live beam tracer with analytic overlays: polarization (Jones/Stokes, plus a
+  **per-pixel DoFP polarization camera**), interference & fringe visibility, Gaussian-beam propagation
+  (ABCD `w(z)`, ROC, Gouy, M²), **modal *and* pyramid** wavefront sensing + closed-loop **adaptive
+  optics**, wavelength-selective materials (interference/colored-glass filters, **soft-edge dichroics**),
+  nonlinear conversion (SHG/SPDC), and acousto-optic Bragg deflection.
+- **Let an AI drive it** — the agent READS numeric ground truth (`inspect_beam` / `inspect_element` /
+  `get_state`), is told the **phenomena** the bench meets (`detect_phenomena`: interference, off-axis
+  hologram) and the **advisory corrections** it should weigh against your intent (`propose_corrections`:
+  refuse / partial / accept), and follows repeatable `/optics-*` skills — never guessing, every formula
+  oracle-verified.
 - **Align** — kinematic auto-alignment that drives only the mount knobs to < 1 mrad and reports
   *"move the post"* when a target is out of reach; a geometric validator flags collisions and posts
   in the beam.
@@ -116,7 +135,7 @@ For headless pipelines, `optics_api` is importable directly inside Blender
   glass materials + studio lighting, camera presets, transparent-PNG figures, turntable movies, and
   publication-ready SVG schematics.
 
-### 14 one-click example scenes
+### 16 one-click example scenes
 
 Each is a single `build_example(kind)` — built from portable, mesh-free generic components, fully
 agent-drivable:
@@ -137,6 +156,8 @@ agent-drivable:
 | **Microscope** | infinity-corrected Köhler train, `f_obj = f_tube/M` |
 | **DHM** | vertical off-axis Mach-Zehnder recording a hologram (amplitude + phase) |
 | **AOM** | TeO₂ Bragg cell, 0th + frequency-shifted +1 order, θ = λ·f_a/v_s |
+| **Surface figure** | oblique beam off a figured reflector → dense zonal wavefront a WFS reads |
+| **Die** | a die face (the 5-pip quincunx) read as a recognizable zonal wavefront |
 
 ---
 
@@ -220,15 +241,20 @@ see [docs/OPTICAL_ELEMENTS.md](docs/OPTICAL_ELEMENTS.md) for per-element provena
 
 | Layer | Models | Validated against |
 |-------|--------|-------------------|
-| **Polarization** | Jones vectors/matrices: source state, polarizer (Malus), waveplate (HWP/QWP + fast axis), PBS (s/p); Stokes/**DOP** for partial & unpolarized light | Malus cos²θ, QWP→circular, PBS 50/50 |
-| **Interference** | coherent recombination (OPL→phase), coherence envelope from linewidth, fringe **visibility**; complementary Mach-Zehnder outputs | V=1 at zero OPD, energy conservation |
-| **Wavelength** | dichroic routing by cut-λ, filters (LP/SP/BP/ND), grating equation `mλ = d·Δsinθ`, **dispersion** n(λ) (Sellmeier) | grating angle, d-line n(587.6)=1.5168 |
-| **Gaussian beam** | complex q-parameter through free space + lenses (ABCD), spot size w(z), aperture clipping; wavefront curvature R(z) + Gouy phase rendered into the fringes, plus a tilted-detector obliquity factor | focal spot λf/πw₀, Gouy→±90° |
-| **Wavefront / adaptive optics** | modal Zernike wavefront error per beam (Noll j=1..15), aberrator / deformable mirror / wavefront sensor, closed-loop modal correction (integrator) | Zernike orthonormality + RMS = √(Σcⱼ²), loop RMS 0.56→0 |
+| **Polarization** | Jones vectors/matrices: source state, polarizer (Malus), waveplate (HWP/QWP + fast axis), PBS (s/p); Stokes/**DOP**; a **per-pixel DoFP polarization camera** (0/45/90/135° → single-shot S0/S1/S2 + DoLP/AoLP) | Malus cos²θ, QWP→circular, PBS 50/50, DoFP S₀/S₁/S₂ ≡ Stokes |
+| **Interference** | coherent recombination (OPL→phase), coherence envelope from linewidth, fringe **visibility**; complementary Mach-Zehnder outputs; **phenomena detection** (interference / off-axis hologram conditions, advisory) | V=1 at zero OPD, energy conservation, carrier Λ=λ/(2 sin θ/2) |
+| **Wavelength** | **soft-edge dichroic** routing (logistic R(λ), T=1−R), filters (LP/SP/BP/ND), grating equation `mλ = d·Δsinθ`, **dispersion** n(λ) (Sellmeier) | grating angle, d-line n(587.6)=1.5168, R+T=1 |
+| **Gaussian beam** | complex q-parameter through free space + lenses (ABCD), spot size w(z) with beam-quality **M²**, aperture clipping; wavefront curvature R(z) + Gouy phase rendered into the fringes | focal spot λf/πw₀, Gouy→±90°, θ=M²λ/πw₀ |
+| **Wavefront / adaptive optics** | modal Zernike wavefront error per beam (Noll j=1..15), aberrator / deformable mirror / wavefront sensor; the WFS read folds in the beam's **own curvature defocus**; closed-loop modal correction; a **pyramid** (slope) read of the same wavefront | Zernike orthonormality + RMS = √(Σcⱼ²), loop RMS 0.56→0, defocus a₄=w²/4√3Rλ, pyramid dZ4/dx=4√3·x |
 | **Newton's rings** | a lensed arm vs a flat reference → wavefront-curvature (1/R) ring pattern | dark-ring radius r_m = √(mλR) |
 | **Advanced** | **exact vectorial (3-D)** Fresnel at arbitrary mirror tilt (true s/p phase, linear→elliptical), white-light fringe packets, detector **camera model** (shot/read noise, saturation), one-way **isolators**, **Fabry-Pérot** cavities (Airy/finesse/FSR) | Fresnel Brewster/normal, Airy comb |
 | **Nonlinear / acousto-optic** | SHG (λ→λ/2), SPDC (λ→2λ degenerate), acousto-optic Bragg deflection | SHG λ/2, SPDC energy, θ = λ·f_a/v_s |
 | **Quantum (analytic)** | Hong-Ou-Mandel dip, Bell **CHSH** | R(0)=0, \|S\|=2√2 |
+
+Two additions stay deliberately honest about their tier: **`detect_phenomena`** *flags* the conditions a
+phenomenon needs (it does not produce a diffractive image), and the **pyramid WFS** reports the wavefront
+*gradient* a pyramid integrates — a geometric slope, **not** a diffractive 4-pupil image (the chief-ray
+tracer does not propagate the pupil-plane field). Both are labelled Tier-1 in the code and docs.
 
 Run the self-test with a bare interpreter (no Blender needed):
 
