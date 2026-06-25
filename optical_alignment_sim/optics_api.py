@@ -10,6 +10,8 @@ existing execute_blender_code socket:
 """
 from __future__ import annotations
 
+import math
+
 import bpy
 
 from . import tracer, alignment, mounts, geometry, solvers, design
@@ -43,8 +45,9 @@ def _trace(scene):
 # public optics_api function not listed still works and is appended to "other" so this never goes stale.
 _TOOL_GROUPS = {
     "read / inspect (the AI's eyes -- call these to SEE the bench, never guess)": [
-        "capabilities", "get_state", "diagnose", "propose_corrections", "beam_profile", "ao_measure",
-        "get_wavefront", "sensor_capture", "check_mechanics", "coupling_efficiency"],
+        "capabilities", "get_state", "diagnose", "propose_corrections", "inspect_beam", "inspect_element",
+        "beam_profile", "ao_measure", "get_wavefront", "sensor_capture", "check_mechanics",
+        "coupling_efficiency"],
     "build / scene": [
         "build_example", "add_component", "tag_element", "swap_part", "set_param", "set_mount"],
     "design (pure math, no scene change)": [
@@ -915,6 +918,146 @@ def export_svg(filepath):
         return svg_export.export_svg(filepath)
     except (OSError, RuntimeError) as e:        # match the operator's clean error shape
         return {"error": "svg export failed: %s" % e}
+
+
+_ELEMENT_ROLE = {
+    'SOURCE': "emits a Gaussian beam (waist, wavelength, M^2, polarization)",
+    'LENS': "focuses / collimates (ABCD thin lens; f scaled chromatically by 1/(n-1))",
+    'MIRROR': "reflects (f=R/2 if curved); reflectivity sets throughput",
+    'DEFORMABLE_MIRROR': "reflects + applies a commanded Zernike correction",
+    'ABERRATOR': "adds a fixed Zernike wavefront error (turbulence)",
+    'BEAMSPLITTER': "splits into reflected + transmitted (PBS = by polarization)",
+    'WAVEPLATE': "retards one axis (HWP rotates, QWP circularizes)",
+    'POLARIZER': "transmits one linear polarization (Malus), blocks the orthogonal",
+    'DETECTOR': "absorbs + reports power (terminal)",
+    'WAVEFRONT_SENSOR': "reads the incoming wavefront's Zernike modes (terminal)",
+    'APERTURE': "clips the beam to a clear aperture (iris / pinhole / slit)",
+    'PRISM': "disperses + deviates by refraction (Sellmeier glass)",
+    'PRISM_MIRROR': "deviates by TIR (penta / Dove / right-angle)",
+    'GRATING': "diffracts into orders (0th-order layout)",
+    'CRYSTAL': "nonlinear frequency conversion (SHG / SPDC / OPO / ...)",
+    'WINDOW': "transmits (optional AR coating / ghost reflection)",
+    'PASSTHROUGH': "transmits through a refractive plate",
+    'ISOLATOR': "passes forward, blocks the back-reflection",
+    'CIRCULATOR': "routes ports cyclically (non-reciprocal)",
+    'BEAM_DUMP': "absorbs the beam (terminal trap)",
+}
+
+_PARAMS_BY_TYPE = {
+    'SOURCE': ["wavelength", "waist_um", "m2", "linewidth_nm"],
+    'LENS': ["focal_length", "lens_type", "clear_aperture", "design_wl"],
+    'MIRROR': ["reflectivity", "mirror_curve", "radius_curv", "clear_aperture"],
+    'DEFORMABLE_MIRROR': ["reflectivity", "clear_aperture"],
+    'BEAMSPLITTER': ["split_ratio", "is_pbs", "bs_form"],
+    'WAVEPLATE': ["retardance_deg", "fast_axis_deg"],
+    'POLARIZER': ["pol_axis_deg", "polarizer_type"],
+    'APERTURE': ["clear_aperture"],
+    'PRISM': ["refractive_index", "prism_design_wl", "split_angle_deg"],
+    'CRYSTAL': ["nl_process", "nl_efficiency", "poling_period_um", "nl_walkoff_mm"],
+    'DETECTOR': ["clear_aperture", "analyzer"],
+    'WAVEFRONT_SENSOR': ["clear_aperture"],
+    'CIRCULATOR': ["isolation_db", "element_transmittance"],
+    'ISOLATOR': ["isolation_db"],
+    'PASSTHROUGH': ["refractive_index", "clear_aperture"],
+    'WINDOW': ["ar_reflectance", "clear_aperture"],
+}
+
+
+def inspect_beam(element=""):
+    """The full OPTICAL STATE of the beam where it reaches ``element`` (or the most-lit element if
+    blank) -- the AI's numeric 'eyes' on the beam, so you READ the physics instead of eyeballing a
+    render: power, wavelength, Gaussian radius w and wavefront curvature R(z) (collimated / diverging /
+    converging), beam quality M^2, far-field divergence + reconstructed waist, polarization (Stokes ->
+    kind / azimuth / ellipticity / DOP, all verified kernels), coherence length, and how many beams
+    arrive (multi-beam awareness). READ-ONLY -- the trace is byte-identical. {element, power, w_mm,
+    R_mm, curvature, m2, divergence_mrad, waist_w0_mm, dist_to_waist_mm, polarization, n_beams, ...}."""
+    from . import physics
+    scene = _scene()
+    tracer.cached_segments = _trace(scene)
+    segs = tracer.cached_segments
+    target = element
+    if not target:
+        best0 = max((s for s in segs if s.get("to")), key=lambda s: s.get("power", 0.0), default=None)
+        target = best0.get("to") if best0 else ""
+    arriving = [s for s in segs if s.get("to") == target]
+    if not arriving:
+        return {"error": "no beam reaches '%s'" % (target or "any element")}
+    total_p = sum(s.get("power", 0.0) or 0.0 for s in arriving)
+    best = max(arriving, key=lambda s: s.get("power", 0.0))
+    wl = best.get("wavelength", 632.8) or 632.8
+    m2 = best.get("m2", 1.0) or 1.0
+    out = {
+        "element": target,
+        "n_beams": len(arriving),
+        "dominant_frac": round(((best.get("power", 0.0) or 0.0) / total_p), 3) if total_p > 0 else 1.0,
+        "power": round(best.get("power", 0.0) or 0.0, 5),
+        "wavelength_nm": round(wl, 3),
+        "w_mm": round(best.get("w_mm", 0.0) or 0.0, 5),
+        "m2": round(m2, 3),
+    }
+    qd = best.get("qd")
+    if qd:
+        q = complex(qd[0], qd[1])
+        R = physics.beam_roc(q)
+        out["R_mm"] = round(R, 1) if math.isfinite(R) else None
+        out["curvature"] = ("collimated" if not math.isfinite(R) else ("diverging" if R > 0 else "converging"))
+        zR = q.imag
+        if zR > 1e-9:
+            w0 = math.sqrt(m2) * math.sqrt(zR * (wl * 1e-6) / math.pi)   # physical waist (M^2-broadened)
+            out["waist_w0_mm"] = round(w0, 5)
+            out["dist_to_waist_mm"] = round(q.real, 2)                   # >0: past the waist (diverging)
+            out["divergence_mrad"] = round(1000.0 * physics.gaussian_divergence(w0, wl, m2), 5)
+    coh = best.get("coh", float('inf'))
+    out["coherence_length_mm"] = round(coh, 4) if math.isfinite(coh) and coh < 1.0e12 else None  # None = monochromatic
+    j = best.get("jones")                       # stored as [Ex.re, Ex.im, Ey.re, Ey.im] (JSON has no complex)
+    if j and len(j) >= 4:
+        out["polarization"] = physics.polarization_state((complex(j[0], j[1]), complex(j[2], j[3])))
+    return out
+
+
+def inspect_element(name):
+    """What an element DOES to the beam + what it is DOING right now -- the AI's numeric 'eyes' on an
+    optic. Returns its optical role, the type-relevant params (focal_length, retardance, split_ratio,
+    reflectivity, coating, nl_process, ...), and the LIVE trace: incoming power and the OUTGOING children
+    by kind (TRANSMIT / REFLECT / SPLIT_R / SHG / ...) with power + wavelength, plus throughput -- so you
+    SEE the actual effect (split 50/50, reflected 98%, converted 532 nm at X%, clipped to Y%). READ-ONLY
+    -- the trace is byte-identical. {element, type, role, params, incoming_power, outgoing_power,
+    throughput, outputs:[...]}."""
+    obj = bpy.data.objects.get(name)
+    if obj is None or not getattr(obj, "optics", None) or not obj.optics.is_optical:
+        return {"error": "no optical element named '%s'" % name}
+    op = obj.optics
+    et = op.element_type
+    params = {}
+    for attr in _PARAMS_BY_TYPE.get(et, ["clear_aperture"]):
+        v = getattr(op, attr, None)
+        if v is None or v == "" or (isinstance(v, float) and abs(v) < 1e-12 and attr not in ("split_ratio",)):
+            continue
+        params[attr] = round(v, 4) if isinstance(v, float) else v
+    coating = getattr(op, "coating", "NONE")
+    if coating and coating != "NONE":                          # surface coating (A11): R / T / A budget
+        params["coating"] = coating
+        params["coating_reflectance"] = round(getattr(op, "coating_reflectance", 0.0), 4)
+    scene = _scene()
+    tracer.cached_segments = _trace(scene)
+    segs = tracer.cached_segments
+    incoming = [s for s in segs if s.get("to") == name]
+    outgoing = [s for s in segs if s.get("from") == name]
+    in_p = sum(s.get("power", 0.0) or 0.0 for s in incoming)
+    outputs = [{"kind": s.get("kind"), "to": s.get("to"),
+                "power": round(s.get("power", 0.0) or 0.0, 5),
+                "wavelength_nm": round(s.get("wavelength", 632.8) or 632.8, 1)}
+               for s in sorted(outgoing, key=lambda s: s.get("power", 0.0), reverse=True)]
+    out_p = sum(c["power"] for c in outputs)
+    return {
+        "element": name, "type": et,
+        "role": _ELEMENT_ROLE.get(et, "(optical element)"),
+        "params": params,
+        "incoming_power": round(in_p, 5),
+        "outgoing_power": round(out_p, 5),
+        "throughput": round(out_p / in_p, 4) if in_p > 1e-12 else None,
+        "outputs": outputs,
+    }
 
 
 def beam_profile(detector="", samples=24):

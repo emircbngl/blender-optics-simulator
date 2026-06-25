@@ -6,8 +6,13 @@ manifest (tool groups, workflows, gotchas); this file is the prose companion.
 
 ## The golden rule: INSPECT, don't guess
 The bench has eyes — use them. Never assert what the beam is doing; **read it**:
-- `get_state()` — every element, its ports, params, mount/DOFs, and the live traced beam path.
-- `diagnose()` — advisory problems (beam clipped, vignetting, beam-underfills-figure, energy violations).
+- `get_state()` — every element, its ports, params, mount/DOFs, and the live traced beam path (pose/topology).
+- `inspect_beam(element)` — the beam's full OPTICAL state where it reaches an element: power, w, R(z)
+  (collimated/diverging/converging), M², divergence + waist, polarization (kind/azimuth/ellipticity/DOP),
+  coherence, multi-beam count. The numeric read for "what is the beam doing here".
+- `inspect_element(name)` — what an optic DOES + is DOING now: role, params, and the live incoming/outgoing
+  children by kind with power + throughput (split 50/50, reflected 98%, converted 532 nm, clipped to Y%).
+- `diagnose()` / `propose_corrections()` — advisory problems (the latter adds a suggested fix you judge).
 - `beam_profile(detector)` — the Gaussian spot radius w(z) along the beam.
 - `ao_measure(sensor)` / `get_wavefront(sensor)` — the wavefront RMS + Zernike vector at a sensor.
 - `sensor_capture(sensor)` — what a sensor ACTUALLY captures: beam radius vs aperture, captured power & figure

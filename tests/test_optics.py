@@ -1322,6 +1322,32 @@ for _o in list(_cm2t.objects):
     eg.drop_example_object(_o)
 bpy.data.collections.remove(_cm2t)
 
+print("[2.2 vision tools: inspect_beam + inspect_element give the AI numeric eyes (READ-ONLY)]")
+optics_api.build_example("mach_zehnder")
+_bs = next(o.name for o in sc.objects if getattr(o.optics, "element_type", "") == "BEAMSPLITTER")
+_nseg_iv = len(scan._trace(sc))
+_ib = optics_api.inspect_beam(_bs)
+# the beam reaching the first BS: power 1, w~0.5mm, far-field divergence = lambda/(pi*w0) (verified kernel)
+check("2.2 inspect_beam reads power / w / R / polarization at an element",
+      abs(_ib["power"] - 1.0) < 1e-6 and _ib["w_mm"] > 0.0 and _ib["curvature"] in ("collimated", "diverging", "converging")
+      and _ib["polarization"]["kind"] == "linear" and abs(_ib["polarization"]["dop"] - 1.0) < 1e-6,
+      str({k: _ib.get(k) for k in ("power", "w_mm", "curvature")}))
+_div_exp = 1000.0 * 632.8e-6 / (math.pi * _ib["waist_w0_mm"])      # far-field half-angle = lambda/(pi*w0), m2=1
+check("2.2 inspect_beam divergence = lambda/(pi*w0) [gaussian_divergence, oracle ok=true]",
+      abs(_ib["divergence_mrad"] - _div_exp) < 1e-3, "%.5f vs %.5f mrad" % (_ib["divergence_mrad"], _div_exp))
+_ie = optics_api.inspect_element(_bs)
+# the BS splits the beam: two children (SPLIT_R + SPLIT_T) each ~half power, throughput ~1 (lossless)
+_kinds = sorted(c["kind"] for c in _ie["outputs"])
+check("2.2 inspect_element shows the live effect (BS -> SPLIT_R + SPLIT_T, ~50/50, throughput~1)",
+      _ie["type"] == "BEAMSPLITTER" and _kinds == ["SPLIT_R", "SPLIT_T"]
+      and all(abs(c["power"] - 0.5) < 0.05 for c in _ie["outputs"]) and abs(_ie["throughput"] - 1.0) < 1e-3,
+      "kinds=%s thru=%s" % (_kinds, _ie.get("throughput")))
+check("2.2 inspect_element reports role + type-relevant params (split_ratio)",
+      "splits" in _ie["role"] and "split_ratio" in _ie["params"])
+check("2.2 inspect_beam / inspect_element are READ-ONLY (trace byte-identical)", len(scan._trace(sc)) == _nseg_iv)
+check("2.2 inspect_beam errors cleanly when no beam reaches the element",
+      "error" in optics_api.inspect_beam("NoSuchElement"))
+
 print("[live signature tracks physics params]")
 optics_api.build_example("mach_zehnder")
 sig0 = handlers._signature(sc)

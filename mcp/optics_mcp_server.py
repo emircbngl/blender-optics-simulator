@@ -110,6 +110,26 @@ def propose_corrections() -> str:
 
 
 @mcp.tool()
+def inspect_beam(element: str = "") -> str:
+    """The full OPTICAL STATE of the beam where it reaches `element` (or the most-lit element if blank)
+    -- the AI's numeric eyes on the beam, so you READ the physics instead of eyeballing a render:
+    power, wavelength, Gaussian radius w + wavefront curvature R(z) (collimated/diverging/converging),
+    beam quality M^2, far-field divergence + reconstructed waist, polarization (Stokes -> kind / azimuth
+    / ellipticity / DOP), coherence length, and how many beams arrive. READ-ONLY -- byte-identical."""
+    return _fmt(_call("inspect_beam", element=element))
+
+
+@mcp.tool()
+def inspect_element(name: str) -> str:
+    """What an element DOES to the beam + what it is DOING right now: its optical role, the type-relevant
+    params (focal_length, retardance, split_ratio, reflectivity, coating, nl_process, ...), and the LIVE
+    trace -- incoming power and the OUTGOING children by kind (TRANSMIT / REFLECT / SPLIT_R / SHG / ...)
+    with power + wavelength + throughput, so you SEE the actual effect (split 50/50, reflected 98%,
+    converted 532 nm, clipped to Y%). READ-ONLY -- the trace is byte-identical."""
+    return _fmt(_call("inspect_element", name=name))
+
+
+@mcp.tool()
 def design_telescope(f1: float, f2: float) -> str:
     """Design an afocal two-lens telescope / beam-expander (PURE -- no scene mutation).
     Given objective focal f1 and eyepiece/relay focal f2, returns the afocal lens

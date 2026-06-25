@@ -14,7 +14,10 @@ code). Every shipped formula is verified against the physicist oracle. Regressio
 (a parity test enforces it). `capabilities()` returns the live grouping.*
 
 - **Read / inspect (the agent's eyes):** `capabilities`, `get_state`, `diagnose`, `propose_corrections`,
-  `beam_profile`, `ao_measure`, `get_wavefront`, `sensor_capture`, `check_mechanics`, `coupling_efficiency`.
+  `inspect_beam`, `inspect_element`, `beam_profile`, `ao_measure`, `get_wavefront`, `sensor_capture`,
+  `check_mechanics`, `coupling_efficiency`. (`inspect_beam` = the beam's optical state at an element —
+  power/w/R/M²/divergence/polarization/coherence; `inspect_element` = what an optic does + its live
+  incoming/outgoing power by kind.)
   (`propose_corrections` = `diagnose` + a suggested fix / `maybe_intentional_if` / `fault_confidence` per issue —
   ADVISORY, you weigh user intent and choose refuse / partial / accept.)
 - **Build / scene:** `build_example`, `add_component`, `tag_element`, `swap_part`, `set_param`, `set_mount`.
