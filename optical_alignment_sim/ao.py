@@ -219,6 +219,13 @@ def publish_wavefront(det, segs):
     cap = "wavefront RMS=%.3f  PV=%.3f  full-scale=±%.2f waves" % (rms, pv, vmax or 1.0)
     if abs(info.get("defocus_waves", 0.0)) >= 5e-4:
         cap += " (incl. beam defocus %.3f)" % info["defocus_waves"]
+    w_s = info.get("w_sensor_mm", 0.0)
+    if ap > 0.0 and w_s > 0.0:                               # fill factor: the modal disc is the unit pupil,
+        fill = w_s / ap                                     # so annotate whether the beam under/over-fills it
+        if fill > 1.0:
+            cap += " [beam overfills aperture → clipped]"
+        elif fill < 0.9:
+            cap += " [beam fills %.0f%% of aperture]" % (100.0 * fill)
     if info.get("n_beams", 1) > 1:
         cap += " [%d beams, dominant %.0f%%]" % (info["n_beams"], 100.0 * info.get("dominant_frac", 1.0))
     monitor.set_frame(det.name, wavefront_image(coeffs, vmax=vmax), cap)
