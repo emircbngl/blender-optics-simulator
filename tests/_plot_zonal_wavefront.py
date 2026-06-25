@@ -89,7 +89,7 @@ for r, (key, rlabel) in enumerate(rows):
 fig.suptitle("Surface-figure wavefront:  modal (15-mode, low-pass)  vs  zonal (dense, faithful)",
              color="#f4f4f6", fontsize=12.5, y=0.995)
 fig.text(0.5, 0.008,
-         "Same verified physics (W = 2·Δdepth on reflection); the zonal map skips the 15-mode projection, "
+         "Same verified physics (W = 2·cos²θ·Δdepth on reflection, oracle ok=true); the zonal map skips the 15-mode projection, "
          "so mid/high-spatial-frequency figure survives up to the grid Nyquist.  The footprint is sampled as "
          "the GAUSSIAN beam (I = exp(−2ρ²)) — maps fade at the dim 1/e² edge and the RMS is beam-weighted "
          "(what the beam senses), not a top-hat.  A knight is NOT an optic — its map is geometrically real "

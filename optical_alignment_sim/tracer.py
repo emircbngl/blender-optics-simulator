@@ -524,10 +524,13 @@ def _surface_imprint_coeffs(E, ray, H, sn, t):
     v_l = [rho_l[i] * math.sin(th_l[i]) for i in range(len(samples))]
     z_l = [s[2] for s in samples]
     a0, au, av = _plane_fit(u_l, v_l, z_l)                    # depth ~ a0 + au*u + av*v (reference plane)
-    # round-trip OPD in beam-path mm: W = 2*(depth - reference_plane). A protruding (closer) point has a
-    # SMALLER along-beam depth, so its W is negative -> the beam there is advanced; a recessed point is
-    # positive -> retarded. (Sign is consistent; only relative figure matters for the WFS readout.)
-    W_mm = [2.0 * (z_l[i] - (a0 + au * u_l[i] + av * v_l[i])) for i in range(len(samples))]
+    # round-trip OPD in beam-path mm: W = 2*cos^2(theta)*(depth - reference_plane). The probe is PARALLEL to
+    # the beam, so its depth deviation for a normal sag h is Delta_z = h/cos(theta) (it OVER-reads by 1/cos at
+    # AOI theta); the reflection OPD is 2*h*cos(theta); substituting -> 2*Delta_z*cos^2(theta) (oracle ok=true,
+    # grazing limit -> 0). cos^2(theta) = 1/(1+(au/w)^2+(av/w)^2) from the reference-plane slope (chief AOI).
+    # A protruding (closer) point has a SMALLER along-beam depth -> negative W (advanced); a recess is positive.
+    cos2 = 1.0 / (1.0 + (au / w) ** 2 + (av / w) ** 2)
+    W_mm = [2.0 * cos2 * (z_l[i] - (a0 + au * u_l[i] + av * v_l[i])) for i in range(len(samples))]
     lam_mm = ray.wl * 1.0e-6                                  # wavelength in mm (wl is nm)
     if lam_mm <= 0.0:
         return None
@@ -543,9 +546,10 @@ def surface_imprint_field(E, H, d, w, wl_nm, px=128, detrend=True, weight='gauss
     """DENSE ZONAL surface-figure -> wavefront map (NO modal fit). Sample reflective element E's ACTUAL
     world-space mesh over the incident Gaussian footprint on a px*px Cartesian grid and return the RAW
     round-trip optical-path field W(x,y) in WAVES -- the SAME verified physics as the modal imprint
-    (W = 2*(depth - reference plane); reflection traverses the surface-depth deviation twice, the cos(AOI)
-    folded into the parallel-to-beam raycast distance), but rendered ZONALLY instead of projected onto the
-    15 Noll Zernikes. The modal path (_surface_imprint_coeffs) is a 15-mode LOW-PASS of exactly this field;
+    (W = 2*cos^2(theta)*(depth - reference plane): reflection double-passes the figure AND the parallel-to-
+    beam probe over-reads a normal sag h as h/cos(theta), so the standard 2*h*cos(theta) OPD becomes
+    2*cos^2(theta)*Delta_z; theta = chief AOI from the reference-plane slope; oracle ok=true), but rendered
+    ZONALLY instead of projected onto the 15 Noll Zernikes. The modal path is a 15-mode LOW-PASS of this field;
     the zonal field preserves the surface's mid/high-spatial-frequency figure up to the grid's Nyquist
     limit, which a 15-mode fit cannot represent.
 
@@ -643,15 +647,18 @@ def surface_imprint_field(E, H, d, w, wl_nm, px=128, detrend=True, weight='gauss
         a0, au, av = _plane_fit(us, vs, zs, weights=(Iw if use_gauss else None))
     else:
         a0 = au = av = 0.0
+    # chief-AOI projection: the parallel-to-beam probe over-reads depth by 1/cos(theta), and the reflection
+    # OPD is 2*h*cos(theta), so W = 2*cos^2(theta)*(depth - plane) (see _surface_imprint_coeffs; oracle ok=true).
+    cos2 = 1.0 / (1.0 + (au / w) ** 2 + (av / w) ** 2)
     lam_mm = wl_nm * 1.0e-6                                   # wavelength in mm (wl is nm)
     intensity = np.full((px, px), np.nan, dtype=float)
     su = sg = swt = 0.0                                       # uniform sum-sq, gaussian wtd sum-sq, sum-of-wts
     wmin = None
     wmax = None
     for k, (iy, ix) in enumerate(cells):
-        # round-trip OPD in beam-path mm -> waves: W = 2*(depth - reference plane). A protruding (closer)
-        # point has a SMALLER along-beam depth -> negative W (advanced); a recess is positive (retarded).
-        wv = 2.0 * (zs[k] - (a0 + au * us[k] + av * vs[k])) / lam_mm
+        # round-trip OPD in beam-path mm -> waves: W = 2*cos^2(theta)*(depth - reference plane). A protruding
+        # (closer) point has a SMALLER along-beam depth -> negative W (advanced); a recess is positive.
+        wv = 2.0 * cos2 * (zs[k] - (a0 + au * us[k] + av * vs[k])) / lam_mm
         field[iy, ix] = wv
         intensity[iy, ix] = Iw[k]
         su += wv * wv

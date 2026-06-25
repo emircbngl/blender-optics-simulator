@@ -41,7 +41,7 @@ data model: behavior reads element properties × `matrix_world`, never the mesh)
   high-spatial-frequency surface. Default off → existing scenes byte-identical.
 - **Zonal "sensor render"** (`imprint_zonal_px` + the mirror panel's *Sensor render* button /
   `ao.zonal_wavefront_at`) — an on-demand DENSE wavefront map: it samples the SAME verified field
-  (`W = 2·Δdepth`) on a `px × px` grid and renders it RAW, with NO 15-mode projection, so mid/high-
+  (`W = 2·cos²θ·Δdepth`, the chief-AOI-projected reflection OPD — oracle ok=true) on a `px × px` grid and renders it RAW, with NO 15-mode projection, so mid/high-
   spatial-frequency figure (e.g. polishing ripple) the modal map low-passes away survives — up to the grid
   Nyquist `(px-1)/(2·footprint)` (oracle-verified). The footprint is sampled as the actual **Gaussian beam**
   (`I = exp(−2ρ²)`, oracle-verified) — the reference-plane detrend and the RMS are intensity-weighted (what
