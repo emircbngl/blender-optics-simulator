@@ -837,6 +837,28 @@ def _transmission(op, wl, aoi=0.0):
     return 1.0
 
 
+def _dichroic_reflectance(op, wl):
+    """Soft-edge dichroic reflectance R(lambda) in [0, 1] for a wavelength-selective mirror. IDEAL
+    lossless: the transmitted fraction is T = 1 - R, so energy is conserved exactly (R + T = 1). A
+    LONGPASS dichroic transmits long lambda (reflects short); a SHORTPASS transmits short (reflects
+    long); the edge is a logistic of width ``edge_width`` (nm) centred at ``cut_nm`` (R(cut) = 0.5), so
+    NEAR the cut the beam PARTIALLY reflects AND transmits -- the finite-slope edge a real coating has,
+    not an all-or-nothing step (a narrow edge_width recovers the step). A BANDPASS dichroic reflects
+    OUTSIDE its passband. The edge SHAPE is a Tier-1 modelling choice (like the interference-filter
+    logistics); the physics it must obey -- energy conservation R + T = 1 -- is exact by construction."""
+    cut = getattr(op, 'cut_nm', 650.0)
+    w = max(getattr(op, 'edge_width', 3.0), 1e-6)
+    pt = getattr(op, 'pass_type', 'LP')
+    if pt == 'SP':                          # transmit short -> reflect long: rising edge
+        return 1.0 / (1.0 + math.exp(-(wl - cut) / w))
+    if pt == 'BP':                          # reflect OUTSIDE the passband [cut_lo, cut_hi]
+        lo = getattr(op, 'cut_lo_nm', cut - 20.0)
+        hi = getattr(op, 'cut_hi_nm', cut + 20.0)
+        t_band = (1.0 / (1.0 + math.exp(-(wl - lo) / w))) * (1.0 / (1.0 + math.exp((wl - hi) / w)))
+        return 1.0 - t_band
+    return 1.0 / (1.0 + math.exp((wl - cut) / w))   # LP (default): transmit long -> reflect short
+
+
 def _diffract(d, n, wl_nm, lines_per_mm, order):
     """Grating equation in the plane of incidence: sin(theta_m) = sin(theta_i) +
     m*lambda/d, d = 1/lines_per_mm. 0th order -> specular; an evanescent order
@@ -1238,16 +1260,34 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 stack.append(_child(ray, E, H, d1, ray.power * eta, 'AOM_1', idx, t,
                                     jones=physics.scale(J, s1) if J else None))
         elif et == 'DICHROIC':
-            transmit = (ray.wl >= op.cut_nm) if op.pass_type == 'LP' else (ray.wl <= op.cut_nm)
-            if transmit:
+            # SOFT-edge wavelength split: reflect a fraction R(lambda), transmit T = 1 - R (energy
+            # conserved exactly). Far from the cut, R saturates to 0 or 1, so the fast paths below are
+            # BYTE-IDENTICAL to the old hard-step behaviour; only in the transition band (both ports
+            # carry power) does the beam genuinely split -- the finite-slope edge a real coating has.
+            Rd = _dichroic_reflectance(op, ray.wl)
+            if Rd <= 1e-9:                                 # full transmit (long lambda for LP)
                 stack.append(_child(ray, E, H, ray.dir, ray.power, 'TRANSMIT', idx, t))
-            elif ray.evec is not None:
-                # ideal-mirror s/p convention (rp = -rs) in the true plane of incidence,
-                # so the reflected polarization stays frame-robust like MIRROR's path
-                ev, _do = physics.reflect_field(ray.evec, ray.dir, sn, 1.0, -1.0)
-                stack.append(_child(ray, E, H, geometry.reflect(ray.dir, sn), ray.power, 'REFLECT', idx, t, evec=ev))
-            else:
-                stack.append(_child(ray, E, H, geometry.reflect(ray.dir, sn), ray.power, 'REFLECT', idx, t))
+            elif Rd >= 1.0 - 1e-9:                         # full reflect (short lambda for LP)
+                if ray.evec is not None:
+                    # ideal-mirror s/p convention (rp = -rs) in the true plane of incidence,
+                    # so the reflected polarization stays frame-robust like MIRROR's path
+                    ev, _do = physics.reflect_field(ray.evec, ray.dir, sn, 1.0, -1.0)
+                    stack.append(_child(ray, E, H, geometry.reflect(ray.dir, sn), ray.power, 'REFLECT', idx, t, evec=ev))
+                else:
+                    stack.append(_child(ray, E, H, geometry.reflect(ray.dir, sn), ray.power, 'REFLECT', idx, t))
+            else:                                          # transition band -> genuine R/T split
+                Td = 1.0 - Rd
+                if ray.evec is not None:
+                    evt = tuple(c * math.sqrt(Td) for c in ray.evec)
+                    stack.append(_child(ray, E, H, ray.dir, ray.power * Td, 'TRANSMIT', idx, t, evec=evt))
+                    ev, _do = physics.reflect_field(ray.evec, ray.dir, sn, 1.0, -1.0)
+                    ev = tuple(c * math.sqrt(Rd) for c in ev)
+                    stack.append(_child(ray, E, H, geometry.reflect(ray.dir, sn), ray.power * Rd, 'REFLECT', idx, t, evec=ev))
+                else:
+                    stack.append(_child(ray, E, H, ray.dir, ray.power * Td, 'TRANSMIT', idx, t,
+                                        jones=physics.scale(J, math.sqrt(Td)) if J else None))
+                    stack.append(_child(ray, E, H, geometry.reflect(ray.dir, sn), ray.power * Rd, 'REFLECT', idx, t,
+                                        jones=physics.scale(J, math.sqrt(Rd)) if J else None))
         elif et == 'BEAMSPLITTER':
             # A lossless beam splitter is unitary: the reflected field carries a pi/2
             # phase (r = i*sqrt(R)) relative to the transmitted field. This makes the

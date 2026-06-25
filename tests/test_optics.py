@@ -789,6 +789,43 @@ for _o in list(_oac.objects):
     eg.drop_example_object(_o)
 bpy.data.collections.remove(_oac)
 
+print("[3.1 soft dichroic edge: wavelength-selective R(lambda)+T(lambda)=1, smooth transition at cut]")
+# A real dichroic has a FINITE-slope edge: near the cut wavelength the beam PARTIALLY reflects AND
+# transmits (R+T=1, energy conserved exactly). Far from the cut it is full reflect / full transmit
+# (BYTE-IDENTICAL to the old hard step). Edge SHAPE is a Tier-1 logistic modelling choice.
+def _dich_split(wl):
+    for _o in list(sc.objects):
+        if getattr(getattr(_o, "optics", None), "is_optical", False):
+            bpy.data.objects.remove(_o, do_unlink=True)
+    _dc = eg.example_collection("Dx%d" % int(wl))
+    _dX, _dY = _Vec((1, 0, 0)), _Vec((0, 1, 0))
+    eg.source("DX_S", (-100, 0, 0), _dX, _dc, wavelength=wl)
+    _di = eg.dichroic("DX_DI", (0, 0, 0), _dX, _dY, _dc, cut_nm=650.0, pass_type='LP')  # transmit long, reflect short
+    _di.optics.edge_width = 10.0
+    eg.detector("DX_T", (100, 0, 0), _dX, _dc)
+    eg.detector("DX_R", (0, 100, 0), _dY, _dc)
+    bpy.context.view_layer.update()
+    _s = scan._trace(sc)
+    _dn = _di.name                              # use the REAL object name (Blender may .NNN-suffix on rebuild)
+    _T = sum(x["power"] for x in _s if x.get("from") == _dn and x.get("kind") == "TRANSMIT")
+    _R = sum(x["power"] for x in _s if x.get("from") == _dn and x.get("kind") == "REFLECT")
+    for _o in list(_dc.objects):
+        eg.drop_example_object(_o)
+    bpy.data.collections.remove(_dc)
+    return _T, _R
+
+_T_cut, _R_cut = _dich_split(650.0)         # AT the cut -> 50/50
+check("3.1 dichroic at the cut wavelength splits 50/50 (logistic midpoint R(cut)=0.5)",
+      abs(_T_cut - 0.5) < 1e-3 and abs(_R_cut - 0.5) < 1e-3, "T=%.4f R=%.4f" % (_T_cut, _R_cut))
+_T_tr, _R_tr = _dich_split(630.0)           # in the transition band (below cut) -> partial, R>T
+check("3.1 dichroic transition band splits partially with R+T=1 (energy conserved)",
+      abs((_T_tr + _R_tr) - 1.0) < 1e-9 and _R_tr > _T_tr > 0.01, "T=%.4f R=%.4f sum=%.6f" % (_T_tr, _R_tr, _T_tr + _R_tr))
+_T_lo, _R_lo = _dich_split(400.0)           # far below cut (>207 nm at w=10) -> full reflect (short lambda)
+_T_hi, _R_hi = _dich_split(900.0)           # far above cut -> full transmit (long lambda)
+check("3.1 dichroic far from the cut is full reflect / full transmit (byte-identical fast path)",
+      abs(_R_lo - 1.0) < 1e-9 and abs(_T_lo) < 1e-9 and abs(_T_hi - 1.0) < 1e-9 and abs(_R_hi) < 1e-9,
+      "short(400)->R=%.4f  long(900)->T=%.4f" % (_R_lo, _T_hi))
+
 print("[A11 universal coating: paintable reflectance pickoff + neutral absorber; R+T+A=1; byte-identical defaults]")
 import optical_alignment_sim.diagnostics as _a11diag
 
