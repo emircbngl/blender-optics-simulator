@@ -130,6 +130,16 @@ def inspect_element(name: str) -> str:
 
 
 @mcp.tool()
+def detect_phenomena() -> str:
+    """ADVISORY: the recognized optical PHENOMENA whose conditions the current trace MEETS -- two-beam
+    interference, off-axis hologram recording (carrier fringe spacing Lambda = lambda/(2 sin(theta/2))),
+    and more as added. READ-ONLY: the sim FLAGS that the geometry/coherence conditions are satisfied
+    (e.g. "a reference + object beam cross at 8 deg on the camera -> off-axis hologram"); it does not
+    auto-produce anything (the same surface-don't-act stance as diagnose). {ok, phenomena, count}."""
+    return _fmt(_call("detect_phenomena"))
+
+
+@mcp.tool()
 def design_telescope(f1: float, f2: float) -> str:
     """Design an afocal two-lens telescope / beam-expander (PURE -- no scene mutation).
     Given objective focal f1 and eyepiece/relay focal f2, returns the afocal lens

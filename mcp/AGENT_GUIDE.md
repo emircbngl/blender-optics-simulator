@@ -13,6 +13,8 @@ The bench has eyes — use them. Never assert what the beam is doing; **read it*
 - `inspect_element(name)` — what an optic DOES + is DOING now: role, params, and the live incoming/outgoing
   children by kind with power + throughput (split 50/50, reflected 98%, converted 532 nm, clipped to Y%).
 - `diagnose()` / `propose_corrections()` — advisory problems (the latter adds a suggested fix you judge).
+- `detect_phenomena()` — advisory: the optical PHENOMENA whose conditions the trace MEETS (two-beam
+  interference, off-axis hologram recording with carrier fringe spacing). It flags, it doesn't produce.
 - `beam_profile(detector)` — the Gaussian spot radius w(z) along the beam.
 - `ao_measure(sensor)` / `get_wavefront(sensor)` — the wavefront RMS + Zernike vector at a sensor.
 - `sensor_capture(sensor)` — what a sensor ACTUALLY captures: beam radius vs aperture, captured power & figure

@@ -756,6 +756,39 @@ for _o in list(_pcc.objects):
     eg.drop_example_object(_o)
 bpy.data.collections.remove(_pcc)
 
+print("[3.3 detect_phenomena: flag the optical phenomena whose conditions the trace MEETS (advisory)]")
+# collinear coherent recombination (Michelson) -> two_beam_interference
+optics_api.build_example("michelson")
+_ph_mi = optics_api.detect_phenomena()
+_iph = next((p for p in _ph_mi["phenomena"] if p["phenomenon"] == "two_beam_interference"), None)
+check("3.3 detect_phenomena flags two-beam interference at a collinear recombination",
+      _iph is not None and _iph["crossing_angle_deg"] < 0.5 and _iph["visibility"] > 0.8,
+      str(_iph)[:90] if _iph else "no interference phenomenon")
+# an ANGLED coherent crossing -> off_axis_hologram with the VERIFIED carrier spacing Lambda=lambda/(2 sin(theta/2))
+for _o in list(sc.objects):
+    if getattr(getattr(_o, "optics", None), "is_optical", False):
+        bpy.data.objects.remove(_o, do_unlink=True)
+_oac = eg.example_collection("OffAxis")
+_oaX, _oaY = _Vec((1, 0, 0)), _Vec((0, 1, 0))
+eg.source("OA_S", (-150, 0, 0), _oaX, _oac)
+eg.beamsplitter("OA_BS", (0, 0, 0), _oaX, _oaY, _oac)        # in +X, reflect +Y
+eg.mirror("OA_M1", (120, 0, 0), _oaX, _oaY, _oac)            # transmitted +X -> +Y
+eg.mirror("OA_M2", (0, 120, 0), _oaY, _oaX, _oac)            # reflected +Y -> +X
+eg.detector("OA_D", (120, 120, 0), _Vec((1, 1, 0)), _oac)   # the two arms cross here at 90 deg
+bpy.context.view_layer.update()
+_nseg_ph = len(scan._trace(sc))
+_ph_oa = optics_api.detect_phenomena()
+_oph = next((p for p in _ph_oa["phenomena"] if p["phenomenon"] == "off_axis_hologram"), None)
+_lam_exp = 632.8e-6 / (2.0 * math.sin(math.radians(_oph["crossing_angle_deg"]) / 2.0)) if _oph else 0.0
+check("3.3 detect_phenomena flags off-axis hologram with carrier spacing lambda/(2 sin(theta/2)) [oracle ok=true]",
+      _oph is not None and _oph["crossing_angle_deg"] > 0.5
+      and abs(_oph["fringe_spacing_mm"] - _lam_exp) < 1e-6,
+      str(_oph)[:110] if _oph else "no off_axis_hologram phenomenon")
+check("3.3 detect_phenomena is READ-ONLY (trace byte-identical)", len(scan._trace(sc)) == _nseg_ph)
+for _o in list(_oac.objects):
+    eg.drop_example_object(_o)
+bpy.data.collections.remove(_oac)
+
 print("[A11 universal coating: paintable reflectance pickoff + neutral absorber; R+T+A=1; byte-identical defaults]")
 import optical_alignment_sim.diagnostics as _a11diag
 

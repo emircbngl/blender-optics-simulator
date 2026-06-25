@@ -45,9 +45,9 @@ def _trace(scene):
 # public optics_api function not listed still works and is appended to "other" so this never goes stale.
 _TOOL_GROUPS = {
     "read / inspect (the AI's eyes -- call these to SEE the bench, never guess)": [
-        "capabilities", "get_state", "diagnose", "propose_corrections", "inspect_beam", "inspect_element",
-        "beam_profile", "ao_measure", "get_wavefront", "sensor_capture", "check_mechanics",
-        "coupling_efficiency"],
+        "capabilities", "get_state", "diagnose", "propose_corrections", "detect_phenomena", "inspect_beam",
+        "inspect_element", "beam_profile", "ao_measure", "get_wavefront", "sensor_capture",
+        "check_mechanics", "coupling_efficiency"],
     "build / scene": [
         "build_example", "add_component", "tag_element", "swap_part", "set_param", "set_mount"],
     "design (pure math, no scene change)": [
@@ -250,6 +250,20 @@ def propose_corrections():
                          "Higher fault_confidence => more likely a genuine fault than a design choice. "
                          "Never auto-apply a low-confidence proposal without confirming intent."),
             "proposals": props, "counts": {"BAD": bad, "WARN": warn}}
+
+
+def detect_phenomena():
+    """ADVISORY: the recognized optical PHENOMENA whose conditions the current trace MEETS -- two-beam
+    interference, off-axis hologram recording (carrier fringe spacing Lambda = lambda/(2 sin(theta/2)),
+    physics_verify ok=true), and more as added. READ-ONLY: the sim FLAGS that the geometry/coherence
+    conditions are satisfied (e.g. "a reference + object beam cross at 8 deg on the camera -> off-axis
+    hologram"), it does not auto-produce anything -- the same surface-don't-act stance as diagnose().
+    {ok, phenomena:[{phenomenon, where, detail, crossing_angle_deg, fringe_spacing_mm, visibility,
+    confidence}], count}."""
+    scene = _scene()
+    tracer.cached_segments = _trace(scene)
+    phen = _diagnostics.detect_phenomena(scene)
+    return {"ok": True, "phenomena": phen, "count": len(phen)}
 
 
 def design_telescope(f1, f2):

@@ -877,3 +877,90 @@ def propose_corrections(scene):
             "advisory": True,                       # NEVER auto-applied; the AI decides refuse/partial/accept
         })
     return proposals
+
+
+# --------------------------------------------------------------------------- #
+# Automatic optical PHENOMENA (Phase 3.3): the diagnostics above flag PROBLEMS; this flags
+# recognized optical PHENOMENA whose geometric/coherence conditions the current trace MEETS --
+# two-beam interference, off-axis hologram recording, Fabry-Perot resonance. ADVISORY + READ-ONLY:
+# the sim does NOT auto-produce them, it tells the AI/user that the conditions are satisfied (e.g.
+# "a reference + object beam cross at 8 deg on the camera -> this records an off-axis hologram, carrier
+# fringe spacing Lambda"). Same surface-don't-act stance as diagnose(). The one new physical relation is
+# the two-beam fringe spacing Lambda = lambda/(2 sin(theta/2)) (physics_verify ok=true: DIMENSIONAL +
+# Lambda(632.8nm, 10deg)=3.63028um + small-angle Lambda->lambda/theta); visibility/overlap/envelope reuse
+# verified kernels (physics.intensity / fringe_envelope), exactly as _fringe_disambiguation does.
+# --------------------------------------------------------------------------- #
+
+def _seg_dir(seg):
+    """Unit incident direction of a segment (p2 - p1 normalized), or None if degenerate."""
+    p1, p2 = seg.get("p1"), seg.get("p2")
+    if p1 is None or p2 is None:
+        return None
+    d = [p2[i] - p1[i] for i in range(3)]
+    n = math.sqrt(sum(c * c for c in d))
+    return [c / n for c in d] if n > 1e-9 else None
+
+
+def detect_phenomena(scene):
+    """Advisory: the recognized optical PHENOMENA whose conditions the CURRENT trace MEETS. READ-ONLY
+    (byte-identical) -- it FLAGS that the geometry/coherence conditions are satisfied, it does not produce
+    anything (the same surface-don't-act stance as diagnose / propose_corrections). Returns a list of
+    {phenomenon, where, detail, fringe_spacing_mm, crossing_angle_deg, visibility, confidence}.
+
+    Phenomena (first set): two beams of the SAME source (mutually coherent, src_id-grouped like
+    _fringe_disambiguation) that reach one detector, co-polarized (Jones overlap high) and within the
+    coherence length (fringe_envelope high), INTERFERE -- collinear (crossing angle ~0) gives ordinary
+    two-beam fringes; a small NON-zero crossing angle is the OFF-AXIS HOLOGRAM geometry, with carrier
+    fringe spacing Lambda = lambda/(2 sin(theta/2))."""
+    segs = tracer.cached_segments if tracer.cached_segments else alignment._trace(scene)
+    out = []
+    by_name = {o.name: o for o in scene.objects if getattr(o, "optics", None) and o.optics.is_optical}
+    terminals = [o for o in by_name.values()
+                 if o.optics.element_type in tracer.TERMINAL and o.optics.element_type != 'BEAM_DUMP']
+    for det in terminals:
+        incoming = [s for s in segs if s.get("to") == det.name]
+        if len(incoming) < 2:
+            continue
+        groups = {}
+        for s in incoming:
+            groups.setdefault(s.get("src_id", -1), []).append(s)
+        for _sid, group in groups.items():
+            if len(group) < 2:
+                continue
+            pair = sorted(group, key=lambda s: s.get("power", 0.0), reverse=True)[:2]
+            Ja, Jb = _jones_of(pair[0]), _jones_of(pair[1])
+            if Ja is None or Jb is None:
+                continue
+            Ia, Ib = physics.intensity(Ja), physics.intensity(Jb)
+            if Ia <= 1e-12 or Ib <= 1e-12:
+                continue
+            overlap = abs(Ja[0] * Jb[0].conjugate() + Ja[1] * Jb[1].conjugate()) / math.sqrt(Ia * Ib)
+            opd = abs(pair[0].get("opl", 0.0) - pair[1].get("opl", 0.0))
+            Lc = min(pair[0].get("coh", float('inf')), pair[1].get("coh", float('inf')))
+            env = physics.fringe_envelope(opd, Lc)
+            if overlap < 0.3 or env < 0.1:
+                continue                                   # orthogonal pol / out-of-coherence -> no fringes
+            vis = (2.0 * math.sqrt(Ia * Ib) / (Ia + Ib)) * overlap * env   # two-beam fringe visibility
+            d1, d2 = _seg_dir(pair[0]), _seg_dir(pair[1])
+            theta = 0.0
+            if d1 and d2:
+                dot = max(-1.0, min(1.0, sum(d1[i] * d2[i] for i in range(3))))
+                theta = math.acos(dot)                     # crossing angle between the two arms (radians)
+            wl = pair[0].get("wavelength", 632.8) or 632.8
+            if theta < math.radians(0.5):                  # collinear -> ordinary two-beam interference
+                out.append({"phenomenon": "two_beam_interference", "where": det.name,
+                            "detail": "two mutually-coherent co-polarized beams overlap collinearly at %s -> "
+                                      "interference fringes (visibility %.2f, OPD %.4f mm)" % (det.name, vis, opd),
+                            "crossing_angle_deg": round(math.degrees(theta), 3),
+                            "visibility": round(vis, 3), "confidence": round(min(1.0, vis + 0.1), 2)})
+            else:                                          # angled -> off-axis hologram carrier fringes
+                Lam = (wl * 1.0e-6) / (2.0 * math.sin(theta / 2.0))    # fringe spacing (mm)
+                out.append({"phenomenon": "off_axis_hologram", "where": det.name,
+                            "detail": "a reference + object beam cross at %.2f deg on %s -> OFF-AXIS HOLOGRAM "
+                                      "geometry; carrier fringe spacing Lambda = lambda/(2 sin(theta/2)) = "
+                                      "%.4f mm (visibility %.2f) -- a camera records it when its pixel pitch < "
+                                      "Lambda/2" % (math.degrees(theta), det.name, Lam, vis),
+                            "crossing_angle_deg": round(math.degrees(theta), 3),
+                            "fringe_spacing_mm": round(Lam, 6),    # sub-um at large angles -> nm resolution
+                            "visibility": round(vis, 3), "confidence": round(min(1.0, vis + 0.1), 2)})
+    return out
