@@ -124,10 +124,12 @@ def _make_taper(context, name, p1, p2, r1, r2, mat, coll):
 
 
 def _vis_radius(w_mm, base, kind):
-    """Map the real Gaussian beam radius to a VISIBLE tube radius -- PROPORTIONAL to w(z) (a 1.8x
-    visibility gain) so convergence/expansion shows, clamped so a focus is a thin visible neck (not
-    zero) and a far-field beam isn't a giant tube."""
-    r = min(max(w_mm * 1.8, 0.25), 6.0) if (w_mm and w_mm > 0.0) else base
+    """VISIBLE tube radius tracking the REAL 1/e^2 Gaussian radius w(z) -- so the beam you SEE matches the
+    footprint the physics actually samples (an expanded beam renders WIDE, covering the whole illuminated
+    optic, not a thin stand-in). Floored at 0.3 mm so a focus / thin beam stays a visible neck; NO upper
+    clamp, so a beam-expander's wide collimated output is shown at its true size (the old 6 mm cap made a
+    Ø20 mm beam look Ø12 mm -- visually under-illuminating an optic the sensor fully reads)."""
+    r = max(w_mm, 0.3) if (w_mm and w_mm > 0.0) else base
     return r * (0.6 if kind == 'SPLIT_T' else 1.0)
 
 

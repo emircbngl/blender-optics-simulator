@@ -63,6 +63,9 @@ data model: behavior reads element properties × `matrix_world`, never the mesh)
   not by cranking the source waist. A new **`beam_underfills_figure` diagnostic** warns when the footprint
   (radius) is < 0.9× the figure's transverse extent — "insert a beam expander / collimator" — so the AI is
   aware the beam must be grown to illuminate the whole object (both `w_mm` and `clear_aperture` are radii).
+  The **rendered beam now tracks the real `w(z)`** (the old visualization clamped the tube at 6 mm radius, so
+  a Ø20 mm expanded beam looked Ø12 mm — visually under-illuminating an optic the sensor fully reads); the
+  beam you SEE now matches the footprint the physics samples.
 
 ### Added — components
 - **Dispersing prisms** (equilateral / Littrow / Pellin-Broca / Amici) on real Sellmeier glasses
