@@ -412,7 +412,8 @@ def kolmogorov_aberration(r0_mm, D_mm, n_modes=None, seed=0):
     coefficients are DETERMINISTIC: the sign alternates with a fixed hash of (j, seed), so a
     given (r0, D, seed) always yields the same turbulence frame -- tests are reproducible without
     a real RNG (the headless env forbids one), yet different seeds give different realizations and
-    the *RMS* obeys the (D/r0)^(5/3) law exactly. Returns a 15-coeff list (piston j=1 = 0)."""
+    the *variance* obeys the (D/r0)^(5/3) law exactly (so the RMS, = sqrt(variance), scales as
+    (D/r0)^(5/6)). Returns a 15-coeff list (piston j=1 = 0)."""
     n = physics.N_ZERNIKE if n_modes is None else min(n_modes, physics.N_ZERNIKE)
     ratio = (max(D_mm, 1e-9) / max(r0_mm, 1e-9)) ** KOLM_EXP     # (D/r0)^(5/3), dimensionless
     coeffs = [0.0] * physics.N_ZERNIKE

@@ -29,7 +29,14 @@ def jones_linear(angle_deg=0.0, amp=1.0):
 
 
 def jones_circular(handedness='RIGHT', amp=1.0):
-    """Circular polarization. RIGHT = (1, i)/sqrt2, LEFT = (1, -i)/sqrt2."""
+    """Circular polarization. RIGHT = (1, i)/sqrt2, LEFT = (1, -i)/sqrt2.
+
+    CONVENTION (label, not physics): here RIGHT == (1, i) == Stokes S3 > 0 under the e^{-i w t} time
+    convention. Some optics texts (Born & Wolf) call this state LEFT-handed; the choice is a naming
+    convention and the labeling is SELF-CONSISTENT throughout this module -- jones_circular, the S3
+    sign (stokes), and the RCP/LCP analyzer projectors all agree -- so every intensity / DOP /
+    ellipticity is correct regardless. Only cross-check the *name* against a text using the same
+    e^{-i w t} convention."""
     s = 1j if str(handedness).upper().startswith('R') else -1j
     n = amp / math.sqrt(2.0)
     return (complex(n), n * s)
@@ -967,7 +974,15 @@ def airy_transmission(wl_nm, L_mm, R, n=1.0, theta=0.0):
 
 
 def fringe_envelope(opd_mm, Lc_mm):
-    """Visibility envelope vs optical path difference (Gaussian coherence decay)."""
+    """Visibility envelope vs optical path difference (Gaussian coherence decay).
+
+    MODELING NOTE: ``exp(-(pi*opd/Lc)^2/2)`` paired with Lc = lambda^2/d-lambda is a SELF-CONSISTENT
+    order-of-magnitude pair (visibility ~1 for opd << Lc, washed out for opd >> Lc), NOT the exact
+    Fourier transform of a FWHM-d-lambda Gaussian spectrum (that would carry an extra ln2:
+    exponent denominator 2*ln2, and the envelope would fall a touch faster). Near zero OPD (the
+    alignment/scan regime) the two agree to leading order, and Lc = lambda^2/d-lambda is itself a
+    loose definition, so the shipped pair is internally consistent; the difference only bites once
+    opd >~ Lc where fringes are already gone."""
     if Lc_mm == float('inf') or Lc_mm >= 1.0e12:
         return 1.0
     if Lc_mm <= 0.0:
