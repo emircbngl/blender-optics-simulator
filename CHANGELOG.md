@@ -49,7 +49,9 @@ data model: behavior reads element properties × `matrix_world`, never the mesh)
   the real beam. Both the beam-weighted and uniform (clear-aperture) RMS are reported. The honest companion
   to the modal imprint: faithful for real optical figures; a knight's relief renders as a geometrically-real
   but optically-meaningless map. On-demand only → the trace stays byte-identical. (See
-  `docs/img/zonal-wavefront.png`.)
+  `docs/img/zonal-wavefront.png`; and `docs/img/object-wavefronts.png` — a real chess knight + a die,
+  recognisable once the object's iconic face is aimed at the beam, since the zonal map is a range image
+  of the reflector along the beam: its valid region traces the silhouette and the relief colours it.)
 
 ### Added — components
 - **Dispersing prisms** (equilateral / Littrow / Pellin-Broca / Amici) on real Sellmeier glasses
