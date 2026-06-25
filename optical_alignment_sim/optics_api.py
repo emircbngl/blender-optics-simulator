@@ -627,6 +627,67 @@ def get_wavefront(sensor):
     return ao_measure(sensor)
 
 
+def zonal_render(sensor="", element="", px=0, filepath=""):
+    """DENSE ZONAL surface-figure 'sensor render': the raw wavefront map a WAVEFRONT SENSOR reads from the
+    reflective element whose reflected beam reaches it (pass ``sensor`` -- the honest path, requires the beam
+    to actually land on the WFS), or a named reflective ``element`` directly. Bypasses the 15-mode modal
+    low-pass, so high-spatial-frequency figure survives; samples the footprint as the real Gaussian beam.
+    Writes a PNG (``filepath`` or Blender tempdir) and publishes the map to the sensor's monitor.
+    {element, sensor, rms_gauss, rms_uniform, footprint_mm, hit_frac, nyquist_lp_mm, px, png}."""
+    import os
+    import numpy as np
+    from . import ao, monitor
+    scene = _scene()
+    segs = _trace(scene)
+    tracer.cached_segments = segs
+    px = int(px) if px else 0
+    if sensor:
+        wfs = scene.objects.get(sensor)
+        if wfs is None:
+            return {"error": "sensor not found: %s" % sensor}
+        p = px or int(getattr(wfs.optics, "imprint_zonal_px", 160) or 160)
+        fld = ao.zonal_wavefront_at_sensor(scene, sensor, segs, px=p)
+        if fld is None:
+            return {"error": "no reflective (imprint) element's beam reaches '%s' -- give the laser an angle "
+                             "so a figured reflector's reflection lands on the sensor" % sensor}
+        elem = fld.get("element")
+    elif element:
+        E = scene.objects.get(element)
+        if E is None or getattr(E, "optics", None) is None or E.optics.element_type not in ('MIRROR', 'PRISM_MIRROR'):
+            return {"error": "'%s' is not a reflective mirror element" % element}
+        p = px or int(getattr(E.optics, "imprint_zonal_px", 160) or 160)
+        fld = ao.zonal_wavefront_at(scene, element, segs, px=p)
+        if fld is None:
+            return {"error": "no usable beam footprint on '%s'" % element}
+        elem = element
+        sensor = next((s.get("to") for s in segs if s.get("from") == element
+                       and scene.objects.get(s.get("to") or "") is not None
+                       and getattr(scene.objects[s["to"]].optics, "element_type", "") == 'WAVEFRONT_SENSOR'), "")
+    else:
+        return {"error": "pass a 'sensor' (preferred) or a reflective 'element'"}
+    img = np.flipud(ao.zonal_wavefront_image(fld["field"], intensity=fld.get("intensity")))
+    h, wd = img.shape[0], img.shape[1]
+    bi = bpy.data.images.get("zonal_wavefront") or bpy.data.images.new("zonal_wavefront", wd, h, alpha=True)
+    if tuple(bi.size) != (wd, h):
+        bpy.data.images.remove(bi)
+        bi = bpy.data.images.new("zonal_wavefront", wd, h, alpha=True)
+    bi.pixels.foreach_set(img.astype('float32').ravel())
+    out = filepath or os.path.join(bpy.app.tempdir or "/tmp", "zonal_wavefront.png")
+    bi.filepath_raw = out
+    bi.file_format = 'PNG'
+    bi.save()
+    if sensor and scene.objects.get(sensor) is not None:
+        cap = ("ZONAL %s -> %s  RMS=%.3f (beam-wtd) / %.3f uniform  %dpx  hits=%.0f%%"
+               % (elem, sensor, fld["rms_gauss"], fld["rms_uniform"], fld["px"], 100.0 * fld["hit_frac"]))
+        monitor.set_frame(sensor, ao.zonal_wavefront_image(fld["field"], intensity=fld.get("intensity")), cap)
+        scene.optics.monitor_show = True
+    tracer._tag_redraw()
+    return {"element": elem, "sensor": sensor or None, "rms_gauss": round(fld["rms_gauss"], 4),
+            "rms_uniform": round(fld["rms_uniform"], 4), "footprint_mm": round(fld["footprint_mm"], 2),
+            "hit_frac": round(fld["hit_frac"], 3), "nyquist_lp_mm": round(fld["nyquist_lp_mm"], 3),
+            "px": fld["px"], "png": out}
+
+
 def ao_command(dm, coeffs):
     """Set a deformable mirror's command (Zernike coeffs, in waves). {ok, dm, command}."""
     obj = _scene().objects.get(dm)

@@ -181,6 +181,37 @@ def zonal_wavefront_at(scene, element_name, segs, px=128, detrend=True, weight='
     return out
 
 
+def reflector_feeding(segs, sensor_name):
+    """The reflective (imprint-capable) element whose REFLECTED beam reaches ``sensor_name`` -- the ``from``
+    of the strongest segment arriving at the sensor, if that element is a MIRROR / PRISM_MIRROR. None if no
+    real reflector feeds the sensor (so a 'sensor render' can't pull a wavefront from nothing)."""
+    import bpy
+    best = None
+    for s in segs:
+        if s.get("to") == sensor_name and (best is None or s.get("power", 0.0) > best.get("power", 0.0)):
+            best = s
+    if best is None:
+        return None
+    E = bpy.data.objects.get(best.get("from") or "")
+    if E is not None and getattr(E, "optics", None) and E.optics.element_type in ('MIRROR', 'PRISM_MIRROR'):
+        return E.name
+    return None
+
+
+def zonal_wavefront_at_sensor(scene, sensor_name, segs, px=128, detrend=True, weight='gaussian'):
+    """The dense ZONAL surface-figure wavefront a WAVEFRONT SENSOR reads: find the reflective element whose
+    reflected beam reaches the sensor and render ITS surface figure over the beam footprint -- the honest
+    'what the sensor measures'. Returns the field dict (+ ``element`` / ``sensor``) or None if NO reflective
+    element's beam reaches the sensor (the beam must actually land on the WFS)."""
+    refl = reflector_feeding(segs, sensor_name)
+    if refl is None:
+        return None
+    out = zonal_wavefront_at(scene, refl, segs, px=px, detrend=detrend, weight=weight)
+    if out is not None:
+        out["sensor"] = sensor_name
+    return out
+
+
 # --------------------------------------------------------------------------- #
 # B5 - the textbook AO control loop: interaction matrix B, reconstructor R=B+,
 #       leaky integrator x_{k+1}=leak*x_k - g*R*w_k, Kolmogorov ABERRATOR(r0).
@@ -595,19 +626,36 @@ class OPTICS_OT_wfs_zonal_render(Operator):
     def execute(self, context):
         scene = context.scene
         ob = context.object
-        if (ob is None or getattr(ob, "optics", None) is None
-                or ob.optics.element_type not in ('MIRROR', 'PRISM_MIRROR')):
-            self.report({'ERROR'}, "Select a reflective element (mirror)")
+        et = ob.optics.element_type if (ob is not None and getattr(ob, "optics", None) is not None) else None
+        if et not in ('MIRROR', 'PRISM_MIRROR', 'WAVEFRONT_SENSOR'):
+            self.report({'ERROR'}, "Select a wavefront sensor (reads the reflected beam) or a reflective mirror")
             return {'CANCELLED'}
         from . import scan
         segs = scan._trace(scene)
         tracer.cached_segments = segs
-        fld = zonal_wavefront_at(scene, ob.name, segs, px=int(self.px))
+        wfs = None
+        if et == 'WAVEFRONT_SENSOR':
+            # render FROM the sensor: the figure of the reflector whose reflected beam reaches it (honest path)
+            wfs = ob.name
+            refl = reflector_feeding(segs, ob.name)
+            if refl is None:
+                self.report({'ERROR'}, "No reflective (imprint) element's beam reaches %s -- angle a figured "
+                                       "reflector's reflection into it" % ob.name)
+                return {'CANCELLED'}
+            fld = zonal_wavefront_at(scene, refl, segs, px=int(self.px))
+            target = refl
+        else:
+            target = ob.name
+            fld = zonal_wavefront_at(scene, ob.name, segs, px=int(self.px))
+            # the sensor this reflector feeds (so the map publishes to the WFS that actually reads it)
+            wfs = next((s.get("to") for s in segs if s.get("from") == ob.name
+                        and scene.objects.get(s.get("to") or "") is not None
+                        and getattr(scene.objects[s["to"]].optics, "element_type", "") == 'WAVEFRONT_SENSOR'), None)
         if fld is None:
-            self.report({'ERROR'}, "No beam reaches %s, or it has no usable mesh footprint" % ob.name)
+            self.report({'ERROR'}, "No beam footprint on %s" % target)
             return {'CANCELLED'}
         try:
-            ob.optics.imprint_zonal_px = int(self.px)
+            scene.objects[target].optics.imprint_zonal_px = int(self.px)
         except Exception:
             pass
         import numpy as np
@@ -623,13 +671,11 @@ class OPTICS_OT_wfs_zonal_render(Operator):
         bi.filepath_raw = out
         bi.file_format = 'PNG'
         bi.save()
-        # also push the map to any wavefront-sensor monitor so it shows in the bench monitor window
-        wfs = next((o.name for o in scene.objects if getattr(o, "optics", None)
-                    and o.optics.element_type == 'WAVEFRONT_SENSOR'), None)
-        cap = ("ZONAL %s  RMS=%.3f waves (beam-wtd; %.3f uniform)  PV=%.3f  %dpx  Nyq=%.2f lp/mm  hits=%.0f%%"
-               % (ob.name, fld["rms_gauss"], fld["rms_uniform"], fld["pv_waves"], fld["px"],
-                  fld["nyquist_lp_mm"], 100.0 * fld["hit_frac"]))
-        if wfs is not None:
+        sens = wfs or "(no sensor reads this reflector)"
+        cap = ("ZONAL %s -> %s  RMS=%.3f waves (beam-wtd; %.3f uniform)  PV=%.3f  %dpx  hits=%.0f%%"
+               % (target, sens, fld["rms_gauss"], fld["rms_uniform"], fld["pv_waves"], fld["px"],
+                  100.0 * fld["hit_frac"]))
+        if wfs is not None:                                # publish to the WFS that actually reads this beam
             monitor.set_frame(wfs, zonal_wavefront_image(fld["field"], intensity=fld.get("intensity")), cap)
             scene.optics.monitor_show = True
         tracer._tag_redraw()

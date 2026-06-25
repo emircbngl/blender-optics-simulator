@@ -319,6 +319,16 @@ def get_wavefront(sensor: str) -> str:
 
 
 @mcp.tool()
+def zonal_render(sensor: str = "", element: str = "", px: int = 0, filepath: str = "") -> str:
+    """Dense ZONAL surface-figure 'sensor render': the raw wavefront map a WAVEFRONT SENSOR reads from the
+    reflective element whose reflected beam reaches it (pass `sensor` -- requires the beam to land on the WFS),
+    or a named reflective `element` directly. Bypasses the 15-mode modal low-pass; writes a PNG and publishes
+    the map to the sensor. Use the 'surface_figure' example for a ready bench (oblique laser -> figured
+    reflector -> WFS); swap_part any mesh onto the reflector to read its figure."""
+    return _fmt(_call("zonal_render", sensor=sensor, element=element, px=px, filepath=filepath))
+
+
+@mcp.tool()
 def ao_command(dm: str, coeffs: list) -> str:
     """Set a deformable mirror's command (Zernike coefficients, in waves)."""
     return _fmt(_call("ao_command", dm=dm, coeffs=coeffs))

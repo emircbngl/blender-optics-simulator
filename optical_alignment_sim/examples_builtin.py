@@ -453,6 +453,61 @@ def build_circulator_router(context):
     return "OpticsExample_Circulator"
 
 
+def _figured_surface_mesh(name, half=65.0, nx=181):
+    """A gently FIGURED mirror surface (a little astigmatism + a ~2 mm mid-spatial-frequency polishing
+    ripple) so the imprint reads a non-trivial wavefront the sensor can measure. The user can swap_part any
+    mesh (a chess knight, a die, a real optic) onto the reflector to read ITS surface figure instead."""
+    import bmesh
+
+    def zf(x, y):
+        astig = 0.00045 * (x * x - y * y) / 120.0
+        msf = 0.0010 * math.sin(x / 0.38) * math.cos(y / 0.45) + 0.0007 * math.sin((x + y) / 0.32)
+        return astig + msf
+    b = bmesh.new()
+    vv = [[None] * nx for _ in range(nx)]
+    for iy in range(nx):
+        for ix in range(nx):
+            x = -half + 2.0 * half * ix / (nx - 1)
+            y = -half + 2.0 * half * iy / (nx - 1)
+            vv[iy][ix] = b.verts.new((x, y, zf(x, y)))
+    b.verts.ensure_lookup_table()
+    for iy in range(nx - 1):
+        for ix in range(nx - 1):
+            b.faces.new((vv[iy][ix], vv[iy][ix + 1], vv[iy + 1][ix + 1], vv[iy + 1][ix]))
+    bmesh.ops.recalc_face_normals(b, faces=b.faces)
+    me = bpy.data.meshes.new(name)
+    b.to_mesh(me)
+    b.free()
+    return me
+
+
+def build_surface_figure(context):
+    """Surface-figure WAVEFRONT SENSING: a wide collimated laser strikes a FIGURED reflector at an OBLIQUE
+    angle (AOI 12 deg), and a WAVEFRONT SENSOR catches the REFLECTED beam -- a complete, honest bench (real
+    source, real angle, real sensor). The reflector's surface figure is imprinted on the reflected wavefront;
+    select the WFS (or the reflector) and run 'Sensor render', or call optics_api.zonal_render(sensor='SF_WFS'),
+    to read the dense ZONAL surface-figure map the sensor measures. swap_part any mesh onto SF_Reflector to
+    read its figure (a chess knight reads as the knight's side profile; a die as its pip face)."""
+    coll = G.example_collection("OpticsExample_SurfaceFigure")
+    F = Vector((0.0, 0.0, 0.0))
+    d_in = Vector((1.0, 0.0, 0.0))
+    aoi = math.radians(12.0)
+    dev = math.pi - 2.0 * aoi                                  # mirror fold = 180 - 2*AOI (oblique incidence)
+    d_out = Vector((math.cos(dev), math.sin(dev), 0.0)).normalized()
+    las = G.source("SF_Laser", F - d_in * 260.0, d_in, coll, wavelength=632.8)
+    las.optics.waist_um = 9000.0                               # wide + collimated -> a big footprint on the figure
+    refl = G.mirror("SF_Reflector", F, d_in, d_out, coll, size=150.0, mirror_curve='FLAT')
+    old = refl.data
+    refl.data = _figured_surface_mesh("SF_ReflectorSurf")
+    if old is not None and old.users == 0:
+        bpy.data.meshes.remove(old)
+    refl.optics.imprint_surface = True                         # stamp the figure on the reflected wavefront
+    refl.optics.clear_aperture = 160.0                         # let the wide footprint land on the figure
+    refl.optics.imprint_zonal_px = 200
+    G.wavefront_sensor("SF_WFS", F + d_out * 260.0, d_out, coll, size=95.0)   # catches the reflected beam
+    return "OpticsExample_SurfaceFigure"
+
+
 EXAMPLES = {
     'mach_zehnder': ("Mach-Zehnder Interferometer", build_mach_zehnder),
     'michelson':    ("Michelson Interferometer", build_michelson),
@@ -476,6 +531,7 @@ EXAMPLES = {
     'spdc_source':  ("Type-II SPDC Source (BBO: 405 -> degenerate 810 signal/idler twins)", build_spdc_source),
     'quad_tracker': ("Quadrant Beam Tracker (4-quadrant 2-axis position error + camera image)", build_quad_tracker),
     'circulator':   ("Fiber Circulator Router (non-reciprocal P1->P2->P3 cyclic routing)", build_circulator_router),
+    'surface_figure': ("Surface-Figure Wavefront Sensing (oblique laser -> figured reflector -> WFS reads it)", build_surface_figure),
 }
 
 

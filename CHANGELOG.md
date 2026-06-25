@@ -11,7 +11,7 @@ aperture / detector / circulator component build-out, an upgraded adaptive-optic
 read-only error-detection layer. Every new formula is machine-verified against the physicist
 Docker oracle before shipping, and every existing scene traces byte-identical (the port-based
 data model: behavior reads element properties × `matrix_world`, never the mesh). Regression
-**215 → 314** checks.
+**215 → 315** checks.
 
 ### Added — bench intelligence (placement / correction / error detection)
 - **Generic auto-aligner** (`optics_api.auto_align` + MCP tool) — a scene-agnostic linearized
@@ -52,6 +52,12 @@ data model: behavior reads element properties × `matrix_world`, never the mesh)
   `docs/img/zonal-wavefront.png`; and `docs/img/object-wavefronts.png` — a real chess knight + a die,
   recognisable once the object's iconic face is aimed at the beam, since the zonal map is a range image
   of the reflector along the beam: its valid region traces the silhouette and the relief colours it.)
+- **Surface-figure wavefront-sensing workflow** — a complete, honest bench: the `surface_figure` example
+  (oblique laser → FIGURED reflector → a WAVEFRONT SENSOR that catches the reflected beam) + a sensor-anchored
+  render. `optics_api.zonal_render(sensor=…)` (+ MCP tool, + the *Sensor render* button on the WFS panel)
+  finds the reflective element whose reflected beam actually reaches that sensor and renders ITS dense figure
+  — so the map is what a real sensor measures, not data from nowhere (it errors if no reflector's beam lands
+  on the sensor). `swap_part` any mesh onto the reflector to read its figure.
 
 ### Added — components
 - **Dispersing prisms** (equilateral / Littrow / Pellin-Broca / Amici) on real Sellmeier glasses

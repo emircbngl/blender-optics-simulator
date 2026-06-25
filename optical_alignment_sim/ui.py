@@ -176,6 +176,9 @@ class OPTICS_PT_tag(Panel):
         elif et == 'WAVEFRONT_SENSOR':
             pcol.label(text="Wavefront RMS: %.3f waves" % props.wf_rms, icon='IMAGE_BACKGROUND')
             pcol.operator("optics.ao_close_loop", icon='MOD_NOISE')
+            zrow = pcol.row(align=True)
+            zrow.prop(props, "imprint_zonal_px", text="Zonal px")
+            zrow.operator("optics.wfs_zonal_render", text="Sensor render", icon='IMAGE_BACKGROUND')
         if et in ('MIRROR', 'PRISM_MIRROR'):
             pcol.prop(props, "coating")
             pcol.prop(props, "mirror_curve")
