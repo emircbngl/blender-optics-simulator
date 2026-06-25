@@ -199,6 +199,62 @@ def wavefront_image(coeffs, px=192, vmax=1.0):
     return arr
 
 
+# --------------------------------------------------------------------------- #
+# PYRAMID wavefront sensor (Phase 3.5): a pyramid WFS measures the local wavefront SLOPE
+# (the 4-pupil intensity differences encode dW/dx, dW/dy in the high-modulation regime), where the
+# Shack-Hartmann path above reads the modal Zernike vector. From the SAME reconstructed wavefront we
+# return the normalized slope maps. NOTE this is a Tier-1 GEOMETRIC model: the chief-ray tracer does NOT
+# propagate the pupil-plane field, so this is the gradient a pyramid INTEGRATES, not a diffractive
+# 4-pupil image. The defining relation -- for a unit defocus Z4, the x-slope is dZ4/dx = 4*sqrt3*x
+# (linear, radial) -- is physics_verify ok=true (DIMENSIONAL + 4*sqrt3 = 6.9282 + slope at x=0.5 = 3.4641).
+# --------------------------------------------------------------------------- #
+
+def pyramid_signals(coeffs, px=96):
+    """The PYRAMID-WFS signal from a modal wavefront: the normalized SLOPE maps Sx = dW/dx, Sy = dW/dy
+    (waves per pupil-radius) over the unit pupil, plus their RMS. A pure DEFOCUS reads a RADIAL slope
+    (Sx linear in x: dZ4/dx = 4 sqrt3 x); a TILT reads a UNIFORM slope. Returns {sx, sy (NaN outside the
+    pupil), mask, sx_rms, sy_rms, slope_rms}."""
+    import numpy as np
+    W, mask = _modal_field(coeffs, px)
+    dpr = 2.0 / (px - 1)                                   # grid step in pupil-radius units ([-1,1] over px)
+    gy, gx = np.gradient(W, dpr)                           # dW/dy (rows), dW/dx (cols)
+    sxv, syv = gx[mask], gy[mask]
+    sx_rms = float(np.sqrt(np.mean(sxv ** 2))) if sxv.size else 0.0
+    sy_rms = float(np.sqrt(np.mean(syv ** 2))) if syv.size else 0.0
+    return {"sx": np.where(mask, gx, np.nan), "sy": np.where(mask, gy, np.nan), "mask": mask,
+            "sx_rms": sx_rms, "sy_rms": sy_rms, "slope_rms": float(math.hypot(sx_rms, sy_rms))}
+
+
+def pyramid_slope_image(signals, vmax=None):
+    """False-colour RGBA (HxWx4) of a pyramid WFS's slope FIELD: hue = local slope DIRECTION
+    atan2(Sy, Sx), value = slope MAGNITUDE |grad W| (auto-scaled, or to ``vmax``). A defocus reads a
+    characteristic radial pattern (slope points outward); a tilt reads one uniform colour."""
+    import numpy as np
+    sx, sy = np.asarray(signals["sx"], dtype=float), np.asarray(signals["sy"], dtype=float)
+    mask = signals["mask"]
+    mag = np.hypot(np.where(np.isfinite(sx), sx, 0.0), np.where(np.isfinite(sy), sy, 0.0))
+    if vmax is None:
+        vmax = float(np.nanmax(mag[mask])) if mask.any() else 1.0
+    vmax = vmax or 1.0
+    hue = (np.arctan2(sy, sx) + math.pi) / (2.0 * math.pi)        # 0..1 slope direction
+    val = np.clip(mag / vmax, 0.0, 1.0)
+    # HSV (full saturation) -> RGB
+    h6 = hue * 6.0
+    c = val
+    xx = c * (1.0 - np.abs(h6 % 2.0 - 1.0))
+    z = np.zeros_like(val)
+    seg = h6.astype(int) % 6
+    r = np.choose(seg, [c, xx, z, z, xx, c])
+    g = np.choose(seg, [xx, c, c, xx, z, z])
+    b = np.choose(seg, [z, z, xx, c, c, xx])
+    arr = np.empty(sx.shape + (4,), dtype='float32')
+    arr[..., 0] = np.where(mask, r, 0.05)
+    arr[..., 1] = np.where(mask, g, 0.05)
+    arr[..., 2] = np.where(mask, b, 0.06)
+    arr[..., 3] = 1.0
+    return arr
+
+
 def publish_wavefront(det, segs):
     """Compute + publish a wavefront sensor's reconstructed map + RMS to the monitor window.
 

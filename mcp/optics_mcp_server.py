@@ -380,6 +380,17 @@ def zonal_render(sensor: str = "", element: str = "", px: int = 0, filepath: str
 
 
 @mcp.tool()
+def pyramid_wfs(sensor: str, px: int = 128, filepath: str = "") -> str:
+    """Read a wavefront sensor as a PYRAMID WFS: instead of the modal Zernike vector (ao_measure /
+    Shack-Hartmann), report the local wavefront SLOPE -- the 4-pupil intensity differences a pyramid sensor
+    encodes as Sx = dW/dx, Sy = dW/dy. Reads the same wavefront (modal aberr + the beam's own curvature
+    defocus), writes a slope-FIELD PNG (hue = slope direction, value = magnitude) + publishes it to the
+    sensor. A pure defocus reads a RADIAL slope. Tier-1 GEOMETRIC (the gradient a pyramid integrates, not a
+    diffractive 4-pupil image). {sensor, wavefront_rms, slope_x_rms, slope_y_rms, slope_rms, ...}."""
+    return _fmt(_call("pyramid_wfs", sensor=sensor, px=px, filepath=filepath))
+
+
+@mcp.tool()
 def sensor_capture(sensor: str) -> str:
     """What a wavefront SENSOR actually CAPTURES of the beam reaching it (it does NOT swallow the whole beam --
     a beam wider than the sensor is truncated at its aperture). Returns the beam radius at the sensor, the

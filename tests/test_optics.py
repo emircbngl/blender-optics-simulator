@@ -2182,6 +2182,32 @@ _none, _ninfo = ao._sensor_wavefront([], "NoSuchSensor")
 check("WFS defocus: no beam -> _sensor_wavefront returns None (a dark WFS is not a corrected flat one)",
       _none is None and _ninfo.get("n_beams") == 0)
 
+print("[3.5 pyramid WFS: a slope sensor -- it reads dW/dx, dW/dy, not the modal vector]")
+# A pyramid WFS measures the local wavefront SLOPE. For a unit DEFOCUS (Noll j=4) the x-slope is linear,
+# dZ4/dx = 4 sqrt3 x (physics_verify ok=true: slope at x=0.5 = 3.4641); a TILT (j=2) reads a UNIFORM slope.
+_pdef = [0.0] * physics.N_ZERNIKE; _pdef[3] = 1.0
+_psd = ao.pyramid_signals(_pdef, 96)
+_psx = _psd["sx"]; _ppx = _psx.shape[0]
+_prow = _psx[_ppx // 2]; _pvalid = np.isfinite(_prow)
+_pxs = np.linspace(-1.0, 1.0, _ppx)[_pvalid]; _psxr = _prow[_pvalid]
+check("3.5 pyramid: defocus reads a RADIAL slope, dZ4/dx = 4 sqrt3 x (slope at x=0.5 = 3.4641 [oracle ok=true])",
+      abs(np.interp(0.5, _pxs, _psxr) - 4.0 * math.sqrt(3.0) * 0.5) < 0.05
+      and abs(np.interp(-0.5, _pxs, _psxr) + 4.0 * math.sqrt(3.0) * 0.5) < 0.05,
+      "sx(0.5)=%.3f vs %.3f" % (np.interp(0.5, _pxs, _psxr), 4.0 * math.sqrt(3.0) * 0.5))
+_ptilt = [0.0] * physics.N_ZERNIKE; _ptilt[1] = 1.0
+_pst = ao.pyramid_signals(_ptilt, 96)
+_psxt = _pst["sx"][np.isfinite(_pst["sx"])]
+check("3.5 pyramid: x-tilt reads a UNIFORM x-slope (std << mean)",
+      _psxt.size > 0 and _psxt.std() < 1e-6 and abs(_psxt.mean() - 2.0) < 1e-6,
+      "mean=%.4f std=%.6f" % (_psxt.mean(), _psxt.std()))
+# live read on the AO bench: returns the slope RMS + writes a PNG; READ-ONLY (byte-identical)
+optics_api.build_example("adaptive_optics")
+_pnseg = len(scan._trace(sc))
+_pr = optics_api.pyramid_wfs("AO_WFS")
+check("3.5 pyramid_wfs reads a sensor's slope (slope_rms > 0, PNG written) without mutating the trace",
+      "error" not in _pr and _pr.get("slope_rms", 0) > 0 and os.path.exists(_pr.get("png", ""))
+      and len(scan._trace(sc)) == _pnseg, str({k: _pr.get(k) for k in ("slope_rms", "wavefront_rms")}))
+
 oas.unregister()
 
 passed = sum(1 for _, ok in _checks if ok)

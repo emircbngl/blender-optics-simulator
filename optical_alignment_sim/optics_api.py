@@ -58,7 +58,7 @@ _TOOL_GROUPS = {
     "trace / measure": ["trace_beam", "scan", "bake_beams", "clear_beams"],
     "align (mutates DOFs -- on demand only)": ["align_all", "align_element", "auto_align", "tilt_null"],
     "adaptive optics + surface figure": [
-        "ao_command", "ao_close_loop", "ao_close_loop_recon", "ao_kolmogorov", "zonal_render"],
+        "ao_command", "ao_close_loop", "ao_close_loop_recon", "ao_kolmogorov", "zonal_render", "pyramid_wfs"],
     "render / export": ["render", "render_sequence", "export_svg"],
 }
 
@@ -766,6 +766,51 @@ def ao_measure(sensor):
 def get_wavefront(sensor):
     """Alias of ao_measure: a wavefront sensor's reconstructed wavefront (Zernike + RMS)."""
     return ao_measure(sensor)
+
+
+def pyramid_wfs(sensor, px=128, filepath=""):
+    """Read a wavefront sensor as a PYRAMID WFS: instead of the modal Zernike vector (ao_measure /
+    Shack-Hartmann), report the local wavefront SLOPE -- the 4-pupil intensity differences a pyramid
+    sensor encodes as Sx = dW/dx, Sy = dW/dy. Reads the same wavefront (modal aberr PLUS the beam's own
+    curvature defocus), computes the normalized slope maps, writes a slope-FIELD PNG (hue = slope
+    direction, value = magnitude) and publishes it to the sensor's monitor. A pure defocus reads a RADIAL
+    slope (dZ4/dx = 4 sqrt3 x, physics_verify ok=true). Tier-1 GEOMETRIC: the chief-ray tracer does not
+    propagate the pupil-plane field, so this is the gradient a pyramid INTEGRATES, not a diffractive
+    4-pupil image. {sensor, wavefront_rms, slope_x_rms, slope_y_rms, slope_rms, beam_defocus, n_beams, px, png}."""
+    import os
+    import numpy as np
+    from . import ao, monitor, physics
+    scene = _scene()
+    segs = _trace(scene)
+    tracer.cached_segments = segs
+    wfs = bpy.data.objects.get(sensor)
+    ap = (getattr(wfs.optics, 'clear_aperture', 0.0) or 0.0) if (wfs and getattr(wfs, 'optics', None)) else 0.0
+    coeffs, info = ao._sensor_wavefront(segs, sensor, ap)
+    if coeffs is None:
+        return {"error": "no beam at wavefront sensor '%s'" % sensor}
+    px = max(int(px) or 128, 32)
+    sig = ao.pyramid_signals(coeffs, px)
+    img = np.flipud(ao.pyramid_slope_image(sig))
+    h, wd = img.shape[0], img.shape[1]
+    bi = bpy.data.images.get("pyramid_slope") or bpy.data.images.new("pyramid_slope", wd, h, alpha=True)
+    if tuple(bi.size) != (wd, h):
+        bpy.data.images.remove(bi)
+        bi = bpy.data.images.new("pyramid_slope", wd, h, alpha=True)
+    bi.pixels.foreach_set(img.astype('float32').ravel())
+    out = filepath or os.path.join(bpy.app.tempdir or "/tmp", "pyramid_slope.png")
+    bi.filepath_raw = out
+    bi.file_format = 'PNG'
+    bi.save()
+    if wfs is not None:
+        cap = ("PYRAMID %s  slope RMS=%.4f (Sx %.4f, Sy %.4f) waves/pupil  RMS=%.3f waves"
+               % (sensor, sig["slope_rms"], sig["sx_rms"], sig["sy_rms"], physics.wavefront_rms(coeffs)))
+        monitor.set_frame(sensor, ao.pyramid_slope_image(sig), cap)
+        scene.optics.monitor_show = True
+    tracer._tag_redraw()
+    return {"sensor": sensor, "wavefront_rms": round(physics.wavefront_rms(coeffs), 4),
+            "slope_x_rms": round(sig["sx_rms"], 5), "slope_y_rms": round(sig["sy_rms"], 5),
+            "slope_rms": round(sig["slope_rms"], 5), "beam_defocus": round(info.get("defocus_waves", 0.0), 4),
+            "n_beams": info.get("n_beams", 1), "px": px, "png": out}
 
 
 def zonal_render(sensor="", element="", px=0, filepath=""):
