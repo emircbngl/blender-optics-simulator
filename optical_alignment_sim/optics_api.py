@@ -39,6 +39,87 @@ def _trace(scene):
                               max_depth=scene.optics.max_depth)
 
 
+# curated grouping of the public API (the bridge/MCP surface) -- a tool only listed here is annotated; any
+# public optics_api function not listed still works and is appended to "other" so this never goes stale.
+_TOOL_GROUPS = {
+    "read / inspect (the AI's eyes -- call these to SEE the bench, never guess)": [
+        "capabilities", "get_state", "diagnose", "beam_profile", "ao_measure", "get_wavefront",
+        "sensor_capture", "check_mechanics", "coupling_efficiency"],
+    "build / scene": [
+        "build_example", "add_component", "tag_element", "swap_part", "set_param", "set_mount"],
+    "design (pure math, no scene change)": [
+        "design_telescope", "design_4f", "mode_match"],
+    "place / assemble (opto-mechanics)": [
+        "place_relative", "make_cage", "make_tube", "make_rail", "place_on_grid", "place_on_rail",
+        "set_grid", "dress_bench"],
+    "trace / measure": ["trace_beam", "scan", "bake_beams", "clear_beams"],
+    "align (mutates DOFs -- on demand only)": ["align_all", "align_element", "auto_align", "tilt_null"],
+    "adaptive optics + surface figure": [
+        "ao_command", "ao_close_loop", "ao_close_loop_recon", "ao_kolmogorov", "zonal_render"],
+    "render / export": ["render", "render_sequence", "export_svg"],
+}
+
+_WORKFLOWS = [
+    "INSPECT-FIRST loop: get_state() -> decide -> set_param/place_relative/align_* -> the beam re-traces; "
+    "read get_state()/diagnose() again. Never act blind -- the read tools are your eyes.",
+    "Build a bench: build_example(kind)  (22 canonical setups) OR add_component(key)+place_relative(...).",
+    "Align: auto_align(actuators,targets) for beam-walk, tilt_null(detector,mirrors) for interferometer fringes.",
+    "Adaptive optics: ao_kolmogorov(aberrator,r0) to inject turbulence -> ao_close_loop_recon(sensor,dm) to flatten.",
+    "Surface-figure sensing: build_example('surface_figure'[ _native/_diverging]) -> swap_part a mesh onto "
+    "SF_Reflector -> zonal_render(sensor='SF_WFS'); inspect with sensor_capture('SF_WFS').",
+    "Diagnose before trusting: diagnose() flags beam-clipping / vignetting / beam-underfills-figure / energy "
+    "violations -- they are ADVISORY; weigh user intent before 'fixing'.",
+]
+
+_GOTCHAS = [
+    "Both w_mm (beam radius) and clear_aperture are RADII (G.mirror sets clear_aperture=size*0.5). Compare like-for-like.",
+    "A finite sensor captures only the beam WITHIN its aperture (rho_max=aperture/w_sensor); a diverging beam "
+    "overfills it -> the outer figure is clipped + power 1-exp(-2a^2/w^2) is lost. See sensor_capture().",
+    "To illuminate a cm-scale optic with a real ~0.5 mm laser you MUST add a beam EXPANDER (afocal: spacing "
+    "f1+f2 SIGNED, M=|f2/f1|) -- raising the source waist is unphysical. diagnose() warns (beam_underfills_figure).",
+    "Physics is PROPERTY-DRIVEN: the generic tracer applies Snell/Fresnel/Sellmeier/ABCD from element properties; "
+    "change a property (glass, coating, focal) and behaviour changes -- no per-scene code.",
+    "The WFS reads the MODAL 15-Zernike channel (a low-pass caricature for high-frequency figure); the ZONAL "
+    "'sensor render' is the honest dense companion. swap_part normalizes mesh orientation (solve it empirically).",
+    "The trace is deterministic + byte-identical until an align_*/ao_* solver is explicitly called.",
+    "The bridge needs Blender running with the add-on + the Optics bridge started (port 9765).",
+]
+
+
+def capabilities():
+    """READ ME FIRST. A self-describing manifest for an AI/agent that just connected to this optics bench over
+    MCP: the scope, how it works, the tools grouped by purpose (with the READ/inspect tools called out as
+    'your eyes'), the common multi-step workflows, the example library, and the gotchas that bite. Returns a
+    JSON-able dict; nothing is mutated. Pair with get_state() (the live scene) and diagnose() (advisories)."""
+    import sys
+    api = sys.modules.get("optics_api") or sys.modules.get(__name__)
+    fns = sorted(n for n in dir(api) if not n.startswith("_") and callable(getattr(api, n, None)))
+    grouped = set()
+    for v in _TOOL_GROUPS.values():
+        grouped.update(v)
+    other = [f for f in fns if f not in grouped]
+    try:
+        from . import examples_builtin as _ex
+        examples = sorted(_ex.EXAMPLES.keys())
+    except Exception:
+        examples = []
+    return {
+        "scope": "A physics-verified optical bench an AI can BUILD, INSPECT, ALIGN, SENSE and RENDER over MCP. "
+                 "Geometric single-ray tracer + analytic overlays: Jones/Stokes polarization, Fresnel/Snell, "
+                 "Gaussian-beam q/ABCD, 15-Noll-Zernike adaptive optics, nonlinear chi(2), prisms/Sellmeier, "
+                 "gratings, detectors, fiber circulator, and surface-figure imprint + dense zonal wavefront.",
+        "how_it_works": "Property-driven: each element carries optics properties; the generic tracer applies the "
+                        "physics. Loop = get_state() -> act -> the beam re-traces live. Every formula is oracle-verified.",
+        "tool_count": len(fns),
+        "tool_groups": _TOOL_GROUPS,
+        "other_tools": other,
+        "workflows": _WORKFLOWS,
+        "examples": examples,
+        "gotchas": _GOTCHAS,
+        "see_also": "mcp/AGENT_GUIDE.md (full guide), docs/CAPABILITIES.md (the complete tree).",
+    }
+
+
 def get_state():
     """Full optical state: every element's world center, ports (world pos+normal),
     mount/DOF, mechanics, params, misalignment, plus the traced beam path."""

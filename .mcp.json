@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "blender-optics": {
+      "command": "uv",
+      "args": ["run", "--with", "mcp", "python", "mcp/optics_mcp_server.py"],
+      "env": { "OPTICS_BRIDGE_PORT": "9765" }
+    },
+    "freecad-cad": {
+      "command": "uv",
+      "args": ["run", "--with", "mcp", "python", "mcp/freecad_mcp_server.py"],
+      "env": { "FREECAD_CMD": "/Applications/FreeCAD.app/Contents/Resources/bin/freecadcmd" }
+    }
+  }
+}

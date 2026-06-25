@@ -59,6 +59,15 @@ def _fmt(reply):
 
 
 @mcp.tool()
+def capabilities() -> str:
+    """READ ME FIRST. Self-describing manifest for an agent that just connected: the scope, how the bench works,
+    the tools grouped by purpose (the READ/inspect tools are 'your eyes' — call them, never guess), the common
+    workflows, the example library, and the gotchas that bite. Nothing is mutated. Pair with get_state() (the
+    live scene) and diagnose() (advisory corrections you weigh against user intent before acting)."""
+    return _fmt(_call("capabilities"))
+
+
+@mcp.tool()
 def get_state() -> str:
     """Full optical state: every element's world center, ports (world position + normal),
     mount/DOFs, mechanics, params, misalignment, plus the traced beam path."""

@@ -76,6 +76,11 @@ data model: behavior reads element properties × `matrix_world`, never the mesh)
   NON-collimated (diverging) beam overfills the sensor and reads only its clipped centre (and loses power).
   New `optics_api.sensor_capture(sensor)` (+ MCP tool) reports w@sensor, aperture, captured power/area, and
   whether the clip applied. See `docs/img/surface-figure-3beams.png` (the chess knight, read three ways).
+- **AI self-knowledge** — `optics_api.capabilities()` (+ MCP tool, "read me first") returns a self-describing
+  manifest: scope, tools grouped by purpose (the read/inspect tools called out as "the agent's eyes"),
+  workflows, the example library, and the gotchas. Companion docs `mcp/AGENT_GUIDE.md`, `docs/CAPABILITIES.md`
+  (the full tree), `docs/TOOLING.md` (MCP-tool vs operator vs skill vs hook taxonomy). A root `.mcp.json`
+  registers the `blender-optics` server so any session connects cleanly.
 
 ### Added — components
 - **Dispersing prisms** (equilateral / Littrow / Pellin-Broca / Amici) on real Sellmeier glasses
