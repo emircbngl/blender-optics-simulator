@@ -30,12 +30,15 @@ drops. Owner decision (2026-06-25): **no Claude connector — invest in optics S
 4. **The AI's eyes are MCP tools, not skills.** `get_state`/`diagnose`/`sensor_capture`/`beam_profile` stay
    primitives the model calls freely; the skill tells it *to* call them first.
 
-## Planned optics skills (Phase 2.1)
-- `optics-build` — stand up a bench (example or from components) + verify it traces.
-- `optics-align` — auto_align / tilt_null with the inspect-first loop + convergence reporting.
-- `optics-inspect` — get_state + diagnose + sensor_capture/beam_profile → a structured "what's the bench doing".
-- `optics-correct` — run diagnose/propose_corrections, weigh user intent, and refuse / partial / accept (Phase 1.3 model).
-- `optics-sensor-render` — surface_figure workflow: build → swap_part a mesh → zonal_render(sensor) + hero render.
+## Optics skills (Phase 2.1 — BUILT, `.claude/skills/`)
+The connector replacement: model-invoked `/optics-*` workflows that sequence the MCP tools + carry the
+disciplines. All check into the repo, so anyone cloning gets them.
+- `optics-build` — stand up a bench (example or from components), set params/mounts, verify it traces.
+- `optics-align` — auto_align / tilt_null / mode_match with the inspect-first loop + convergence reporting.
+- `optics-inspect` — get_state + inspect_beam + inspect_element + sensor_capture/beam_profile → a
+  structured, READ-ONLY "what's the bench doing" (the golden rule: inspect, don't guess).
+- `optics-correct` — propose_corrections(), weigh user intent, refuse / partial / accept (Phase 1.3 model).
+- `optics-sensor-render` — sensor_capture + ao_measure + zonal_render: the honest modal-vs-zonal sensor read.
 
 ## Planned hooks (consider in Phase 2.3 / later)
 - Stop-hook style: warn if a numeric/physics result was reported without a `physics_verify ok=true` this session
