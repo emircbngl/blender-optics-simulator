@@ -225,6 +225,11 @@ def _child(ray, E, H, d, power, kind, idx, t, jones=None, q=None, evec=None, abe
     direction's transverse frame. An explicit evec (exact 3-D reflection) wins; otherwise
     the field is rebuilt from the 2-D jones, reproducing the prior Jones-only behaviour
     while still carrying a faithful 3-D field for the next reflection."""
+    fresh_q = q is not None        # caller passed an explicit q == a CONVERTED beam (CRYSTAL SHG/SPDC,
+                                   # a new diffraction-limited m2=1 child). Capture it BEFORE the block
+                                   # below reassigns the local q from ray.q -- otherwise a plain
+                                   # continuation (q=None) looks "fresh" after propagation and its M^2
+                                   # is wrongly reset to 1 one element past the source.
     if q is None:
         q = ray.q
         if q is not None:
@@ -258,8 +263,10 @@ def _child(ray, E, H, d, power, kind, idx, t, jones=None, q=None, evec=None, abe
         nj = ray.jones if jones is None else jones
         nev = physics.field_from_jones(nj, d) if nj is not None else None
     # a converted child (CRYSTAL: SHG/SPDC) passes an explicit fresh q -> it is a new,
-    # diffraction-limited beam (m2=1); a plain continuation inherits the parent's m2.
-    child_m2 = ray.m2 if q is None else 1.0
+    # diffraction-limited beam (m2=1); a plain continuation inherits the parent's m2 (ABCD
+    # propagation preserves M^2). Keyed on fresh_q (the ARGUMENT), not the post-propagation
+    # local q -- the latter is non-None for every Gaussian continuation, which silently reset M^2.
+    child_m2 = 1.0 if fresh_q else ray.m2
     return _Ray(H, d, power, ray.depth + 1, E, (wl if wl is not None else ray.wl), kind, idx,
                 jones=nj, opl=ray.opl + t, q=q,
                 src_id=ray.src_id, coh=ray.coh, evec=nev,

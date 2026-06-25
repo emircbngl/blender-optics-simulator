@@ -1259,6 +1259,35 @@ check("w(end) == carried segment w", abs(bp["w"][-1] - bp["elements"][-1]["w_mm"
       "%.6f vs %.6f" % (bp["w"][-1], bp["elements"][-1]["w_mm"]))
 check("profile CSV written", os.path.exists(bp["csv"]) and os.path.getsize(bp["csv"]) > 100)
 
+print("[B1 beam quality M^2: persists through an optic, not reset one element past the source]")
+# Regression for the M^2-reset bug (_child keyed the m2-reset on the post-propagation local q, which is
+# non-None for EVERY Gaussian continuation, so any source with m2>1 silently lost its beam quality after
+# the first optic). ABCD propagation preserves M^2 -> a plain continuation must inherit ray.m2; only a
+# CRYSTAL-converted child (explicit fresh q) resets to the diffraction limit m2=1. m2=1 is byte-identical.
+for _o in list(sc.objects):
+    if getattr(getattr(_o, "optics", None), "is_optical", False):
+        bpy.data.objects.remove(_o, do_unlink=True)
+_cm2t = eg.example_collection("M2_persist")
+_X2 = _Vec((1, 0, 0))
+_las2 = eg.source("M2L", (-200, 0, 0), _X2, _cm2t, wavelength=632.8)
+_las2.optics.waist_um = 200.0
+_las2.optics.m2 = 4.0
+eg.lens("M2Lens", (0, 0, 0), _X2, _cm2t, focal=150.0, radius=14.0)
+eg.detector("M2D", (200, 0, 0), _X2, _cm2t, size=30.0)
+bpy.context.view_layer.update()
+_m2segs = scan._trace(sc)
+_src_seg = next(s for s in _m2segs if s.get("from") == "M2L")
+_dn_seg = next(s for s in _m2segs if s.get("from") == "M2Lens")
+check("B1: source segment carries m2=4", abs(_src_seg.get("m2", 0) - 4.0) < 1e-9, "m2=%.2f" % _src_seg.get("m2", 0))
+check("B1: M^2 persists one element past the source (downstream m2=4, not reset to 1)",
+      abs(_dn_seg.get("m2", 0) - 4.0) < 1e-9, "m2=%.2f" % _dn_seg.get("m2", 0))
+_w_dl = physics.beam_radius(complex(_dn_seg["qd"][0], _dn_seg["qd"][1]), 632.8)
+check("B1: downstream physical w = sqrt(m2)*w_diffraction (2x for M2=4)",
+      abs(_dn_seg["w_mm"] / _w_dl - 2.0) < 1e-3, "ratio=%.4f" % (_dn_seg["w_mm"] / _w_dl))
+for _o in list(_cm2t.objects):
+    eg.drop_example_object(_o)
+bpy.data.collections.remove(_cm2t)
+
 print("[live signature tracks physics params]")
 optics_api.build_example("mach_zehnder")
 sig0 = handlers._signature(sc)
