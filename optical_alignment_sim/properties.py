@@ -458,6 +458,10 @@ class OpticalElementProps(PropertyGroup):
                ('F2', "F2 (flint)", "Vd=36.4"),
                ('N-F2', "N-F2 (lead-free flint)", "Vd=36.4"),
                ('CaF2', "CaF2 (calcium fluoride)", "Vd=95.0; UV-transmitting low dispersion")])
+    # Element temperature for the thermo-optic shift n_eff = n(lambda) + dn/dT*(T-20C). Default 20C is a
+    # no-op (dn/dT*0), so existing scenes are byte-identical; raise it to see the focal/index drift.
+    temp_C: FloatProperty(name="Temperature (C)", default=20.0, min=-100.0, max=300.0,
+        description="Optic temperature; shifts the index via dn/dT (thermo-optic). 20 C = nominal, no shift")
     cavity_spacing_mm: FloatProperty(name="Cavity spacing (mm)", default=0.05, min=1e-4)
     # C6 fiber-circulator port isolation: the directivity figure in dB. A ray entering port Pi exits the
     # NEXT port P(i+1) at the through transmittance; a SMALL leak goes to the PREVIOUS port P(i-1) at power

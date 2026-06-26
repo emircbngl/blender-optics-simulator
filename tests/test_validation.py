@@ -86,6 +86,39 @@ check("Cavity unstable g1g2=4 outside [0,1]", 0.0 if unstable else 1.0, 1.0, 0.0
 malus = physics.intensity(physics.apply(physics.M_polarizer(45.0, extinction=1.0e6), physics.jones_linear(0.0)))
 check("Malus law I=cos^2(45deg)", malus, 0.5, 1e-3, "Hecht; oracle")
 
+print("[Material breadth — extended catalog (refractiveindex.info, CC0)]")
+check("Quartz n_o @587.6 (Ghosh99)", physics.sellmeier_n(587.6, 'QUARTZ_O'), 1.54428, 5e-4, "RII [datasheet]")
+check("Quartz birefringence n_e-n_o (+uniaxial)",
+      physics.sellmeier_n(587.6, 'QUARTZ_E') - physics.sellmeier_n(587.6, 'QUARTZ_O'), 0.00910, 5e-4, "Ghosh99 [datasheet]")
+check("Sapphire n_o @587.6", physics.sellmeier_n(587.6, 'SAPPHIRE_O'), 1.76817, 5e-4, "Malitson72 [datasheet]")
+check("N-SF6 n_d @587.6", physics.sellmeier_n(587.6, 'N-SF6'), 1.80518, 5e-4, "SCHOTT [datasheet]")
+check("BaF2 n @587.6", physics.sellmeier_n(587.6, 'BaF2'), 1.47448, 5e-4, "Malitson64 [datasheet]")
+check("ZnSe n @10.6um (CO2 laser line)", physics.sellmeier_n(10600.0, 'ZnSe'), 2.4028, 2e-3, "Connolly79 [datasheet]")
+check("Ge n @10um (IR; tests clamp window)", physics.sellmeier_n(10000.0, 'GE'), 4.0040, 3e-3, "Burnett16 [datasheet]")
+
+print("[Thermo-optic dn/dT — n_eff = n(lambda) + dn/dT*(T-20C)]")
+check("Fused silica dn/dT +100K shift", physics.sellmeier_n(587.6, 'FUSED_SILICA', 120.0) - physics.sellmeier_n(587.6, 'FUSED_SILICA'),
+      1.0e-3, 1e-9, "Corning7980; oracle")
+check("CaF2 NEGATIVE dn/dT +100K shift", physics.sellmeier_n(587.6, 'CaF2', 120.0) - physics.sellmeier_n(587.6, 'CaF2'),
+      -1.06e-3, 1e-9, "Daimon02; oracle")
+check("dn/dT at 20C is a no-op (byte-identical)", physics.sellmeier_n(587.6, 'N-BK7', 20.0) - physics.sellmeier_n(587.6, 'N-BK7'),
+      0.0, 0.0, "byte-identical")
+
+print("[More textbook closed forms]")
+_d = physics.refract_dir((math.cos(math.radians(30.0)), math.sin(math.radians(30.0)), 0.0), (-1.0, 0.0, 0.0), 1.0, 1.5)
+_th2 = math.degrees(math.asin(abs(_d[1]))) if _d else None
+check("Snell refraction 30deg, air->n=1.5", _th2, 19.4712, 1e-2, "Hecht; oracle")
+check("Coherence length Na 589.3nm dl=0.6nm", physics.coherence_length_mm(589.3, 0.6), 0.5788, 1e-3, "Hecht; oracle")
+check("Coherence length HeNe 632.8 dl=0.002nm", physics.coherence_length_mm(632.8, 0.002), 200.22, 0.5, "Hecht; oracle")
+check("Fabry-Perot FSR 632.8nm L=10mm (nm)", physics.cavity_fsr_nm(632.8, 10.0, 1.0), 0.020022, 1e-5, "Saleh&Teich; oracle")
+_qwp = physics.stokes(physics.apply(physics.M_waveplate(90.0, 45.0), physics.jones_linear(0.0)))
+check("QWP linear->circular |S3|=1", abs(_qwp[3]), 1.0, 1e-3, "Hecht; oracle")
+_hwp = physics.apply(physics.M_waveplate(180.0, 22.5), physics.jones_linear(0.0))
+check("HWP rotates 0->45deg (analyzer@45 passes)", physics.intensity(physics.apply(physics.M_polarizer(45.0, 1.0e6), _hwp)),
+      1.0, 1e-3, "Hecht; oracle")
+check("HWP rotated beam blocked by analyzer@135", physics.intensity(physics.apply(physics.M_polarizer(135.0, 1.0e6), _hwp)),
+      0.0, 1e-3, "Hecht; oracle")
+
 print("=" * 60)
 n_pass = sum(_checks)
 n_total = len(_checks)

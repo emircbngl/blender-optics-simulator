@@ -221,20 +221,57 @@ GLASSES = {
     'N-F2': (1.39757037, 0.159201403, 1.26865430, 0.00995906143, 0.0546931752, 119.248346),
     # CaF2 C-coefficients are the SQUARED resonance wavelengths from Malitson: (0.050263605, 0.1003909, 34.649040) um.
     'CaF2': (0.5675888, 0.4710914, 3.8484723, 0.050263605 ** 2, 0.1003909 ** 2, 34.649040 ** 2),
+    # --- additional catalog glasses (SCHOTT Zemax 2017 fits via refractiveindex.info, CC0) -------------
+    'N-SF6': (1.77931763, 0.338149866, 2.08734474, 0.0133714182, 0.0617533621, 174.01759),
+    'N-LAK22': (1.14229781, 0.535138441, 1.04088385, 0.00585778594, 0.0198546147, 100.834017),
+    'N-SF2': (1.47343127, 0.163681849, 1.36920899, 0.0109019098, 0.0585683687, 127.404933),
+    # --- IR / special materials (literature Sellmeier via refractiveindex.info, CC0) -------------------
+    'ZnSe': (4.45813734, 0.467216334, 2.89566290, 0.0403446805, 0.15317139, 2221.82237),      # Connolly 1979, 0.54-18.2um
+    'GE': (0.4886331, 14.5142535, 0.0091224, 1.393959, 0.1626427, 752.190),                   # Burnett 2016, 2-14um
+    'SI': (10.6684293, 0.0030434748, 1.54133408, 0.0909121907, 1.28766017, 1218816.0),        # Salzberg 1957, 1.36-11um
+    'BaF2': (0.643356, 0.506762, 3.8261, 0.00333956852, 0.0120297024, 2151.6981),             # Malitson 1964, 0.27-10.3um
+    # --- birefringent crystals: ordinary (n_o) + extraordinary (n_e). C3=0 folds Ghosh's constant A
+    #     into a third term (lambda^2/(lambda^2-0)=1 -> contributes B3). Used as waveplate/polarizer stock.
+    'QUARTZ_O': (1.07044083, 1.10202242, 0.28604141, 1.00585997e-2, 100.0, 0.0),              # alpha-SiO2, Ghosh 1999
+    'QUARTZ_E': (1.09509924, 1.15662475, 0.28851804, 1.02101864e-2, 100.0, 0.0),
+    'CALCITE_O': (0.96464345, 1.82831454, 0.73358749, 1.94325203e-2, 120.0, 0.0),             # CaCO3, Ghosh 1999
+    'CALCITE_E': (0.82427830, 0.14429128, 0.35859695, 1.06689543e-2, 120.0, 0.0),
+    'MGF2_O': (0.48755108, 0.39875031, 2.3120353, 0.04338408 ** 2, 0.09461442 ** 2, 23.793604 ** 2),   # Dodge 1984
+    'MGF2_E': (0.41344023, 0.50497499, 2.4904862, 0.03684262 ** 2, 0.09076162 ** 2, 23.771995 ** 2),
+    'SAPPHIRE_O': (1.4313493, 0.65054713, 5.3414021, 0.0726631 ** 2, 0.1193242 ** 2, 18.028251 ** 2),   # Al2O3, Malitson 1972
+    'SAPPHIRE_E': (1.5039759, 0.55069141, 6.5927379, 0.0740288 ** 2, 0.1216529 ** 2, 20.072248 ** 2),
 }
 
+# Thermo-optic coefficient dn/dT [1/K], RELATIVE to air, near the d-line at ~20 C. Tier-1 datasheet
+# constants (SCHOTT TIE-19; Corning 7980 for fused silica). The absolute-vs-relative and the lambda,T
+# dependence are a real ~1e-6/K spread, so these are REPRESENTATIVE, not exact. CaF2 is NEGATIVE (the
+# athermalizing material). Materials absent here contribute no thermal shift.
+DNDT = {
+    'N-BK7': 2.4e-6, 'FUSED_SILICA': 1.0e-5, 'N-SF11': 1.9e-6,
+    'F2': 4.4e-6, 'N-F2': 3.5e-6, 'CaF2': -10.6e-6,
+}
+DNDT_T0_C = 20.0
 
-def sellmeier_n(wl_nm, glass='N-BK7'):
-    """Refractive index n(lambda) via the Sellmeier equation (lambda in nm)."""
+
+def sellmeier_n(wl_nm, glass='N-BK7', temp_C=None):
+    """Refractive index n(lambda) via the Sellmeier equation (lambda in nm).
+
+    With temp_C given, adds the thermo-optic shift n_eff = n(lambda) + dn/dT*(T - 20 C) using the
+    glass's DNDT coefficient (0 if unknown). temp_C=None -> the pure dispersive index (and temp_C=20
+    is a no-op since dn/dT*(20-20)=0), so existing scenes are unaffected."""
     b1, b2, b3, c1, c2, c3 = GLASSES.get(glass, GLASSES['N-BK7'])
     L2 = (wl_nm * 1.0e-3) ** 2          # lambda^2 in micron^2
     n2 = 1.0 + b1 * L2 / (L2 - c1) + b2 * L2 / (L2 - c2) + b3 * L2 / (L2 - c3)
-    # The Sellmeier fit is only valid across its transparency window (~0.3-2.5 um for N-BK7).
-    # Below the longest pole it swings (n2<0 between poles, or absurd just past one); clamp to the
-    # nearest physical bound so a deep-UV sweep step yields a sane index, not 1.0 or n~30.
-    if not (0.0 < n2 < 16.0):           # n in (1, 4): covers all common optical glasses
-        return 1.0 if n2 <= 1.0 else 4.0
-    return math.sqrt(n2)
+    # The Sellmeier fit is only valid across its transparency window. Between/under poles it swings
+    # (n2<0, or absurd just past one); clamp to the nearest physical bound so an out-of-window sweep
+    # step yields a sane index. Upper bound raised to n~5 to admit IR Ge/Si/ZnSe (n_Ge ~ 4.0).
+    if not (0.0 < n2 < 25.0):
+        n = 1.0 if n2 <= 1.0 else 5.0
+    else:
+        n = math.sqrt(n2)
+    if temp_C is not None:
+        n += DNDT.get(glass, 0.0) * (temp_C - DNDT_T0_C)
+    return n
 
 
 # --- closed-form helpers for textbook validation (pure scalar functions) ----

@@ -8,13 +8,29 @@ semantic versioning.
 
 ### Added — textbook-validation suite + correctness helpers
 - **`tests/test_validation.py`** — a CI-runnable suite that reproduces canonical optics-textbook problems
-  and asserts our kernels match the known closed-form / datasheet answers (24 checks: Brewster, critical
-  angle, Fresnel R, prism minimum deviation, Sellmeier n_d + Abbe, Gaussian focal spot / Rayleigh range /
-  divergence, Fabry-Perot finesse, grating equation, telescope / beam-expander / 4f magnifications,
-  thin-lens imaging, cavity stability, Malus). Every closed-form expected value is `physics_verify`
-  ok=true; datasheet constants are validated against the published catalog figure. Wired into CI.
+  and asserts our kernels match the known closed-form / datasheet answers (**41 checks**: Brewster, critical
+  angle, Snell refraction, Fresnel R, prism minimum deviation, Sellmeier n_d + Abbe, the new material
+  catalog, thermo-optic dn/dT, Gaussian focal spot / Rayleigh range / divergence, Fabry-Perot finesse +
+  FSR, grating equation, coherence length, telescope / beam-expander / 4f magnifications, thin-lens
+  imaging, cavity stability, Malus, QWP→circular / HWP rotation). Every closed-form expected value is
+  `physics_verify` ok=true; datasheet constants are validated against the published catalog figure. Wired
+  into CI as a second gate beside the regression. References checked against POPPY / prysm / RayOptics
+  (diffraction-PSF reference implementations flagged honestly OUT OF SCOPE — this is a ray + Gaussian +
+  analytic engine, not a wave-propagation one).
 - **Closed-form helpers** in `physics.py` exposed as scalars for direct textbook checks: `critical_angle`,
   `brewster_angle`, `abbe_number`, `thin_lens_image`, `cavity_stability`, `grating_angle`.
+
+### Added — material catalog + thermo-optics
+- **14 new materials** in the Sellmeier catalog (datasheet-validated to ±0.0003 via refractiveindex.info,
+  CC0): catalog glasses **N-SF6 / N-LAK22 / N-SF2**; IR materials **ZnSe / Ge / Si / BaF2**; and the
+  birefringent crystals **quartz / calcite / MgF2 / sapphire** with both ordinary (n_o) and extraordinary
+  (n_e) rays (waveplate / polarizer stock). The transparency-window clamp was widened (n<5) to admit the
+  high-index IR materials (Ge n≈4.0). Confirmed offline: no runtime fetch of optical constants.
+- **Thermo-optic dn/dT** — `sellmeier_n(λ, glass, temp_C)` adds the index shift `n_eff = n(λ) + dn/dT·(T−20 C)`
+  with per-glass relative-to-air `DNDT` coefficients (SCHOTT TIE-19 / Corning; CaF2 is **negative**). A
+  `temp_C` element property (default 20 °C → byte-identical) feeds the lens chromatic path. Tier-1: the
+  values are representative datasheet constants (the absolute-vs-relative + λ,T spread is ~1e-6/K).
+  Thermal lensing, photoelastic stress, CTE drift and gravity sag remain explicitly DEFERRED (not faked).
 
 ### Fixed
 - **Lens chromatic aberration used the wrong glass** — the longitudinal chromatic focal shift hard-coded

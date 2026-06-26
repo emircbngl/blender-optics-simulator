@@ -1556,8 +1556,9 @@ handlers._deferred_trace()                               # must NOT trace/overwr
 check("deferred trace no-op when live off", tracer.cached_segments == ["__SENTINEL__"])
 
 print("[low-severity correctness tail]")
-# Sellmeier stays physical in the deep UV (was returning 1.0 or n~9 between poles)
-check("sellmeier UV index stays physical", all(1.0 <= physics.sellmeier_n(w) <= 4.0 for w in (60.0, 78.0, 100.0, 142.0)))
+# Sellmeier stays physical in the deep UV (was returning 1.0 or n~9 between poles). Upper bound is
+# n<=5 since the transparency-window clamp was widened (n2<25) to admit IR materials (Ge n~4.0).
+check("sellmeier UV index stays physical", all(1.0 <= physics.sellmeier_n(w) <= 5.0 for w in (60.0, 78.0, 100.0, 142.0)))
 # Detector fringe material copy-on-writes a shared mesh (no sibling cross-talk)
 fd1 = elements_generic.detector("RT_fd1", (0, 0, 0), (1, 0, 0))
 fd2 = bpy.data.objects.new("RT_fd2", fd1.data)       # linked-duplicate: shares the mesh datablock
