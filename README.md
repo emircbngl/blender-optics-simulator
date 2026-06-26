@@ -256,6 +256,29 @@ element properties, every formula oracle-verified.
 
 ---
 
+## Methods — physical & digital
+
+Two halves: the **physics** the simulator models, and the **engineering** that keeps it honest.
+
+**Physical methods** (the optics, all in a dependency-free `physics.py`):
+
+- **Geometric chief-ray tracing** through sequential elements — Snell refraction, vectorial Fresnel, multi-bounce splits.
+- **Polarization** — Jones vectors/matrices, Stokes / DOP, Malus, exact 3-D Fresnel s/p phase, and a per-pixel DoFP polarization camera.
+- **Gaussian beams** — the complex *q*-parameter through ABCD systems: `w(z)`, `R(z)`, Gouy phase, beam quality `M²`, mode-matching.
+- **Wavefront sensing** — modal 15-Noll-Zernike *and* pyramid (slope) reads, closed-loop adaptive optics, and dense zonal surface-figure maps (`W = 2·cos²θ·Δdepth`).
+- **Wavelength** — Sellmeier dispersion `n(λ)`, soft-edge dichroics (`R(λ) + T(λ) = 1`), interference / colored-glass filters, the grating equation.
+- **Interference & phenomena** — coherent recombination + fringe visibility, off-axis-hologram carrier spacing `Λ = λ/(2 sin θ/2)`, nonlinear χ² conversion (SHG / SPDC), acousto-optic Bragg deflection.
+
+**Digital methods** (the engineering that makes it trustworthy):
+
+- **Property-driven & byte-identical** — every behaviour is *element properties × `matrix_world`*; the mesh is cosmetic and the trace is deterministic until you act (the architecture below).
+- **Oracle-verified** — every core formula is machine-checked against an external symbolic + numeric oracle (units, identities, limits, known-input → known-answer) before it ships: **verified**, not "dimensionally plausible."
+- **A 357-check regression harness** runs headless in Blender on every push (CI-green), and opt-in features stay trace-byte-identical.
+- **AI-drivable over MCP** — the agent loop *read → judge → act → re-trace*, advisory corrections you judge (refuse / partial / accept), and five `/optics-*` skills.
+- **Reproducible figures** — the analysis figures are composed by `tests/_plot_*.py` from dumped trace data through a shared [figure schema](docs/FIGURE_STYLE.md) (`figstyle`) that **guarantees the colorbar and captions never overlap or clip**, and is re-themeable without touching the layout.
+
+---
+
 ## Physics & scope (honest)
 
 <p align="center">
