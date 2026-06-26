@@ -4,9 +4,9 @@ All notable changes to the **Blender Optics Simulator** (`optical_alignment_sim`
 here. The format follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 semantic versioning.
 
-## [0.10.0] — Optics-v2
+## [0.11.0] — Optics-v2 + AI-first
 
-The big capability expansion: an agent-facing auto-aligner, a full prism / nonlinear-crystal /
+The first public release since 0.9.1. The big capability expansion: an agent-facing auto-aligner, a full prism / nonlinear-crystal /
 aperture / detector / circulator component build-out, an upgraded adaptive-optics loop, a read-only
 error-detection layer, and an **AI-first correctness, skills, vision & phenomena** pass. Every new
 formula is machine-verified against the physicist Docker oracle before shipping, and every existing
