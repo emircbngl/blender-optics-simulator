@@ -265,23 +265,23 @@ class OPTICS_OT_install_update(Operator):
         prefs = context.preferences
         try:
             repo = _ensure_repo(prefs)
-        except (RuntimeError, ValueError) as exc:
+            repo_index = list(prefs.extensions.repos).index(repo)
+        except Exception as exc:     # repo API varies across Blender versions — never crash the click
             self.report({'ERROR'}, "Could not add the update repository: %s" % exc)
             return {'CANCELLED'}
-        repo_index = list(prefs.extensions.repos).index(repo)
 
         try:
             bpy.ops.extensions.repo_sync(repo_index=repo_index)
-        except RuntimeError:
+        except Exception:
             try:
                 bpy.ops.extensions.repo_sync_all(use_active_only=False)
-            except RuntimeError:
+            except Exception:
                 pass
 
         try:
             bpy.ops.extensions.package_install(
                 repo_index=repo_index, pkg_id=EXT_ID, enable_on_install=True)
-        except RuntimeError as exc:
+        except Exception as exc:
             self.report({'ERROR'},
                         "Install failed (%s). Opening Blender's update panel." % exc)
             for op in ("userpref_show_for_update", "userpref_show_online"):
@@ -378,13 +378,17 @@ def register():
         bpy.utils.register_class(c)
     if not bpy.app.timers.is_registered(_timer_check):
         bpy.app.timers.register(_timer_check, first_interval=_FIRST_DELAY_S, persistent=True)
-    if _on_exit not in bpy.app.handlers.exit_pre:
-        bpy.app.handlers.exit_pre.append(_on_exit)
+    # exit_pre arrived after Blender 4.2 LTS — the "apply on quit" hook is optional (the staged
+    # update still loads on the next launch without it), so guard for older Blenders.
+    exit_pre = getattr(bpy.app.handlers, "exit_pre", None)
+    if exit_pre is not None and _on_exit not in exit_pre:
+        exit_pre.append(_on_exit)
 
 
 def unregister():
-    if _on_exit in bpy.app.handlers.exit_pre:
-        bpy.app.handlers.exit_pre.remove(_on_exit)
+    exit_pre = getattr(bpy.app.handlers, "exit_pre", None)
+    if exit_pre is not None and _on_exit in exit_pre:
+        exit_pre.remove(_on_exit)
     if bpy.app.timers.is_registered(_timer_check):
         try:
             bpy.app.timers.unregister(_timer_check)
