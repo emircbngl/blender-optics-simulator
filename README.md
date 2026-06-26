@@ -335,12 +335,29 @@ STEP/IGES via FreeCAD) to drop in an exact part.
 
 Requires **Blender 4.2 LTS or newer** (4.2+ / 5.x).
 
-1. Download the latest **`optical_alignment_sim-<version>.zip`** from the
-   [**Releases**](https://github.com/emircbngl/blender-optics-simulator/releases) page.
-   *(Or build from source: `blender --command extension build --source-dir optical_alignment_sim --output-dir .`)*
-2. In Blender: **drag the zip onto the window**, or *Edit ▸ Preferences ▸ Add-ons ▸ Install from
-   Disk…* and pick the zip.
-3. Open the **Optics** tab in the 3D viewport sidebar (press `N`).
+### One-click — recommended, auto-updates
+
+Open the **[install page](https://emircbngl.github.io/blender-optics-simulator/)** and drag the
+**“⤓ Drag this into Blender to install”** button onto an open Blender window. Blender installs the
+add-on **and** subscribes you to update notifications in one gesture — no URL to type. (Make sure
+*Edit ▸ Preferences ▸ System ▸ Network ▸ Allow Online Access* is on.)
+
+Every future release then appears **inside Blender** — a status-bar badge, then *Preferences ▸ Get
+Extensions ▸ Install Available Updates*. You never download a zip by hand again.
+
+Then open the **Optics** tab in the 3D viewport sidebar (press `N`).
+
+### Manual — no auto-updates
+
+Download **`optical_alignment_sim-<version>.zip`** from the
+[Releases](https://github.com/emircbngl/blender-optics-simulator/releases) page and use *Edit ▸
+Preferences ▸ Add-ons ▸ Install from Disk…*. *(Or build from source: `blender --command extension build
+--source-dir optical_alignment_sim --output-dir .`)* Install-from-disk copies live in a **local**
+repository that Blender never updates — re-install once via the one-click link above to get on the
+update channel.
+
+> **Already on v0.9.x, installed from disk?** Disk installs never update. Remove the old copy once and
+> re-install via the one-click link — then updates arrive automatically from then on.
 
 ---
 

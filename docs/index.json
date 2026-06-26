@@ -1,0 +1,32 @@
+{
+ "version": "v1",
+ "blocklist": [],
+ "data": [
+  {
+   "schema_version": "1.0.0",
+   "id": "optical_alignment_sim",
+   "name": "Optical Alignment & Simulation",
+   "tagline": "Live ray tracing & auto-alignment for optical benches",
+   "version": "0.11.0",
+   "type": "add-on",
+   "maintainer": "Emir <emircbngl@gmail.com>",
+   "license": [
+    "SPDX:GPL-3.0-or-later"
+   ],
+   "blender_version_min": "4.2.0",
+   "website": "https://github.com/emircbngl/blender-optics-simulator",
+   "permissions": {
+    "network": "Localhost bridge lets an external MCP agent drive the scene",
+    "files": "Import user mesh libraries; write converted meshes to the cache"
+   },
+   "tags": [
+    "3D View",
+    "Render",
+    "Object"
+   ],
+   "archive_url": "https://github.com/emircbngl/blender-optics-simulator/releases/download/v0.11.0/optical_alignment_sim-0.11.0.zip",
+   "archive_size": 298997,
+   "archive_hash": "sha256:15ee7933b27d9831a22aecf96a31bb8f7de8af905ee69889bfe89982b2024018"
+  }
+ ]
+}
