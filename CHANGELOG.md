@@ -44,6 +44,14 @@ scene traces byte-identical (the port-based data model: behavior reads element p
 - **M² beam quality** persisted past the first optic (it was silently reset to 1.0 one element past any
   source — the m2-reset keyed on the post-propagation `q` instead of the caller's fresh `q`).
 
+### Added — distribution & updates
+- **Native in-Blender auto-update channel** — a self-hosted static extension repository (served from
+  GitHub Pages) with a **one-click drag-to-install link** that installs AND subscribes in one gesture
+  (no repo URL to type), plus a **Check for Updates** button in the add-on preferences. It drives
+  Blender's OWN extension operators (`repo_sync_all` + the native update panel) — it never overwrites the
+  add-on's files, so the extension manager and the on-disk version never diverge. Cutting a release now
+  reaches existing users in-Blender. (`tools/build_pages_repo.py` regenerates the repo per release.)
+
 ### Added — bench intelligence (placement / correction / error detection)
 - **Generic auto-aligner** (`optics_api.auto_align` + MCP tool) — a scene-agnostic linearized
   influence-matrix corrector: calibrate ∂y/∂u by poking DOFs + re-tracing, SVD-pseudoinvert, and
