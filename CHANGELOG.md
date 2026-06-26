@@ -4,6 +4,25 @@ All notable changes to the **Blender Optics Simulator** (`optical_alignment_sim`
 here. The format follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 semantic versioning.
 
+## [Unreleased]
+
+### Added — textbook-validation suite + correctness helpers
+- **`tests/test_validation.py`** — a CI-runnable suite that reproduces canonical optics-textbook problems
+  and asserts our kernels match the known closed-form / datasheet answers (24 checks: Brewster, critical
+  angle, Fresnel R, prism minimum deviation, Sellmeier n_d + Abbe, Gaussian focal spot / Rayleigh range /
+  divergence, Fabry-Perot finesse, grating equation, telescope / beam-expander / 4f magnifications,
+  thin-lens imaging, cavity stability, Malus). Every closed-form expected value is `physics_verify`
+  ok=true; datasheet constants are validated against the published catalog figure. Wired into CI.
+- **Closed-form helpers** in `physics.py` exposed as scalars for direct textbook checks: `critical_angle`,
+  `brewster_angle`, `abbe_number`, `thin_lens_image`, `cavity_stability`, `grating_angle`.
+
+### Fixed
+- **Lens chromatic aberration used the wrong glass** — the longitudinal chromatic focal shift hard-coded
+  N-BK7 (`sellmeier_n` was called without the glass arg), so every lens dispersed as N-BK7 regardless of
+  its material. Added a `lens_glass` property (default N-BK7 → existing scenes byte-identical) and routed
+  the element's real glass into both index lookups; a fused-silica / N-SF11 lens now gets its own colour
+  (validated: N-SF11/N-BK7 F→C shift ratio 2.47 ≈ the Abbe ratio).
+
 ## [0.11.0] — Optics-v2 + AI-first
 
 The first public release since 0.9.1. The big capability expansion: an agent-facing auto-aligner, a full prism / nonlinear-crystal /

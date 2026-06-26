@@ -237,6 +237,59 @@ def sellmeier_n(wl_nm, glass='N-BK7'):
     return math.sqrt(n2)
 
 
+# --- closed-form helpers for textbook validation (pure scalar functions) ----
+# Each is the standard relation exposed as a number so it can be checked DIRECTLY
+# against a textbook value (and physics_verify'd). Angles in DEGREES at this boundary.
+
+def critical_angle(n1, n2):
+    """Total-internal-reflection critical angle theta_c = asin(n2/n1), in degrees.
+    None when n2 >= n1 (no TIR going into the denser/equal medium)."""
+    if n1 <= 0.0 or n2 >= n1:
+        return None
+    return math.degrees(math.asin(n2 / n1))
+
+
+def brewster_angle(n1, n2):
+    """Brewster (polarizing) angle theta_B = atan(n2/n1), in degrees (p-reflectance -> 0)."""
+    return math.degrees(math.atan(n2 / n1))
+
+
+def abbe_number(glass='N-BK7'):
+    """Abbe number Vd = (nd-1)/(nF-nC) at the d (587.56), F (486.13), C (656.27 nm) lines."""
+    nd = sellmeier_n(587.56, glass)
+    nF = sellmeier_n(486.13, glass)
+    nC = sellmeier_n(656.27, glass)
+    denom = nF - nC
+    return (nd - 1.0) / denom if abs(denom) > 1e-12 else float('inf')
+
+
+def thin_lens_image(f, o):
+    """Thin-lens imaging 1/o + 1/i = 1/f. Returns (image_distance i, magnification m = -i/o).
+    (None, None) when the object sits at the focus (image at infinity)."""
+    inv_i = 1.0 / f - 1.0 / o
+    if abs(inv_i) < 1e-12:
+        return (None, None)
+    i = 1.0 / inv_i
+    return (i, -i / o)
+
+
+def cavity_stability(g1, g2):
+    """Two-mirror resonator stability (g_i = 1 - L/R_i). Returns (g1*g2, stable?).
+    Stable iff 0 <= g1*g2 <= 1 (Saleh & Teich / Siegman)."""
+    g = g1 * g2
+    return (g, 0.0 <= g <= 1.0)
+
+
+def grating_angle(lines_per_mm, m, wl_nm, theta_i_deg=0.0):
+    """Diffraction-grating angle: sin(theta_m) = sin(theta_i) + m*lambda/d, d = 1/lines_per_mm.
+    Returns the diffracted angle in degrees, or None if the order is evanescent (|sin| > 1)."""
+    d_mm = 1.0 / lines_per_mm
+    s = math.sin(math.radians(theta_i_deg)) + m * (wl_nm * 1.0e-6) / d_mm   # wl: nm -> mm
+    if abs(s) > 1.0:
+        return None
+    return math.degrees(math.asin(s))
+
+
 # --- prism deviation (two-surface Snell + minimum-deviation relation) --------
 # A thin/thick prism of apex angle A, index n: a ray entering at incidence i1 refracts at the first
 # face (sin i1 = n sin r1), crosses to the second face where r2 = A - r1, and refracts out

@@ -235,8 +235,9 @@ def _child(ray, E, H, d, power, kind, idx, t, jones=None, q=None, evec=None, abe
         if q is not None:
             q = physics.q_propagate(q, physics.abcd_free(t))            # free space to the hit point
             if E.optics.element_type == 'LENS' and E.optics.focal_length:
-                nd = physics.sellmeier_n(getattr(E.optics, 'design_wl', 633.0))
-                nl = physics.sellmeier_n(ray.wl)                 # chromatic: f ~ 1/(n-1)
+                lg = getattr(E.optics, 'lens_glass', 'N-BK7')    # the lens's real substrate glass
+                nd = physics.sellmeier_n(getattr(E.optics, 'design_wl', 633.0), lg)
+                nl = physics.sellmeier_n(ray.wl, lg)             # chromatic: f ~ 1/(n-1)
                 f_eff = (E.optics.focal_length * (nd - 1.0) / (nl - 1.0)
                          if abs(nl - 1.0) > 1e-6 else E.optics.focal_length)
                 q = physics.q_propagate(q, physics.abcd_lens(f_eff))

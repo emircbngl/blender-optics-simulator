@@ -448,6 +448,16 @@ class OpticalElementProps(PropertyGroup):
         items=[('DIELECTRIC', "Dielectric (ideal)", ""), ('AL', "Aluminum", ""),
                ('AG', "Silver", ""), ('AU', "Gold", "")], default='DIELECTRIC')
     design_wl: FloatProperty(name="Design wavelength (nm)", default=633.0, min=1.0)  # spec point; 0 would null a waveplate
+    # The lens substrate glass — drives its chromatic focal shift f ~ 1/(n(lambda)-1). Default N-BK7
+    # matches the prior hardcoded behaviour, so existing scenes trace byte-identical; pick the real
+    # glass (e.g. FUSED_SILICA, N-SF11) to get that material's true longitudinal colour.
+    lens_glass: EnumProperty(name="Lens glass", default='N-BK7',
+        items=[('N-BK7', "N-BK7 (borosilicate crown)", "Vd=64.2; the default workhorse"),
+               ('FUSED_SILICA', "Fused silica", "UV-grade, very low dispersion"),
+               ('N-SF11', "N-SF11 (dense flint)", "Vd=25.7; high dispersion"),
+               ('F2', "F2 (flint)", "Vd=36.4"),
+               ('N-F2', "N-F2 (lead-free flint)", "Vd=36.4"),
+               ('CaF2', "CaF2 (calcium fluoride)", "Vd=95.0; UV-transmitting low dispersion")])
     cavity_spacing_mm: FloatProperty(name="Cavity spacing (mm)", default=0.05, min=1e-4)
     # C6 fiber-circulator port isolation: the directivity figure in dB. A ray entering port Pi exits the
     # NEXT port P(i+1) at the through transmittance; a SMALL leak goes to the PREVIOUS port P(i-1) at power

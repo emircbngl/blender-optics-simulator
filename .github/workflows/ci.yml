@@ -49,3 +49,6 @@ jobs:
         # --python-exit-code 1: without it Blender exits 0 on an unhandled Python
         # exception, so a mid-run crash would leave CI green
         run: xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_optics.py
+
+      - name: Textbook validation (closed forms vs known answers)
+        run: xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_validation.py
