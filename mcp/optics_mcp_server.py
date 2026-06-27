@@ -205,6 +205,40 @@ def propagate_field(wavelength_nm: float, w0_mm: float = None, aperture_mm: floa
 
 
 @mcp.tool()
+def tolerance_scan(elements: list, target: str, sigma_pos_mm: float = 0.1, sigma_ang_deg: float = 0.05,
+                   n: int = 200, seed: int = 0, tol_mm: float = None) -> str:
+    """Monte-Carlo ALIGNMENT-tolerance sweep: perturb the pose (position+orientation) of `elements` by Gaussian
+    setup errors (sigma_pos_mm / sigma_ang_deg), re-trace `n` times, and report how far the beam walks at
+    `target` -- the pointing-stability statistics (pointing_rms_mm / p95 / max). POSE-ONLY (kinematic DOFs);
+    NOT glass/coating/figure tolerancing. Seed-pinned local RNG; restores every pose + the nominal trace
+    afterwards (off-trace, byte-identical). `tol_mm` adds a yield (fraction of samples landing within tol).
+    E.g. tolerance_scan(['M1'], 'Detector', sigma_pos_mm=0.1, sigma_ang_deg=0.05, n=200, tol_mm=0.5)."""
+    return _fmt(_call("tolerance_scan", elements=elements, target=target, sigma_pos_mm=sigma_pos_mm,
+                      sigma_ang_deg=sigma_ang_deg, n=n, seed=seed, tol_mm=tol_mm))
+
+
+@mcp.tool()
+def fdtd_derive_property(element: str, kind: str, backend: str = "meep",
+                         period_um: float = None, depth_um: float = None,
+                         n_layers: list = None, d_layers_nm: list = None,
+                         pillar_w_um: float = None, pillar_h_um: float = None,
+                         wavelength_nm: float = 550.0, angle_deg: float = 0.0,
+                         orders: list = None, pol: str = "TE") -> str:
+    """ORCHESTRATE a full-wave sub-sim (Meep; Tidy3D as a cloud alt) to DERIVE a rigorous effective property
+    for ONE element, then CACHE it as an ID-prop so the lumped trace reads it (live trace byte-identical).
+    kind in {'grating_efficiency','stack_reflectance','metaatom_phase'}. If the backend is absent, returns the
+    closed-form FALLBACK with backend='fallback-closedform' (grating direction == physics.grating_angle; stack
+    == exact Abeles TMM, == ar_quarter_wave_reflectance for a quarter-wave; metaatom == low-confidence EMT) --
+    never fakes a Meep result (the 'backend' field tells the truth). This is tier (c) 'orchestrate Meep/Tidy3D'
+    in capabilities()['scope_map']. E.g. fdtd_derive_property('Grating','grating_efficiency', wavelength_nm=633, orders=[-1,0,1])."""
+    kw = {k: v for k, v in dict(
+        period_um=period_um, depth_um=depth_um, n_layers=n_layers, d_layers_nm=d_layers_nm,
+        pillar_w_um=pillar_w_um, pillar_h_um=pillar_h_um, wavelength_nm=wavelength_nm,
+        angle_deg=angle_deg, orders=tuple(orders) if orders else None, pol=pol).items() if v is not None}
+    return _fmt(_call("fdtd_derive_property", element=element, kind=kind, backend=backend, **kw))
+
+
+@mcp.tool()
 def design_4f(f1: float, f2: float) -> str:
     """Design a full 4f relay (PURE -- no scene mutation). Object at the front focal
     plane of L1, lenses f1+f2 apart, image at the back focal plane of L2. Returns the

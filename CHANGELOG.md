@@ -31,6 +31,25 @@ semantic versioning.
   coating R(λ,θ), metasurface phase) cached on the element — never reimplementing FDTD. Ranked use cases +
   Meep-API verification risks flagged; the closed-form fallbacks reproduce the repo's oracle kernels exactly.
 
+### Added — alignment tolerancing verb + FDTD orchestration (wired)
+- **`tolerance_scan` (optics_api + MCP)** — pose-only Monte-Carlo alignment sensitivity: perturb the
+  position + orientation of named `elements` by Gaussian setup errors (`sigma_pos_mm` / `sigma_ang_deg`),
+  re-trace `n` times with a **seed-pinned local RNG** (`np.random.default_rng`, no global state), and report
+  the beam-walk statistics at `target` (`pointing_rms_mm` / `p95` / `max`, `hit_rate`, and a `yield` within
+  `tol_mm`). Restores every pose + the nominal trace afterwards → off-trace, off the byte-identical digest.
+  Kinematic-DOF only (honestly NOT glass/coating/figure tolerancing). 4 regression checks (beam walks, pose
+  restore, seed-reproducibility, monotonicity).
+- **`fdtd_bridge.py` + `fdtd_derive_property` (optics_api + MCP)** — the FDTD ORCHESTRATION path, now wired:
+  derive a rigorous effective property for ONE element via a full-wave sub-sim (`grating_efficiency`,
+  `stack_reflectance`, `metaatom_phase`) and cache it as a JSON ID-property → the live trace stays
+  byte-identical. **Meep** is the primary backend (CPU/MPI, lives outside the extension), **Tidy3D** an
+  opt-in cloud-GPU alternative; both are guarded imports. With no backend present it returns an honest
+  `backend="fallback-closedform"`: grating direction == `physics.grating_angle`, multilayer == an **exact
+  Abelès TMM** (== `ar_quarter_wave_reflectance` for a quarter-wave, verified to 1e-4), metaatom == a
+  low-confidence effective-medium estimate — **never faking a Meep result** (the `backend` field tells the
+  truth). The Meep API calls are flagged `# VERIFY:` (untested until a Meep env is present). 2 regression
+  checks lock the fallback. Regression **357 → 363**; validation **96/96**.
+
 ### Added — textbook-validation suite + correctness helpers
 - **`tests/test_validation.py`** — a CI-runnable suite that reproduces canonical optics-textbook problems
   and asserts our kernels match the known closed-form / datasheet answers (**76 checks**). Sourced by a

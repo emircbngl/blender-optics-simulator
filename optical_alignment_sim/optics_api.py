@@ -49,13 +49,14 @@ _TOOL_GROUPS = {
         "inspect_element", "beam_profile", "ao_measure", "get_wavefront", "sensor_capture",
         "check_mechanics", "coupling_efficiency"],
     "build / scene": [
-        "build_example", "add_component", "tag_element", "swap_part", "set_param", "set_mount", "import_glass"],
+        "build_example", "add_component", "tag_element", "swap_part", "set_param", "set_mount", "import_glass",
+        "fdtd_derive_property"],
     "design (pure math, no scene change)": [
         "design_telescope", "design_4f", "mode_match", "optics_calc", "wave_psf", "propagate_field"],
     "place / assemble (opto-mechanics)": [
         "place_relative", "make_cage", "make_tube", "make_rail", "place_on_grid", "place_on_rail",
         "set_grid", "dress_bench"],
-    "trace / measure": ["trace_beam", "scan", "bake_beams", "clear_beams"],
+    "trace / measure": ["trace_beam", "scan", "bake_beams", "clear_beams", "tolerance_scan"],
     "align (mutates DOFs -- on demand only)": ["align_all", "align_element", "auto_align", "tilt_null"],
     "adaptive optics + surface figure": [
         "ao_command", "ao_close_loop", "ao_close_loop_recon", "ao_kolmogorov", "zonal_render", "pyramid_wfs"],
@@ -107,7 +108,7 @@ _SCOPE = {
         "ray/align/beam-walk; Gaussian w(z)/M2/resonator; lens/prism/grating/Fresnel/Malus/dispersion": "a",
         "Airy/Strehl/MTF/encircled-energy PSF": "b: wave_psf",
         "free-space field propagation / multi-plane Fresnel / digital-hologram reconstruction": "b: propagate_field (angular spectrum)",
-        "full-wave FDTD/RCWA, metasurface/nanophotonics": "c: Meep / Lumerical / Tidy3D (orchestrate, do not reimplement)",
+        "full-wave FDTD/RCWA, metasurface/nanophotonics": "c: Meep / Lumerical / Tidy3D -- ORCHESTRATED via fdtd_derive_property (runs the engine if present, else a closed-form fallback: grating dir=grating_angle, stack=exact TMM, metaatom=low-conf EMT) cached as an effective property; live trace byte-identical. Still tier (c): a LIVE full-wave field is not shipped.",
         "split-step NLSE / solitons / supercontinuum": "c: gnlse",
         "Monte-Carlo tissue transport": "c: MCML",
         "multi-screen atmospheric turbulence propagation": "c: POPPY / diffractio (modal AO here is a 15-Zernike caricature, NOT this)",
@@ -471,6 +472,118 @@ def propagate_field(wavelength_nm, w0_mm=None, aperture_mm=None, dz_mm=0.0, n_gr
     if w0_mm:
         out["w_analytic_mm"] = round(w0_mm * math.sqrt(1.0 + (dz_mm / zR) ** 2), 5)
     return out
+
+
+def tolerance_scan(elements=None, target="", sigma_pos_mm=0.1, sigma_ang_deg=0.05, n=200, seed=0, tol_mm=None):
+    """Monte-Carlo ALIGNMENT-tolerance sweep: perturb the pose (position + orientation) of `elements` by
+    Gaussian setup errors (`sigma_pos_mm` / `sigma_ang_deg`), re-trace `n` times, and report how far the beam
+    walks at `target` -- the pointing-stability statistics (RMS / 95th-pct / max landing displacement, mm).
+    POSE-ONLY (kinematic DOFs); NOT glass/coating/figure tolerancing (that needs the full-wave / lens-design
+    tools -- see capabilities()['scope_map']). Uses a SEED-PINNED local RNG (np.random.default_rng, no global
+    state) and RESTORES every pose + the nominal trace afterwards, so it is off-trace + off the byte-identical
+    digest. `tol_mm` adds a yield (fraction of samples landing within tol_mm). Returns {n, hit_rate,
+    pointing_rms_mm, pointing_mean_mm, pointing_p95_mm, pointing_max_mm, yield?}."""
+    import math
+    import numpy as np
+    scene = _scene()
+    names = list(elements) if isinstance(elements, (list, tuple)) else ([elements] if elements else None)
+    if not names:
+        return {"error": "give element name(s) to perturb (a list or a single name)"}
+    objs = [scene.objects.get(nm) for nm in names]
+    missing = [nm for nm, ob in zip(names, objs) if ob is None]
+    if missing:
+        return {"error": "element(s) not found: %s" % missing}
+    if not target:
+        return {"error": "give a 'target' element to measure the beam arrival at"}
+
+    def _arrival(segs):
+        hits = [s for s in segs if s.get("to") == target]
+        return [float(c) for c in hits[-1]["p2"]] if hits else None
+
+    p0 = _arrival(_trace(scene))
+    if p0 is None:
+        return {"error": "no beam reaches target '%s' in the nominal trace" % target}
+    saved = [(ob, tuple(ob.location), tuple(ob.rotation_euler)) for ob in objs]
+    rng = np.random.default_rng(int(seed))
+    d2r = math.pi / 180.0
+    walks = []
+    try:
+        for _ in range(int(n)):
+            for ob, loc, rot in saved:
+                ob.location = (loc[0] + rng.normal(0.0, sigma_pos_mm),
+                               loc[1] + rng.normal(0.0, sigma_pos_mm),
+                               loc[2] + rng.normal(0.0, sigma_pos_mm))
+                ob.rotation_euler = (rot[0] + rng.normal(0.0, sigma_ang_deg * d2r),
+                                     rot[1] + rng.normal(0.0, sigma_ang_deg * d2r),
+                                     rot[2] + rng.normal(0.0, sigma_ang_deg * d2r))
+            bpy.context.view_layer.update()
+            p = _arrival(_trace(scene))
+            if p is not None:
+                walks.append(math.sqrt(sum((p[i] - p0[i]) ** 2 for i in range(3))))
+    finally:
+        for ob, loc, rot in saved:
+            ob.location = loc
+            ob.rotation_euler = rot
+        bpy.context.view_layer.update()
+        tracer.cached_segments = _trace(scene)
+
+    n = int(n)
+    w = np.asarray(walks, dtype=float) if walks else np.zeros(0)
+    out = {
+        "ok": True, "elements": names, "target": target,
+        "sigma_pos_mm": sigma_pos_mm, "sigma_ang_deg": sigma_ang_deg, "n": n, "seed": int(seed),
+        "hit_rate": round(len(walks) / n, 4) if n else 0.0,
+        "pointing_rms_mm": round(float(np.sqrt(np.mean(w ** 2))), 5) if w.size else None,
+        "pointing_mean_mm": round(float(w.mean()), 5) if w.size else None,
+        "pointing_p95_mm": round(float(np.percentile(w, 95)), 5) if w.size else None,
+        "pointing_max_mm": round(float(w.max()), 5) if w.size else None,
+    }
+    if tol_mm is not None and w.size:
+        out["tol_mm"] = tol_mm
+        out["yield"] = round(float(np.mean(w <= tol_mm)), 4)
+    return out
+
+
+def fdtd_derive_property(element, kind, backend="meep", **params):
+    """ORCHESTRATE a full-wave sub-sim (Meep; Tidy3D as a cloud alt) to DERIVE a rigorous effective property
+    for ONE element, then CACHE the JSON result as a custom ID-property on the element. The LIVE TRACE stays
+    byte-identical -- the property is PRECOMPUTED here (the trace only reads `op.get('fdtd_<kind>')` if/when
+    that path is wired; absent -> today's exact lumped path). If the backend is not importable, returns the
+    closed-form FALLBACK (backend='fallback-closedform': grating direction == physics.grating_angle; multilayer
+    == exact Abeles TMM, == ar_quarter_wave_reflectance for a quarter-wave; metaatom == low-confidence EMT) --
+    never faking a Meep result. `kind` in {'grating_efficiency','stack_reflectance','metaatom_phase'}.
+    This is tier (c) 'orchestrate Meep/Tidy3D' in capabilities()['scope_map'] -- a LIVE full-wave field is not
+    shipped; this derives a property the lumped engine can then use."""
+    import json
+    from . import fdtd_bridge
+    obj = _scene().objects.get(element) if isinstance(element, str) else element
+    if obj is None or not getattr(obj, "optics", None):
+        return {"error": "element %r not found / not optical" % element}
+    op = obj.optics
+    if kind == "grating_efficiency":
+        period_um = params.pop("period_um", None)
+        if period_um is None:
+            lpm = getattr(op, "lines_per_mm", 0.0)
+            if not lpm:
+                return {"error": "element has no lines_per_mm; pass period_um=..."}
+            period_um = 1000.0 / lpm                              # lines/mm -> period (um)
+        params.setdefault("depth_um", float(op.get("groove_depth_um", 0.3)))
+        params.setdefault("n_groove", float(op.get("n_groove", getattr(op, "refractive_index", 1.5))))
+        params.setdefault("n_substrate", float(getattr(op, "refractive_index", 1.5)))
+        result = fdtd_bridge.grating_efficiency(period_um=period_um, backend=backend, **params)
+    elif kind == "stack_reflectance":
+        params.setdefault("n_incident", 1.0)
+        params.setdefault("n_substrate", float(getattr(op, "refractive_index", 1.52)))
+        result = fdtd_bridge.stack_reflectance(backend=backend, **params)
+    elif kind == "metaatom_phase":
+        params.setdefault("n_substrate", float(getattr(op, "refractive_index", 1.45)))
+        result = fdtd_bridge.metaatom_phase(backend=backend, **params)
+    else:
+        return {"error": "unknown kind %r (use grating_efficiency / stack_reflectance / metaatom_phase)" % kind}
+    op["fdtd_%s" % kind] = json.dumps(result)
+    op["fdtd_%s_provenance" % kind] = "%s; backend=%s" % (kind, result.get("backend"))
+    return {"ok": True, "cached_on": getattr(obj, "name", str(element)),
+            "kind": kind, "backend": result.get("backend"), "result": result}
 
 
 def tag_element(name, element_type=None, auto_ports=True):

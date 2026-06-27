@@ -2209,6 +2209,37 @@ check("3.5 pyramid_wfs reads a sensor's slope (slope_rms > 0, PNG written) witho
       "error" not in _pr and _pr.get("slope_rms", 0) > 0 and os.path.exists(_pr.get("png", ""))
       and len(scan._trace(sc)) == _pnseg, str({k: _pr.get(k) for k in ("slope_rms", "wavefront_rms")}))
 
+print("[Tolerance scan -- pose-only Monte-Carlo alignment sensitivity (off-trace, seed-pinned RNG)]")
+optics_api.build_example("michelson")
+_tsN = len(scan._trace(sc))
+_tsloc0 = tuple(bpy.data.objects["MI_Laser"].location)
+_ts1 = optics_api.tolerance_scan(elements=["MI_Laser"], target="MI_D", sigma_pos_mm=0.2, sigma_ang_deg=0.1, n=30, seed=1, tol_mm=2.0)
+check("tolerance_scan: perturbation walks the beam (pointing_rms_mm>0, hit_rate>0, yield in [0,1])",
+      "error" not in _ts1 and (_ts1.get("pointing_rms_mm") or 0) > 0 and _ts1.get("hit_rate", 0) > 0
+      and 0.0 <= _ts1.get("yield", 0.0) <= 1.0, str({k: _ts1.get(k) for k in ("pointing_rms_mm", "hit_rate", "yield")}))
+check("tolerance_scan: RESTORES the pose + the nominal trace (off-trace, byte-identical)",
+      all(abs(a - b) < 1e-9 for a, b in zip(_tsloc0, tuple(bpy.data.objects["MI_Laser"].location)))
+      and len(scan._trace(sc)) == _tsN, "pose or trace drifted")
+_ts2 = optics_api.tolerance_scan(elements=["MI_Laser"], target="MI_D", sigma_pos_mm=0.2, sigma_ang_deg=0.1, n=30, seed=1)
+check("tolerance_scan: seed-pinned RNG reproducible (same seed -> same RMS)",
+      abs((_ts1.get("pointing_rms_mm") or 0) - (_ts2.get("pointing_rms_mm") or 0)) < 1e-9, "not reproducible")
+_ts3 = optics_api.tolerance_scan(elements=["MI_Laser"], target="MI_D", sigma_pos_mm=0.05, sigma_ang_deg=0.025, n=30, seed=1)
+check("tolerance_scan: smaller sigma -> smaller pointing walk (monotone)",
+      (_ts3.get("pointing_rms_mm") or 0) < (_ts1.get("pointing_rms_mm") or 0),
+      "%s !< %s" % (_ts3.get("pointing_rms_mm"), _ts1.get("pointing_rms_mm")))
+
+print("[FDTD orchestration -- fdtd_bridge closed-form fallback (meep absent here), oracle-matching]")
+from optical_alignment_sim import fdtd_bridge as _fb
+_fs = _fb.stack_reflectance(n_layers=[1.38], d_layers_nm=[99.6], n_incident=1.0, n_substrate=1.52, wavelength_nm=550.0)
+check("fdtd_bridge: quarter-wave stack TMM == ar_quarter_wave_reflectance (exact 1-D fallback)",
+      _fs.get("backend") == "fallback-closedform"
+      and abs(_fs.get("reflectance", -1) - physics.ar_quarter_wave_reflectance(1.0, 1.38, 1.52)) < 1e-4,
+      "%s vs %s" % (_fs.get("reflectance"), physics.ar_quarter_wave_reflectance(1.0, 1.38, 1.52)))
+_fg = _fb.grating_efficiency(period_um=1.6667, depth_um=0.3, n_groove=1.5, n_substrate=1.5, wavelength_nm=633.0, orders=(-1, 0, 1))
+check("fdtd_bridge: grating fallback honest backend + propagating-orders energy sum ~ 1",
+      _fg.get("backend") == "fallback-closedform" and abs(_fg.get("sum", 0.0) - 1.0) < 1e-6,
+      str({k: _fg.get(k) for k in ("backend", "sum")}))
+
 oas.unregister()
 
 passed = sum(1 for _, ok in _checks if ok)
