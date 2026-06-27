@@ -180,6 +180,14 @@ check("N-BK7 @1060nm (SCHOTT table)", physics.sellmeier_n(1060.0, 'N-BK7'), 1.50
 check("Fused silica @1064nm (Malitson)", physics.sellmeier_n(1064.0, 'FUSED_SILICA'), 1.449631, 5e-5, "Malitson [datasheet]")
 check("CaF2 @1064nm (Malitson)", physics.sellmeier_n(1064.0, 'CaF2'), 1.428478, 5e-5, "Malitson [datasheet]")
 
+print("[Mirror-metal dispersion (Johnson&Christy / Rakic)]")
+check("Ag reflectance @633nm (J&C)", physics.metal_reflectance('AG', 633.0), 0.9884, 1e-3, "J&C [datasheet]")
+check("Ag reflectance @1064nm (IR climb)", physics.metal_reflectance('AG', 1064.0), 0.9973, 1e-3, "J&C [datasheet]")
+check("Al reflectance @633nm (Rakic)", physics.metal_reflectance('AL', 633.0), 0.9128, 1e-3, "Rakic [datasheet]")
+check("Au reflectance @450nm (blue, low)", physics.metal_reflectance('AU', 450.0), 0.4082, 2e-3, "J&C [datasheet]")
+check("Au reflectance @633nm (red, high)", physics.metal_reflectance('AU', 633.0), 0.9407, 3e-3, "J&C interp")
+check("Gold-is-yellow R(633)/R(450)>2", physics.metal_reflectance('AU', 633.0) / physics.metal_reflectance('AU', 450.0), 2.3, 0.4, "J&C trend")
+
 print("=" * 60)
 n_pass = sum(_checks)
 n_total = len(_checks)

@@ -616,6 +616,51 @@ def nl_phase_mismatch_T(crystal_material, temp_C):
 # complex refractive indices of common mirror metals near 633 nm
 METALS = {'AL': complex(1.37, 7.62), 'AG': complex(0.14, 3.98), 'AU': complex(0.16, 3.80)}
 
+# Tabulated n,k vs wavelength (nm) for a DISPERSIVE mirror reflectance (the single METALS values above
+# remain the byte-identical default; dispersion is opt-in per mirror). Ag/Au: Johnson & Christy 1972
+# (PRB 6, 4370); Al: Rakic 1998 Brendel-Bormann (Appl. Opt. 37, 5271). Data via refractiveindex.info (CC0).
+# NB the single METALS['AG'] understates Ag reflectance ~2% vs J&C; the dispersive path uses the J&C k.
+METAL_NK = {
+    'AG': [(397.4, 0.05, 2.070), (450.9, 0.04, 2.657), (495.9, 0.05, 3.093), (520.9, 0.05, 3.324),
+           (616.8, 0.06, 4.152), (704.5, 0.04, 4.838), (821.1, 0.04, 5.727), (892.0, 0.04, 6.312),
+           (984.0, 0.04, 6.992), (1088.0, 0.04, 7.795)],
+    'AU': [(397.4, 1.470, 1.952), (450.9, 1.380, 1.914), (495.9, 1.040, 1.833), (520.9, 0.620, 2.081),
+           (616.8, 0.210, 3.272), (704.5, 0.130, 4.103), (821.1, 0.160, 5.083), (892.0, 0.170, 5.663),
+           (984.0, 0.220, 6.350), (1088.0, 0.270, 7.150)],
+    'AL': [(400.0, 0.4658, 4.7119), (450.0, 0.6172, 5.3031), (500.0, 0.7883, 5.8653), (532.0, 0.9017, 6.2092),
+           (600.0, 1.1419, 6.9262), (633.0, 1.2685, 7.2840), (700.0, 1.6664, 8.0406), (800.0, 2.6717, 8.2709),
+           (900.0, 2.0412, 8.2198), (1000.0, 1.5192, 9.2643), (1064.0, 1.3866, 9.9903), (1100.0, 1.3438, 10.3963)],
+}
+
+
+def metal_nk(metal, wl_nm):
+    """Complex index n+ik of a mirror metal at wl_nm, linearly interpolated from the J&C/Rakic table
+    (clamped to the table ends outside ~0.4-1.1 um). Falls back to the single METALS value if untabled."""
+    tbl = METAL_NK.get(metal)
+    if not tbl:
+        return METALS.get(metal, METALS['AL'])
+    if wl_nm <= tbl[0][0]:
+        return complex(tbl[0][1], tbl[0][2])
+    if wl_nm >= tbl[-1][0]:
+        return complex(tbl[-1][1], tbl[-1][2])
+    for i in range(1, len(tbl)):
+        if wl_nm <= tbl[i][0]:
+            l0, n0, k0 = tbl[i - 1]
+            l1, n1, k1 = tbl[i]
+            g = (wl_nm - l0) / (l1 - l0)
+            return complex(n0 + g * (n1 - n0), k0 + g * (k1 - k0))
+    return complex(tbl[-1][1], tbl[-1][2])
+
+
+def metal_reflectance(metal, wl_nm, aoi_deg=0.0):
+    """Mirror-metal power reflectance at wl_nm. Normal incidence R = ((n-1)^2+k^2)/((n+1)^2+k^2);
+    at an angle, the unpolarized-average Fresnel power from the complex index."""
+    nk = metal_nk(metal, wl_nm)
+    if aoi_deg <= 0.0:
+        return ((nk.real - 1.0) ** 2 + nk.imag ** 2) / ((nk.real + 1.0) ** 2 + nk.imag ** 2)
+    rs, rp = fresnel_reflect(1.0, nk, math.radians(aoi_deg))
+    return 0.5 * (abs(rs) ** 2 + abs(rp) ** 2)
+
 
 def fresnel_reflect(n1, n2, theta_i):
     """Amplitude reflection coefficients (rs, rp) at an n1->n2 interface for angle of

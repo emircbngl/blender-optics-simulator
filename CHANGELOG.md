@@ -46,6 +46,13 @@ semantic versioning.
 - **Closed-form helpers** (pure functions, agent-sourced + value-checked): `abcd_surface`,
   `abcd_thick_lens` (thick lensmaker EFL), `ar_quarter_wave_reflectance`, `grating_resolving_power`,
   `photon_energy_eV`, `fiber_na` / `fiber_v_number` / `fiber_num_modes`, `aom_deflection`, `pockels_vpi`.
+- **AI-callable calculators** — a single `optics_calc` tool (MCP + `optics_api`) dispatches to a registry
+  of 21 pure scalar calculators (the helpers above + Sellmeier, cavity, grating, metal reflectance, …), so
+  an agent can compute any of them directly; `optics_calc()` with no quantity lists them all.
+- **Opt-in dispersive metal mirrors** (`dispersive_metal` property, default off → byte-identical) — a
+  tabulated `metal_nk(λ)` / `metal_reflectance(λ)` for Al / Ag / Au (Johnson&Christy 1972, Rakić 1998) so
+  mirror reflectance varies with wavelength (gold's blue→red rise, silver's near-IR climb). The single
+  ~633 nm `METALS` value remains the default.
 
 ### Fixed
 - **Lens chromatic aberration used the wrong glass** — the longitudinal chromatic focal shift hard-coded

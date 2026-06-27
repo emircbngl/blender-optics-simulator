@@ -1210,7 +1210,10 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 # metal mirror: exact s/p Fresnel in the TRUE plane of incidence (d x n),
                 # so off-axis reflection rotates azimuth / adds the right s-p phase
                 theta = math.acos(min(1.0, abs(ray.dir.dot(sn))))
-                rs, rp = physics.fresnel_reflect(1.0, physics.METALS.get(op.coating, physics.METALS['AL']), theta)
+                mc = (physics.metal_nk(op.coating, ray.wl)        # opt-in dispersive n,k(lambda)
+                      if getattr(op, 'dispersive_metal', False) and getattr(ray, 'wl', 0.0) > 0.0
+                      else physics.METALS.get(op.coating, physics.METALS['AL']))
+                rs, rp = physics.fresnel_reflect(1.0, mc, theta)
                 ev, _do = physics.reflect_field(ray.evec, ray.dir, sn, rs, rp)
                 pw = sum((c * c.conjugate()).real for c in ev)
                 stack.append(_child(ray, E, H, nd, pw, 'REFLECT', idx, t, evec=ev, aberr=ab))

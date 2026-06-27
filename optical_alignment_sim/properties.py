@@ -476,6 +476,10 @@ class OpticalElementProps(PropertyGroup):
         items=[('NONE', "Fixed index", "Use the refractive_index scalar (non-dispersive)"),
                ('N-BK7', "N-BK7", ""), ('FUSED_SILICA', "Fused silica", ""), ('N-SF11', "N-SF11", ""),
                ('F2', "F2", ""), ('CaF2', "CaF2", ""), ('N-SF6', "N-SF6", "")])
+    # Metal mirror reflectance: OFF = the single ~633nm n,k (byte-identical); ON = wavelength-dependent
+    # n,k(lambda) from the Johnson&Christy / Rakic tables (gold's blue->red rise, silver's IR climb).
+    dispersive_metal: BoolProperty(name="Dispersive metal", default=False,
+        description="Use wavelength-dependent metal n,k(lambda) for the mirror reflectance (J&C / Rakic)")
     cavity_spacing_mm: FloatProperty(name="Cavity spacing (mm)", default=0.05, min=1e-4)
     # C6 fiber-circulator port isolation: the directivity figure in dB. A ray entering port Pi exits the
     # NEXT port P(i+1) at the through transmittance; a SMALL leak goes to the PREVIOUS port P(i-1) at power

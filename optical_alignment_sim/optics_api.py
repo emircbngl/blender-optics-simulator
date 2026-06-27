@@ -344,6 +344,7 @@ _CALCULATORS = {
     "photon_energy_eV": (physics.photon_energy_eV, ("wl_nm",), "photon energy hc/lambda, eV"),
     "coherence_length_mm": (physics.coherence_length_mm, ("wavelength_nm", "linewidth_nm"), "temporal coherence length, mm"),
     "gaussian_divergence": (physics.gaussian_divergence, ("w0_mm", "wavelength_nm", "m2"), "Gaussian far-field half-angle, rad"),
+    "metal_reflectance": (physics.metal_reflectance, ("metal", "wl_nm", "aoi_deg"), "mirror-metal power reflectance R(lambda); metal AL/AG/AU"),
 }
 
 
