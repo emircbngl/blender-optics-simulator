@@ -242,6 +242,17 @@ def _child(ray, E, H, d, power, kind, idx, t, jones=None, q=None, evec=None, abe
                 f_eff = (E.optics.focal_length * (nd - 1.0) / (nl - 1.0)
                          if abs(nl - 1.0) > 1e-6 else E.optics.focal_length)
                 q = physics.q_propagate(q, physics.abcd_lens(f_eff))
+                # opt-in THERMAL LENS: an absorbing optic adds an induced lens f_th to the beam q
+                # (Tier-1 lumped model; default off / 0 W -> byte-identical). w is preserved across a
+                # thin lens, so the post-lens q gives the beam radius at the optic.
+                p_abs = getattr(E.optics, 'absorbed_power_W', 0.0)
+                if getattr(E.optics, 'thermal_lensing', False) and p_abs > 0.0:
+                    w_th = physics.beam_radius(q, ray.wl)
+                    if w_th > 0.0:
+                        f_th = physics.thermal_lens_focal_length(
+                            p_abs, physics.DNDT.get(lg, 1.0e-5),
+                            getattr(E.optics, 'thermal_conductivity', 1.38), w_th)
+                        q = physics.q_propagate(q, physics.abcd_lens(f_th))
             elif E.optics.element_type == 'OBJECTIVE':
                 # a microscope objective focuses with f_obj = f_tube / M (VERIFIED
                 # microscope-objective-magnification); finite conjugates use the optical tube length.

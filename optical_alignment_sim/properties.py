@@ -480,6 +480,14 @@ class OpticalElementProps(PropertyGroup):
     # n,k(lambda) from the Johnson&Christy / Rakic tables (gold's blue->red rise, silver's IR climb).
     dispersive_metal: BoolProperty(name="Dispersive metal", default=False,
         description="Use wavelength-dependent metal n,k(lambda) for the mirror reflectance (J&C / Rakic)")
+    # THERMAL LENS (opt-in): an absorbing optic heats up and acts as an induced lens on the beam. OFF or
+    # 0 W absorbed -> no effect -> byte-identical. f_th = 2*pi*kappa*w^2/(P_abs*dn/dT) (Tier-1 lumped).
+    thermal_lensing: BoolProperty(name="Thermal lensing", default=False,
+        description="Model the induced thermal lens of an absorbing optic on the beam (f_th from absorbed power)")
+    absorbed_power_W: FloatProperty(name="Absorbed power (W)", default=0.0, min=0.0,
+        description="Optical power absorbed by the optic (the heat load that drives the thermal lens)")
+    thermal_conductivity: FloatProperty(name="Thermal conductivity (W/mK)", default=1.38, min=0.01,
+        description="Substrate thermal conductivity kappa for the thermal-lens estimate (glass ~1.38)")
     cavity_spacing_mm: FloatProperty(name="Cavity spacing (mm)", default=0.05, min=1e-4)
     # C6 fiber-circulator port isolation: the directivity figure in dB. A ray entering port Pi exits the
     # NEXT port P(i+1) at the through transmittance; a SMALL leak goes to the PREVIOUS port P(i-1) at power
