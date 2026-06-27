@@ -33,7 +33,10 @@ semantic versioning.
   with per-glass relative-to-air `DNDT` coefficients (SCHOTT TIE-19 / Corning; CaF2 is **negative**). A
   `temp_C` element property (default 20 °C → byte-identical) feeds the lens chromatic path. Tier-1: the
   values are representative datasheet constants (the absolute-vs-relative + λ,T spread is ~1e-6/K).
-  Thermal lensing, photoelastic stress, CTE drift and gravity sag remain explicitly DEFERRED (not faked).
+  Thermal lensing, photoelastic stress and gravity sag now have closed-form ESTIMATE calculators
+  (`thermal_lens_focal_length` / `photoelastic_retardance_nm` / `cantilever_sag_nm`, AI-callable via
+  `optics_calc`, oracle-verified) so an agent can size the effect — but they are NOT simulated in the
+  trace; the full thermal-field / stress / deflection model stays explicitly deferred (not faked).
 
 ### Added — extensibility + dispersion opt-ins + closed-form helpers
 - **User-extensible glass catalog** — `sellmeier_n` reads a merged BUILTIN + `cache/glasses_user.json`

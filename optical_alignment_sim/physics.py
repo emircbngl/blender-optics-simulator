@@ -501,6 +501,34 @@ def pockels_vpi(wl_nm, n0, r_pm_per_V):
     return (wl_nm * 1.0e-9) / (2.0 * n0 ** 3 * r_pm_per_V * 1.0e-12)
 
 
+# --- thermal / mechanical CLOSED-FORM ESTIMATES (Tier-1; not simulated in the trace) ----------------
+# These are honest order-of-magnitude calculators for effects the geometric trace does NOT model: a hot
+# optic's thermal lens, clamp/thermal-stress birefringence, and gravity sag. They let the AI ESTIMATE a
+# magnitude; the full thermal-field / stress / deflection simulation stays out of scope (not faked).
+
+def thermal_lens_focal_length(p_abs_W, dn_dT, kappa_W_mK, w_mm):
+    """Thermal-lens focal length f = 2*pi*kappa*w^2/(P_abs*dn/dT), mm (steady-state Gaussian-heated rod).
+    P_abs = absorbed power [W], kappa = thermal conductivity [W/(m.K)], w = beam radius [mm]. ESTIMATE."""
+    denom = p_abs_W * dn_dT
+    if denom == 0.0:
+        return float('inf')
+    return 2.0 * math.pi * kappa_W_mK * (w_mm * 1.0e-3) ** 2 / denom * 1.0e3      # m -> mm
+
+
+def photoelastic_retardance_nm(stress_Pa, stress_optic_C, path_mm):
+    """Stress-induced retardance OPD = C*sigma*L (the stress-optic law), nm. C [1/Pa], sigma [Pa], path
+    [mm]. ESTIMATE of clamp / thermal-stress birefringence (fused silica C ~ 3.5e-12 /Pa)."""
+    return stress_optic_C * stress_Pa * (path_mm * 1.0e-3) * 1.0e9                # m -> nm
+
+
+def cantilever_sag_nm(mass_kg, length_m, youngs_Pa, area_moment_m4):
+    """End-loaded cantilever tip deflection delta = m*g*L^3/(3*E*I), nm (g = 9.81). ESTIMATE of gravity
+    sag of a tip mass on a post/arm; second moment I = pi*r^4/4 for a round rod of radius r."""
+    if youngs_Pa == 0.0 or area_moment_m4 == 0.0:
+        return float('inf')
+    return mass_kg * 9.81 * length_m ** 3 / (3.0 * youngs_Pa * area_moment_m4) * 1.0e9   # m -> nm
+
+
 # --- prism deviation (two-surface Snell + minimum-deviation relation) --------
 # A thin/thick prism of apex angle A, index n: a ray entering at incidence i1 refracts at the first
 # face (sin i1 = n sin r1), crosses to the second face where r2 = A - r1, and refracts out

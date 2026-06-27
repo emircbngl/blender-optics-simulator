@@ -188,6 +188,11 @@ check("Au reflectance @450nm (blue, low)", physics.metal_reflectance('AU', 450.0
 check("Au reflectance @633nm (red, high)", physics.metal_reflectance('AU', 633.0), 0.9407, 3e-3, "J&C interp")
 check("Gold-is-yellow R(633)/R(450)>2", physics.metal_reflectance('AU', 633.0) / physics.metal_reflectance('AU', 450.0), 2.3, 0.4, "J&C trend")
 
+print("[Thermal/mechanical closed-form estimates (Tier-1)]")
+check("Thermal-lens f (P=1W,dn/dT=1e-5,k=1.38,w=1mm)", physics.thermal_lens_focal_length(1.0, 1e-5, 1.38, 1.0), 867.085, 0.1, "oracle (estimate)")
+check("Photoelastic retardance (1MPa,C=3.5e-12,10mm)", physics.photoelastic_retardance_nm(1e6, 3.5e-12, 10.0), 35.0, 1e-3, "oracle (estimate)")
+check("Cantilever sag (0.1kg,0.1m,steel,Ø1in rod)", physics.cantilever_sag_nm(0.1, 0.1, 200e9, 2.04e-8), 80.147, 1e-2, "oracle (estimate)")
+
 print("=" * 60)
 n_pass = sum(_checks)
 n_total = len(_checks)

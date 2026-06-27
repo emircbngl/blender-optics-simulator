@@ -345,6 +345,9 @@ _CALCULATORS = {
     "coherence_length_mm": (physics.coherence_length_mm, ("wavelength_nm", "linewidth_nm"), "temporal coherence length, mm"),
     "gaussian_divergence": (physics.gaussian_divergence, ("w0_mm", "wavelength_nm", "m2"), "Gaussian far-field half-angle, rad"),
     "metal_reflectance": (physics.metal_reflectance, ("metal", "wl_nm", "aoi_deg"), "mirror-metal power reflectance R(lambda); metal AL/AG/AU"),
+    "thermal_lens_focal_length": (physics.thermal_lens_focal_length, ("p_abs_W", "dn_dT", "kappa_W_mK", "w_mm"), "thermal-lens focal length, mm (Tier-1 estimate)"),
+    "photoelastic_retardance_nm": (physics.photoelastic_retardance_nm, ("stress_Pa", "stress_optic_C", "path_mm"), "stress birefringence retardance, nm (estimate)"),
+    "cantilever_sag_nm": (physics.cantilever_sag_nm, ("mass_kg", "length_m", "youngs_Pa", "area_moment_m4"), "gravity sag of a tip mass, nm (estimate)"),
 }
 
 
