@@ -52,9 +52,12 @@ vault (link at the bottom) and may be unreachable — that's why this file exist
 | Free-space field propagation, single-plane angular-spectrum (any `dz`) | **b** | `propagate_field` — Gaussian `w(z)` verified, reversible, `sampling_ok` flag |
 | Digital-hologram numerical reconstruction (back-propagate a recorded field) | **b** | `propagate_field` with `dz<0` (angular-spectrum back-prop) |
 | Multi-plane Fresnel / BPM through varying media (many planes + index) | **c** | **use POPPY / diffractio** (a single step is (b); the multi-plane/BPM stack is not built) |
-| Split-step NLSE, supercontinuum, temporal/spatial solitons | **c** | **use gnlse** |
-| Monte-Carlo photon transport in turbid / biological tissue | **c** | **use MCML** |
-| Multi-screen atmospheric turbulence propagation (phase-screen stack) | **c** | **use POPPY / diffractio** |
+| Split-step NLSE: soliton / dispersion / SPM (1D pulse) | **b** | `propagate_pulse` — fundamental soliton shape-invariant, oracle-verified |
+| Supercontinuum (higher-order dispersion + Raman + self-steepening) | **c** | **use gnlse** (the core NLSE is (b) `propagate_pulse`) |
+| Monte-Carlo photon transport in turbid / biological tissue | **b** | `monte_carlo_tissue` — MCML-style; R+T+A=1, Beer-Lambert ballistic, diffusion penetration depth |
+| Atmospheric turbulence phase screen + structure function | **b** | `turbulence_screen` — dense Kolmogorov/von-Kármán, FT + subharmonics, D(r)=6.88(r/r₀)^5/3 |
+| Multi-screen turbulence inter-plane propagation (split-step stack) | **c** | **use POPPY / diffractio / Schmidt-suite** (a single screen + `propagate_field` is (b)) |
+| FDTD / RCWA effective property (grating η, coating R(λ,θ), metasurface) | **b/c** | `fdtd_derive_property` — orchestrates Meep/Tidy3D (closed-form fallback if absent); a LIVE full-wave field stays (c) |
 | Quantum photon statistics: `g²`, HOM dip, squeezing | **c** | **use QuTiP** |
 
 > The AO loop in *this* engine corrects the **modal** Zernike channel only (15-Noll low-pass), and the
