@@ -220,6 +220,23 @@ _fUb = field.angular_spectrum(_fUf, _fdx, -300.0, _flam)     # back-propagate = 
 check("AngSpec round-trip +z/-z recovers U0", float(_np.max(_np.abs(_fUb - _fU0)) / _np.max(_np.abs(_fU0))), 0.0, 1e-5, "reversibility; FFT")
 check("AngSpec power conserved P(z)/P(0)", float(_np.sum(_np.abs(_fUf) ** 2) / _np.sum(_np.abs(_fU0) ** 2)), 1.0, 1e-3, "energy; FFT")
 
+print("[Atmospheric turbulence -- dense Kolmogorov phase screen (FT method + subharmonics, off-trace)]")
+from optical_alignment_sim import turbulence as _turb
+check("Kolmogorov structure constant 6.88 = 2*(24/5*Gamma(6/5))^(5/6)", _turb.STRUCT_CONST, 6.8839, 1e-3, "Schmidt/Noll; oracle (gamma)")
+_tN, _tdx, _tr0, _tseps = 256, 6.0, 100.0, [256 // 16, 256 // 8, 256 // 4]
+_tDacc = _np.zeros(len(_tseps)); _tDns = _np.zeros(len(_tseps)); _tr = None
+for _ts in range(12):                                            # ensemble-average (single-realization D has variance)
+    _tsf = _turb.structure_function(_turb.kolmogorov_screen(_tN, _tdx, _tr0, seed=_ts), _tdx, _tseps)
+    _tr = _np.array(_tsf["r_mm"]); _tDacc += _np.array(_tsf["D"])
+    _tDns += _np.array(_turb.structure_function(_turb.kolmogorov_screen(_tN, _tdx, _tr0, seed=_ts, subharmonics=0), _tdx, _tseps)["D"])
+_tDm = _tDacc / 12.0; _tDns /= 12.0
+_tDt = _turb.STRUCT_CONST * (_tr / _tr0) ** (5.0 / 3.0)
+check("Kolmogorov screen: ensemble D(r) ~ 6.88 (r/r0)^(5/3) (Schmidt structure-fn validation)", float(_np.mean(_tDm / _tDt)), 1.0, 0.25, "Schmidt; FFT vs theory")
+check("Kolmogorov screen: structure-function log-log slope ~ 5/3", float(_np.polyfit(_np.log(_tr), _np.log(_tDm), 1)[0]), 5.0 / 3.0, 0.15, "Kolmogorov; FFT")
+_tmid = len(_tr) // 2
+check("Kolmogorov screen: ensemble r0 back-fit recovers input", float(_tr[_tmid] / (_tDm[_tmid] / _turb.STRUCT_CONST) ** (3.0 / 5.0)), _tr0, 0.2 * _tr0, "Fried r0; FFT")
+check("Kolmogorov screen: subharmonics restore the low-frequency tail (D_SH/D_noSH at large r)", float(_tDm[-1] / _tDns[-1]), 2.33, 1.0, "Lane/Schmidt; FFT")
+
 print("=" * 60)
 n_pass = sum(_checks)
 n_total = len(_checks)

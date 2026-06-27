@@ -205,6 +205,20 @@ def propagate_field(wavelength_nm: float, w0_mm: float = None, aperture_mm: floa
 
 
 @mcp.tool()
+def turbulence_screen(n_grid: int = 256, dx_mm: float = 4.0, r0_mm: float = 100.0, L0_mm: float = None,
+                      l0_mm: float = None, seed: int = 0, subharmonics: int = 3, png: bool = False) -> str:
+    """Generate a DENSE 2D Kolmogorov/von-Karman atmospheric PHASE SCREEN [radians] (FT method + sub-harmonics)
+    and validate it -- the off-trace turbulence layer the MODAL AO channel (ao_kolmogorov, a 15-Zernike
+    caricature) cannot represent. r0_mm = Fried parameter; L0_mm/l0_mm = von-Karman outer/inner scales (default
+    = pure Kolmogorov). Returns {rms_rad, r_mm, D_meas, D_theory, ratio_mid, r0_fit_mm}: the measured structure
+    function tracks 6.88 (r/r0)^(5/3) (Schmidt's validation; subharmonics restore the low-frequency tail).
+    Seed-pinned RNG; live trace byte-identical. Feed to propagate_field for a single-screen seeing PSF; the full
+    multi-screen split-step is out of scope. E.g. turbulence_screen(256, 4.0, r0_mm=100, png=True)."""
+    return _fmt(_call("turbulence_screen", n_grid=n_grid, dx_mm=dx_mm, r0_mm=r0_mm, L0_mm=L0_mm,
+                      l0_mm=l0_mm, seed=seed, subharmonics=subharmonics, png=png))
+
+
+@mcp.tool()
 def tolerance_scan(elements: list, target: str, sigma_pos_mm: float = 0.1, sigma_ang_deg: float = 0.05,
                    n: int = 200, seed: int = 0, tol_mm: float = None) -> str:
     """Monte-Carlo ALIGNMENT-tolerance sweep: perturb the pose (position+orientation) of `elements` by Gaussian

@@ -59,7 +59,8 @@ _TOOL_GROUPS = {
     "trace / measure": ["trace_beam", "scan", "bake_beams", "clear_beams", "tolerance_scan"],
     "align (mutates DOFs -- on demand only)": ["align_all", "align_element", "auto_align", "tilt_null"],
     "adaptive optics + surface figure": [
-        "ao_command", "ao_close_loop", "ao_close_loop_recon", "ao_kolmogorov", "zonal_render", "pyramid_wfs"],
+        "ao_command", "ao_close_loop", "ao_close_loop_recon", "ao_kolmogorov", "zonal_render", "pyramid_wfs",
+        "turbulence_screen"],
     "render / export": ["render", "render_sequence", "export_svg"],
 }
 
@@ -111,7 +112,8 @@ _SCOPE = {
         "full-wave FDTD/RCWA, metasurface/nanophotonics": "c: Meep / Lumerical / Tidy3D -- ORCHESTRATED via fdtd_derive_property (runs the engine if present, else a closed-form fallback: grating dir=grating_angle, stack=exact TMM, metaatom=low-conf EMT) cached as an effective property; live trace byte-identical. Still tier (c): a LIVE full-wave field is not shipped.",
         "split-step NLSE / solitons / supercontinuum": "c: gnlse",
         "Monte-Carlo tissue transport": "c: MCML",
-        "multi-screen atmospheric turbulence propagation": "c: POPPY / diffractio (modal AO here is a 15-Zernike caricature, NOT this)",
+        "atmospheric turbulence phase screen + structure function": "b: turbulence_screen (dense Kolmogorov/von-Karman screen, FT + subharmonics; D(r)=6.88(r/r0)^5/3; modal ao_kolmogorov is a 15-Zernike caricature, this is the dense field)",
+        "multi-screen turbulence inter-plane propagation (split-step stack)": "c: POPPY / diffractio / Schmidt-suite (a single screen + propagate_field is (b); the multi-screen split-step is not built)",
         "quantum statistics g2 / HOM / squeezing": "c: QuTiP",
     },
     "source_of_truth": "docs/OPTICS_SCOPE.md (vendored case index) + tests/test_validation.py (the oracle-verified "
@@ -472,6 +474,26 @@ def propagate_field(wavelength_nm, w0_mm=None, aperture_mm=None, dz_mm=0.0, n_gr
     if w0_mm:
         out["w_analytic_mm"] = round(w0_mm * math.sqrt(1.0 + (dz_mm / zR) ** 2), 5)
     return out
+
+
+def turbulence_screen(n_grid=256, dx_mm=4.0, r0_mm=100.0, L0_mm=None, l0_mm=None, seed=0, subharmonics=3, png=False):
+    """Generate a DENSE 2D Kolmogorov/von-Karman atmospheric PHASE SCREEN [radians] (FT method + sub-harmonics)
+    and validate it against theory -- the off-trace turbulence layer the MODAL AO channel (`ao_kolmogorov`, a
+    15-Zernike caricature) cannot represent. `r0_mm` = Fried parameter; `L0_mm`/`l0_mm` = von-Karman outer/inner
+    scales (default = pure Kolmogorov). Returns {rms_rad, r_mm, D_meas, D_theory, ratio_mid, r0_fit_mm, ...}:
+    the measured structure function tracks 6.88 (r/r0)^(5/3) (the validation Schmidt 2010 performs; subharmonics
+    restore the low-frequency tail). Seed-pinned local RNG; the live trace is untouched + byte-identical. Feed
+    the screen to propagate_field for a single-screen seeing/speckle PSF. The FULL multi-screen split-step
+    inter-plane propagation is still out of scope (see capabilities()['scope_map'])."""
+    from . import turbulence
+    png_path = None
+    if png:
+        import os
+        import tempfile
+        png_path = os.path.join(tempfile.gettempdir(), "optics_turbulence.png")
+    scr = turbulence.kolmogorov_screen(n_grid, dx_mm, r0_mm, L0_mm=L0_mm, l0_mm=l0_mm,
+                                       seed=seed, subharmonics=subharmonics)
+    return turbulence.screen_metrics(scr, dx_mm, r0_mm, png_path=png_path)
 
 
 def tolerance_scan(elements=None, target="", sigma_pos_mm=0.1, sigma_ang_deg=0.05, n=200, seed=0, tol_mm=None):

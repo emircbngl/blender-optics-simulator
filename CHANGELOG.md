@@ -50,6 +50,19 @@ semantic versioning.
   truth). The Meep API calls are flagged `# VERIFY:` (untested until a Meep env is present). 2 regression
   checks lock the fallback. Regression **357 → 363**; validation **96/96**.
 
+### Added — atmospheric turbulence: dense Kolmogorov phase screens (Phase D)
+- **`turbulence.py` + `turbulence_screen` (optics_api + MCP)** — a DENSE 2-D Kolmogorov / von-Kármán
+  atmospheric phase-screen generator (Fourier-transform method: filter complex Gaussian white noise by
+  √PSD, IFFT) with **Lane/Johansson-Gavel sub-harmonic** low-frequency compensation (after Schmidt 2010
+  ch. 9) — the dense field the modal AO channel (`ao_kolmogorov`, a 15-Zernike caricature) cannot represent.
+  Seed-pinned local RNG (`np.random.default_rng`); off-trace → the live trace stays byte-identical. The
+  generated screen's measured **structure function reproduces D(r) = 6.88 (r/r₀)^(5/3)** (the validation
+  Schmidt performs): ensemble ratio 0.86, log-log slope 1.59 ≈ 5/3, r₀ back-fit 109 mm (target 100), and the
+  sub-harmonics demonstrably restore the low-frequency tail (D_SH/D_noSH ≈ 2.3 at large r). The constant
+  **6.88 = 2·(24/5·Γ(6/5))^(5/6)** is physics_verify ok=true. A screen feeds `propagate_field` for a
+  single-screen seeing/speckle PSF; the full multi-screen split-step inter-plane stack stays out of scope.
+  **5 new oracle checks** → validation **96 → 101**. Demo `docs/img/turbulence-screen-demo.png`.
+
 ### Added — textbook-validation suite + correctness helpers
 - **`tests/test_validation.py`** — a CI-runnable suite that reproduces canonical optics-textbook problems
   and asserts our kernels match the known closed-form / datasheet answers (**76 checks**). Sourced by a
