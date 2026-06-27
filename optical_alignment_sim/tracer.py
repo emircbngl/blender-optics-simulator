@@ -297,7 +297,11 @@ def _ghost_reflectance(E, ray, sn):
     op = E.optics
     if getattr(op, 'ar_coated', False):
         return min(max(getattr(op, 'ar_reflectance', 0.0025), 0.0), 1.0)
-    n2 = max(getattr(op, 'refractive_index', 1.5168), 1.0)
+    sg = getattr(op, 'surface_glass', 'NONE')           # opt-in: dispersive index n2(lambda) at ray.wl
+    if sg != 'NONE' and getattr(ray, 'wl', 0.0) > 0.0:
+        n2 = max(physics.sellmeier_n(ray.wl, sg), 1.0)
+    else:
+        n2 = max(getattr(op, 'refractive_index', 1.5168), 1.0)
     aoi = math.acos(min(1.0, abs(ray.dir.dot(sn))))
     if aoi < 1e-6:
         return physics.surface_reflectance(1.0, n2)         # normal-incidence floor
@@ -1359,7 +1363,14 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 stack.append(_child(ray, E, H, ray.dir, physics.intensity(Jp), 'TRANSMIT', idx, t, jones=Jp))
         elif et == 'WAVEPLATE' and J:
             ret = op.retardance_deg * (op.design_wl / ray.wl) if ray.wl > 0 else op.retardance_deg
+            wc = getattr(op, 'waveplate_crystal', 'NONE')      # opt-in real birefringence dispersion
+            if wc != 'NONE' and ray.wl > 0:
+                dn_l = physics.sellmeier_n(ray.wl, wc + '_E') - physics.sellmeier_n(ray.wl, wc + '_O')
+                dn_d = physics.sellmeier_n(op.design_wl, wc + '_E') - physics.sellmeier_n(op.design_wl, wc + '_O')
+                if abs(dn_d) > 1.0e-12:
+                    ret *= dn_l / dn_d                          # x Delta_n(lambda)/Delta_n(design_wl)
             Jw = physics.apply(physics.M_waveplate(ret, op.fast_axis_deg), J)   # retardance ~ 1/lambda
+
             stack.append(_child(ray, E, H, ray.dir, physics.intensity(Jw), 'TRANSMIT', idx, t, jones=Jw))
         elif et in ('FILTER', 'ATTENUATOR'):
             # angle of incidence on the filter face -> dielectric-edge blue-shift (C1).

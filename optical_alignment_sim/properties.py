@@ -462,6 +462,20 @@ class OpticalElementProps(PropertyGroup):
     # no-op (dn/dT*0), so existing scenes are byte-identical; raise it to see the focal/index drift.
     temp_C: FloatProperty(name="Temperature (C)", default=20.0, min=-100.0, max=300.0,
         description="Optic temperature; shifts the index via dn/dT (thermo-optic). 20 C = nominal, no shift")
+    # Waveplate substrate crystal. NONE = the simple retardance~1/lambda model (byte-identical). Picking a
+    # real birefringent crystal multiplies in its true birefringence dispersion d(n_e-n_o)(lambda).
+    waveplate_crystal: EnumProperty(name="Waveplate crystal", default='NONE',
+        items=[('NONE', "Ideal (1/lambda scaling)", "Retardance ~ design_wl/lambda only; no Delta-n dispersion"),
+               ('QUARTZ', "Crystalline quartz", "alpha-SiO2, the standard waveplate material"),
+               ('MGF2', "MgF2", "low-order / broadband waveplates"),
+               ('CALCITE', "Calcite", "strong birefringence"),
+               ('SAPPHIRE', "Sapphire", "Al2O3")])
+    # Surface substrate glass for the Fresnel ghost reflectance. NONE = the fixed refractive_index scalar
+    # (byte-identical); a glass makes the per-face reflection R wavelength-dependent via sellmeier_n(ray.wl).
+    surface_glass: EnumProperty(name="Surface glass", default='NONE',
+        items=[('NONE', "Fixed index", "Use the refractive_index scalar (non-dispersive)"),
+               ('N-BK7', "N-BK7", ""), ('FUSED_SILICA', "Fused silica", ""), ('N-SF11', "N-SF11", ""),
+               ('F2', "F2", ""), ('CaF2', "CaF2", ""), ('N-SF6', "N-SF6", "")])
     cavity_spacing_mm: FloatProperty(name="Cavity spacing (mm)", default=0.05, min=1e-4)
     # C6 fiber-circulator port isolation: the directivity figure in dB. A ray entering port Pi exits the
     # NEXT port P(i+1) at the through transmittance; a SMALL leak goes to the PREVIOUS port P(i-1) at power

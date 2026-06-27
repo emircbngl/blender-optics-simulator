@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import math
 import cmath
+import json
+import os
 
 NM_TO_MM = 1.0e-6
 
@@ -253,13 +255,81 @@ DNDT = {
 DNDT_T0_C = 20.0
 
 
+# --- user-extensible glass catalog -----------------------------------------------------------------
+# The BUILTIN GLASSES above are always present. A user (or the AI) can ADD glasses without editing code
+# by writing a cache/glasses_user.json ({name: [B1,B2,B3,C1,C2,C3]}); they are merged on top at load.
+# In a bare interpreter (CI self-test) there is no cache path, so the merge is a no-op -> byte-identical.
+
+def _user_glasses_path():
+    """The user glass-catalog JSON in the add-on cache (Blender only; None in bare Python)."""
+    try:
+        import bpy
+        d = bpy.utils.extension_path_user(__package__, path="cache", create=True)
+        return os.path.join(d, "glasses_user.json")
+    except Exception:
+        return None
+
+
+def _merge_glasses():
+    merged = dict(GLASSES)
+    p = _user_glasses_path()
+    if p and os.path.exists(p):
+        try:
+            with open(p, encoding="utf-8") as f:
+                data = json.load(f)
+            for name, c in data.items():
+                if isinstance(c, (list, tuple)) and len(c) == 6:
+                    merged[name] = tuple(float(x) for x in c)
+        except (OSError, ValueError, TypeError):
+            pass
+    return merged
+
+
+_GLASSES = _merge_glasses()        # the live lookup sellmeier_n reads (BUILTIN + user)
+
+
+def reload_glasses():
+    """Re-read the user catalog into the live lookup. Returns the sorted glass names."""
+    global _GLASSES
+    _GLASSES = _merge_glasses()
+    return sorted(_GLASSES)
+
+
+def glass_names():
+    """All glass names currently available (BUILTIN + any user-added)."""
+    return sorted(_GLASSES)
+
+
+def add_user_glass(name, coeffs):
+    """Add/update a user glass: name -> 6 Sellmeier coeffs (B1,B2,B3,C1,C2,C3), persisted to the cache
+    JSON and merged into the live lookup. Returns True on success; False outside Blender / on bad input."""
+    p = _user_glasses_path()
+    if not p or not (isinstance(coeffs, (list, tuple)) and len(coeffs) == 6):
+        return False
+    data = {}
+    if os.path.exists(p):
+        try:
+            with open(p, encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, ValueError):
+            data = {}
+    data[name] = [float(x) for x in coeffs]
+    try:
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=1)
+    except OSError:
+        return False
+    reload_glasses()
+    return True
+
+
 def sellmeier_n(wl_nm, glass='N-BK7', temp_C=None):
     """Refractive index n(lambda) via the Sellmeier equation (lambda in nm).
 
     With temp_C given, adds the thermo-optic shift n_eff = n(lambda) + dn/dT*(T - 20 C) using the
     glass's DNDT coefficient (0 if unknown). temp_C=None -> the pure dispersive index (and temp_C=20
     is a no-op since dn/dT*(20-20)=0), so existing scenes are unaffected."""
-    b1, b2, b3, c1, c2, c3 = GLASSES.get(glass, GLASSES['N-BK7'])
+    b1, b2, b3, c1, c2, c3 = _GLASSES.get(glass, _GLASSES['N-BK7'])
     L2 = (wl_nm * 1.0e-3) ** 2          # lambda^2 in micron^2
     n2 = 1.0 + b1 * L2 / (L2 - c1) + b2 * L2 / (L2 - c2) + b3 * L2 / (L2 - c3)
     # The Sellmeier fit is only valid across its transparency window. Between/under poles it swings
@@ -325,6 +395,67 @@ def grating_angle(lines_per_mm, m, wl_nm, theta_i_deg=0.0):
     if abs(s) > 1.0:
         return None
     return math.degrees(math.asin(s))
+
+
+def grating_resolving_power(lines_per_mm, illuminated_mm, m):
+    """Grating chromatic resolving power R = m*N (N = total illuminated grooves). Resolvable d-lambda = lambda/R."""
+    return m * lines_per_mm * illuminated_mm
+
+
+def ar_quarter_wave_reflectance(n0, n1, ns):
+    """Single quarter-wave AR layer (index n1) on substrate ns in medium n0:
+    R = ((n0*ns - n1^2)/(n0*ns + n1^2))^2 (Born & Wolf 1.6.2). Zero when n1 = sqrt(n0*ns)."""
+    den = n0 * ns + n1 * n1
+    return ((n0 * ns - n1 * n1) / den) ** 2 if den != 0.0 else 0.0
+
+
+def abcd_surface(n1, n2, R_mm):
+    """Refraction at one curved dielectric surface (radius R_mm, sign per the usual lensmaker convention):
+    ABCD = [[1, 0], [-(n2-n1)/(n2*R), n1/n2]]. R_mm=0/inf -> a flat interface (no power)."""
+    power = 0.0 if (R_mm == 0.0 or R_mm == float('inf')) else (n2 - n1) / (n2 * R_mm)
+    return ((1.0, 0.0), (-power, n1 / n2))
+
+
+def abcd_thick_lens(n, R1_mm, R2_mm, t_mm, n_medium=1.0):
+    """ABCD of a thick lens: surf(n_med,n,R1) then free(t) then surf(n,n_med,R2). EFL = -1/C of the result;
+    reproduces the thick lensmaker 1/f = (n-1)[1/R1 - 1/R2 + (n-1)t/(n R1 R2)] to machine precision."""
+    def _mul(A, B):
+        return ((A[0][0] * B[0][0] + A[0][1] * B[1][0], A[0][0] * B[0][1] + A[0][1] * B[1][1]),
+                (A[1][0] * B[0][0] + A[1][1] * B[1][0], A[1][0] * B[0][1] + A[1][1] * B[1][1]))
+    s1 = abcd_surface(n_medium, n, R1_mm)
+    fr = ((1.0, t_mm), (0.0, 1.0))
+    s2 = abcd_surface(n, n_medium, R2_mm)
+    return _mul(s2, _mul(fr, s1))            # ray order: s1 -> free -> s2
+
+
+def photon_energy_eV(wl_nm):
+    """Photon energy E = hc/lambda in eV (hc/e = 1239.84198 eV*nm)."""
+    return 1239.84198 / wl_nm
+
+
+def fiber_na(n_core, n_clad):
+    """Step-index fiber numerical aperture NA = sqrt(n_core^2 - n_clad^2)."""
+    return math.sqrt(max(n_core * n_core - n_clad * n_clad, 0.0))
+
+
+def fiber_v_number(core_radius_um, na, wl_nm):
+    """Normalized frequency V = 2*pi*a*NA/lambda (single-mode iff V < 2.405)."""
+    return 2.0 * math.pi * core_radius_um * na / (wl_nm * 1.0e-3)    # a um, lambda nm->um
+
+
+def fiber_num_modes(v):
+    """Approximate guided-mode count in a step-index fiber, M ~ V^2/2."""
+    return v * v / 2.0
+
+
+def aom_deflection(wl_nm, f_acoustic_hz, v_sound_mps):
+    """Acousto-optic full deflection angle theta = lambda*f/v_s (= 2*Bragg), in radians."""
+    return (wl_nm * 1.0e-9) * f_acoustic_hz / v_sound_mps
+
+
+def pockels_vpi(wl_nm, n0, r_pm_per_V):
+    """Longitudinal Pockels half-wave voltage Vpi = lambda/(2*n0^3*r), r in pm/V -> volts."""
+    return (wl_nm * 1.0e-9) / (2.0 * n0 ** 3 * r_pm_per_V * 1.0e-12)
 
 
 # --- prism deviation (two-surface Snell + minimum-deviation relation) --------
