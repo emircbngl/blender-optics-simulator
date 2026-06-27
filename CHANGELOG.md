@@ -6,6 +6,17 @@ semantic versioning.
 
 ## [Unreleased]
 
+## [0.12.0] — Physical-optics field engine + textbook validation — 2026-06-28
+
+A major feature release. Adds a complete **opt-in, off-trace physical-optics field engine** on top of the
+geometric + Gaussian-q core: sampled-field diffraction propagation, the real diffraction PSF, atmospheric
+turbulence (Kolmogorov screens + multi-screen imaging), nonlinear pulse propagation (split-step NLSE),
+Monte-Carlo tissue transport, FDTD orchestration, pose-tolerancing, and a self-honest `/optics-scope`
+router — **every module is on-demand and never touches the live trace, so the byte-identical regression is
+preserved (357→363)**. Plus a CI-runnable textbook-validation suite grown to **116 oracle-verified checks**,
+a 20-material Sellmeier catalog with thermo-optics + metal dispersion, and AI-callable calculators. Every
+formula is machine-verified against the physicist Docker oracle.
+
 ### Added — opt-in sampled-field propagation layer (`field.py`) + `/optics-scope` honesty skill
 - **`field.py` — angular-spectrum free-space propagation**, the next field step beyond `wave.py`'s single
   focal-plane PSF: propagate a sampled complex field U(x,y) over any distance `dz` via

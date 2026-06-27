@@ -174,6 +174,26 @@ the Scan + Plot operator, the Detector Fringe Image, and the live sensor window 
   <img src="docs/img/feature-board.png" width="92%" alt="New in v0.10.0: the WFS reads the beam's own curvature defocus; a pyramid WFS slope read; a soft-edge dichroic (R+T=1); a die face read as a zonal wavefront">
 </p>
 
+### New in v0.12.0 — the physical-optics field engine (opt-in, off-trace)
+
+A complete sampled-field layer on top of the geometric + Gaussian-q core. Every panel is computed **on
+demand** and **never touches the live trace** (the byte-identical regression is preserved); every formula is
+machine-verified against the physicist Docker oracle (the validation suite now runs **116 checks**).
+
+| Diffraction PSF (Fourier optics) | Free-space field propagation | Imaging through turbulence |
+|:---:|:---:|:---:|
+| ![PSF](docs/img/wave-psf-demo.png) | ![field propagation](docs/img/field-propagation-demo.png) | ![seeing](docs/img/turbulence-psf-demo.png) |
+| `wave_psf` — PSF = \|FFT(pupil·e^{i2πW})\|² → Airy 1.22 λF#, Strehl, MTF, encircled energy | `propagate_field` — angular-spectrum: a Gaussian recovers w(z), reversible (= digital-hologram back-prop) | `propagate_turbulent` — a plane wave through 5 Kolmogorov screens; the long-exposure PSF blurs to the seeing disk |
+
+| Atmospheric turbulence screen | Nonlinear pulse (split-step NLSE) | Monte-Carlo tissue transport |
+|:---:|:---:|:---:|
+| ![turbulence](docs/img/turbulence-screen-demo.png) | ![NLSE](docs/img/nlse-pulse-demo.png) | ![MCML](docs/img/mc-tissue-demo.png) |
+| `turbulence_screen` — dense Kolmogorov phase screen; D(r) = 6.88 (r/r₀)^{5/3} | `propagate_pulse` — the fundamental soliton stays shape-invariant; SPM broadens the spectrum | `monte_carlo_tissue` — MCML photon transport; R+T+A = 1, the diffusion penetration depth |
+
+*Plus `fdtd_derive_property` (orchestrates Meep/Tidy3D for a grating/coating/metasurface, closed-form fallback
+when absent), `tolerance_scan` (pose-only Monte-Carlo alignment yield), and the `/optics-scope` skill that
+answers "can it simulate X?" honestly — by tier, with the verified case or the external tool to use.*
+
 <p align="center"><b>▶ <a href="docs/img/showcase.mp4">Watch the showcase film</a></b> — build → simulate → align → wavefront → an agent driving it, end to end.</p>
 
 <p align="center">
@@ -285,10 +305,13 @@ Two halves: the **physics** the simulator models, and the **engineering** that k
   <img src="docs/img/architecture.svg" width="92%" alt="Architecture: each ELEMENT carries properties + a matrix_world pose (the mesh is cosmetic); the TRACER reads properties × matrix_world per element; PHYSICS adds analytic overlays (Jones/Stokes, Gaussian q-ABCD, Zernike WFS+AO, vectorial Fresnel); the READOUTS are fringes, wavefront, power, Stokes, phenomena, renders. Every core formula is machine-verified against the physicist Docker oracle.">
 </p>
 
-This is a **single-ray (chief-ray) geometric tracer** (`tracer.py`) with **analytic physics
-overlays** — Jones/Stokes polarization, Gaussian-beam ABCD propagation, and analytic interference /
-fringe models, all in a dependency-free `physics.py`. It is **not** a wave-optics or
-diffraction-integral solver, and **not** a lens-design optimizer.
+The **live trace** is a **single-ray (chief-ray) geometric tracer** (`tracer.py`) with **analytic physics
+overlays** — Jones/Stokes polarization, Gaussian-beam ABCD propagation, and analytic interference / fringe
+models, all in a dependency-free `physics.py`. The live trace itself is **not** a wave-optics solver — it
+stays instant and **byte-identical**. On top of it sits an **opt-in, on-demand physical-optics field engine**
+(new in v0.12.0) — the real diffraction PSF, sampled-field propagation, turbulence, nonlinear pulses,
+Monte-Carlo transport, FDTD orchestration — that you call explicitly and that **never touches the live trace**,
+so the byte-identical regression is preserved. It is **not** a lens-design optimizer.
 
 But what it *does* model, it models honestly. The **core formulas below are checked against an
 external symbolic + numerical oracle** (the `physicist` verifier: units, symbolic identities, limits,
@@ -307,6 +330,7 @@ see [docs/OPTICAL_ELEMENTS.md](docs/OPTICAL_ELEMENTS.md) for per-element provena
 | **Advanced** | **exact vectorial (3-D)** Fresnel at arbitrary mirror tilt (true s/p phase, linear→elliptical), white-light fringe packets, detector **camera model** (shot/read noise, saturation), one-way **isolators**, **Fabry-Pérot** cavities (Airy/finesse/FSR) | Fresnel Brewster/normal, Airy comb |
 | **Nonlinear / acousto-optic** | SHG (λ→λ/2), SPDC (λ→2λ degenerate), acousto-optic Bragg deflection | SHG λ/2, SPDC energy, θ = λ·f_a/v_s |
 | **Quantum (analytic)** | Hong-Ou-Mandel dip, Bell **CHSH** | R(0)=0, \|S\|=2√2 |
+| **Physical-optics field engine** *(opt-in, off-trace — new in v0.12.0)* | real diffraction PSF (`wave_psf`), angular-spectrum free-space propagation + hologram reconstruction (`propagate_field`), Kolmogorov turbulence screens + seeing imaging (`turbulence_screen`/`propagate_turbulent`), split-step **NLSE** solitons (`propagate_pulse`), MCML tissue transport (`monte_carlo_tissue`), FDTD orchestration (`fdtd_derive_property`) | Airy 1.22 λF#, Strehl=exp(−(2πσ)²), w(z), D(r)=6.88(r/r₀)^{5/3}, soliton shape-invariance, R+T+A=1, TMM≡quarter-wave |
 
 Two additions stay deliberately honest about their tier: **`detect_phenomena`** *flags* the conditions a
 phenomenon needs (it does not produce a diffractive image), and the **pyramid WFS** reports the wavefront
