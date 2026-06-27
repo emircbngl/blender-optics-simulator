@@ -34,6 +34,8 @@ identifiers:
     value: "10.5281/zenodo.20778997"
     description: "Concept DOI — always resolves to the latest version"
   - type: doi
+    value: "10.5281/zenodo.20977417"
+    description: "Version DOI for v0.12.0"
+  - type: doi
     value: "10.5281/zenodo.20925469"
     description: "Version DOI for v0.11.0"
-  # NOTE: the v0.12.0 version DOI is minted by Zenodo when the GitHub Release is published; add it here then.

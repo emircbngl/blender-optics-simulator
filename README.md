@@ -3,7 +3,7 @@
 [![CI](https://github.com/emircbngl/blender-optics-simulator/actions/workflows/ci.yml/badge.svg)](https://github.com/emircbngl/blender-optics-simulator/actions/workflows/ci.yml)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
 [![Blender 4.2+](https://img.shields.io/badge/Blender-4.2%2B%20%2F%205.x-orange)](https://www.blender.org/)
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20778998.svg)](https://doi.org/10.5281/zenodo.20778998)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20778997.svg)](https://doi.org/10.5281/zenodo.20778997)
 
 **An optical bench an AI agent can build, inspect, align, and render — over MCP.**
 
