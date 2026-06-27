@@ -178,6 +178,19 @@ def import_glass(name: str, coefficients: list, formula: int = 2,
 
 
 @mcp.tool()
+def wave_psf(wavelength_nm: float, f_number: float, aperture_diam_mm: float,
+            defocus_waves: float = 0.0, n_grid: int = 512, png: bool = False) -> str:
+    """Real diffraction PSF of a circular aperture via Fourier optics (PSF = |FFT(pupil*exp(i*2*pi*W))|^2)
+    -- the OPT-IN wave layer. The live ray + Gaussian trace cannot diffract; this can. Returns Strehl,
+    Airy radius (1.22*lambda*F#), first dark ring, FWHM, MTF cutoff (1/(lambda*F#)), and the encircled
+    energy in the first ring (83.8% when ideal). `defocus_waves` adds RMS Noll-Z4 defocus (Strehl then
+    matches the Marechal exp(-(2*pi*rms)^2)). png=True saves a log-scaled PSF image. E.g.
+    wave_psf(550, 8, 25.4) -> Strehl 1, Airy 5.37 um; wave_psf(550, 8, 25.4, defocus_waves=0.0714) -> Strehl ~0.82."""
+    return _fmt(_call("wave_psf", wavelength_nm=wavelength_nm, f_number=f_number,
+                      aperture_diam_mm=aperture_diam_mm, defocus_waves=defocus_waves, n_grid=n_grid, png=png))
+
+
+@mcp.tool()
 def design_4f(f1: float, f2: float) -> str:
     """Design a full 4f relay (PURE -- no scene mutation). Object at the front focal
     plane of L1, lenses f1+f2 apart, image at the back focal plane of L2. Returns the

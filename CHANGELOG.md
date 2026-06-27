@@ -64,6 +64,16 @@ semantic versioning.
   mirror reflectance varies with wavelength (gold's blue→red rise, silver's near-IR climb). The single
   ~633 nm `METALS` value remains the default.
 
+### Added — wave optics (opt-in Fourier-optics PSF)
+- **`wave.py` — real diffraction, the one field step the geometric + Gaussian trace deliberately lacks.**
+  `wave_psf` (MCP + `optics_api`) computes the focal-plane PSF of a circular aperture as
+  `|FFT(pupil·exp(i·2π·W))|²` (Goodman), returning Strehl, Airy radius (1.22·λ·F#), first dark ring, FWHM,
+  MTF cutoff (1/(λ·F#)), and the encircled energy in the first ring. Validated: an ideal aperture gives
+  Strehl 1, EE 83.8%, the Airy first ring at 1.22·λ·F#; a λ/14-RMS defocus gives Strehl ≈ the Maréchal
+  exp(-(2π·σ)²). On-demand only — it does NOT touch the live ray trace (byte-identical). Needs NumPy
+  (Blender ships it). This is the scoped opt-in wave layer; full inter-plane field propagation
+  (angular-spectrum / BPM) stays out of the live tracer.
+
 ### Fixed
 - **Lens chromatic aberration used the wrong glass** — the longitudinal chromatic focal shift hard-coded
   N-BK7 (`sellmeier_n` was called without the glass arg), so every lens dispersed as N-BK7 regardless of

@@ -193,6 +193,17 @@ check("Thermal-lens f (P=1W,dn/dT=1e-5,k=1.38,w=1mm)", physics.thermal_lens_foca
 check("Photoelastic retardance (1MPa,C=3.5e-12,10mm)", physics.photoelastic_retardance_nm(1e6, 3.5e-12, 10.0), 35.0, 1e-3, "oracle (estimate)")
 check("Cantilever sag (0.1kg,0.1m,steel,Ø1in rod)", physics.cantilever_sag_nm(0.1, 0.1, 200e9, 2.04e-8), 80.147, 1e-2, "oracle (estimate)")
 
+print("[Fourier-optics PSF -- the opt-in wave module (PSF=|FFT(pupil)|^2)]")
+from optical_alignment_sim import wave
+_wm = wave.psf_metrics(550.0, 8.0, 25.4)                    # ideal F/8 circular aperture, 550 nm
+check("PSF ideal Strehl = 1", _wm['strehl'], 1.0, 1e-4, "Goodman; FFT")
+check("PSF Airy radius = 1.22 lambda F# (um)", _wm['airy_radius_um'], 5.368, 1e-2, "Goodman; oracle")
+check("PSF first dark ring ~ Airy radius (um)", _wm['first_zero_um'], 5.368, 0.3, "Goodman; FFT")
+check("PSF encircled energy in 1st ring = 83.8%", _wm['encircled_energy_airy'], 0.838, 5e-3, "Born&Wolf; FFT")
+check("PSF MTF cutoff = 1/(lambda F#) cyc/mm", _wm['mtf_cutoff_cyc_per_mm'], 227.3, 0.5, "Goodman; oracle")
+_wd = wave.psf_metrics(550.0, 8.0, 25.4, W=0.0714 * wave.zernike_defocus(512, 128))
+check("PSF Strehl(lambda/14 RMS defocus) ~ Marechal", _wd['strehl'], 0.8177, 0.01, "Marechal; FFT vs oracle")
+
 print("=" * 60)
 n_pass = sum(_checks)
 n_total = len(_checks)

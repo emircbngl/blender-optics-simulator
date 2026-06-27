@@ -51,7 +51,7 @@ _TOOL_GROUPS = {
     "build / scene": [
         "build_example", "add_component", "tag_element", "swap_part", "set_param", "set_mount", "import_glass"],
     "design (pure math, no scene change)": [
-        "design_telescope", "design_4f", "mode_match", "optics_calc"],
+        "design_telescope", "design_4f", "mode_match", "optics_calc", "wave_psf"],
     "place / assemble (opto-mechanics)": [
         "place_relative", "make_cage", "make_tube", "make_rail", "place_on_grid", "place_on_rail",
         "set_grid", "dress_bench"],
@@ -379,6 +379,24 @@ def import_glass(name, coefficients, formula=2, ref_wl_nm=587.56, ref_n=None):
     ref_n to validate the conversion against a known index. Persists so sellmeier_n and the glass enums
     then see the new name. Returns {ok, name, coeffs, n_at_ref, persisted} or {ok:False, error}."""
     return physics.import_glass(name, coefficients, formula=formula, ref_wl_nm=ref_wl_nm, ref_n=ref_n)
+
+
+def wave_psf(wavelength_nm, f_number, aperture_diam_mm, defocus_waves=0.0, n_grid=512, png=False):
+    """Fourier-optics diffraction PSF of a circular aperture (PSF = |FFT(pupil*exp(i*2*pi*W))|^2) -- the
+    OPT-IN wave layer, separate from the live ray trace (which is geometric + Gaussian and cannot diffract).
+    Returns {strehl, airy_radius_um, first_zero_um, fwhm_um, mtf_cutoff_cyc_per_mm, encircled_energy_airy,
+    ...}. `defocus_waves` adds RMS Noll-Z4 defocus (a quick aberration knob; Strehl then matches Marechal
+    exp(-(2*pi*rms)^2)). png=True saves a log-scaled PSF image and returns its path."""
+    from . import wave
+    diam_px = max(32, n_grid // 4)
+    W = (defocus_waves * wave.zernike_defocus(n_grid, diam_px)) if defocus_waves else None
+    png_path = None
+    if png:
+        import os
+        import tempfile
+        png_path = os.path.join(tempfile.gettempdir(), "optics_psf.png")
+    return wave.psf_metrics(wavelength_nm, f_number, aperture_diam_mm, W=W,
+                            n_grid=n_grid, diam_px=diam_px, png_path=png_path)
 
 
 def tag_element(name, element_type=None, auto_ports=True):
