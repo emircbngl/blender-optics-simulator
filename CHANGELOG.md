@@ -89,6 +89,19 @@ semantic versioning.
   vs the diffusion 1.74 mm (~2%). The closed forms (μ_s′=μ_s(1−g), μ_eff, δ, Beer-Lambert) are physics_verify
   ok=true. **5 new oracle checks** → validation **107 → 112**. Demo `docs/img/mc-tissue-demo.png`.
 
+### Added — imaging through turbulence: multi-screen split-step long-exposure PSF
+- **`turbulence.long_exposure_psf` + `propagate_turbulent` (optics_api + MCP)** — image a plane wave through
+  N Kolmogorov phase screens and average the PSF: `n_screens`=1 = the pupil-phase seeing model, `n_screens`>1
+  with `spacing_m` = the **multi-screen split-step** (angular-spectrum between screens, adding scintillation) —
+  composing the already-validated `turbulence_screen` + `field.angular_spectrum`. Off-trace, seed-pinned RNG →
+  live trace byte-identical. Validated: the **multi-screen propagation conserves energy exactly**
+  (P_out/P_in = 1.0), the long-exposure PSF is **seeing-broadened** (≫ diffraction — 3.4× at D/r₀=6, 5.5×
+  through 5 screens) toward λ/r₀, and the broadening grows monotonically with turbulence strength. **Honest:**
+  a finite FFT grid truncates the largest turbulence scales, so the long-exposure FWHM lands ~0.7× the ideal
+  seeing λ/r₀ (a known FFT-phase-screen limitation; the screen structure function already runs ~14% low — see
+  Phase D). **4 new oracle checks** → validation **112 → 116**. Demo `docs/img/turbulence-psf-demo.png`. The
+  catalog's tier-(c) "needs an engine we lack" list is now closed except quantum statistics (→ QuTiP).
+
 ### Added — textbook-validation suite + correctness helpers
 - **`tests/test_validation.py`** — a CI-runnable suite that reproduces canonical optics-textbook problems
   and asserts our kernels match the known closed-form / datasheet answers (**76 checks**). Sourced by a

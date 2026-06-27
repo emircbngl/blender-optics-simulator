@@ -219,6 +219,22 @@ def turbulence_screen(n_grid: int = 256, dx_mm: float = 4.0, r0_mm: float = 100.
 
 
 @mcp.tool()
+def propagate_turbulent(aperture_mm: float = 60.0, r0_mm: float = 10.0, wavelength_nm: float = 500.0,
+                        n_screens: int = 1, spacing_m: float = 0.0, n_grid: int = 256,
+                        n_realizations: int = 30, seed: int = 0, png: bool = False) -> str:
+    """Image a plane wave through atmospheric turbulence and average the PSF -- the long-exposure 'seeing'
+    analysis (composes turbulence_screen + propagate_field). n_screens=1 = pupil-phase model; n_screens>1 with
+    spacing_m>0 = the MULTI-SCREEN SPLIT-STEP (angular-spectrum between Kolmogorov screens -> scintillation).
+    Returns {strehl_long, fwhm_long_rad, fwhm_diffraction_rad, broadening, seeing_ratio, energy_ratio}: the PSF
+    is seeing-broadened toward lambda/r0 (>> diffraction) and propagation conserves energy. Seed-pinned RNG;
+    live trace byte-identical. (Finite FFT grid -> FWHM ~0.7x ideal seeing.) E.g.
+    propagate_turbulent(60, 10, 500, n_screens=5, spacing_m=2.0) -> seeing-limited PSF through 5 screens."""
+    return _fmt(_call("propagate_turbulent", aperture_mm=aperture_mm, r0_mm=r0_mm, wavelength_nm=wavelength_nm,
+                      n_screens=n_screens, spacing_m=spacing_m, n_grid=n_grid, n_realizations=n_realizations,
+                      seed=seed, png=png))
+
+
+@mcp.tool()
 def propagate_pulse(t0_ps: float = 1.0, p0_W: float = 10.0, beta2_ps2_per_m: float = -0.02,
                     gamma_per_W_per_m: float = 0.002, length_m: float = None, shape: str = "sech",
                     alpha_per_m: float = 0.0, n_grid: int = 2048, t_window_ps: float = None,

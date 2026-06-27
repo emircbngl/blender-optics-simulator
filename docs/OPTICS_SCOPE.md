@@ -56,7 +56,7 @@ vault (link at the bottom) and may be unreachable — that's why this file exist
 | Supercontinuum (higher-order dispersion + Raman + self-steepening) | **c** | **use gnlse** (the core NLSE is (b) `propagate_pulse`) |
 | Monte-Carlo photon transport in turbid / biological tissue | **b** | `monte_carlo_tissue` — MCML-style; R+T+A=1, Beer-Lambert ballistic, diffusion penetration depth |
 | Atmospheric turbulence phase screen + structure function | **b** | `turbulence_screen` — dense Kolmogorov/von-Kármán, FT + subharmonics, D(r)=6.88(r/r₀)^5/3 |
-| Multi-screen turbulence inter-plane propagation (split-step stack) | **c** | **use POPPY / diffractio / Schmidt-suite** (a single screen + `propagate_field` is (b)) |
+| Multi-screen turbulence propagation + long-exposure seeing PSF | **b** | `propagate_turbulent` — multi-screen split-step, energy-conserving, seeing-broadened PSF ~ λ/r₀ (finite-grid ~0.7× ideal) |
 | FDTD / RCWA effective property (grating η, coating R(λ,θ), metasurface) | **b/c** | `fdtd_derive_property` — orchestrates Meep/Tidy3D (closed-form fallback if absent); a LIVE full-wave field stays (c) |
 | Quantum photon statistics: `g²`, HOM dip, squeezing | **c** | **use QuTiP** |
 

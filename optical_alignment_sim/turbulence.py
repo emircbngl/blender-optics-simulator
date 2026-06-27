@@ -23,6 +23,7 @@ import math
 import numpy as np
 
 MM = 1.0  # this module works in whatever length unit r0/dx share (mm by the bench convention)
+NM_TO_MM = 1.0e-6
 STRUCT_CONST = 6.8839  # 2*(24/5*Gamma(6/5))^(5/6), Kolmogorov structure-function constant
 
 
@@ -132,6 +133,101 @@ def screen_metrics(screen, dx_mm, r0_mm, png_path=None):
         except Exception as exc:
             out["png_error"] = str(exc)
     return out
+
+
+def long_exposure_psf(aperture_mm, r0_mm, wavelength_nm, n_screens=1, spacing_m=0.0,
+                      n_grid=256, dx_mm=None, n_realizations=30, seed=0, png_path=None):
+    """Image a plane wave through N Kolmogorov phase screens and average the PSF over realizations.
+
+    n_screens=1, spacing_m=0 -> the pupil-phase (seeing) model; n_screens>1 with spacing>0 -> the multi-screen
+    split-step (composes this module's screens + field.angular_spectrum between them, adding scintillation).
+    The per-screen Fried parameter is r0*N^(3/5) so the combined turbulence has the requested r0. Returns
+    {strehl_long, fwhm_long_rad, fwhm_diffraction_rad, seeing_lambda_over_r0_rad, broadening, seeing_ratio,
+    energy_ratio, n_screens, n_realizations}. The long-exposure PSF is seeing-broadened toward lambda/r0;
+    angular-spectrum propagation conserves energy exactly. Seed-pinned local RNG.
+
+    HONEST NOTE: a finite FFT grid truncates the largest turbulence scales, so the screen structure function
+    runs ~14% low (see screen_metrics) and the long-exposure FWHM lands ~0.7x the ideal seeing lambda/r0 --
+    a known FFT-phase-screen limitation, reduced by a larger grid or a finite (von-Karman) outer scale."""
+    from . import field
+    n = int(n_grid)
+    lam_mm = wavelength_nm * NM_TO_MM
+    if dx_mm is None:
+        dx_mm = 1.5 * aperture_mm / n                          # grid spans ~1.5x the aperture
+    c = n // 2
+    x = (np.arange(n) - c) * dx_mm
+    X, Y = np.meshgrid(x, x)
+    ap = ((X * X + Y * Y) <= (0.5 * aperture_mm) ** 2).astype(complex)
+    r0_screen = r0_mm * n_screens ** (3.0 / 5.0)               # per-screen r0 so the stack combines to r0_mm
+
+    def _fwhm_rad(psf):
+        p = np.fft.fftshift(psf)
+        line = p[c, c:]
+        half = line.max() / 2.0
+        for i in range(1, len(line)):
+            if line[i] <= half:
+                f = (line[i - 1] - half) / (line[i - 1] - line[i]) if line[i - 1] != line[i] else 0.0
+                return 2.0 * (i - 1 + f) * lam_mm / (n * dx_mm)   # angular FWHM [rad]
+        return None
+
+    psf_diff = np.abs(np.fft.fft2(ap)) ** 2
+    acc = np.zeros((n, n))
+    p_in = float(np.sum(np.abs(ap) ** 2))
+    energy_ratio = 1.0
+    for k in range(int(n_realizations)):
+        U = ap.copy()
+        for j in range(int(n_screens)):
+            U = U * np.exp(1j * kolmogorov_screen(n, dx_mm, r0_screen, seed=seed + 1000 * k + j))
+            if n_screens > 1 and spacing_m > 0.0:
+                U = field.angular_spectrum(U, dx_mm, spacing_m * 1000.0, wavelength_nm)   # m -> mm
+        acc = acc + np.abs(np.fft.fft2(U)) ** 2
+        if k == 0:
+            energy_ratio = float(np.sum(np.abs(U) ** 2) / p_in)
+    psf_long = acc / int(n_realizations)
+    fwhm_long = _fwhm_rad(psf_long)
+    fwhm_diff = _fwhm_rad(psf_diff)
+    seeing = lam_mm / r0_mm
+    out = {
+        "ok": True,
+        "strehl_long": round(float(psf_long.max() / psf_diff.max()), 5) if psf_diff.max() > 0 else None,
+        "fwhm_long_rad": round(fwhm_long, 9) if fwhm_long else None,
+        "fwhm_diffraction_rad": round(fwhm_diff, 9) if fwhm_diff else None,
+        "seeing_lambda_over_r0_rad": round(seeing, 9),
+        "broadening": round(fwhm_long / fwhm_diff, 4) if (fwhm_long and fwhm_diff) else None,
+        "seeing_ratio": round(fwhm_long / seeing, 4) if fwhm_long else None,
+        "energy_ratio": round(energy_ratio, 5),
+        "n_screens": int(n_screens), "n_realizations": int(n_realizations),
+        "aperture_mm": aperture_mm, "r0_mm": r0_mm,
+    }
+    if png_path:
+        try:
+            _render_long_exposure(psf_long, psf_diff, n, out, png_path)
+            out["png"] = png_path
+        except Exception as exc:
+            out["png_error"] = str(exc)
+    return out
+
+
+def _render_long_exposure(psf_long, psf_diff, n, meta, png_path):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    c = n // 2
+    h = max(12, int(3.0 * (meta["broadening"] or 4.0) * 8))
+    h = min(h, c - 1)
+    pl = np.fft.fftshift(psf_long); pd = np.fft.fftshift(psf_diff)
+    crop_l = pl[c - h:c + h, c - h:c + h]; crop_d = pd[c - h:c + h, c - h:c + h]
+    fig, ax = plt.subplots(1, 2, figsize=(9, 4.4), facecolor="#0d0d10")
+    ax[0].imshow(np.log10(crop_d / crop_d.max() + 1e-6), cmap="inferno")
+    ax[0].set_title("diffraction PSF (no turbulence)", color="w")
+    ax[1].imshow(np.log10(crop_l / crop_l.max() + 1e-6), cmap="inferno")
+    ax[1].set_title("long-exposure PSF  broadening=%.1fx" % (meta["broadening"] or 0), color="w")
+    for a in ax:
+        a.set_xticks([]); a.set_yticks([])
+    fig.suptitle("imaging through turbulence  D/r0=%.0f  Strehl=%.3f  (%d screens)"
+                 % (meta["aperture_mm"] / meta["r0_mm"], meta["strehl_long"] or 0, meta["n_screens"]), color="w")
+    fig.savefig(png_path, dpi=110, bbox_inches="tight", facecolor="#0d0d10")
+    plt.close(fig)
 
 
 def _render_screen(screen, meta, png_path):

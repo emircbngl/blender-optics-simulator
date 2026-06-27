@@ -61,7 +61,7 @@ _TOOL_GROUPS = {
     "align (mutates DOFs -- on demand only)": ["align_all", "align_element", "auto_align", "tilt_null"],
     "adaptive optics + surface figure": [
         "ao_command", "ao_close_loop", "ao_close_loop_recon", "ao_kolmogorov", "zonal_render", "pyramid_wfs",
-        "turbulence_screen"],
+        "turbulence_screen", "propagate_turbulent"],
     "render / export": ["render", "render_sequence", "export_svg"],
 }
 
@@ -115,7 +115,7 @@ _SCOPE = {
         "supercontinuum (higher-order dispersion + Raman + self-steepening)": "c: gnlse (the core NLSE is (b) propagate_pulse; the generalized-NLSE terms are not built)",
         "Monte-Carlo tissue / turbid-medium photon transport": "b: monte_carlo_tissue (MCML-style slab; R+T+A=1, Beer-Lambert ballistic, diffusion penetration depth; CPU here, GPU-friendly if scaled)",
         "atmospheric turbulence phase screen + structure function": "b: turbulence_screen (dense Kolmogorov/von-Karman screen, FT + subharmonics; D(r)=6.88(r/r0)^5/3; modal ao_kolmogorov is a 15-Zernike caricature, this is the dense field)",
-        "multi-screen turbulence inter-plane propagation (split-step stack)": "c: POPPY / diffractio / Schmidt-suite (a single screen + propagate_field is (b); the multi-screen split-step is not built)",
+        "multi-screen turbulence inter-plane propagation + long-exposure seeing PSF": "b: propagate_turbulent (multi-screen split-step, angular-spectrum between Kolmogorov screens; energy-conserving; seeing-broadened PSF ~ lambda/r0, finite-grid ~0.7x ideal)",
         "quantum statistics g2 / HOM / squeezing": "c: QuTiP",
     },
     "source_of_truth": "docs/OPTICS_SCOPE.md (vendored case index) + tests/test_validation.py (the oracle-verified "
@@ -496,6 +496,27 @@ def turbulence_screen(n_grid=256, dx_mm=4.0, r0_mm=100.0, L0_mm=None, l0_mm=None
     scr = turbulence.kolmogorov_screen(n_grid, dx_mm, r0_mm, L0_mm=L0_mm, l0_mm=l0_mm,
                                        seed=seed, subharmonics=subharmonics)
     return turbulence.screen_metrics(scr, dx_mm, r0_mm, png_path=png_path)
+
+
+def propagate_turbulent(aperture_mm=60.0, r0_mm=10.0, wavelength_nm=500.0, n_screens=1, spacing_m=0.0,
+                        n_grid=256, n_realizations=30, seed=0, png=False):
+    """Image a plane wave through atmospheric turbulence and average the PSF -- the long-exposure 'seeing'
+    analysis (composes `turbulence_screen` + `propagate_field`, both oracle-validated). `n_screens`=1 = the
+    pupil-phase model; `n_screens`>1 with `spacing_m`>0 = the MULTI-SCREEN SPLIT-STEP (angular-spectrum between
+    screens, adding scintillation). Returns {strehl_long, fwhm_long_rad, fwhm_diffraction_rad, broadening,
+    seeing_ratio, energy_ratio}: the PSF is seeing-broadened toward lambda/r0 (>> the diffraction limit) and
+    the propagation conserves energy. Off-trace, seed-pinned RNG; live trace byte-identical. NOTE: a finite FFT
+    grid truncates the largest turbulence scales -> the long-exposure FWHM lands ~0.7x the ideal seeing
+    lambda/r0 (a known FFT-phase-screen limitation, reduced by a bigger grid or a von-Karman outer scale)."""
+    from . import turbulence
+    png_path = None
+    if png:
+        import os
+        import tempfile
+        png_path = os.path.join(tempfile.gettempdir(), "optics_turbulent_psf.png")
+    return turbulence.long_exposure_psf(aperture_mm, r0_mm, wavelength_nm, n_screens=n_screens,
+                                        spacing_m=spacing_m, n_grid=n_grid, n_realizations=n_realizations,
+                                        seed=seed, png_path=png_path)
 
 
 def propagate_pulse(t0_ps=1.0, p0_W=10.0, beta2_ps2_per_m=-0.02, gamma_per_W_per_m=0.002, length_m=None,

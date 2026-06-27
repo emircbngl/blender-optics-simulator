@@ -269,6 +269,15 @@ _cmb = _mc.monte_carlo_slab(_cmua, _cmus, _cg, 10.0, n_photons=40000, seed=1)   
 check("MC fluence penetration depth recovers diffusion mu_eff", _cmb["mu_eff_fit_per_mm"], _cmueff, 0.1, "diffusion; MCML")
 check("MC thick-slab energy conserved R+T+A=1", _cmb["energy_sum"], 1.0, 2e-3, "energy; MCML")
 
+print("[Imaging through turbulence -- multi-screen split-step long-exposure PSF (composes screens + field)]")
+_le1 = _turb.long_exposure_psf(48.0, 8.0, 500.0, n_screens=1, n_grid=256, n_realizations=20, seed=0)        # D/r0=6
+check("Turbulence long-exposure PSF is seeing-broadened (>>diffraction)", _le1["broadening"], 4.0, 1.6, "Fried seeing; FFT")
+check("Turbulence long-exposure seeing FWHM ~ lambda/r0 (finite-grid ~0.5-0.8x ideal)", _le1["seeing_ratio"], 0.6, 0.35, "Fried; FFT (finite-grid deficit)")
+_le4 = _turb.long_exposure_psf(48.0, 8.0, 500.0, n_screens=4, spacing_m=2.0, n_grid=256, n_realizations=12, seed=0)
+check("Multi-screen split-step propagation conserves energy", _le4["energy_ratio"], 1.0, 1e-3, "angular spectrum; FFT")
+_le2 = _turb.long_exposure_psf(48.0, 4.0, 500.0, n_screens=1, n_grid=256, n_realizations=20, seed=0)        # D/r0=12
+check("Stronger turbulence (smaller r0) broadens the PSF more (monotone)", _le2["broadening"] - _le1["broadening"], 1.1, 0.8, "Fried; FFT")
+
 print("=" * 60)
 n_pass = sum(_checks)
 n_total = len(_checks)
