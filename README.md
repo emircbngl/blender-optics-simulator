@@ -180,6 +180,13 @@ A complete sampled-field layer on top of the geometric + Gaussian-q core. Every 
 demand** and **never touches the live trace** (the byte-identical regression is preserved); every formula is
 machine-verified against the physicist Docker oracle (the validation suite now runs **116 checks**).
 
+| | |
+|:---:|:---:|
+| ![soliton vs disperser](docs/img/field-soliton.gif) | ![star dissolving into the seeing disk](docs/img/field-seeing.gif) |
+| **split-step NLSE** — the fundamental soliton holds its shape while an ordinary pulse disperses (`propagate_pulse`) | **imaging through turbulence** — a star dissolves into the seeing disk as D/r₀ climbs (`propagate_turbulent`) |
+
+<p align="center"><b>▶ <a href="docs/img/field-reel.mp4">Watch the field-engine reel</a></b> — diffraction · propagation · turbulence · solitons, in 18 seconds. <em>All off-trace; the live ray-trace stays byte-identical.</em></p>
+
 | Diffraction PSF (Fourier optics) | Free-space field propagation | Imaging through turbulence |
 |:---:|:---:|:---:|
 | ![PSF](docs/img/wave-psf-demo.png) | ![field propagation](docs/img/field-propagation-demo.png) | ![seeing](docs/img/turbulence-psf-demo.png) |
