@@ -49,7 +49,7 @@ _TOOL_GROUPS = {
         "inspect_element", "beam_profile", "ao_measure", "get_wavefront", "sensor_capture",
         "check_mechanics", "coupling_efficiency"],
     "build / scene": [
-        "build_example", "add_component", "tag_element", "swap_part", "set_param", "set_mount"],
+        "build_example", "add_component", "tag_element", "swap_part", "set_param", "set_mount", "import_glass"],
     "design (pure math, no scene change)": [
         "design_telescope", "design_4f", "mode_match", "optics_calc"],
     "place / assemble (opto-mechanics)": [
@@ -367,6 +367,15 @@ def optics_calc(quantity=None, **params):
     except Exception as exc:
         return {"ok": False, "error": "%s: %s" % (type(exc).__name__, exc)}
     return {"ok": True, "quantity": quantity, "value": value, "doc": doc}
+
+
+def import_glass(name, coefficients, formula=2, ref_wl_nm=587.56, ref_n=None):
+    """Add a glass to the user catalog from refractiveindex.info Sellmeier coefficients (an agent fetches
+    the RII `coefficients` list + `type` then calls this). formula 1 -> the C entries are resonance
+    wavelengths (squared here to our Cj=lambda_j^2); formula 2 -> already squared; c0 must be 0; pass
+    ref_n to validate the conversion against a known index. Persists so sellmeier_n and the glass enums
+    then see the new name. Returns {ok, name, coeffs, n_at_ref, persisted} or {ok:False, error}."""
+    return physics.import_glass(name, coefficients, formula=formula, ref_wl_nm=ref_wl_nm, ref_n=ref_n)
 
 
 def tag_element(name, element_type=None, auto_ports=True):

@@ -164,6 +164,20 @@ def optics_calc(quantity: str = "", params: dict = None) -> str:
 
 
 @mcp.tool()
+def import_glass(name: str, coefficients: list, formula: int = 2,
+                 ref_wl_nm: float = 587.56, ref_n: float = None) -> str:
+    """Add a glass to the user catalog from refractiveindex.info Sellmeier coefficients. Fetch the RII
+    YAML's `coefficients` ([c0, B1, C1, B2, C2, B3, C3]) and `type` (formula 1 or 2), then call this:
+    formula 1 -> the C entries are resonance wavelengths (squared automatically); formula 2 -> already
+    squared. c0 must be 0; up to 3 poles. Pass ref_n (the published index at ref_wl_nm) to validate the
+    conversion before it is accepted. After import, sellmeier_n('<name>', ...) and the glass dropdowns
+    see it. E.g. import_glass("MY-N-SF6", [0, 1.77931763, 0.0133714182, 0.338149866, 0.0617533621,
+    2.08734474, 174.01759], 2, 587.56, 1.80518)."""
+    return _fmt(_call("import_glass", name=name, coefficients=coefficients, formula=formula,
+                      ref_wl_nm=ref_wl_nm, ref_n=ref_n))
+
+
+@mcp.tool()
 def design_4f(f1: float, f2: float) -> str:
     """Design a full 4f relay (PURE -- no scene mutation). Object at the front focal
     plane of L1, lenses f1+f2 apart, image at the back focal plane of L2. Returns the

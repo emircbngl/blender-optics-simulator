@@ -38,7 +38,11 @@ semantic versioning.
 ### Added — extensibility + dispersion opt-ins + closed-form helpers
 - **User-extensible glass catalog** — `sellmeier_n` reads a merged BUILTIN + `cache/glasses_user.json`
   lookup; `add_user_glass()` / `reload_glasses()` / `glass_names()` let a user or the AI add glasses
-  without editing code (bare-interpreter safe: no cache → BUILTIN only → byte-identical).
+  without editing code (added glasses go live in-memory immediately, persist to the cache when writable;
+  bare-interpreter safe). An **`import_glass` tool** (MCP + `optics_api`) takes refractiveindex.info
+  Sellmeier coefficients directly — it handles the formula-1 resonance-wavelength squaring, rejects
+  non-≤3-pole fits, and validates n at a reference wavelength before accepting — so an agent can fetch a
+  material from RII and add it in one call (round-trips the built-in fits to floating-point identity).
 - **Opt-in dispersion** (both default to the prior byte-identical behaviour): a `waveplate_crystal` property
   multiplies in a waveplate's real birefringence dispersion `Δ(n_e−n_o)(λ)` (quartz / MgF2 / calcite /
   sapphire); a `surface_glass` property makes the Fresnel ghost reflectance wavelength-dependent via

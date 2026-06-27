@@ -301,10 +301,16 @@ def glass_names():
 
 
 def add_user_glass(name, coeffs):
-    """Add/update a user glass: name -> 6 Sellmeier coeffs (B1,B2,B3,C1,C2,C3), persisted to the cache
-    JSON and merged into the live lookup. Returns True on success; False outside Blender / on bad input."""
+    """Add/update a user glass: name -> 6 Sellmeier coeffs (B1,B2,B3,C1,C2,C3) into the LIVE lookup
+    immediately, AND persist it to the cache JSON when a writable cache exists. Returns True if persisted
+    to disk, False if it is in-memory only (bare interpreter / no cache) -- usable either way this session.
+    Bad input (not 6 coeffs) returns False without touching the lookup."""
+    if not (isinstance(coeffs, (list, tuple)) and len(coeffs) == 6):
+        return False
+    tup = tuple(float(x) for x in coeffs)
+    _GLASSES[name] = tup                        # live immediately, even with no persistence
     p = _user_glasses_path()
-    if not p or not (isinstance(coeffs, (list, tuple)) and len(coeffs) == 6):
+    if not p:
         return False
     data = {}
     if os.path.exists(p):
@@ -313,14 +319,51 @@ def add_user_glass(name, coeffs):
                 data = json.load(f)
         except (OSError, ValueError):
             data = {}
-    data[name] = [float(x) for x in coeffs]
+    data[name] = list(tup)
     try:
         with open(p, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=1)
     except OSError:
         return False
-    reload_glasses()
     return True
+
+
+def import_glass(name, coefficients, formula=2, ref_wl_nm=587.56, ref_n=None):
+    """Add a glass from refractiveindex.info-style Sellmeier coefficients (the robust core of an RII
+    importer -- an agent fetches the YAML's `coefficients` + `type`, this does the conversion + sanity
+    check + persistence). `coefficients` is the RII list [c0, B1, C1, B2, C2, B3, C3]; formula 1 -> the
+    C entries are resonance WAVELENGTHS (we square them to our Cj=lambda_j^2), formula 2 -> already
+    squared. Requires c0==0 and <=3 poles (other RII formula types are rejected, not silently fudged).
+    If ref_n is given, n(ref_wl) must match within 1e-3 or the conversion is rejected. Persists via
+    add_user_glass (Blender only). Returns {ok, name, coeffs, n_at_ref, persisted} or {ok:False, error}."""
+    c = list(coefficients)
+    if not c or float(c[0]) != 0.0:
+        return {"ok": False, "error": "needs a Sellmeier fit with c0=0 (got c0=%s)" % (c[0] if c else None)}
+    pairs = c[1:]
+    if len(pairs) % 2 != 0 or len(pairs) // 2 > 3 or not pairs:
+        return {"ok": False, "error": "need 1-3 (B,C) coefficient pairs, got %d values" % len(pairs)}
+    bb, cc = [], []
+    for i in range(0, len(pairs), 2):
+        bb.append(float(pairs[i]))
+        cj = float(pairs[i + 1])
+        cc.append(cj * cj if int(formula) == 1 else cj)
+    while len(bb) < 3:
+        bb.append(0.0)
+        cc.append(1.0)                       # a zero-B padding term contributes nothing
+    tup = (bb[0], bb[1], bb[2], cc[0], cc[1], cc[2])
+    n_ref = None
+    if ref_n is not None:
+        L2 = (ref_wl_nm * 1.0e-3) ** 2
+        try:
+            n2 = 1.0 + sum(bb[j] * L2 / (L2 - cc[j]) for j in range(3))
+            n_ref = math.sqrt(n2) if n2 > 0.0 else None
+        except ZeroDivisionError:
+            n_ref = None
+        if n_ref is None or abs(n_ref - ref_n) > 1.0e-3:
+            return {"ok": False, "error": "n(%.2f)=%s != expected %s -- conversion rejected" % (ref_wl_nm, n_ref, ref_n),
+                    "coeffs": tup}
+    persisted = add_user_glass(name, tup)
+    return {"ok": True, "name": name, "coeffs": tup, "n_at_ref": n_ref, "persisted": persisted}
 
 
 def sellmeier_n(wl_nm, glass='N-BK7', temp_C=None):
