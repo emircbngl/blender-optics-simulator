@@ -14,7 +14,7 @@ import math
 
 import bpy
 
-from . import tracer, alignment, mounts, geometry, solvers, design
+from . import tracer, alignment, mounts, geometry, solvers, design, physics
 from . import diagnostics as _diagnostics
 from . import optomech as _optomech
 from . import operators as _ops
@@ -51,7 +51,7 @@ _TOOL_GROUPS = {
     "build / scene": [
         "build_example", "add_component", "tag_element", "swap_part", "set_param", "set_mount"],
     "design (pure math, no scene change)": [
-        "design_telescope", "design_4f", "mode_match"],
+        "design_telescope", "design_4f", "mode_match", "optics_calc"],
     "place / assemble (opto-mechanics)": [
         "place_relative", "make_cage", "make_tube", "make_rail", "place_on_grid", "place_on_rail",
         "set_grid", "dress_bench"],
@@ -312,6 +312,60 @@ def coupling_efficiency(w_in, w_t, offset=0.0):
     symmetric, dimensionless, bounded (0,1], == 1 only at w_in==w_t and offset==0. Returns the
     scalar eta, or {ok:False, error:...} for a non-physical waist."""
     return design.coupling_efficiency(w_in, w_t, offset)
+
+
+# --- pure scalar optics calculators, exposed to the AI through one dispatch tool (optics_calc) -------
+# A registry so a new physics helper becomes AI-callable by ONE line here -- no extra MCP/bridge edit
+# (the bridge auto-allows any public optics_api function). Each entry: name -> (callable, ordered arg
+# names, one-line doc). Return values are JSON-able scalars / tuples / dicts.
+def _thick_lens_efl(n, R1_mm, R2_mm, t_mm):
+    m = physics.abcd_thick_lens(n, R1_mm, R2_mm, t_mm)
+    return None if m[1][0] == 0.0 else -1.0 / m[1][0]
+
+
+_CALCULATORS = {
+    "brewster_angle": (physics.brewster_angle, ("n1", "n2"), "Brewster angle atan(n2/n1), deg"),
+    "critical_angle": (physics.critical_angle, ("n1", "n2"), "TIR critical angle asin(n2/n1), deg (None if n2>=n1)"),
+    "abbe_number": (physics.abbe_number, ("glass",), "Abbe number Vd of a catalog glass name"),
+    "sellmeier_n": (physics.sellmeier_n, ("wl_nm", "glass", "temp_C"), "refractive index n(lambda[, T degC])"),
+    "thin_lens_image": (physics.thin_lens_image, ("f", "o"), "(image_distance, magnification) for 1/o+1/i=1/f"),
+    "thick_lens_efl": (_thick_lens_efl, ("n", "R1_mm", "R2_mm", "t_mm"), "thick-lens effective focal length, mm"),
+    "cavity_stability": (physics.cavity_stability, ("g1", "g2"), "(g1*g2, stable?) for a two-mirror cavity"),
+    "cavity_finesse": (physics.cavity_finesse, ("R",), "Fabry-Perot finesse pi*sqrt(R)/(1-R)"),
+    "cavity_fsr_nm": (physics.cavity_fsr_nm, ("wl_nm", "L_mm", "n"), "Fabry-Perot free spectral range, nm"),
+    "grating_angle": (physics.grating_angle, ("lines_per_mm", "m", "wl_nm", "theta_i_deg"), "diffracted order angle, deg"),
+    "grating_resolving_power": (physics.grating_resolving_power, ("lines_per_mm", "illuminated_mm", "m"), "R = m*N"),
+    "ar_quarter_wave_reflectance": (physics.ar_quarter_wave_reflectance, ("n0", "n1", "ns"), "single quarter-wave AR layer R"),
+    "fiber_na": (physics.fiber_na, ("n_core", "n_clad"), "step-index fiber numerical aperture"),
+    "fiber_v_number": (physics.fiber_v_number, ("core_radius_um", "na", "wl_nm"), "fiber V (single-mode if < 2.405)"),
+    "fiber_num_modes": (physics.fiber_num_modes, ("v",), "approx guided-mode count ~ V^2/2"),
+    "aom_deflection": (physics.aom_deflection, ("wl_nm", "f_acoustic_hz", "v_sound_mps"), "acousto-optic deflection, rad"),
+    "pockels_vpi": (physics.pockels_vpi, ("wl_nm", "n0", "r_pm_per_V"), "Pockels half-wave voltage, V"),
+    "photon_energy_eV": (physics.photon_energy_eV, ("wl_nm",), "photon energy hc/lambda, eV"),
+    "coherence_length_mm": (physics.coherence_length_mm, ("wavelength_nm", "linewidth_nm"), "temporal coherence length, mm"),
+    "gaussian_divergence": (physics.gaussian_divergence, ("w0_mm", "wavelength_nm", "m2"), "Gaussian far-field half-angle, rad"),
+}
+
+
+def optics_calc(quantity=None, **params):
+    """Evaluate a PURE optics calculator (no scene needed) -- the AI's optics formula toolbox: Brewster /
+    critical angle, Sellmeier n(lambda[,T]), thin/thick lens, cavity finesse/FSR/stability, grating
+    angle/resolving-power, AR coating, fiber NA/V/modes, AOM deflection, Pockels Vpi, photon energy,
+    coherence length, Gaussian divergence. Call with NO quantity to list every calculator + its args;
+    else pass quantity plus its parameters, e.g. optics_calc('brewster_angle', n1=1.0, n2=1.5).
+    Returns {ok, quantity, value, doc} or {ok:False, error, expects}."""
+    if not quantity:
+        return {"ok": True, "calculators": {k: {"args": list(v[1]), "doc": v[2]} for k, v in sorted(_CALCULATORS.items())}}
+    if quantity not in _CALCULATORS:
+        return {"ok": False, "error": "unknown quantity '%s'" % quantity, "available": sorted(_CALCULATORS)}
+    fn, argnames, doc = _CALCULATORS[quantity]
+    try:
+        value = fn(**{k: params[k] for k in argnames if k in params})
+    except TypeError as exc:
+        return {"ok": False, "error": str(exc), "expects": list(argnames), "doc": doc}
+    except Exception as exc:
+        return {"ok": False, "error": "%s: %s" % (type(exc).__name__, exc)}
+    return {"ok": True, "quantity": quantity, "value": value, "doc": doc}
 
 
 def tag_element(name, element_type=None, auto_ports=True):

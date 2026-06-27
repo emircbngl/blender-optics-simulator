@@ -152,6 +152,18 @@ def design_telescope(f1: float, f2: float) -> str:
 
 
 @mcp.tool()
+def optics_calc(quantity: str = "", params: dict = None) -> str:
+    """Pure optics formula calculator -- no scene needed. Covers Brewster / critical angle, Sellmeier
+    n(lambda[,T]), thin- & thick-lens, cavity finesse / FSR / stability, grating angle / resolving power,
+    AR quarter-wave coating, fiber NA / V / mode-count, AOM deflection, Pockels Vpi, photon energy,
+    coherence length, Gaussian divergence. Call with quantity="" to LIST every calculator and its
+    arguments; otherwise pass the quantity plus its parameters in `params`, e.g.
+    optics_calc("brewster_angle", {"n1": 1.0, "n2": 1.5}) or
+    optics_calc("sellmeier_n", {"wl_nm": 633, "glass": "N-SF11"})."""
+    return _fmt(_call("optics_calc", quantity=quantity, **(params or {})))
+
+
+@mcp.tool()
 def design_4f(f1: float, f2: float) -> str:
     """Design a full 4f relay (PURE -- no scene mutation). Object at the front focal
     plane of L1, lenses f1+f2 apart, image at the back focal plane of L2. Returns the
