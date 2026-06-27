@@ -10,7 +10,7 @@ test_optics.py (which pins pipeline/byte-identical behavior).
 Run:  blender --background --factory-startup --python tests/test_validation.py
 Lives outside the add-on package, so the extension zip never ships it.
 """
-import bpy, sys, os, math
+import bpy, sys, os, math, cmath
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO)
@@ -118,6 +118,67 @@ check("HWP rotates 0->45deg (analyzer@45 passes)", physics.intensity(physics.app
       1.0, 1e-3, "Hecht; oracle")
 check("HWP rotated beam blocked by analyzer@135", physics.intensity(physics.apply(physics.M_polarizer(135.0, 1.0e6), _hwp)),
       0.0, 1e-3, "Hecht; oracle")
+
+print("[Mirrors & lenses (Hecht/Pedrotti scan)]")
+_im_cc, _m_cc = physics.thin_lens_image(10.0, 30.0)       # concave mirror f=R/2=10
+check("Concave mirror image (R=20,o=30)", _im_cc, 15.0, 1e-6, "Pedrotti; oracle")
+check("Concave mirror magnification", _m_cc, -0.5, 1e-6, "Pedrotti; oracle")
+_im_cx, _m_cx = physics.thin_lens_image(-10.0, 30.0)      # convex mirror f=-10
+check("Convex mirror image (virtual)", _im_cx, -7.5, 1e-6, "Pedrotti; oracle")
+_iN, _mN = physics.thin_lens_image(100.0, 150.0)
+check("Newton's form x*x'=f^2 (f=100)", (150.0 - 100.0) * (_iN - 100.0), 10000.0, 1e-3, "Hecht; oracle")
+_Mtl = physics.abcd_thick_lens(1.5, 50.0, -50.0, 10.0)
+check("Thick-lens EFL=-1/C (n=1.5,R=+/-50,t=10)", -1.0 / _Mtl[1][0], 51.7241, 1e-2, "Pedrotti; oracle")
+
+print("[Fresnel at angle + AR coating (Born&Wolf scan)]")
+_rs, _rp = physics.fresnel_reflect(1.0, 1.5, math.radians(45.0))
+check("Fresnel 45deg air->glass Rs", abs(_rs) ** 2, 0.092013, 1e-5, "Hecht; oracle")
+check("Fresnel 45deg air->glass Rp", abs(_rp) ** 2, 0.008466, 1e-5, "Hecht; oracle")
+_ts, _tp = physics.fresnel_reflect(1.5, 1.0, math.radians(45.0))   # TIR (past 41.81deg)
+check("TIR |rs|=1 (n=1.5->air, 45deg)", abs(_ts), 1.0, 1e-6, "Born&Wolf; oracle")
+check("TIR s-p relative phase (deg)", abs(math.degrees(cmath.phase(_tp) - cmath.phase(_ts))), 36.8699, 1e-2, "Born&Wolf; oracle")
+check("AR quarter-wave R (MgF2 on crown)", physics.ar_quarter_wave_reflectance(1.0, 1.38, 1.52), 0.012601, 1e-5, "Born&Wolf; oracle")
+check("AR ideal n1=sqrt(n0 ns) -> R=0", physics.ar_quarter_wave_reflectance(1.0, math.sqrt(1.52), 1.52), 0.0, 1e-9, "Born&Wolf; oracle")
+
+print("[Gaussian beam w(z)/R(z)/Gouy + M^2 (Saleh&Teich/Siegman scan)]")
+_zR = physics.q_from_waist(1.0, 632.8).imag
+_qz = physics.q_propagate(physics.q_from_waist(1.0, 632.8), physics.abcd_free(_zR))
+check("Gaussian w(zR)=sqrt2*w0", physics.beam_radius(_qz, 632.8), math.sqrt(2.0), 1e-4, "Saleh&Teich; oracle")
+check("Gaussian R(zR)=2*zR", physics.beam_roc(_qz), 2.0 * _zR, 1.0, "Saleh&Teich; oracle")
+check("Gouy phase at zR = 45deg", math.degrees(physics.gouy_phase(_qz)), 45.0, 1e-3, "Saleh&Teich; oracle")
+check("M^2=1.3 divergence (w0=0.5,1064nm)", physics.gaussian_divergence(0.5, 1064.0, 1.3), 8.80572e-4, 1e-8, "Siegman; oracle")
+check("M^2=1.3 beam-parameter product", physics.beam_parameter_product(1064.0, 1.3), 4.40286e-4, 1e-8, "Siegman; oracle")
+
+print("[Polarization states (Born&Wolf/Collett scan)]")
+_qwp30 = physics.polarization_state(physics.apply(physics.M_waveplate(90.0, 30.0), physics.jones_linear(0.0)))
+check("QWP@30deg ellipticity", _qwp30["ellipticity_deg"], -30.0, 1e-2, "Collett; oracle")
+check("QWP@30deg DOP=1", _qwp30["dop"], 1.0, 1e-6, "Collett; oracle")
+_hwp2 = physics.polarization_state(physics.apply(physics.M_waveplate(90.0, 45.0),
+        physics.apply(physics.M_waveplate(90.0, 45.0), physics.jones_linear(0.0))))
+check("Two QWP@45 = HWP -> azimuth 90deg", abs(_hwp2["azimuth_deg"]), 90.0, 1e-2, "Collett; oracle")
+check("Partial polarization DOP (S=2,1,0,0)", physics.polarization_state_from_stokes(2.0, 1.0, 0.0, 0.0)["dop"], 0.5, 1e-6, "Collett; oracle")
+check("Partial polarization DOP 3:1 (S=4,3,0,0)", physics.polarization_state_from_stokes(4.0, 3.0, 0.0, 0.0)["dop"], 0.75, 1e-6, "Collett; oracle")
+
+print("[Grating / fiber / EO / photon (multi-scan)]")
+check("Grating resolving power R=mN (600/mm,25mm)", physics.grating_resolving_power(600.0, 25.0, 1), 15000.0, 1.0, "Hecht; oracle")
+_thm = math.radians(physics.grating_angle(600.0, 1, 633.0, 0.0))
+check("Grating angular dispersion 1/(d cos) rad/nm", 1.0 / ((1.0e6 / 600.0) * math.cos(_thm)), 6.4868e-4, 1e-7, "Hecht; oracle")
+_na = physics.fiber_na(1.46, 1.457)
+check("Fiber NA=sqrt(n1^2-n2^2)", _na, 0.0935468, 1e-5, "Saleh&Teich; oracle")
+check("Fiber V-number 2pi a NA/lambda", physics.fiber_v_number(25.0, _na, 850.0), 17.2874, 1e-2, "Saleh&Teich; oracle")
+check("Fiber mode count ~V^2/2", physics.fiber_num_modes(physics.fiber_v_number(25.0, _na, 850.0)), 149.4, 1.0, "Saleh&Teich; oracle")
+check("AOM deflection lambda*f/v (632.8,200MHz,650)", physics.aom_deflection(632.8, 200.0e6, 650.0), 0.194708, 1e-5, "Saleh&Teich; oracle")
+check("Pockels Vpi KDP (546nm,n=1.51,r=10.6)", physics.pockels_vpi(546.0, 1.51, 10.6), 7480.42, 1.0, "Saleh&Teich; oracle")
+check("Photon energy hc/lambda (532nm, eV)", physics.photon_energy_eV(532.0), 2.33053, 1e-4, "Saleh&Teich; oracle")
+_Ii, _Vi = physics.interfere([(physics.jones_linear(0.0, 1.0), 0.0, 633.0), (physics.jones_linear(0.0, 0.5), 0.0, 633.0)])
+check("Two-beam visibility (I1=1,I2=0.25)", _Vi, 0.8, 1e-3, "Born&Wolf; oracle")
+
+print("[Independent golden: SCHOTT/Malitson table values at non-d-line]")
+check("N-BK7 nF @486.13nm (SCHOTT table)", physics.sellmeier_n(486.13, 'N-BK7'), 1.52238, 5e-5, "SCHOTT [datasheet]")
+check("N-BK7 nC @656.27nm (SCHOTT table)", physics.sellmeier_n(656.27, 'N-BK7'), 1.51432, 5e-5, "SCHOTT [datasheet]")
+check("N-BK7 @1060nm (SCHOTT table)", physics.sellmeier_n(1060.0, 'N-BK7'), 1.50669, 5e-5, "SCHOTT [datasheet]")
+check("Fused silica @1064nm (Malitson)", physics.sellmeier_n(1064.0, 'FUSED_SILICA'), 1.449631, 5e-5, "Malitson [datasheet]")
+check("CaF2 @1064nm (Malitson)", physics.sellmeier_n(1064.0, 'CaF2'), 1.428478, 5e-5, "Malitson [datasheet]")
 
 print("=" * 60)
 n_pass = sum(_checks)

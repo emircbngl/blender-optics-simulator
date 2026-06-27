@@ -8,15 +8,18 @@ semantic versioning.
 
 ### Added — textbook-validation suite + correctness helpers
 - **`tests/test_validation.py`** — a CI-runnable suite that reproduces canonical optics-textbook problems
-  and asserts our kernels match the known closed-form / datasheet answers (**41 checks**: Brewster, critical
-  angle, Snell refraction, Fresnel R, prism minimum deviation, Sellmeier n_d + Abbe, the new material
-  catalog, thermo-optic dn/dT, Gaussian focal spot / Rayleigh range / divergence, Fabry-Perot finesse +
-  FSR, grating equation, coherence length, telescope / beam-expander / 4f magnifications, thin-lens
-  imaging, cavity stability, Malus, QWP→circular / HWP rotation). Every closed-form expected value is
-  `physics_verify` ok=true; datasheet constants are validated against the published catalog figure. Wired
-  into CI as a second gate beside the regression. References checked against POPPY / prysm / RayOptics
-  (diffraction-PSF reference implementations flagged honestly OUT OF SCOPE — this is a ray + Gaussian +
-  analytic engine, not a wave-propagation one).
+  and asserts our kernels match the known closed-form / datasheet answers (**76 checks**). Sourced by a
+  sweep of 9 research subagents across Hecht / Pedrotti / Saleh & Teich / Siegman / Born & Wolf / Goodman /
+  Collett and the reference codes RayOptics / raytracing / POPPY / prysm / refractiveindex.info. Coverage:
+  Brewster, critical angle, Snell, Fresnel R at normal + 45° (Rs/Rp) + the TIR s–p phase, AR quarter-wave
+  coating, prism minimum deviation + angular dispersion, Sellmeier n_d + Abbe + **independent SCHOTT/Malitson
+  table values at non-d-line wavelengths**, thermo-optic dn/dT, mirror imaging, Newton's form, thick-lens
+  EFL, Gaussian focal spot / Rayleigh / divergence / w(z) / R(z) / Gouy / M², Fabry-Perot finesse + FSR,
+  grating angle + resolving power + dispersion, coherence length, telescope / expander / 4f, thin-lens,
+  cavity stability, Malus, QWP/HWP + elliptical / partial-polarization states, fiber NA/V/modes, AOM
+  deflection, Pockels Vπ, photon energy, two-beam visibility. Every closed-form expected value is
+  `physics_verify` ok=true. Diffraction-PSF / MTF references (POPPY/prysm) are flagged honestly OUT OF SCOPE
+  (this is a ray + Gaussian + analytic engine, not a wave-propagation one).
 - **Closed-form helpers** in `physics.py` exposed as scalars for direct textbook checks: `critical_angle`,
   `brewster_angle`, `abbe_number`, `thin_lens_image`, `cavity_stability`, `grating_angle`.
 
@@ -31,6 +34,18 @@ semantic versioning.
   `temp_C` element property (default 20 °C → byte-identical) feeds the lens chromatic path. Tier-1: the
   values are representative datasheet constants (the absolute-vs-relative + λ,T spread is ~1e-6/K).
   Thermal lensing, photoelastic stress, CTE drift and gravity sag remain explicitly DEFERRED (not faked).
+
+### Added — extensibility + dispersion opt-ins + closed-form helpers
+- **User-extensible glass catalog** — `sellmeier_n` reads a merged BUILTIN + `cache/glasses_user.json`
+  lookup; `add_user_glass()` / `reload_glasses()` / `glass_names()` let a user or the AI add glasses
+  without editing code (bare-interpreter safe: no cache → BUILTIN only → byte-identical).
+- **Opt-in dispersion** (both default to the prior byte-identical behaviour): a `waveplate_crystal` property
+  multiplies in a waveplate's real birefringence dispersion `Δ(n_e−n_o)(λ)` (quartz / MgF2 / calcite /
+  sapphire); a `surface_glass` property makes the Fresnel ghost reflectance wavelength-dependent via
+  `sellmeier_n(ray.wl)`.
+- **Closed-form helpers** (pure functions, agent-sourced + value-checked): `abcd_surface`,
+  `abcd_thick_lens` (thick lensmaker EFL), `ar_quarter_wave_reflectance`, `grating_resolving_power`,
+  `photon_energy_eV`, `fiber_na` / `fiber_v_number` / `fiber_num_modes`, `aom_deflection`, `pockels_vpi`.
 
 ### Fixed
 - **Lens chromatic aberration used the wrong glass** — the longitudinal chromatic focal shift hard-coded
