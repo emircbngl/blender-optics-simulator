@@ -219,6 +219,24 @@ def turbulence_screen(n_grid: int = 256, dx_mm: float = 4.0, r0_mm: float = 100.
 
 
 @mcp.tool()
+def propagate_pulse(t0_ps: float = 1.0, p0_W: float = 10.0, beta2_ps2_per_m: float = -0.02,
+                    gamma_per_W_per_m: float = 0.002, length_m: float = None, shape: str = "sech",
+                    alpha_per_m: float = 0.0, n_grid: int = 2048, t_window_ps: float = None,
+                    n_steps: int = None, png: bool = False) -> str:
+    """Propagate an optical PULSE down a dispersive + Kerr-nonlinear fiber by the split-step NLSE -- the OPT-IN
+    temporal-field layer (the live steady-state trace has no time axis). shape='sech' (soliton) or 'gaussian'.
+    The DEFAULTS give the fundamental soliton (N=1: T0=1ps, beta2=-0.02 ps^2/m, gamma=0.002/W/m, P0=10W);
+    length_m defaults to one soliton period z0=(pi/2)L_D. Returns {peak_power_W, energy_pJ, fwhm_ps,
+    rms_bandwidth_THz, shape_invariance_err (~0 for a soliton), soliton_order_N, L_D_m}. Live trace
+    byte-identical. Full supercontinuum (higher-order dispersion + Raman) is out of scope (scope_map). E.g.
+    propagate_pulse() -> a shape-invariant N=1 soliton; propagate_pulse(shape='gaussian', gamma_per_W_per_m=0)
+    -> pure dispersive broadening."""
+    return _fmt(_call("propagate_pulse", t0_ps=t0_ps, p0_W=p0_W, beta2_ps2_per_m=beta2_ps2_per_m,
+                      gamma_per_W_per_m=gamma_per_W_per_m, length_m=length_m, shape=shape,
+                      alpha_per_m=alpha_per_m, n_grid=n_grid, t_window_ps=t_window_ps, n_steps=n_steps, png=png))
+
+
+@mcp.tool()
 def tolerance_scan(elements: list, target: str, sigma_pos_mm: float = 0.1, sigma_ang_deg: float = 0.05,
                    n: int = 200, seed: int = 0, tol_mm: float = None) -> str:
     """Monte-Carlo ALIGNMENT-tolerance sweep: perturb the pose (position+orientation) of `elements` by Gaussian

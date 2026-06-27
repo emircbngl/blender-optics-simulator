@@ -237,6 +237,26 @@ _tmid = len(_tr) // 2
 check("Kolmogorov screen: ensemble r0 back-fit recovers input", float(_tr[_tmid] / (_tDm[_tmid] / _turb.STRUCT_CONST) ** (3.0 / 5.0)), _tr0, 0.2 * _tr0, "Fried r0; FFT")
 check("Kolmogorov screen: subharmonics restore the low-frequency tail (D_SH/D_noSH at large r)", float(_tDm[-1] / _tDns[-1]), 2.33, 1.0, "Lane/Schmidt; FFT")
 
+print("[Pulse propagation -- the opt-in split-step NLSE layer (1D temporal field, off-trace)]")
+from optical_alignment_sim import nlse as _nl
+_qT0, _qb2, _qg, _qP0 = 1.0, -0.02, 0.002, 10.0                 # N=1 fundamental soliton
+_qLD = _qT0 ** 2 / abs(_qb2); _qz0 = (math.pi / 2.0) * _qLD
+_qN, _qdt = 2048, 0.05
+_qt = (_np.arange(_qN) - _qN // 2) * _qdt
+_qA0 = _nl.sech_pulse(_qt, _qT0, _qP0)
+_qm = _nl.pulse_metrics(_nl.split_step(_qA0, _qdt, 0.1, round(_qz0 / 0.1), _qb2, _qg), _qdt, A0=_qA0, t_ps=_qt)
+check("NLSE fundamental soliton (N=1) shape-invariant over z0", _qm["shape_invariance_err"], 0.0, 5e-3, "Agrawal; split-step")
+check("NLSE soliton conserves peak power (10 W)", _qm["peak_power_W"], 10.0, 0.05, "Agrawal; split-step")
+_qf0 = _nl.pulse_metrics(_nl.gaussian_pulse(_qt, _qT0, _qP0), _qdt, t_ps=_qt)["fwhm_ps"]
+_qfz = _nl.pulse_metrics(_nl.split_step(_nl.gaussian_pulse(_qt, _qT0, _qP0), _qdt, 0.1, round(_qLD / 0.1), _qb2, 0.0), _qdt, t_ps=_qt)["fwhm_ps"]
+check("NLSE dispersion-only Gaussian broadens by sqrt(2) at z=L_D", _qfz / _qf0, math.sqrt(2), 0.05, "Agrawal; split-step")
+_qAs0 = _nl.gaussian_pulse(_qt, _qT0, _qP0)
+_qbw0 = _nl.pulse_metrics(_qAs0, _qdt, t_ps=_qt)["rms_bandwidth_THz"]
+_qms = _nl.pulse_metrics(_nl.split_step(_qAs0, _qdt, 0.1, round(20 * _qLD / 0.1), 0.0, _qg), _qdt, A0=_qAs0, t_ps=_qt)
+check("NLSE SPM-only preserves the temporal |A|^2", _qms["shape_invariance_err"], 0.0, 1e-2, "Agrawal; split-step")
+check("NLSE SPM-only broadens the spectrum (bandwidth grows ~17x)", _qms["rms_bandwidth_THz"] / _qbw0, 17.5, 6.0, "Agrawal; split-step")
+check("NLSE energy conserved (alpha=0)", _qm["energy_pJ"] / _nl.pulse_metrics(_qA0, _qdt, t_ps=_qt)["energy_pJ"], 1.0, 1e-3, "energy; split-step")
+
 print("=" * 60)
 n_pass = sum(_checks)
 n_total = len(_checks)

@@ -63,6 +63,20 @@ semantic versioning.
   single-screen seeing/speckle PSF; the full multi-screen split-step inter-plane stack stays out of scope.
   **5 new oracle checks** → validation **96 → 101**. Demo `docs/img/turbulence-screen-demo.png`.
 
+### Added — nonlinear pulse propagation: split-step NLSE (Phase E)
+- **`nlse.py` + `propagate_pulse` (optics_api + MCP)** — the TEMPORAL-field layer the steady-state engine
+  lacks: propagate an optical pulse A(z,T) down a dispersive + Kerr-nonlinear fiber by the **symmetric
+  split-step Fourier method** (Agrawal, *Nonlinear Fiber Optics*). Off-trace, on-demand → the live trace
+  stays byte-identical. Solves dA/dz = −(α/2)A − i(β₂/2)∂²A/∂T² + iγ|A|²A (linear GVD+loss half-steps in the
+  Fourier domain, the Kerr nonlinearity in time). Validated: the **fundamental soliton (N=1) is
+  shape-invariant** over a soliton period (`shape_invariance_err`=0, peak power conserved), a dispersion-only
+  Gaussian broadens by **√2 at z=L_D** (1.44 vs 1.414), SPM-only preserves the temporal |A|² while the
+  **spectrum broadens ~17×** (the textbook multi-peak SPM spectrum), and energy is conserved (α=0). The
+  soliton closed forms (L_D=T₀²/|β₂|, L_NL=1/(γP₀), N²=γP₀T₀²/|β₂|, z₀=(π/2)L_D, P₁=|β₂|/(γT₀²)) are
+  physics_verify ok=true. **6 new oracle checks** → validation **101 → 107**. Demo
+  `docs/img/nlse-pulse-demo.png`. Full supercontinuum (higher-order dispersion + Raman + self-steepening)
+  stays out of scope.
+
 ### Added — textbook-validation suite + correctness helpers
 - **`tests/test_validation.py`** — a CI-runnable suite that reproduces canonical optics-textbook problems
   and asserts our kernels match the known closed-form / datasheet answers (**76 checks**). Sourced by a

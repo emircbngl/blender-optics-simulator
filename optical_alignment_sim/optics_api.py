@@ -52,7 +52,8 @@ _TOOL_GROUPS = {
         "build_example", "add_component", "tag_element", "swap_part", "set_param", "set_mount", "import_glass",
         "fdtd_derive_property"],
     "design (pure math, no scene change)": [
-        "design_telescope", "design_4f", "mode_match", "optics_calc", "wave_psf", "propagate_field"],
+        "design_telescope", "design_4f", "mode_match", "optics_calc", "wave_psf", "propagate_field",
+        "propagate_pulse"],
     "place / assemble (opto-mechanics)": [
         "place_relative", "make_cage", "make_tube", "make_rail", "place_on_grid", "place_on_rail",
         "set_grid", "dress_bench"],
@@ -110,7 +111,8 @@ _SCOPE = {
         "Airy/Strehl/MTF/encircled-energy PSF": "b: wave_psf",
         "free-space field propagation / multi-plane Fresnel / digital-hologram reconstruction": "b: propagate_field (angular spectrum)",
         "full-wave FDTD/RCWA, metasurface/nanophotonics": "c: Meep / Lumerical / Tidy3D -- ORCHESTRATED via fdtd_derive_property (runs the engine if present, else a closed-form fallback: grating dir=grating_angle, stack=exact TMM, metaatom=low-conf EMT) cached as an effective property; live trace byte-identical. Still tier (c): a LIVE full-wave field is not shipped.",
-        "split-step NLSE / solitons / supercontinuum": "c: gnlse",
+        "split-step NLSE: soliton / dispersion / SPM (1D pulse)": "b: propagate_pulse (split-step Fourier; fundamental soliton is shape-invariant, oracle-verified)",
+        "supercontinuum (higher-order dispersion + Raman + self-steepening)": "c: gnlse (the core NLSE is (b) propagate_pulse; the generalized-NLSE terms are not built)",
         "Monte-Carlo tissue transport": "c: MCML",
         "atmospheric turbulence phase screen + structure function": "b: turbulence_screen (dense Kolmogorov/von-Karman screen, FT + subharmonics; D(r)=6.88(r/r0)^5/3; modal ao_kolmogorov is a 15-Zernike caricature, this is the dense field)",
         "multi-screen turbulence inter-plane propagation (split-step stack)": "c: POPPY / diffractio / Schmidt-suite (a single screen + propagate_field is (b); the multi-screen split-step is not built)",
@@ -494,6 +496,45 @@ def turbulence_screen(n_grid=256, dx_mm=4.0, r0_mm=100.0, L0_mm=None, l0_mm=None
     scr = turbulence.kolmogorov_screen(n_grid, dx_mm, r0_mm, L0_mm=L0_mm, l0_mm=l0_mm,
                                        seed=seed, subharmonics=subharmonics)
     return turbulence.screen_metrics(scr, dx_mm, r0_mm, png_path=png_path)
+
+
+def propagate_pulse(t0_ps=1.0, p0_W=10.0, beta2_ps2_per_m=-0.02, gamma_per_W_per_m=0.002, length_m=None,
+                    shape="sech", alpha_per_m=0.0, n_grid=2048, t_window_ps=None, n_steps=None, png=False):
+    """Propagate an optical PULSE down a dispersive + Kerr-nonlinear fiber by the split-step NLSE -- the opt-in
+    TEMPORAL-field layer, separate from the live steady-state trace (which has no time axis). `shape`='sech'
+    (soliton) or 'gaussian'. The DEFAULTS give the fundamental soliton (N=1: T0=1ps, beta2=-0.02 ps^2/m,
+    gamma=0.002 /W/m, P0=10W); `length_m` defaults to one soliton period z0=(pi/2)*L_D. Returns the pulse
+    metrics {peak_power_W, energy_pJ, fwhm_ps, rms_bandwidth_THz, shape_invariance_err (~0 for a soliton),
+    soliton_order_N, L_D_m, length_m}. On-demand analysis -- the live trace is untouched + byte-identical.
+    Full supercontinuum (higher-order dispersion + Raman + self-steepening) is out of scope (scope_map)."""
+    import math
+    import numpy as np
+    from . import nlse
+    LD = t0_ps ** 2 / abs(beta2_ps2_per_m) if beta2_ps2_per_m else float("inf")
+    if length_m is None:
+        length_m = (math.pi / 2.0) * LD if math.isfinite(LD) else 1.0
+    if t_window_ps is None:
+        t_window_ps = 100.0 * t0_ps
+    n_grid = int(n_grid)
+    dt = t_window_ps / n_grid
+    t = (np.arange(n_grid) - n_grid // 2) * dt
+    if n_steps is None:
+        n_steps = max(100, int(length_m / (LD / 500.0))) if math.isfinite(LD) else 300
+    dz = length_m / n_steps
+    A0 = nlse.sech_pulse(t, t0_ps, p0_W) if shape == "sech" else nlse.gaussian_pulse(t, t0_ps, p0_W)
+    png_path = None
+    if png:
+        import os
+        import tempfile
+        png_path = os.path.join(tempfile.gettempdir(), "optics_pulse.png")
+    A = nlse.split_step(A0, dt, dz, n_steps, beta2_ps2_per_m, gamma_per_W_per_m, alpha_per_m)
+    out = nlse.pulse_metrics(A, dt, A0=A0, t_ps=t, png_path=png_path)
+    n2 = gamma_per_W_per_m * p0_W * t0_ps ** 2 / abs(beta2_ps2_per_m) if beta2_ps2_per_m else 0.0
+    out["soliton_order_N"] = round(math.sqrt(n2), 4) if n2 > 0 else None
+    out["L_D_m"] = round(LD, 4) if math.isfinite(LD) else None
+    out["length_m"] = round(length_m, 4)
+    out["n_steps"] = int(n_steps)
+    return out
 
 
 def tolerance_scan(elements=None, target="", sigma_pos_mm=0.1, sigma_ang_deg=0.05, n=200, seed=0, tol_mm=None):
