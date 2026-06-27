@@ -191,6 +191,20 @@ def wave_psf(wavelength_nm: float, f_number: float, aperture_diam_mm: float,
 
 
 @mcp.tool()
+def propagate_field(wavelength_nm: float, w0_mm: float = None, aperture_mm: float = None,
+                    dz_mm: float = 0.0, n_grid: int = 256, dx_mm: float = None, png: bool = False) -> str:
+    """Free-space ANGULAR-SPECTRUM propagation of a sampled scalar field over dz_mm -- the OPT-IN field layer,
+    separate from the live geometric+Gaussian trace (which cannot diffract BETWEEN planes). Source: a Gaussian
+    waist `w0_mm` OR a clear circular `aperture_mm`. Returns the propagated beam metrics (w_2sigma_mm, peak,
+    total_power, centroid, fresnel_number, w_analytic_mm); png=True saves an intensity image. Reproduces the
+    Gaussian w(z) closed form and is reversible (+dz then -dz = digital-hologram back-propagation). The primitive
+    behind multi-plane Fresnel; FDTD/NLSE stay out of scope (see capabilities()['scope_map']). E.g.
+    propagate_field(632.8, w0_mm=0.3, dz_mm=300) -> w_2sigma ~ w_analytic ~ 0.361 mm."""
+    return _fmt(_call("propagate_field", wavelength_nm=wavelength_nm, w0_mm=w0_mm, aperture_mm=aperture_mm,
+                      dz_mm=dz_mm, n_grid=n_grid, dx_mm=dx_mm, png=png))
+
+
+@mcp.tool()
 def design_4f(f1: float, f2: float) -> str:
     """Design a full 4f relay (PURE -- no scene mutation). Object at the front focal
     plane of L1, lenses f1+f2 apart, image at the back focal plane of L2. Returns the

@@ -204,6 +204,22 @@ check("PSF MTF cutoff = 1/(lambda F#) cyc/mm", _wm['mtf_cutoff_cyc_per_mm'], 227
 _wd = wave.psf_metrics(550.0, 8.0, 25.4, W=0.0714 * wave.zernike_defocus(512, 128))
 check("PSF Strehl(lambda/14 RMS defocus) ~ Marechal", _wd['strehl'], 0.8177, 0.01, "Marechal; FFT vs oracle")
 
+print("[Field propagation -- the opt-in angular-spectrum layer (free-space dz, off-trace)]")
+from optical_alignment_sim import field
+import numpy as _np
+_flam, _fw0, _fN = 632.8, 0.30, 256
+_fdx = 8.0 * _fw0 / _fN
+_fU0 = field.gaussian_field(_fN, _fdx, _fw0)
+_fzR = math.pi * _fw0 ** 2 / (_flam * 1e-6)                  # Rayleigh range (mm)
+for _fz in (100.0, 300.0, 600.0):
+    _fw = field.field_metrics(field.angular_spectrum(_fU0, _fdx, _fz, _flam), _fdx, _flam)["w_2sigma_mm"]
+    _fan = _fw0 * math.sqrt(1.0 + (_fz / _fzR) ** 2)         # Gaussian w(z), oracle-verified closed form
+    check("AngSpec Gaussian w(z=%dmm)" % _fz, _fw, round(_fan, 5), 5e-3, "Goodman; FFT vs closed form")
+_fUf = field.angular_spectrum(_fU0, _fdx, 300.0, _flam)
+_fUb = field.angular_spectrum(_fUf, _fdx, -300.0, _flam)     # back-propagate = digital-hologram reconstruction
+check("AngSpec round-trip +z/-z recovers U0", float(_np.max(_np.abs(_fUb - _fU0)) / _np.max(_np.abs(_fU0))), 0.0, 1e-5, "reversibility; FFT")
+check("AngSpec power conserved P(z)/P(0)", float(_np.sum(_np.abs(_fUf) ** 2) / _np.sum(_np.abs(_fU0) ** 2)), 1.0, 1e-3, "energy; FFT")
+
 print("=" * 60)
 n_pass = sum(_checks)
 n_total = len(_checks)

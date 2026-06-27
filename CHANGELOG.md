@@ -6,6 +6,31 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Added — opt-in sampled-field propagation layer (`field.py`) + `/optics-scope` honesty skill
+- **`field.py` — angular-spectrum free-space propagation**, the next field step beyond `wave.py`'s single
+  focal-plane PSF: propagate a sampled complex field U(x,y) over any distance `dz` via
+  `H(fx,fy)=exp(i·k·dz·sqrt(1−(λfx)²−(λfy)²))` (Goodman), with the explicit evanescent-decay branch, NaN/disc
+  masking, and the **Matsushima–Shimobaba (2009) band-limit** `f_lim=1/(λ·sqrt((2·dz·Δf)²+1))` against
+  aliasing. Off-trace + on-demand (like `wave.py` / `zonal_render`) → the live trace stays **byte-identical
+  (357/357)**. `optics_api.propagate_field(...)` (+ MCP tool) propagates a Gaussian-waist or clear-aperture
+  source, **auto-sizes the grid to the *propagated* beam**, and returns the beam metrics + a `sampling_ok`
+  grid-adequacy flag + the analytic `w(z)` cross-check; `dz<0` is digital-hologram back-propagation. The
+  primitive behind multi-plane Fresnel / hologram reconstruction. **5 new oracle checks** in
+  `tests/test_validation.py` (Gaussian `w(z)` at z=100/300/600 mm to <0.005 mm; +z/−z reversibility 4e-8;
+  power conservation) → suite **91 → 96**. Every formula `physics_verify` ok=true. Demo
+  `docs/img/field-propagation-demo.png`.
+- **`/optics-scope` skill + `docs/OPTICS_SCOPE.md` + `capabilities()['scope_map']`** — a pure anti-overclaim
+  routing layer (zero new simulation capability): maps a "can it simulate X?" request to tier **(a)** now /
+  **(b)** opt-in field layer / **(c)** needs an engine we lack (and names the external tool: Meep/Lumerical/
+  Tidy3D, POPPY/diffractio, gnlse, MCML, QuTiP). The vendored case index lives in-repo (headless-reachable);
+  only oracle-verified suite numbers may be quoted as verified (the Obsidian textbook catalog is book-cited,
+  not verified). `scope_map` is a NEW manifest key — it does not clobber the existing `scope` string.
+- **FDTD orchestration design** (`docs/FDTD_ORCHESTRATION.md` + `tools/fdtd_prototype.py`, not wired) — the
+  honest full-wave path: orchestrate **Meep** (primary; CPU/MPI; lives outside the extension) or **Tidy3D**
+  (opt-in cloud-GPU) over a sub-region to DERIVE an effective property (grating efficiency η(λ,θ,order),
+  coating R(λ,θ), metasurface phase) cached on the element — never reimplementing FDTD. Ranked use cases +
+  Meep-API verification risks flagged; the closed-form fallbacks reproduce the repo's oracle kernels exactly.
+
 ### Added — textbook-validation suite + correctness helpers
 - **`tests/test_validation.py`** — a CI-runnable suite that reproduces canonical optics-textbook problems
   and asserts our kernels match the known closed-form / datasheet answers (**76 checks**). Sourced by a

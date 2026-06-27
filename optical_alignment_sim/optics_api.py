@@ -51,7 +51,7 @@ _TOOL_GROUPS = {
     "build / scene": [
         "build_example", "add_component", "tag_element", "swap_part", "set_param", "set_mount", "import_glass"],
     "design (pure math, no scene change)": [
-        "design_telescope", "design_4f", "mode_match", "optics_calc", "wave_psf"],
+        "design_telescope", "design_4f", "mode_match", "optics_calc", "wave_psf", "propagate_field"],
     "place / assemble (opto-mechanics)": [
         "place_relative", "make_cage", "make_tube", "make_rail", "place_on_grid", "place_on_rail",
         "set_grid", "dress_bench"],
@@ -90,6 +90,34 @@ _GOTCHAS = [
     "The bridge needs Blender running with the add-on + the Optics bridge started (port 9765).",
 ]
 
+# Machine-readable scope map: which simulation requests are (a) reproducible now / (b) via the opt-in field
+# layer / (c) need an engine we deliberately lack. Mirrors docs/OPTICS_SCOPE.md (the /optics-scope skill's
+# source of truth). Anti-overclaim: name the gap + the external tool, never fake a (c) with an (a)/(b) overlay.
+_SCOPE = {
+    "tiers": {
+        "a": "reproducible NOW: single ray + Gaussian-q (ABCD) + analytic overlays (Snell/Fresnel/Sellmeier/"
+             "gratings/Jones-Stokes/cavities); oracle-verified in tests/test_validation.py.",
+        "b": "opt-in field layer (off-trace, on-demand): wave.py = ONE focal-plane Fraunhofer PSF "
+             "|FFT(pupil*exp(2j*pi*W))|^2 (Airy/Strehl/MTF/encircled-energy); field.py = angular-spectrum "
+             "propagation between planes (propagate_field: free-space dz, digital-hologram back-prop).",
+        "c": "NOT shipped: full-wave Maxwell (FDTD/RCWA), split-step NLSE, Monte-Carlo transport, quantum "
+             "statistics -- name the external tool, never fake with an (a)/(b) overlay.",
+    },
+    "request_to_tier": {
+        "ray/align/beam-walk; Gaussian w(z)/M2/resonator; lens/prism/grating/Fresnel/Malus/dispersion": "a",
+        "Airy/Strehl/MTF/encircled-energy PSF": "b: wave_psf",
+        "free-space field propagation / multi-plane Fresnel / digital-hologram reconstruction": "b: propagate_field (angular spectrum)",
+        "full-wave FDTD/RCWA, metasurface/nanophotonics": "c: Meep / Lumerical / Tidy3D (orchestrate, do not reimplement)",
+        "split-step NLSE / solitons / supercontinuum": "c: gnlse",
+        "Monte-Carlo tissue transport": "c: MCML",
+        "multi-screen atmospheric turbulence propagation": "c: POPPY / diffractio (modal AO here is a 15-Zernike caricature, NOT this)",
+        "quantum statistics g2 / HOM / squeezing": "c: QuTiP",
+    },
+    "source_of_truth": "docs/OPTICS_SCOPE.md (vendored case index) + tests/test_validation.py (the oracle-verified "
+                       "suite). Obsidian textbook-catalog numbers are book-cited, NOT oracle-verified.",
+    "rule": "Never overclaim a (c): name the gap + the external tool. The /optics-scope skill routes this.",
+}
+
 
 def capabilities():
     """READ ME FIRST. A self-describing manifest for an AI/agent that just connected to this optics bench over
@@ -121,7 +149,9 @@ def capabilities():
         "workflows": _WORKFLOWS,
         "examples": examples,
         "gotchas": _GOTCHAS,
-        "see_also": "mcp/AGENT_GUIDE.md (full guide), docs/CAPABILITIES.md (the complete tree).",
+        "scope_map": _SCOPE,
+        "see_also": "mcp/AGENT_GUIDE.md (full guide), docs/CAPABILITIES.md (the complete tree), "
+                    "docs/OPTICS_SCOPE.md + the /optics-scope skill (can-it-simulate-X routing).",
     }
 
 
@@ -397,6 +427,50 @@ def wave_psf(wavelength_nm, f_number, aperture_diam_mm, defocus_waves=0.0, n_gri
         png_path = os.path.join(tempfile.gettempdir(), "optics_psf.png")
     return wave.psf_metrics(wavelength_nm, f_number, aperture_diam_mm, W=W,
                             n_grid=n_grid, diam_px=diam_px, png_path=png_path)
+
+
+def propagate_field(wavelength_nm, w0_mm=None, aperture_mm=None, dz_mm=0.0, n_grid=256, dx_mm=None, png=False):
+    """Free-space ANGULAR-SPECTRUM propagation of a sampled scalar field over dz_mm -- the opt-in field layer,
+    separate from the live geometric+Gaussian trace (which cannot diffract BETWEEN planes). Source: a Gaussian
+    waist `w0_mm` OR a clear circular `aperture_mm`. Auto-sizes the grid pitch (dx_mm ~ 8x the source / n_grid)
+    unless given. Returns the propagated beam metrics {w_2sigma_mm, peak, total_power, centroid_*, fresnel_number,
+    dz_mm, w_analytic_mm}; png=True saves an intensity image. The propagator reproduces the Gaussian w(z) closed
+    form (compare w_2sigma_mm vs w_analytic_mm) and is reversible (+dz then -dz). On-demand analysis -- the live
+    trace is untouched + byte-identical. This is the primitive behind digital-hologram reconstruction and
+    multi-plane Fresnel; full-wave (FDTD) and split-step (NLSE) stay out of scope (see capabilities()['scope_map'])."""
+    import math
+    from . import field
+    n_grid = int(n_grid)
+    src = w0_mm or (0.5 * aperture_mm if aperture_mm else None)
+    if not src:
+        return {"error": "give a Gaussian w0_mm or a circular aperture_mm source"}
+    lam_mm = wavelength_nm * 1.0e-6
+    zR = math.pi * w0_mm * w0_mm / lam_mm if w0_mm else None
+    if dx_mm is None:
+        # size the grid to hold the PROPAGATED beam (not just the source), else it aliases at large dz
+        if w0_mm:
+            span = 8.0 * max(w0_mm, w0_mm * math.sqrt(1.0 + (dz_mm / zR) ** 2))
+        else:
+            span = 8.0 * (0.5 * aperture_mm + abs(dz_mm) * lam_mm / max(aperture_mm, 1.0e-6))
+        dx_mm = span / n_grid
+    if w0_mm:
+        U0 = field.gaussian_field(n_grid, dx_mm, w0_mm)
+    else:
+        U0 = field.circular_aperture(n_grid, dx_mm, aperture_mm)
+    U = field.angular_spectrum(U0, dx_mm, dz_mm, wavelength_nm)
+    png_path = None
+    if png:
+        import os
+        import tempfile
+        png_path = os.path.join(tempfile.gettempdir(), "optics_field.png")
+    out = field.field_metrics(U, dx_mm, wavelength_nm, png_path=png_path)
+    out["dz_mm"] = dz_mm
+    half = 0.5 * dx_mm * n_grid
+    out["grid_halfwidth_mm"] = round(half, 3)
+    out["sampling_ok"] = bool(out["w_2sigma_mm"] < 0.45 * half)   # beam fits w/ margin; else raise n_grid / dx_mm
+    if w0_mm:
+        out["w_analytic_mm"] = round(w0_mm * math.sqrt(1.0 + (dz_mm / zR) ** 2), 5)
+    return out
 
 
 def tag_element(name, element_type=None, auto_ports=True):
