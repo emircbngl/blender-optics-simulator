@@ -257,6 +257,18 @@ check("NLSE SPM-only preserves the temporal |A|^2", _qms["shape_invariance_err"]
 check("NLSE SPM-only broadens the spectrum (bandwidth grows ~17x)", _qms["rms_bandwidth_THz"] / _qbw0, 17.5, 6.0, "Agrawal; split-step")
 check("NLSE energy conserved (alpha=0)", _qm["energy_pJ"] / _nl.pulse_metrics(_qA0, _qdt, t_ps=_qt)["energy_pJ"], 1.0, 1e-3, "energy; split-step")
 
+print("[Biomedical optics -- Monte-Carlo photon transport in a turbid slab (MCML-style, off-trace)]")
+from optical_alignment_sim import mc_transport as _mc
+_cmua, _cmus, _cg = 0.1, 10.0, 0.9
+_cmueff = _mc.diffusion_mu_eff(_cmua, _cmus, _cg)
+check("MC diffusion mu_eff = sqrt(3 mu_a (mu_a + mu_s'(1-g)))", _cmueff, 0.5745, 1e-3, "Wang&Wu; oracle")
+_cma = _mc.monte_carlo_slab(_cmua, _cmus, _cg, 0.5, n_photons=40000, seed=1)            # thin -> ballistic
+check("MC energy conserved R+T+A=1 (matched boundary)", _cma["energy_sum"], 1.0, 2e-3, "energy; MCML")
+check("MC unscattered ballistic T ~ Beer-Lambert exp(-mu_t L)", _cma["ballistic_T"] / math.exp(-(_cmua + _cmus) * 0.5), 1.0, 0.2, "Beer-Lambert; MCML")
+_cmb = _mc.monte_carlo_slab(_cmua, _cmus, _cg, 10.0, n_photons=40000, seed=1)           # thick -> diffusion
+check("MC fluence penetration depth recovers diffusion mu_eff", _cmb["mu_eff_fit_per_mm"], _cmueff, 0.1, "diffusion; MCML")
+check("MC thick-slab energy conserved R+T+A=1", _cmb["energy_sum"], 1.0, 2e-3, "energy; MCML")
+
 print("=" * 60)
 n_pass = sum(_checks)
 n_total = len(_checks)

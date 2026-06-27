@@ -77,6 +77,18 @@ semantic versioning.
   `docs/img/nlse-pulse-demo.png`. Full supercontinuum (higher-order dispersion + Raman + self-steepening)
   stays out of scope.
 
+### Added — biomedical optics: Monte-Carlo photon transport (Phase F)
+- **`mc_transport.py` + `monte_carlo_tissue` (optics_api + MCP)** — a vectorized **MCML-style Monte-Carlo**
+  of photon packets through a homogeneous turbid tissue slab (Wang & Wu; Henyey-Greenstein scattering) — the
+  stochastic radiative-transport engine the coherent ray/field trace lacks. Off-trace, seed-pinned local RNG
+  → the live trace stays byte-identical. The one genuinely GPU-friendly category (the CPU version here is fine
+  for moderate photon counts). Tallies the **energy budget R + T + A = 1** (conserved at a matched boundary),
+  the unscattered **ballistic transmission → Beer-Lambert exp(−μ_t·L)**, and the **fluence(depth) whose
+  far-field log-slope recovers the diffusion μ_eff = √(3μ_a(μ_a+μ_s′))** → the penetration depth δ = 1/μ_eff.
+  Validated: energy conserved to 1e-5, ballistic within MC noise of Beer-Lambert, penetration depth 1.78 mm
+  vs the diffusion 1.74 mm (~2%). The closed forms (μ_s′=μ_s(1−g), μ_eff, δ, Beer-Lambert) are physics_verify
+  ok=true. **5 new oracle checks** → validation **107 → 112**. Demo `docs/img/mc-tissue-demo.png`.
+
 ### Added — textbook-validation suite + correctness helpers
 - **`tests/test_validation.py`** — a CI-runnable suite that reproduces canonical optics-textbook problems
   and asserts our kernels match the known closed-form / datasheet answers (**76 checks**). Sourced by a

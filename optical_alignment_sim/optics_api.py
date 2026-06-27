@@ -57,7 +57,7 @@ _TOOL_GROUPS = {
     "place / assemble (opto-mechanics)": [
         "place_relative", "make_cage", "make_tube", "make_rail", "place_on_grid", "place_on_rail",
         "set_grid", "dress_bench"],
-    "trace / measure": ["trace_beam", "scan", "bake_beams", "clear_beams", "tolerance_scan"],
+    "trace / measure": ["trace_beam", "scan", "bake_beams", "clear_beams", "tolerance_scan", "monte_carlo_tissue"],
     "align (mutates DOFs -- on demand only)": ["align_all", "align_element", "auto_align", "tilt_null"],
     "adaptive optics + surface figure": [
         "ao_command", "ao_close_loop", "ao_close_loop_recon", "ao_kolmogorov", "zonal_render", "pyramid_wfs",
@@ -113,7 +113,7 @@ _SCOPE = {
         "full-wave FDTD/RCWA, metasurface/nanophotonics": "c: Meep / Lumerical / Tidy3D -- ORCHESTRATED via fdtd_derive_property (runs the engine if present, else a closed-form fallback: grating dir=grating_angle, stack=exact TMM, metaatom=low-conf EMT) cached as an effective property; live trace byte-identical. Still tier (c): a LIVE full-wave field is not shipped.",
         "split-step NLSE: soliton / dispersion / SPM (1D pulse)": "b: propagate_pulse (split-step Fourier; fundamental soliton is shape-invariant, oracle-verified)",
         "supercontinuum (higher-order dispersion + Raman + self-steepening)": "c: gnlse (the core NLSE is (b) propagate_pulse; the generalized-NLSE terms are not built)",
-        "Monte-Carlo tissue transport": "c: MCML",
+        "Monte-Carlo tissue / turbid-medium photon transport": "b: monte_carlo_tissue (MCML-style slab; R+T+A=1, Beer-Lambert ballistic, diffusion penetration depth; CPU here, GPU-friendly if scaled)",
         "atmospheric turbulence phase screen + structure function": "b: turbulence_screen (dense Kolmogorov/von-Karman screen, FT + subharmonics; D(r)=6.88(r/r0)^5/3; modal ao_kolmogorov is a 15-Zernike caricature, this is the dense field)",
         "multi-screen turbulence inter-plane propagation (split-step stack)": "c: POPPY / diffractio / Schmidt-suite (a single screen + propagate_field is (b); the multi-screen split-step is not built)",
         "quantum statistics g2 / HOM / squeezing": "c: QuTiP",
@@ -535,6 +535,43 @@ def propagate_pulse(t0_ps=1.0, p0_W=10.0, beta2_ps2_per_m=-0.02, gamma_per_W_per
     out["length_m"] = round(length_m, 4)
     out["n_steps"] = int(n_steps)
     return out
+
+
+def monte_carlo_tissue(mu_a_per_mm=0.1, mu_s_per_mm=10.0, g=0.9, thickness_mm=10.0, n_photons=20000,
+                       seed=0, png=False):
+    """Monte-Carlo photon transport (MCML-style) through a homogeneous turbid SLAB -- the opt-in biomedical-optics
+    layer (stochastic radiative transport, separate from the coherent ray/field trace). Returns the energy budget
+    {reflectance, transmittance, absorbed, energy_sum} (R+T+A=1 at a matched boundary), the unscattered
+    `ballistic_T` (-> Beer-Lambert exp(-mu_t L)), and the fluence(depth) whose far-field log-slope gives
+    `penetration_depth_mm` (-> the diffusion mu_eff = sqrt(3 mu_a (mu_a+mu_s'))). Seed-pinned RNG; live trace
+    byte-identical. The one genuinely GPU-friendly category (the CPU version here is fine for moderate n_photons)."""
+    from . import mc_transport
+    res = mc_transport.monte_carlo_slab(mu_a_per_mm, mu_s_per_mm, g, thickness_mm, n_photons=n_photons, seed=seed)
+    res["diffusion_mu_eff_per_mm"] = round(mc_transport.diffusion_mu_eff(mu_a_per_mm, mu_s_per_mm, g), 5)
+    if png:
+        try:
+            import os
+            import tempfile
+            import numpy as np
+            import matplotlib
+            matplotlib.use("Agg")
+            import matplotlib.pyplot as plt
+            path = os.path.join(tempfile.gettempdir(), "optics_mc_tissue.png")
+            d = np.asarray(res["depth_mm"]); fl = np.asarray(res["fluence"])
+            fig, ax = plt.subplots(figsize=(6, 4))
+            ax.semilogy(d, np.maximum(fl, 1e-9), color="#ff6b4e", label="MC fluence")
+            ax.semilogy(d, fl[0] * np.exp(-res["diffusion_mu_eff_per_mm"] * (d - d[0])), "--",
+                        color="#888", label="diffusion exp(-mu_eff z)")
+            ax.set_xlabel("depth [mm]"); ax.set_ylabel("fluence [a.u.]")
+            ax.set_title("MCML slab  R=%.3f T=%.3f A=%.3f  delta=%.2fmm"
+                         % (res["reflectance"], res["transmittance"], res["absorbed"], res["penetration_depth_mm"] or 0))
+            ax.legend(fontsize=8)
+            fig.savefig(path, dpi=110, bbox_inches="tight", facecolor="#0d0d10")
+            plt.close(fig)
+            res["png"] = path
+        except Exception as exc:
+            res["png_error"] = str(exc)
+    return res
 
 
 def tolerance_scan(elements=None, target="", sigma_pos_mm=0.1, sigma_ang_deg=0.05, n=200, seed=0, tol_mm=None):

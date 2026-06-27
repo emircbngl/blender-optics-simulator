@@ -237,6 +237,20 @@ def propagate_pulse(t0_ps: float = 1.0, p0_W: float = 10.0, beta2_ps2_per_m: flo
 
 
 @mcp.tool()
+def monte_carlo_tissue(mu_a_per_mm: float = 0.1, mu_s_per_mm: float = 10.0, g: float = 0.9,
+                       thickness_mm: float = 10.0, n_photons: int = 20000, seed: int = 0, png: bool = False) -> str:
+    """Monte-Carlo photon transport (MCML-style) through a homogeneous turbid tissue SLAB -- the OPT-IN
+    biomedical-optics layer (stochastic radiative transport, separate from the coherent ray/field trace).
+    Returns the energy budget {reflectance, transmittance, absorbed, energy_sum} (R+T+A=1 at a matched
+    boundary), the unscattered ballistic_T (-> Beer-Lambert exp(-mu_t L)), and the fluence(depth) whose
+    far-field log-slope gives penetration_depth_mm (-> diffusion mu_eff = sqrt(3 mu_a (mu_a+mu_s')), mu_s'=mu_s(1-g)).
+    Seed-pinned RNG; live trace byte-identical. The one genuinely GPU-friendly category (CPU here for moderate
+    n_photons). E.g. monte_carlo_tissue(0.1, 10.0, 0.9, 10.0, n_photons=20000) -> delta ~ 1.74 mm."""
+    return _fmt(_call("monte_carlo_tissue", mu_a_per_mm=mu_a_per_mm, mu_s_per_mm=mu_s_per_mm, g=g,
+                      thickness_mm=thickness_mm, n_photons=n_photons, seed=seed, png=png))
+
+
+@mcp.tool()
 def tolerance_scan(elements: list, target: str, sigma_pos_mm: float = 0.1, sigma_ang_deg: float = 0.05,
                    n: int = 200, seed: int = 0, tol_mm: float = None) -> str:
     """Monte-Carlo ALIGNMENT-tolerance sweep: perturb the pose (position+orientation) of `elements` by Gaussian
