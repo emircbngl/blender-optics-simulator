@@ -44,7 +44,7 @@ Validation **163 → 168**, regression **374 → 375**.
 - `sellmeier_n` SILENTLY clamps the index outside each glass's published fit window (so a sweep step stays
   finite). The new **`GLASS_RANGE_UM`** table (validity window per glass, from the same datasheet sources) +
   **`physics.sellmeier_in_range(wl_nm, glass)`** flag when a query is an **extrapolation** rather than a measured
-  index — e.g. N-BK7 @200 nm or Ge @1000 nm (Ge's fit is 2–14 µm) return `False`. The numeric output of
+  index — e.g. N-BK7 at 200 nm or Ge at 1000 nm (Ge's fit is 2–14 µm) return `False`. The numeric output of
   `sellmeier_n` is **unchanged / byte-identical**; this only adds the honesty signal. **3 new oracle checks** →
   validation **165 → 168**.
 - *(Deferred, honest scope note: a wavelength-dependent **AR-coating curve** `R(λ)` turned out low-value — it
@@ -58,8 +58,8 @@ Validation **163 → 168**, regression **374 → 375**.
   nm at 45°, n_eff=1.85) — the well-known fluorescence-microscopy gotcha that the dichroic element previously
   ignored (it used the un-shifted cut). The split is still exactly energy-conserving (R+T=1) and **byte-identical
   at normal incidence** (θ=0 → no shift); the seg+ports geometry is unchanged (only the wavelength-dependent
-  R/T *power* split shifts), so the byte-identical regression is preserved. **2 new oracle checks** (650@45°→600.6,
-  550@60°→486) → validation **163 → 165**; the dichroic regression test now verifies the blue-shift (+1) →
+  R/T *power* split shifts), so the byte-identical regression is preserved. **2 new oracle checks** (650 at 45°→600.6,
+  550 at 60°→486) → validation **163 → 165**; the dichroic regression test now verifies the blue-shift (+1) →
   regression **374 → 375**. `_aoi_blueshift` is `physics_verify` ok=true.
 - *(Element-variant audit note: the `lens_type` (plano/bi-convex/concave) and `bs_form` (cube/plate/pellicle)
   variants are honestly **mesh-only / cosmetic** — a lumped thin-element trace is characterised by focal length
@@ -107,7 +107,7 @@ produced phenomenon self-checks against a textbook oracle. Validation **152 → 
     with **`accept=True`** to get the actual `{produced:{…metrics, oracle…}, png}`. Emergence is never silent.
   - **off-axis hologram** — records the carrier interferogram, measures its spacing off the FFT, and
     **reconstructs the object beam's crossing angle** from the carrier peak. Carrier `Λ = λ/(2 sin(θ/2))`
-    (HeNe @10° → **3.63028 µm**, Goodman Ch.9); reconstruction recovers 10° to ~0.02°.
+    (HeNe at 10° → **3.63028 µm**, Goodman Ch.9); reconstruction recovers 10° to ~0.02°.
   - **two-beam interference** — synthesizes the fringe curve `I(OPD) = 1 + V cos(φ)` and its visibility
     `V = 2√(IaIb)/(Ia+Ib)` (equal beams → **V=1**, 4:1 → **0.8**, Hecht Ch.9).
   - Each produced phenomenon carries a self-checking **oracle block** (textbook quantity + computed value +
@@ -133,9 +133,9 @@ Validation **136 → 152**, regression **363 → 367** (the geometric trace stay
   - **`physics.n_e_theta(n_o, n_e, theta)`** — extraordinary index from the index ellipsoid
     `1/n_e(θ)² = cos²θ/n_o² + sin²θ/n_e²` (→ n_o at θ=0, n_e at θ=90).
   - **`physics.uniaxial_walkoff_angle(n_o, n_e, theta)`** — double-refraction walk-off
-    `tan ρ = (n_o²−n_e²)tanθ / (n_o²+n_e²tan²θ)`; **calcite @45° → 6.224°** (Yariv & Yeh).
+    `tan ρ = (n_o²−n_e²)tanθ / (n_o²+n_e²tan²θ)`; **calcite at 45° → 6.224°** (Yariv & Yeh).
   - **`physics.waveplate_thickness(order, λ, Δn)`** — true zero-order plate `d = order·λ/Δn`; from the catalog
-    quartz birefringence (Δn=0.00910 @589.3 nm) a **QWP is 16.19 µm, an HWP 32.38 µm**.
+    quartz birefringence (Δn=0.00910 at 589.3 nm) a **QWP is 16.19 µm, an HWP 32.38 µm**.
   - **`physics.shg_phase_match_angle(crystal, λ_fund)`** + a `NL_CRYSTAL_SELLMEIER` o/e table (BBO, Eimerl 1987)
     — Type-I critical phase-matching from `n_e(θ,2ω)=n_o(ω)`; **BBO 1064→532 nm → 22.78°** (Boyd).
 - **Exposed the WAVEPLATE dispersion params** (`design_wl`, `waveplate_crystal`, `waveplate_order`) in the
@@ -146,8 +146,8 @@ Validation **136 → 152**, regression **363 → 367** (the geometric trace stay
 - **`physics.M_mueller_polarizer(axis)` / `M_mueller_retarder(retardance, fast_axis)` / `stokes_through(M, S)`**
   — the 4×4 Stokes→Stokes counterpart of the existing 2×2 Jones matrices, so the engine can now carry
   partially-polarized light (DOP<1) that Jones cannot. Validated against py-pol / SymPy / Malus oracles:
-  **Malus's law** I/I₀ = cos²θ through an analyzer (0.75/0.50/0.25 at 30/45/60°); a **QWP@45° turns
-  horizontal-linear into circular** (|S₃|=1, S₁=S₂=0); an **HWP@22.5° rotates linear by 45°** (S₂=1); the six
+  **Malus's law** I/I₀ = cos²θ through an analyzer (0.75/0.50/0.25 at 30/45/60°); a **QWP at 45° turns
+  horizontal-linear into circular** (|S₃|=1, S₁=S₂=0); an **HWP at 22.5° rotates linear by 45°** (S₂=1); the six
   canonical **Stokes vectors** from Jones (H→S₁=+1, D→S₂=+1, R→S₃=+1). The Mueller path is verified to produce
   the **same output Stokes as the Jones path** for pure states (the S₃ sign follows this module's `stokes(J)`
   convention). **16 new oracle checks** → validation **136 → 152**.

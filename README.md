@@ -210,7 +210,7 @@ silently. Off-trace; each result self-checks against a textbook oracle.
 ### New in v0.14.0 — uniaxial crystal optics + Mueller calculus
 
 Closed-form **anisotropic-ray** numbers on the existing ordinary/extraordinary index catalog: birefringent
-**walk-off angle** (calcite @45° → 6.224°), the **index ellipsoid** n_e(θ), true zero-order **waveplate
+**walk-off angle** (calcite at 45° → 6.224°), the **index ellipsoid** n_e(θ), true zero-order **waveplate
 thickness** (quartz QWP = 16.19 µm), and the **Type-I SHG phase-matching angle** (BBO 1064→532 nm → 22.78°).
 Plus a **4×4 Mueller calculus** (`M_mueller_polarizer`/`M_mueller_retarder`/`stokes_through`) for
 partially-polarized light, validated against py-pol / SymPy / Malus, and end-to-end CI coverage of the
