@@ -174,6 +174,15 @@ the Scan + Plot operator, the Detector Fringe Image, and the live sensor window 
   <img src="docs/img/feature-board.png" width="92%" alt="New in v0.10.0: the WFS reads the beam's own curvature defocus; a pyramid WFS slope read; a soft-edge dichroic (R+T=1); a die face read as a zonal wavefront">
 </p>
 
+### New in v0.15.0 — phenomenon emergence (conditions met → the phenomenon is produced)
+
+`detect_phenomena` flags when an optical phenomenon's conditions are met; the new **`produce_phenomenon`** now
+actually **produces** it — synthesizing the two-beam **interferogram** and **recording + reconstructing an
+off-axis hologram** (carrier `Λ = λ/(2 sin θ/2)` → 3.63 µm, the object beam's angle recovered from the carrier
+peak). It stays **advisory + intent-judged** like `propose_corrections`: a dry-run with an intent caveat first
+(*"the camera may be a power meter, not a hologram plate"*), then `accept=True` emerges the pattern — never
+silently. Off-trace; each result self-checks against a textbook oracle.
+
 ### New in v0.14.0 — uniaxial crystal optics + Mueller calculus
 
 Closed-form **anisotropic-ray** numbers on the existing ordinary/extraordinary index catalog: birefringent

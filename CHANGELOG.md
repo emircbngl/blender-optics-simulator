@@ -6,6 +6,14 @@ semantic versioning.
 
 ## [Unreleased]
 
+## [0.15.0] — Phenomenon emergence (produce_phenomenon) — 2026-06-28
+
+When a phenomenon's conditions are MET, the engine can now actually PRODUCE it — not just flag it. The new
+`produce_phenomenon` synthesizes the two-beam interferogram and records + reconstructs the off-axis hologram
+off-trace, staying advisory + intent-judged (a dry-run with an intent caveat first, then `accept=True`). Each
+produced phenomenon self-checks against a textbook oracle. Validation **152 → 157**, regression **367 → 370**
+(geometric trace byte-identical).
+
 ### Added — phenomenon emergence (`produce_phenomenon`): conditions met → the phenomenon is produced
 - `detect_phenomena` only FLAGS when a phenomenon's conditions are met (read-only). The new
   **`produce_phenomenon(phenomenon, where, nx, png, accept)`** (optics_api + MCP) closes the owner's loop —
