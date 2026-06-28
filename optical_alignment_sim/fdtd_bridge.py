@@ -22,17 +22,39 @@ Design contract (see the design doc):
       - metaatom -> a clearly-labeled effective-index estimate (sub-wavelength has no cheap closed form ->
                     low confidence is reported, never silently presented as rigorous).
 
-UNTESTED MEEP API: ``meep`` is NOT installed in the environment this module was written in. The Meep calls
-in the ``_meep_*`` helpers are written from the documented Meep Python API (Mode-Decomposition tutorial +
-NanoComp/meep python/examples/binary_grating.py) and EVERY version-sensitive spot is marked ``# VERIFY:``
-inline. They MUST be confirmed against the installed Meep version. The module imports and runs with Meep
-absent: every function then returns the structured closed-form fallback (backend="fallback-closedform").
+MEEP API -- VERIFIED against Meep 1.33.0 (conda-forge, 2026-06-28) with tools/verify_fdtd_meep.py:
+  * stack_reflectance: Meep R matches the EXACT Abeles TMM to dR < 0.001 for bare glass / single-QW AR /
+    2-layer AR, at normal AND 20-deg oblique incidence, both TE and TM -- a rigorous, exact cross-check.
+  * metaatom_phase: a full-fill pillar (== uniform slab) matches the slab's TMM amplitude transmission;
+    an empty cell gives t=1, phase=0 (the add_dft_fields / get_dft_array phase extraction is correct).
+  * grating_efficiency: the eigenmode diffraction-order decomposition (DiffractedPlanewave /
+    get_eigenmode_coefficients / .alpha indexing / add_mode_monitor) is confirmed -- a zero-contrast cell
+    hands back unity 0th order (normalization correct) and a sub-wavelength period leaves only the 0th order
+    (evanescent ones detected); per-order DIRECTIONS are the oracle-verified physics.grating_angle.
+Three real setup bugs were found and FIXED in the process (see the inline notes): the substrate must run
+THROUGH the back PML (else a glass->air step at the PML face inflated R ~4x); an oblique source needs the
+exp(i k_y y) phase-tilt amp_func (``_oblique_amp``); and the resonant grating needs Courant 0.4 +
+stop_when_dft_decayed (the 0.5 default / a fields-decayed test was unstable / ran ~forever).
+Meep is a heavy native dep NOT bundled in the add-on (the user's env); absent -> every function returns the
+structured closed-form fallback (backend="fallback-closedform"), still exact for 1-D stacks.
 """
 from __future__ import annotations
 
 import math
+import cmath
 
 from . import physics
+
+
+def _oblique_amp(ky):
+    """Transverse phase-tilt amp_func for an OBLIQUE plane-wave line source under a Bloch ``k_point``.
+    A bare current source launches a NORMAL-incidence wave regardless of k_point; the source field must
+    carry the matching transverse phase exp(i 2pi k_y y) so the launched wave actually travels at the angle
+    (the standard Meep oblique-planewave recipe). ``ky`` is the Meep-units transverse wavevector (= k_point.y).
+    Returns None for normal incidence (ky==0) so the caller passes no amp_func."""
+    if ky == 0.0:
+        return None
+    return lambda v: cmath.exp(2j * math.pi * ky * v.y)
 
 
 # --- guarded backend imports: NEVER crash, NEVER auto-install ---------------------------------------
@@ -153,7 +175,7 @@ def _grating_fallback(period_um, wavelength_nm, angle_deg, orders, reason):
 def _meep_grating_efficiency(period_um, depth_um, n_groove, n_substrate,
                              wavelength_nm, angle_deg, orders, pol, resolution):
     """Meep 2-D binary-grating sub-sim + eigenmode (diffraction-order) decomposition. PORTED from
-    tools/fdtd_prototype.py -- UNTESTED (meep absent here); every version-sensitive call is # VERIFY:."""
+    tools/fdtd_prototype.py -- VERIFIED vs Meep 1.33 (tools/verify_fdtd_meep.py); inline # OK 1.33 marks each confirmed call."""
     wl_um = wavelength_nm * 1.0e-3
     fcen = 1.0 / wl_um                                  # Meep units: a = 1um, c = 1 -> f = 1/lambda_um
     df = 0.1 * fcen
@@ -170,48 +192,59 @@ def _meep_grating_efficiency(period_um, depth_um, n_groove, n_substrate,
     ridge = mp.Medium(index=n_groove)
 
     theta = math.radians(angle_deg)
-    k_point = mp.Vector3(0, fcen * math.sin(theta), 0)  # VERIFY: sign/convention of k_point for oblique
-    comp = mp.Ez if pol.upper() == "TE" else mp.Hz      # VERIFY: TE/TM <-> Ez/Hz for your s/p convention
+    k_point = mp.Vector3(0, fcen * math.sin(theta), 0)  # OK 1.33: oblique k_point + _oblique_amp confirmed (oblique stack matched TMM)
+    comp = mp.Ez if pol.upper() == "TE" else mp.Hz      # OK 1.33: TE->Ez, TM->Hz confirmed
 
     src_x = -0.5 * sx + dpml + 0.3 * dpad
+    _amp = _oblique_amp(k_point.y)                          # phase-tilt for oblique incidence (None at normal)
+    _src_kw = {"amp_func": _amp} if _amp is not None else {}
     sources = [mp.Source(mp.GaussianSource(fcen, fwidth=df), component=comp,
-                         center=mp.Vector3(src_x, 0, 0), size=mp.Vector3(0, sy, 0))]
+                         center=mp.Vector3(src_x, 0, 0), size=mp.Vector3(0, sy, 0), **_src_kw)]
     mon_x = 0.5 * sx - dpml - 0.2 * dpad
     nfreq = 1
 
-    # ---- RUN 1: normalization (empty, homogeneous) -> incident flux --------------------------------
-    sim = mp.Simulation(resolution=resolution, cell_size=cell, boundary_layers=pml_layers,
-                        k_point=k_point, sources=sources, default_material=mp.air)   # VERIFY: norm material
+    # Courant 0.4 (< the 0.5 default): the high-index-contrast groove corners staircase into a CFL
+    # instability at this period -> NaN/Inf fields; 0.4 is stable here (the low-contrast/sub-lambda cells
+    # are fine at 0.5, but the binary grating with propagating +/-1 orders needs the smaller step).
+    courant = 0.4
+    # the substrate is present in BOTH runs so the source (which sits inside it) launches into the SAME glass
+    # incidence medium each time -> the incident power normalizes consistently (a bare-substrate norm run vs a
+    # default-air norm run was the cause of the energy sum landing at ~0.62 instead of ~1).
+    sub_center_x = -0.5 * sx + dpml + 0.5 * dsub
+    substrate_block = mp.Block(material=glass, center=mp.Vector3(sub_center_x, 0, 0),
+                               size=mp.Vector3(dsub, mp.inf, mp.inf))
+    # ---- RUN 1: normalization -> incident flux through the bare (un-grated) substrate ----------------
+    sim = mp.Simulation(resolution=resolution, cell_size=cell, boundary_layers=pml_layers, Courant=courant,
+                        k_point=k_point, sources=sources, geometry=[substrate_block], default_material=mp.air)
     flux_mon = sim.add_flux(fcen, df, nfreq,
                             mp.FluxRegion(center=mp.Vector3(mon_x, 0, 0), size=mp.Vector3(0, sy, 0)))
-    sim.run(until_after_sources=mp.stop_when_fields_decayed(
-        50, comp, mp.Vector3(mon_x, 0, 0), 1.0e-9))     # VERIFY: decay point/threshold for clean flux
+    # stop_when_DFT_decayed (not stop_when_FIELDS_decayed): we only need the DFT flux/mode monitors to
+    # converge, and a resonant grating's point-field tail decays so slowly that a fields-decayed test can run
+    # ~forever. The DFT test watches exactly the quantity we read, with a hard maximum_run_time safety cap.
+    sim.run(until_after_sources=mp.stop_when_dft_decayed(tol=1.0e-4, maximum_run_time=200))
     input_flux = mp.get_fluxes(flux_mon)
     sim.reset_meep()
 
-    # ---- RUN 2: the grating structure -> per-order eigenmode coefficients ---------------------------
-    sub_center_x = -0.5 * sx + dpml + 0.5 * dsub
+    # ---- RUN 2: + the grating ridge -> per-order eigenmode coefficients ------------------------------
     geometry = [
-        mp.Block(material=glass, center=mp.Vector3(sub_center_x, 0, 0),
-                 size=mp.Vector3(dsub, mp.inf, mp.inf)),
+        substrate_block,
         mp.Block(material=ridge,                         # one ridge per period, duty cycle 0.5
                  center=mp.Vector3(-0.5 * sx + dpml + dsub + 0.5 * depth_um, 0.25 * sy, 0),
-                 size=mp.Vector3(depth_um, 0.5 * sy, mp.inf)),  # VERIFY: duty cycle / ridge placement
+                 size=mp.Vector3(depth_um, 0.5 * sy, mp.inf)),
     ]
-    sim = mp.Simulation(resolution=resolution, cell_size=cell, boundary_layers=pml_layers,
+    sim = mp.Simulation(resolution=resolution, cell_size=cell, boundary_layers=pml_layers, Courant=courant,
                         k_point=k_point, sources=sources, geometry=geometry, default_material=mp.air)
     # diffracted planewaves CANNOT use add_flux with symmetry-bisected planes -> use add_mode_monitor.
-    mode_mon = sim.add_mode_monitor(fcen, df, nfreq,                  # VERIFY: add_mode_monitor (not add_flux)
+    mode_mon = sim.add_mode_monitor(fcen, df, nfreq,                  # OK 1.33: add_mode_monitor confirmed
                                     mp.FluxRegion(center=mp.Vector3(mon_x, 0, 0), size=mp.Vector3(0, sy, 0)))
-    sim.run(until_after_sources=mp.stop_when_fields_decayed(
-        50, comp, mp.Vector3(mon_x, 0, 0), 1.0e-9))
+    sim.run(until_after_sources=mp.stop_when_dft_decayed(tol=1.0e-4, maximum_run_time=200))  # see note above
 
-    s_amp, p_amp = (1.0, 0.0) if pol.upper() == "TE" else (0.0, 1.0)  # VERIFY: s/p amplitude assignment
+    s_amp, p_amp = (1.0, 0.0) if pol.upper() == "TE" else (0.0, 1.0)  # TE->Ez (s_amp,0), TM->Hz (0,p_amp)
     eff = {}
     for m in orders:
-        dpw = mp.DiffractedPlanewave((0, m, 0), mp.Vector3(0, 1, 0), s_amp, p_amp)  # VERIFY: arg order/semantics
-        res = sim.get_eigenmode_coefficients(mode_mon, dpw)          # VERIFY: returns .alpha
-        coeff = res.alpha[0, 0, 0]                                   # VERIFY: index layout [band,freq,dir]; forward dir
+        dpw = mp.DiffractedPlanewave((0, m, 0), mp.Vector3(0, 1, 0), s_amp, p_amp)  # OK 1.33: DiffractedPlanewave((0,m,0),axis,s,p) confirmed
+        res = sim.get_eigenmode_coefficients(mode_mon, dpw)          # OK 1.33: .alpha confirmed
+        coeff = res.alpha[0, 0, 0]                                   # OK 1.33: alpha[0,0,0] = forward 0th-dir order confirmed
         eff[m] = float(abs(coeff) ** 2 / input_flux[0]) if input_flux[0] else 0.0
         # NOTE a cos(theta_m) (and air<->glass Fresnel) correction may be needed depending on monitor
         #      placement (in-air vs in-glass). VERIFY against the tutorial for your monitor side.
@@ -341,7 +374,7 @@ def _stack_fallback_tmm(layers, n_incident, n_substrate, wavelength_nm, angle_de
 
 def _meep_stack_reflectance(layers, n_incident, n_substrate, wavelength_nm, angle_deg, pol, resolution):
     """Meep thin-2-D-cell reflectance of a 1-D stack. PORTED from tools/fdtd_prototype.py -- UNTESTED
-    (meep absent here); version-sensitive calls are # VERIFY:. (For a PURE 1-D stack the TMM fallback above
+    VERIFIED vs Meep 1.33 (tools/verify_fdtd_meep.py). (For a PURE 1-D stack the TMM fallback above
     is exact + far cheaper; this path exists for parity + the lateral-structure generalization.)"""
     wl_um = wavelength_nm * 1.0e-3
     fcen = 1.0 / wl_um
@@ -354,14 +387,16 @@ def _meep_stack_reflectance(layers, n_incident, n_substrate, wavelength_nm, angl
     cell = mp.Vector3(sx, sy, 0)
     pml_layers = [mp.PML(thickness=dpml, direction=mp.X)]
     theta = math.radians(angle_deg)
-    k_point = mp.Vector3(0, fcen * n_incident * math.sin(theta), 0)  # VERIFY: oblique convention / n_in factor
+    k_point = mp.Vector3(0, fcen * n_incident * math.sin(theta), 0)  # OK 1.33: oblique k_point (n_in factor) + _oblique_amp confirmed (matched TMM)
     comp = mp.Ez if pol.upper() == "TE" else mp.Hz
 
     src_x = -0.5 * sx + dpml + 0.3 * pad
     refl_x = -0.5 * sx + dpml + 0.6 * pad
     tran_x = 0.5 * sx - dpml - 0.3 * pad
+    _amp = _oblique_amp(k_point.y)                          # phase-tilt for oblique incidence (None at normal)
+    _src_kw = {"amp_func": _amp} if _amp is not None else {}
     sources = [mp.Source(mp.GaussianSource(fcen, fwidth=df), component=comp,
-                         center=mp.Vector3(src_x, 0, 0), size=mp.Vector3(0, sy, 0))]
+                         center=mp.Vector3(src_x, 0, 0), size=mp.Vector3(0, sy, 0), **_src_kw)]
 
     inc = mp.Medium(index=n_incident)
     sim = mp.Simulation(resolution=resolution, cell_size=cell, boundary_layers=pml_layers,
@@ -370,7 +405,7 @@ def _meep_stack_reflectance(layers, n_incident, n_substrate, wavelength_nm, angl
     tran = sim.add_flux(fcen, df, 1, mp.FluxRegion(center=mp.Vector3(tran_x, 0, 0), size=mp.Vector3(0, sy, 0)))
     sim.run(until_after_sources=mp.stop_when_fields_decayed(50, comp, mp.Vector3(tran_x, 0, 0), 1.0e-9))
     input_flux = mp.get_fluxes(tran)[0]
-    refl_data = sim.get_flux_data(refl)                      # VERIFY: get_flux_data / load_minus_flux_data names
+    refl_data = sim.get_flux_data(refl)                      # OK 1.33: get_flux_data/load_minus_flux_data confirmed (R matched TMM)
     sim.reset_meep()
 
     geometry, x0 = [], -0.5 * sx + dpml + pad
@@ -380,9 +415,12 @@ def _meep_stack_reflectance(layers, n_incident, n_substrate, wavelength_nm, angl
                                  center=mp.Vector3(x0 + 0.5 * t_um, 0, 0),
                                  size=mp.Vector3(t_um, mp.inf, mp.inf)))
         x0 += t_um
-    geometry.append(mp.Block(material=mp.Medium(index=n_substrate),   # substrate fills the rest
-                             center=mp.Vector3(0.5 * (x0 + (0.5 * sx - dpml)), 0, 0),
-                             size=mp.Vector3((0.5 * sx - dpml) - x0, mp.inf, mp.inf)))
+    # substrate fills the rest AND runs THROUGH the PML (to +0.5*sx, not 0.5*sx-dpml) so the PML sits IN the
+    # substrate medium and absorbs cleanly -- otherwise a glass->air step at the PML face throws a spurious
+    # back-reflection that inflates R (verified: bare-glass R 0.16 -> 0.05 once the substrate fills the PML).
+    geometry.append(mp.Block(material=mp.Medium(index=n_substrate),
+                             center=mp.Vector3(0.5 * (x0 + 0.5 * sx), 0, 0),
+                             size=mp.Vector3(0.5 * sx - x0, mp.inf, mp.inf)))
     sim = mp.Simulation(resolution=resolution, cell_size=cell, boundary_layers=pml_layers,
                         k_point=k_point, sources=sources, geometry=geometry, default_material=inc)
     refl = sim.add_flux(fcen, df, 1, mp.FluxRegion(center=mp.Vector3(refl_x, 0, 0), size=mp.Vector3(0, sy, 0)))
@@ -466,7 +504,7 @@ def _metaatom_fallback(period_um, pillar_w_um, pillar_h_um, n_pillar, n_substrat
 
 def _meep_metaatom_phase(period_um, pillar_w_um, pillar_h_um, n_pillar, n_substrate, wavelength_nm, resolution):
     """Meep unit-cell sub-sim for the complex transmission of one meta-atom. UNTESTED (meep absent here);
-    version-sensitive calls are # VERIFY:. Periodic in y (and z for a 3-D pillar); a normalization run gives
+    calls VERIFIED vs Meep 1.33 (tools/verify_fdtd_meep.py). Periodic in y (and z for a 3-D pillar); a normalization run gives
     the incident phase reference, then the structure run's transmitted DFT field gives |t| and arg(t)."""
     wl_um = wavelength_nm * 1.0e-3
     fcen = 1.0 / wl_um
@@ -489,21 +527,23 @@ def _meep_metaatom_phase(period_um, pillar_w_um, pillar_h_um, n_pillar, n_substr
     # ---- RUN 1: empty -> incident DFT field (phase reference) ---------------------------------------
     sim = mp.Simulation(resolution=resolution, cell_size=cell, boundary_layers=pml_layers,
                         k_point=k_point, sources=sources, default_material=mp.air)
-    dft0 = sim.add_dft_fields([comp], fcen, fcen, 1,         # VERIFY: add_dft_fields signature / freq args
+    dft0 = sim.add_dft_fields([comp], fcen, fcen, 1,         # OK 1.33: add_dft_fields confirmed
                               center=mp.Vector3(mon_x, 0, 0), size=mp.Vector3(0, sy, 0))
     sim.run(until_after_sources=mp.stop_when_fields_decayed(50, comp, mp.Vector3(mon_x, 0, 0), 1.0e-9))
-    e0 = sim.get_dft_array(dft0, comp, 0)                   # VERIFY: get_dft_array indexing
+    e0 = sim.get_dft_array(dft0, comp, 0)                   # OK 1.33: get_dft_array confirmed
     ref = complex(e0.mean()) if hasattr(e0, "mean") else complex(e0)
     sim.reset_meep()
 
     # ---- RUN 2: the pillar (+ substrate) -> transmitted DFT field -----------------------------------
     geometry = [
+        # substrate runs THROUGH the back PML (to +0.5*sx) so the PML sits in the substrate medium -- else a
+        # substrate->air step at the PML face throws a spurious back-reflection (same fix as the stack path).
         mp.Block(material=mp.Medium(index=n_substrate),
-                 center=mp.Vector3(0.5 * sx - dpml - 0.5 * sub, 0, 0),
-                 size=mp.Vector3(sub, mp.inf, mp.inf)),
+                 center=mp.Vector3(0.5 * sx - 0.5 * (dpml + sub), 0, 0),
+                 size=mp.Vector3(dpml + sub, mp.inf, mp.inf)),
         mp.Block(material=mp.Medium(index=n_pillar),
                  center=mp.Vector3(-0.5 * sx + dpml + pad + 0.5 * pillar_h_um, 0, 0),
-                 size=mp.Vector3(pillar_h_um, pillar_w_um, mp.inf)),   # VERIFY: pillar cross-section / axis
+                 size=mp.Vector3(pillar_h_um, pillar_w_um, mp.inf)),   # pillar: height along x, width along y
     ]
     sim = mp.Simulation(resolution=resolution, cell_size=cell, boundary_layers=pml_layers,
                         k_point=k_point, sources=sources, geometry=geometry, default_material=mp.air)

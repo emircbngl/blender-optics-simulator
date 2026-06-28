@@ -6,6 +6,28 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Verified + Fixed — FDTD bridge Meep API (`fdtd_bridge.py`) confirmed against a real Meep
+- **The `_meep_*` paths in `fdtd_bridge.py` were UNTESTED (written from the Meep docs, every version-sensitive
+  call flagged `# VERIFY:`). They are now VERIFIED against Meep 1.33.0** (conda-forge, run in a throwaway Linux
+  container) via the new `tools/verify_fdtd_meep.py` harness (+ `tools/meep-verify.Dockerfile`), each result
+  cross-checked to an EXACT analytic oracle — **12/12 checks pass**:
+  - **stack_reflectance** — Meep R matches the exact Abelès **TMM to dR < 0.003** for bare glass / single-QW AR
+    / 2-layer AR, at normal **and 20° oblique** incidence, both **TE and TM** (R+T=1.000).
+  - **grating_efficiency** — the eigenmode diffraction-order decomposition (`DiffractedPlanewave` /
+    `get_eigenmode_coefficients` / `.alpha` / `add_mode_monitor`) confirmed: a 1200 lines/mm grating gives
+    symmetric, resolution-converged ±1 orders with energy sum ~0.90 (the rest reflected); a zero-contrast cell
+    returns unity 0th order (normalization correct); a sub-λ period leaves only the 0th order (evanescent
+    detected); per-order directions are the oracle-verified `physics.grating_angle`.
+  - **metaatom_phase** — a full-fill pillar (= uniform slab) matches the slab's TMM amplitude transmission;
+    an empty cell gives t=1, phase=0 (the `add_dft_fields` / `get_dft_array` phase extraction is correct).
+- **Three real setup bugs found and fixed** in the process: (1) the substrate must run THROUGH the back PML —
+  it previously stopped at the PML face, leaving a glass→air step that inflated R ~4× (bare-glass R 0.16 → 0.04
+  vs TMM 0.043); (2) an oblique source needs the `exp(i k_y y)` phase-tilt `amp_func` (new `_oblique_amp`),
+  else it launches a normal-incidence wave regardless of `k_point`; (3) the resonant grating needs `Courant=0.4`
+  + `stop_when_dft_decayed` — the 0.5 default went NaN and a `stop_when_fields_decayed` test ran ~forever. The
+  closed-form fallback path is untouched (regression **363/363** byte-identical; the bridge self-test still
+  matches the oracle kernels). Resolves the **FDTD-Meep-verification** deferred item.
+
 ### Added — single / double / N-slit Fraunhofer diffraction (`slit_diffraction`)
 - **`field.slit_aperture` / `fraunhofer_diffraction` / `slit_metrics` + `slit_diffraction` (optics_api + MCP)** —
   Fraunhofer diffraction of a 1-D aperture by FFT (`I = |FT{aperture}|²`, angle axis `sin θ = λf`), validated

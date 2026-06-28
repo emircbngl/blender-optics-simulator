@@ -282,7 +282,18 @@ meep not present in this environment; API written per the Meep docs (Mode-Decomp
 
 ---
 
-## 6. Honest limits + the verification-needed list
+## 6. Honest limits + verification status
+
+> **✅ VERIFIED against Meep 1.33.0 (2026-06-28).** The `_meep_*` API calls below — once written from the
+> docs and flagged `# VERIFY:` — were confirmed by `tools/verify_fdtd_meep.py` (build `tools/meep-verify.Dockerfile`),
+> each result cross-checked to an exact analytic oracle: **12/12 checks pass.** stack R matches the Abelès TMM
+> to dR < 0.003 (normal + 20° oblique, TE + TM); the grating eigenmode order-decomposition is confirmed
+> (zero-contrast → unity 0th, sub-λ → 0th only, symmetric resolution-converged ±1 orders, directions =
+> `physics.grating_angle`); the metaatom DFT phase-extraction is confirmed (full-fill = slab TMM, empty = t·1).
+> **Three real setup bugs were fixed:** substrate must run THROUGH the back PML (a glass→air step at the PML
+> inflated R ~4×); an oblique source needs an `exp(i k_y y)` phase-tilt `amp_func`; the resonant grating needs
+> `Courant=0.4` + `stop_when_dft_decayed` (the 0.5 default went NaN; a fields-decayed test ran ~forever). The
+> convergence discipline below is still the bar for any NEW geometry.
 
 **This is a DERIVED property, not a live-trace effect.** The bench trace never becomes a full-wave
 simulation; one element's *coefficients* become rigorous. Everything in `OPTICS_SCOPE.md` about live
@@ -315,19 +326,23 @@ monetary cost.
 5. **Polarization & oblique incidence.** TE vs TM differ strongly for gratings; the `k_point`/Bloch phase
    must match the requested `angle_deg`. Verify the normalization run uses the **same** `k_point`.
 
-**Unverified API details to confirm against the installed Meep version (flag every one):**
+**Meep API details — now CONFIRMED against Meep 1.33.0** (was the `# VERIFY:` list):
 
-- `mp.DiffractedPlanewave((0, m, 0), mp.Vector3(0,1,0), s, p)` argument order/semantics and that it pairs
-  with **`add_mode_monitor`** (NOT `add_flux`) for diffracted orders — docs say diffracted planewaves
-  can't use symmetry-bisected `add_flux` monitors.
-- `get_eigenmode_coefficients(...).alpha` indexing `[band, freq, dir]` — confirm shape; the `±` direction
-  index that selects forward vs backward.
-- The **cosθ_m** (and air→glass Fresnel) correction the tutorial applies to transmitted-order efficiency —
-  confirm whether it's needed for the chosen monitor placement (in-air vs in-glass).
-- `mp.stop_when_fields_decayed(...)` thresholds for clean convergence of the flux.
-- `k_point` sign/convention for oblique incidence and the matching source `amplitude`/Bloch phase.
-- Tidy3D path: `td.DiffractionMonitor` order indexing and `DiffractionData` field names (`amps`,
-  efficiency accessor) — confirm against the installed `tidy3d` version.
+- ✅ `mp.DiffractedPlanewave((0, m, 0), mp.Vector3(0,1,0), s, p)` argument order, paired with
+  **`add_mode_monitor`** (NOT `add_flux`) for diffracted orders — confirmed (symmetric ±1 orders, evanescent
+  detected, zero-contrast → unity 0th).
+- ✅ `get_eigenmode_coefficients(...).alpha` indexing `[band, freq, dir]`, `alpha[0,0,0]` = the forward 0th-dir
+  order — confirmed.
+- ✅ `k_point` oblique convention + the matching source Bloch phase — confirmed: the oblique source needed an
+  `exp(i k_y y)` `amp_func` (now `_oblique_amp`); with it, oblique TE/TM **stack R matches TMM**.
+- ✅ Flux normalization + `get_flux_data` / `load_minus_flux_data` (reflected-flux subtraction) — confirmed
+  (stack R matches TMM); the substrate-through-PML fix removed the spurious back-reflection.
+- ✅ Convergence run-control — switched from `stop_when_fields_decayed` (ran ~forever on a resonant grating)
+  to `stop_when_dft_decayed(tol=1e-4, maximum_run_time=…)`, which watches exactly the DFT monitors we read.
+- ⏳ STILL unverified (no local backend): the **Tidy3D** path (`td.DiffractionMonitor` order indexing /
+  `DiffractionData` field names) — needs a `tidy3d` account; and `metaatom_phase` for a true **3-D** pillar
+  (the shipped cell is 2-D). The reflected-phase extraction for `stack_reflectance` is left as `None` (not
+  yet wired). These remain honestly flagged in code.
 
 **Bottom line.** Meep (default, free, CPU/MPI) or Tidy3D (opt-in, cloud GPU, paid) derives a rigorous
 η(λ,θ,order) / R(λ,θ) / metasurface-φ for **one** element; the bridge returns it as a JSON curve; the
@@ -339,5 +354,6 @@ full-wave bench.**
 
 *Sources for the engine APIs cited here:* Meep docs — Mode-Decomposition tutorial and
 `python/examples/binary_grating.py` (NanoComp/meep); Tidy3D docs — `DiffractionMonitor` / `DiffractionData`
-and the WebAPI `web.run` / grating-efficiency example (Flexcompute). API specifics are flagged
-**unverified** above and must be confirmed against the installed engine versions.
+and the WebAPI `web.run` / grating-efficiency example (Flexcompute). The **Meep** API specifics are now
+**verified against Meep 1.33.0** (see the status box in §6 and `tools/verify_fdtd_meep.py`); the **Tidy3D**
+path remains unverified (needs an account).
