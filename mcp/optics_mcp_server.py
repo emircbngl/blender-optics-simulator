@@ -237,6 +237,18 @@ def propagate_chain(steps: list, wavelength_nm: float = 632.8, w0_mm: float = No
 
 
 @mcp.tool()
+def gerchberg_saxton(target: str = "ring", n_grid: int = 128, n_iter: int = 60,
+                     seed: int = 0, png: bool = False) -> str:
+    """Gerchberg-Saxton phase retrieval / CGH design -- the iterative Fourier-transform algorithm that finds a
+    source-plane PHASE whose far-field |FFT| matches a target pattern. Alternates amplitude constraints in the
+    source + far-field planes; the far-field error is MONOTONE NON-INCREASING (the GS guarantee). target in
+    {ring, double, tophat, spot} (canonical beam-shaping / computer-generated-hologram patterns). Returns {ok,
+    correlation (achieved-vs-target 0..1), final_error, initial_error, monotone, n_iter}; png=True saves the
+    achieved far-field + the recovered phase mask. Off-trace; live trace byte-identical."""
+    return _fmt(_call("gerchberg_saxton", target=target, n_grid=n_grid, n_iter=n_iter, seed=seed, png=png))
+
+
+@mcp.tool()
 def slit_diffraction(width_um: float = 100.0, n_slits: int = 1, sep_um: float = 0.0,
                      wavelength_nm: float = 632.8, n_grid: int = 4096, png: bool = False) -> str:
     """Single / double / N-slit FRAUNHOFER diffraction by FFT, validated against the textbook closed forms --

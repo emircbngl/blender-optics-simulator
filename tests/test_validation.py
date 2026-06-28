@@ -275,6 +275,22 @@ _mc_zR = math.pi * 0.5 ** 2 / (632.8 * 1e-6)
 _mc_wch = field.propagate_chain([("prop", 600.0)], 632.8, 0.5, None, 512)["final"]["w_2sigma_mm"]
 check("Chain: free Gaussian w(z) = w0 sqrt(1+(z/zR)^2) (z=600mm)", _mc_wch, 0.5 * math.sqrt(1.0 + (600.0 / _mc_zR) ** 2), 0.02, "Saleh&Teich; chained")
 
+print("[Gerchberg-Saxton phase retrieval -- iterative FT algorithm (monotone error, achieved far-field matches target)]")
+# feasible target = |FFT(source * exp(i phi_true))| -> GS must recover a phase that reproduces it
+_gsN = 128
+_gsx = _np.arange(_gsN) - _gsN // 2
+_gsX, _gsY = _np.meshgrid(_gsx, _gsx)
+_gs_src = (_np.hypot(_gsX, _gsY) <= 40).astype(float)
+_gs_phi = math.pi * _np.exp(-(_gsX ** 2 + _gsY ** 2) / (2.0 * 15.0 ** 2))
+_gs_T = _np.abs(field._fft2c(_gs_src * _np.exp(1j * _gs_phi)))
+_gs = field.gerchberg_saxton(_gs_T, _gs_src, n_iter=80)
+check("Gerchberg-Saxton: far-field error is MONOTONE non-increasing (GS guarantee)", 1.0 if _gs["monotone"] else 0.0, 1.0, 1e-9, "GS; algorithmic guarantee")
+check("Gerchberg-Saxton: recovers a feasible target (achieved-target correlation > 0.97)", _gs["correlation"], 1.0, 0.03, "phase retrieval; FFT")
+check("Gerchberg-Saxton: error decreases (final < 0.4 x initial)", _gs["final_error"] / _gs["errors"][0], 0.0, 0.4, "GS convergence")
+# a canonical computer-generated-hologram target (a double spot) is produced with high correlation
+_gs2 = field.gerchberg_saxton_design("double", 128, 80)
+check("Gerchberg-Saxton: CGH 'double' target produced (correlation > 0.9)", _gs2["correlation"], 1.0, 0.1, "CGH design; FFT")
+
 print("[Fraunhofer slit diffraction -- single / double / grating (FFT vs analytic sinc^2 x cos^2)]")
 _ss = field.slit_metrics(0.1, n_slits=1, wavelength_nm=632.8, n_grid=8192)            # single slit a=0.1mm
 check("Single-slit first min at sin(theta)=lambda/a", _ss["first_min_sin_theta"], _ss["first_min_theory"], 0.05 * _ss["first_min_theory"], "Goodman; FFT vs sinc^2")

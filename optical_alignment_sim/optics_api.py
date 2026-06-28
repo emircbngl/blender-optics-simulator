@@ -53,7 +53,7 @@ _TOOL_GROUPS = {
         "fdtd_derive_property"],
     "design (pure math, no scene change)": [
         "design_telescope", "design_4f", "mode_match", "optics_calc", "wave_psf", "propagate_field",
-        "propagate_chain", "propagate_pulse", "slit_diffraction", "talbot_effect"],
+        "propagate_chain", "gerchberg_saxton", "propagate_pulse", "slit_diffraction", "talbot_effect"],
     "place / assemble (opto-mechanics)": [
         "place_relative", "make_cage", "make_tube", "make_rail", "place_on_grid", "place_on_rail",
         "set_grid", "dress_bench"],
@@ -527,6 +527,45 @@ def propagate_chain(steps, wavelength_nm=632.8, w0_mm=None, aperture_mm=None, n_
                                      n_grid=int(n_grid), dx_mm=dx_mm, png_path=png_path)
     except ValueError as exc:
         return {"error": str(exc)}
+
+
+def gerchberg_saxton(target="ring", n_grid=128, n_iter=60, seed=0, png=False):
+    """Gerchberg-Saxton phase retrieval / CGH design -- the iterative Fourier-transform algorithm. Finds a
+    source-plane PHASE whose far-field |FFT| matches a target pattern, iterating amplitude constraints in the
+    source and far-field planes; the far-field error is MONOTONE NON-INCREASING (the GS guarantee). `target` in
+    {ring, double, tophat, spot} (canonical beam-shaping / CGH patterns over a circular source). Returns {ok,
+    target, correlation (achieved-vs-target, 0..1), final_error, initial_error, monotone, n_iter}. png=True
+    saves the achieved far-field + the recovered phase mask. Off-trace; live trace byte-identical."""
+    if target not in ("ring", "double", "tophat", "spot"):
+        return {"error": "target must be one of: ring, double, tophat, spot"}
+    T, src = field.gs_named_target(target, int(n_grid))
+    r = field.gerchberg_saxton(T, src, n_iter=int(n_iter), seed=int(seed))
+    out = {"ok": True, "target": target, "correlation": r["correlation"], "final_error": r["final_error"],
+           "initial_error": round(r["errors"][0], 6) if r["errors"] else None,
+           "monotone": r["monotone"], "n_iter": r["n_iter"]}
+    if png:
+        try:
+            import os
+            import tempfile
+            import matplotlib
+            matplotlib.use("Agg")
+            import matplotlib.pyplot as plt
+            fig, ax = plt.subplots(1, 2, figsize=(7.2, 3.4))
+            fig.patch.set_facecolor("#0d0d10")
+            ax[0].imshow(r["achieved_amplitude"] ** 2, cmap="inferno", origin="lower")
+            ax[0].set_title("achieved far-field (target=%s)" % target, color="#f4f4f6", fontsize=10)
+            ax[1].imshow(r["source_phase"], cmap="twilight", origin="lower")
+            ax[1].set_title("recovered phase mask", color="#f4f4f6", fontsize=10)
+            for a_ in ax:
+                a_.set_xticks([]); a_.set_yticks([]); a_.set_facecolor("#0d0d10")
+            png_path = os.path.join(tempfile.gettempdir(), "optics_gs.png")
+            fig.tight_layout()
+            fig.savefig(png_path, dpi=120, facecolor=fig.get_facecolor())
+            plt.close(fig)
+            out["png"] = png_path
+        except Exception as exc:
+            out["png_error"] = str(exc)
+    return out
 
 
 def slit_diffraction(width_um=100.0, n_slits=1, sep_um=0.0, wavelength_nm=632.8, n_grid=4096, png=False):

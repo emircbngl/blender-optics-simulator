@@ -6,6 +6,21 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Added — Gerchberg-Saxton phase retrieval / CGH design (`gerchberg_saxton`)
+- The **iterative Fourier-transform algorithm**: find a source-plane **phase** whose far-field `|FFT|` matches
+  a target pattern, by alternating amplitude constraints in the source and far-field planes. (`field` +
+  optics_api + MCP, design group.) The far-field amplitude error is **monotone non-increasing** (the GS
+  convergence guarantee), and the recovered phase mask is a **computer-generated hologram** for beam shaping.
+  Canonical targets `{ring, double, tophat, spot}` over a circular source; the target is energy-normalized to
+  the source far-field (Parseval) so the error is a true shape mismatch. Validated:
+  - the error is **monotone non-increasing** every iteration;
+  - a **feasible target** (the `|FFT|` of a known phase) is recovered to **correlation 0.99** with the error
+    falling to ~0.11× its start;
+  - a canonical **double-spot** CGH target is produced at **correlation 0.94**.
+- Closes the backlog's "closed-loop iterative" item — the first FEEDBACK loop on top of the FFT/propagator
+  primitives (the forward `propagate_chain` and the verified Fraunhofer FFT). Off-trace; live trace
+  byte-identical. **4 new oracle checks** → validation **171 → 175**. Demo `docs/img/gerchberg-saxton-demo.png`.
+
 ## [0.18.0] — Multi-plane field-propagation chain (propagate_chain) — 2026-06-29
 
 `propagate_field` ran the angular-spectrum propagator once; the new **`propagate_chain`** marches a complex

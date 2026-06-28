@@ -359,3 +359,76 @@ def propagate_chain(steps, wavelength_nm=632.8, w0_mm=None, aperture_mm=None,
     fm = field_metrics(U, dx_mm, wavelength_nm, png_path=png_path)
     return {"ok": True, "final": fm, "z_total_mm": round(z, 4), "n_steps": len(steps),
             "dx_mm": round(dx_mm, 6), "trace": trace}
+
+
+def _fft2c(U):
+    """Centred 2-D forward FFT (fftshift wrap), matching slit/talbot convention."""
+    return np.fft.fftshift(np.fft.fft2(np.fft.ifftshift(U)))
+
+
+def _ifft2c(U):
+    return np.fft.fftshift(np.fft.ifft2(np.fft.ifftshift(U)))
+
+
+def gerchberg_saxton(target_amplitude, source_amplitude, n_iter=60, seed=0):
+    """Gerchberg-Saxton phase retrieval / CGH design -- the iterative Fourier-transform algorithm: find a
+    SOURCE-plane phase whose far-field |FFT| matches ``target_amplitude``, given the ``source_amplitude``. Each
+    iteration enforces the source amplitude -> FFT to the far field -> enforce the target amplitude -> IFFT
+    back, keeping the phase at each step. The far-field amplitude error is MONOTONE NON-INCREASING (the GS
+    convergence guarantee). Off-trace; seed-pinned local RNG for the initial random phase. Returns {ok,
+    source_phase (2D), achieved_amplitude (2D), errors (per-iter), final_error, correlation, monotone}."""
+    target_amplitude = np.asarray(target_amplitude, dtype=float)
+    source_amplitude = np.asarray(source_amplitude, dtype=float)
+    # scale the target to the source's far-field energy (Parseval: ||far|| = ||fft2(source)|| for ANY source
+    # phase) so the amplitude error measures SHAPE mismatch, not an arbitrary target-vs-source energy offset.
+    far_norm = float(np.linalg.norm(np.fft.fft2(source_amplitude)))
+    target_amplitude = target_amplitude * (far_norm / (float(np.linalg.norm(target_amplitude)) or 1.0))
+    rng = np.random.default_rng(int(seed))
+    U = source_amplitude * np.exp(1j * rng.uniform(-np.pi, np.pi, source_amplitude.shape))
+    Tn = far_norm or 1.0
+    errs = []
+    for _ in range(int(n_iter)):
+        Far = _fft2c(U)
+        errs.append(float(np.linalg.norm(target_amplitude - np.abs(Far)) / Tn))
+        Far = target_amplitude * np.exp(1j * np.angle(Far))     # enforce the target far-field amplitude
+        U = source_amplitude * np.exp(1j * np.angle(_ifft2c(Far)))  # back, enforce the source amplitude
+    phase = np.angle(U)
+    achieved = np.abs(_fft2c(source_amplitude * np.exp(1j * phase)))
+    corr = float(np.sum(achieved * target_amplitude) / ((np.linalg.norm(achieved) or 1.0) * Tn))
+    mono = all(errs[i + 1] <= errs[i] + 1e-9 for i in range(len(errs) - 1))
+    return {"ok": True, "source_phase": phase, "achieved_amplitude": achieved, "errors": errs,
+            "final_error": round(errs[-1], 6) if errs else None, "correlation": round(corr, 5),
+            "monotone": bool(mono), "n_iter": int(n_iter)}
+
+
+def gs_named_target(name, n_grid):
+    """Build a canonical far-field TARGET amplitude (for beam-shaping / CGH GS demos) + a circular source
+    aperture amplitude. name in {spot, ring, double, tophat}. Returns (target_amp, source_amp)."""
+    c = n_grid // 2
+    x = np.arange(n_grid) - c
+    X, Y = np.meshgrid(x, x)
+    R = np.sqrt(X * X + Y * Y)
+    src = (R <= 0.32 * n_grid).astype(float)                    # circular source aperture
+    s = 0.16 * n_grid
+    nm = (name or "ring").lower()
+    if nm == "spot":
+        T = np.exp(-(R ** 2) / (2.0 * (0.03 * n_grid) ** 2))
+    elif nm == "double":
+        d = 0.12 * n_grid
+        T = np.exp(-((X - d) ** 2 + Y ** 2) / (2 * (0.03 * n_grid) ** 2)) + \
+            np.exp(-((X + d) ** 2 + Y ** 2) / (2 * (0.03 * n_grid) ** 2))
+    elif nm == "tophat":
+        T = (R <= s).astype(float)
+    else:                                                       # ring / annulus
+        T = np.exp(-((R - s) ** 2) / (2.0 * (0.03 * n_grid) ** 2))
+    return T, src
+
+
+def gerchberg_saxton_design(target="ring", n_grid=128, n_iter=60, seed=0):
+    """Run GS on a named canonical target -> JSON-able convergence metrics (no big arrays). Returns
+    {ok, target, correlation, final_error, initial_error, monotone, n_iter}."""
+    T, src = gs_named_target(target, n_grid)
+    r = gerchberg_saxton(T, src, n_iter=n_iter, seed=seed)
+    return {"ok": True, "target": target, "correlation": r["correlation"], "final_error": r["final_error"],
+            "initial_error": round(r["errors"][0], 6) if r["errors"] else None,
+            "monotone": r["monotone"], "n_iter": r["n_iter"]}
