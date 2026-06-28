@@ -404,6 +404,38 @@ def brewster_angle(n1, n2):
     return math.degrees(math.atan(n2 / n1))
 
 
+# --- uniaxial-crystal optics (the o/e index data lives in GLASSES as *_O / *_E pairs) ----
+# These turn the ordinary/extraordinary indices already in the Sellmeier catalog (QUARTZ/CALCITE/MGF2/
+# SAPPHIRE _O,_E) into the textbook anisotropic-ray numbers. Pure scalar, angles in DEGREES.
+
+def n_e_theta(n_o, n_e, theta_deg):
+    """Extraordinary-ray index of a UNIAXIAL crystal at angle theta from the optic axis, via the index
+    ellipsoid:  1/n_e(theta)^2 = cos^2(theta)/n_o^2 + sin^2(theta)/n_e^2.  theta=0 -> n_o (propagation
+    ALONG the optic axis sees the ordinary index), theta=90 -> n_e. (Yariv & Yeh, 'Optical Waves in
+    Crystals'.) This is the e-ray index used by the walk-off and SHG-phase-match relations below."""
+    th = math.radians(theta_deg)
+    return 1.0 / math.sqrt(math.cos(th) ** 2 / n_o ** 2 + math.sin(th) ** 2 / n_e ** 2)
+
+
+def uniaxial_walkoff_angle(n_o, n_e, theta_deg):
+    """Double-refraction WALK-OFF angle rho between the extraordinary ray's Poynting vector (energy flow)
+    and its wavevector, theta measured from the optic axis (Yariv & Yeh):
+        tan(rho) = (n_o^2 - n_e^2) tan(theta) / (n_o^2 + n_e^2 tan^2(theta)).
+    Returns rho in degrees; 0 at theta=0 and theta=90, max near theta~45. (Sign: + for n_o>n_e, a positive
+    uniaxial walks the other way.) e.g. calcite at 45 deg (n_o=1.6584, n_e=1.4864) -> 6.22 deg."""
+    t = math.tan(math.radians(theta_deg))
+    return math.degrees(math.atan((n_o ** 2 - n_e ** 2) * t / (n_o ** 2 + n_e ** 2 * t ** 2)))
+
+
+def waveplate_thickness(order, wl_nm, dn):
+    """Physical thickness d of a true ZERO-ORDER waveplate giving the requested retardance order at wl_nm,
+    from the crystal birefringence dn = |n_e - n_o|:  d = order * lambda / dn  (order = 0.25 quarter-wave,
+    0.5 half-wave). Returns mm. e.g. quartz QWP @589.3 nm (dn=0.00910) -> 0.01619 mm = 16.19 um."""
+    if dn <= 0.0:
+        return float('inf')
+    return order * (wl_nm * 1.0e-6) / dn          # wl nm->mm (x1e-6); d in mm
+
+
 def abbe_number(glass='N-BK7'):
     """Abbe number Vd = (nd-1)/(nF-nC) at the d (587.56), F (486.13), C (656.27 nm) lines."""
     nd = sellmeier_n(587.56, glass)
@@ -680,6 +712,43 @@ def nl_phase_mismatch_T(crystal_material, temp_C):
     sinc^2 with symmetric side-lobes -- the physically central tuning-curve shape."""
     _deff, dk_dT, T_pm = NL_CRYSTALS.get((crystal_material or 'BBO').upper(), NL_CRYSTALS['BBO'])
     return dk_dT * (temp_C - T_pm)
+
+
+# Ordinary + extraordinary Sellmeier for the common NEGATIVE-UNIAXIAL nonlinear crystals, so the SHG
+# phase-matching ANGLE can be DERIVED from the index ellipsoid (vs the lumped dk(T) scalar above). Each
+# entry is (o-params, e-params) for  n^2(lambda_um) = A + B/(lambda_um^2 - C) - D*lambda_um^2.
+NL_CRYSTAL_SELLMEIER = {
+    'BBO': ((2.7359, 0.01878, 0.01822, 0.01354), (2.3753, 0.01224, 0.01667, 0.01516)),   # Eimerl 1987
+}
+
+
+def _nl_n2(params, lam_um):
+    A, B, C, D = params
+    return A + B / (lam_um ** 2 - C) - D * lam_um ** 2
+
+
+def shg_phase_match_angle(crystal, wl_fund_nm):
+    """Type-I SHG critical phase-matching ANGLE theta_pm (degrees from the optic axis) of a negative-uniaxial
+    crystal: the extraordinary index of the second harmonic is tuned by angle to equal the ordinary index of
+    the fundamental, n_e(theta, 2w) = n_o(w). Solving the index ellipsoid gives
+        sin^2(theta_pm) = (1/n_o(w)^2 - 1/n_o(2w)^2) / (1/n_e(2w)^2 - 1/n_o(2w)^2).
+    crystal is a key in NL_CRYSTAL_SELLMEIER (e.g. 'BBO'). Returns theta_pm in degrees, or None if the ratio
+    falls outside [0,1] (not angle-phase-matchable for that wavelength). e.g. BBO 1064->532 -> 22.78 deg."""
+    coeffs = NL_CRYSTAL_SELLMEIER.get((crystal or '').upper())
+    if coeffs is None:
+        return None
+    o, e = coeffs
+    lam_w = wl_fund_nm * 1.0e-3                    # fundamental wavelength, micron
+    no_w2 = _nl_n2(o, lam_w)                       # n_o(w)^2
+    no_2w2 = _nl_n2(o, lam_w / 2.0)               # n_o(2w)^2
+    ne_2w2 = _nl_n2(e, lam_w / 2.0)               # n_e(2w)^2
+    den = 1.0 / ne_2w2 - 1.0 / no_2w2
+    if den == 0.0:
+        return None
+    s2 = (1.0 / no_w2 - 1.0 / no_2w2) / den
+    if not (0.0 <= s2 <= 1.0):
+        return None
+    return math.degrees(math.asin(math.sqrt(s2)))
 
 
 # --- Fresnel reflection (s/p amplitude + phase) -----------------------------

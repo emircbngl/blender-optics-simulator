@@ -6,6 +6,22 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Added — uniaxial-crystal optics (closed-form helpers on the existing o/e index catalog)
+- The engine already carries ordinary/extraordinary Sellmeier data (QUARTZ/CALCITE/MGF2/SAPPHIRE `_O`/`_E`,
+  Ghosh99/Malitson, CI-validated) and a full Jones algebra, but nothing turned that into the textbook
+  anisotropic-ray numbers. Added the closed-form helpers (all `physics_verify` ok=true, all `optics_calc`/MCP):
+  - **`physics.n_e_theta(n_o, n_e, theta)`** — extraordinary index from the index ellipsoid
+    `1/n_e(θ)² = cos²θ/n_o² + sin²θ/n_e²` (→ n_o at θ=0, n_e at θ=90).
+  - **`physics.uniaxial_walkoff_angle(n_o, n_e, theta)`** — double-refraction walk-off
+    `tan ρ = (n_o²−n_e²)tanθ / (n_o²+n_e²tan²θ)`; **calcite @45° → 6.224°** (Yariv & Yeh).
+  - **`physics.waveplate_thickness(order, λ, Δn)`** — true zero-order plate `d = order·λ/Δn`; from the catalog
+    quartz birefringence (Δn=0.00910 @589.3 nm) a **QWP is 16.19 µm, an HWP 32.38 µm**.
+  - **`physics.shg_phase_match_angle(crystal, λ_fund)`** + a `NL_CRYSTAL_SELLMEIER` o/e table (BBO, Eimerl 1987)
+    — Type-I critical phase-matching from `n_e(θ,2ω)=n_o(ω)`; **BBO 1064→532 nm → 22.78°** (Boyd).
+- **Exposed the WAVEPLATE dispersion params** (`design_wl`, `waveplate_crystal`, `waveplate_order`) in the
+  optics-API inventory so an AI agent can discover/set the wavelength-dependent-retardance machinery the tracer
+  already runs. **6 new oracle checks** → validation **136 → 142**. Trace byte-identical (regression 363/363).
+
 ## [0.13.0] — Diffraction & focusing examples + verified FDTD bridge — 2026-06-28
 
 A validation + examples release. Adds single/double/N-slit Fraunhofer diffraction, the Talbot self-imaging

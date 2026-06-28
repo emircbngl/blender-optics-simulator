@@ -96,6 +96,19 @@ check("BaF2 n @587.6", physics.sellmeier_n(587.6, 'BaF2'), 1.47448, 5e-4, "Malit
 check("ZnSe n @10.6um (CO2 laser line)", physics.sellmeier_n(10600.0, 'ZnSe'), 2.4028, 2e-3, "Connolly79 [datasheet]")
 check("Ge n @10um (IR; tests clamp window)", physics.sellmeier_n(10000.0, 'GE'), 4.0040, 3e-3, "Burnett16 [datasheet]")
 
+print("[Uniaxial crystal optics — walk-off / index ellipsoid / waveplate thickness / SHG phase-match]")
+# index ellipsoid: n_e(theta) -> n_o along the optic axis (theta=0), -> n_e at theta=90 (calcite o/e)
+check("Index ellipsoid n_e(theta=0) = n_o", physics.n_e_theta(1.6584, 1.4864, 0.0), 1.6584, 1e-6, "Yariv&Yeh; oracle")
+check("Index ellipsoid n_e(theta=90) = n_e", physics.n_e_theta(1.6584, 1.4864, 90.0), 1.4864, 1e-6, "Yariv&Yeh; oracle")
+# double-refraction walk-off angle (calcite, theta=45 deg from the optic axis)
+check("Calcite walk-off angle @45deg = 6.224 deg", physics.uniaxial_walkoff_angle(1.6584, 1.4864, 45.0), 6.224, 0.02, "Yariv&Yeh; oracle")
+# true zero-order waveplate thickness from the catalog quartz birefringence (Delta_n @589.3 = 0.00910)
+_dn_q = physics.sellmeier_n(589.3, 'QUARTZ_E') - physics.sellmeier_n(589.3, 'QUARTZ_O')
+check("Quartz QWP thickness = lambda/(4 dn) = 16.19um", physics.waveplate_thickness(0.25, 589.3, _dn_q), 0.01619, 1e-4, "d=m*lambda/dn; oracle")
+check("Quartz HWP thickness = lambda/(2 dn) = 32.38um", physics.waveplate_thickness(0.50, 589.3, _dn_q), 0.03238, 1e-4, "d=m*lambda/dn; oracle")
+# Type-I SHG critical phase-matching angle from the BBO index ellipsoid (Eimerl 1987 Sellmeier)
+check("BBO Type-I SHG phase-match angle 1064->532 = 22.78 deg", physics.shg_phase_match_angle('BBO', 1064.0), 22.78, 0.3, "Boyd/Eimerl87; oracle")
+
 print("[Thermo-optic dn/dT — n_eff = n(lambda) + dn/dT*(T-20C)]")
 check("Fused silica dn/dT +100K shift", physics.sellmeier_n(587.6, 'FUSED_SILICA', 120.0) - physics.sellmeier_n(587.6, 'FUSED_SILICA'),
       1.0e-3, 1e-9, "Corning7980; oracle")
