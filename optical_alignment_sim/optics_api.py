@@ -52,9 +52,9 @@ _TOOL_GROUPS = {
         "build_example", "add_component", "tag_element", "swap_part", "set_param", "set_mount", "import_glass",
         "fdtd_derive_property"],
     "design (pure math, no scene change)": [
-        "design_telescope", "design_4f", "mode_match", "optics_calc", "wave_psf", "propagate_field",
-        "propagate_chain", "gerchberg_saxton", "spatial_filter", "propagate_pulse", "slit_diffraction",
-        "talbot_effect"],
+        "design_telescope", "design_4f", "mode_match", "optics_calc", "wave_psf", "aberrated_psf",
+        "propagate_field", "propagate_chain", "gerchberg_saxton", "spatial_filter", "propagate_pulse",
+        "slit_diffraction", "talbot_effect"],
     "place / assemble (opto-mechanics)": [
         "place_relative", "make_cage", "make_tube", "make_rail", "place_on_grid", "place_on_rail",
         "set_grid", "dress_bench"],
@@ -455,6 +455,38 @@ def wave_psf(wavelength_nm, f_number, aperture_diam_mm, defocus_waves=0.0, n_gri
         png_path = os.path.join(tempfile.gettempdir(), "optics_psf.png")
     return wave.psf_metrics(wavelength_nm, f_number, aperture_diam_mm, W=W,
                             n_grid=n_grid, diam_px=diam_px, png_path=png_path)
+
+
+_ZMODE = {"defocus": 4, "astigmatism": 5, "coma": 7, "trefoil": 9, "spherical": 11}
+
+
+def aberrated_psf(mode="spherical", amplitude_waves=0.1, zernike_waves=None,
+                  wavelength_nm=550.0, f_number=8.0, aperture_diam_mm=10.0, n_grid=512, png=False):
+    """Diffraction PSF aberrated by a ZERNIKE wavefront -- the general (any-mode) form of wave_psf's defocus
+    knob. Either a single named ``mode`` in {defocus, astigmatism, coma, trefoil, spherical} at
+    ``amplitude_waves`` RMS, OR a full Noll-indexed ``zernike_waves`` list (j=1..15, in waves; index 0 = Z1
+    piston). Returns {strehl, rms_wavefront_waves, airy_radius_um, first_zero_um, fwhm_um, ...}; for a SMALL
+    aberration the Strehl follows Marechal exp(-(2*pi*rms)^2). png=True saves the PSF. Off-trace; byte-identical.
+    E.g. aberrated_psf('astigmatism', 0.05) -> strehl ~ 0.906."""
+    from . import wave
+    if zernike_waves is not None:
+        coeffs = [float(c) for c in zernike_waves]
+    else:
+        j = _ZMODE.get((mode or "").lower())
+        if j is None:
+            return {"error": "mode must be one of %s, or pass zernike_waves" % ", ".join(sorted(_ZMODE))}
+        coeffs = [0.0] * 15
+        coeffs[j - 1] = float(amplitude_waves)
+    diam_px = max(64, n_grid // 2)
+    png_path = None
+    if png:
+        import os
+        import tempfile
+        png_path = os.path.join(tempfile.gettempdir(), "optics_aberrated_psf.png")
+    out = wave.aberrated_psf(coeffs, wavelength_nm, f_number, aperture_diam_mm,
+                             n_grid=int(n_grid), diam_px=int(diam_px), png_path=png_path)
+    out["mode"] = mode if zernike_waves is None else "custom"
+    return out
 
 
 def propagate_field(wavelength_nm, w0_mm=None, aperture_mm=None, dz_mm=0.0, n_grid=256, dx_mm=None, png=False):

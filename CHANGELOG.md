@@ -6,6 +6,30 @@ semantic versioning.
 
 ## [Unreleased]
 
+## [0.20.0] — Zernike-aberrated diffraction PSF (`aberrated_psf`) — 2026-06-29
+
+The general form of the wave layer's defocus knob. `wave_psf` could only add **Z4 defocus**; the new
+**`aberrated_psf`** aberrates the diffraction PSF with **any Zernike mode** — defocus, astigmatism, coma,
+trefoil, spherical — at a chosen RMS, or a full Noll-indexed wavefront vector. The Strehl ratio collapses the
+**same** way for every mode (it depends only on the RMS wavefront error, per the Maréchal approximation), but
+the PSF *morphology* is the mode's fingerprint. Off-trace; the geometric trace stays byte-identical.
+Validation **179 → 185**.
+
+### Added — `aberrated_psf` (any-mode Zernike aberration of the diffraction PSF)
+- **PSF = |FFT(pupil · exp(2πi·W))|²** where the pupil wavefront **W** is built from RMS-normalized Noll
+  Zernikes (`wave` + optics_api + MCP, design group). Accepts either a single named **`mode`** in {defocus,
+  astigmatism, coma, trefoil, spherical} at `amplitude_waves` RMS, **or** a full Noll-indexed `zernike_waves`
+  list (j = 1…15). Returns the same metrics as `wave_psf` — `{strehl, rms_wavefront_waves, airy_radius_um,
+  first_zero_um, fwhm_um, …}`. Validated against the **Maréchal approximation** exp(−(2π·rms)²):
+  - **zero aberration -> Strehl 1, RMS 0** (exact);
+  - **astigmatism 0.05 waves -> Strehl ~ 0.906** (Maréchal exp(−(2π·0.05)²)); RMS = the coefficient exactly;
+  - **coma 0.10 waves -> Strehl ~ 0.674** (Maréchal exp(−(2π·0.10)²));
+  - **mode-independence**: spherical 0.05 and astigmatism 0.05 give the **same Strehl** — it tracks RMS, not
+    which mode — while the PSF shape differs (defocus symmetric, astigmatism elongated, coma flared, spherical
+    haloed).
+- The general-aberration companion to `wave_psf` (defocus-only). Off-trace; live trace byte-identical.
+  **6 new oracle checks** -> validation **179 → 185**. Demo `docs/img/aberrated-psf-demo.png`.
+
 ## [0.19.0] — Fourier optics: phase retrieval + spatial filtering — 2026-06-29
 
 A Fourier-optics pair built on the verified FFT/propagator. **`gerchberg_saxton`** — the iterative

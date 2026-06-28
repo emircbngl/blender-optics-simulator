@@ -174,6 +174,19 @@ the Scan + Plot operator, the Detector Fringe Image, and the live sensor window 
   <img src="docs/img/feature-board.png" width="92%" alt="New in v0.10.0: the WFS reads the beam's own curvature defocus; a pyramid WFS slope read; a soft-edge dichroic (R+T=1); a die face read as a zonal wavefront">
 </p>
 
+### New in v0.20.0 — Zernike-aberrated diffraction PSF (`aberrated_psf`)
+
+<p align="center">
+  <img src="docs/img/aberrated-psf-demo.png" width="92%" alt="New in v0.20.0: the diffraction PSF aberrated by single Zernike modes — defocus, astigmatism, coma, spherical — each 0.10 waves RMS; the Strehl collapses to ~0.674 (Maréchal) for all of them while the PSF shape is the mode's fingerprint">
+</p>
+
+`wave_psf` could only add **Z4 defocus**; the new **`aberrated_psf`** aberrates the diffraction PSF with **any
+Zernike mode** (defocus, astigmatism, coma, trefoil, spherical) at a chosen RMS, or a full Noll-indexed
+wavefront vector. The **Strehl** ratio collapses the same way for every mode — it depends only on the RMS
+wavefront error (the **Maréchal** approximation exp(−(2π·rms)²): 0.05 waves → 0.906, 0.10 waves → 0.674) —
+but the PSF *morphology* is the mode's fingerprint: defocus blurs symmetrically, astigmatism elongates, coma
+flares one-sided, spherical haloes. Off-trace; the geometric trace stays byte-identical.
+
 ### New in v0.19.0 — Fourier optics: phase retrieval + spatial filtering
 
 A Fourier-optics pair on the verified FFT: **`gerchberg_saxton`** (the iterative Fourier-transform algorithm)

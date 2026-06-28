@@ -242,6 +242,23 @@ check("PSF MTF cutoff = 1/(lambda F#) cyc/mm", _wm['mtf_cutoff_cyc_per_mm'], 227
 _wd = wave.psf_metrics(550.0, 8.0, 25.4, W=0.0714 * wave.zernike_defocus(512, 128))
 check("PSF Strehl(lambda/14 RMS defocus) ~ Marechal", _wd['strehl'], 0.8177, 0.01, "Marechal; FFT vs oracle")
 
+print("[Zernike-aberrated PSF -- aberrated_psf, any Noll mode; Strehl follows Marechal exp(-(2 pi rms)^2)]")
+_ab0 = wave.aberrated_psf([0.0] * 15, 550.0, 8.0, 10.0, n_grid=256, diam_px=128)
+check("Aberrated PSF: zero aberration -> Strehl 1", _ab0['strehl'], 1.0, 1e-3, "FFT")
+check("Aberrated PSF: zero aberration -> RMS 0", _ab0['rms_wavefront_waves'], 0.0, 1e-6, "definition")
+_marechal_005 = math.exp(-(2.0 * math.pi * 0.05) ** 2)      # 0.9060
+_marechal_010 = math.exp(-(2.0 * math.pi * 0.10) ** 2)      # 0.6738
+_cas = [0.0] * 15; _cas[4] = 0.05                            # Noll Z5 astigmatism, 0.05 waves RMS
+_abast = wave.aberrated_psf(_cas, 550.0, 8.0, 10.0, n_grid=256, diam_px=128)
+check("Aberrated PSF: astigmatism 0.05 -> RMS = coefficient", _abast['rms_wavefront_waves'], 0.05, 2e-3, "RMS-normalized Noll")
+check("Aberrated PSF: astigmatism 0.05 -> Strehl ~ Marechal 0.906", _abast['strehl'], _marechal_005, 0.012, "Marechal; FFT")
+_ccm = [0.0] * 15; _ccm[6] = 0.10                            # Noll Z7 coma, 0.10 waves RMS
+_abcoma = wave.aberrated_psf(_ccm, 550.0, 8.0, 10.0, n_grid=256, diam_px=128)
+check("Aberrated PSF: coma 0.10 -> Strehl ~ Marechal 0.674", _abcoma['strehl'], _marechal_010, 0.02, "Marechal; FFT")
+_csph = [0.0] * 15; _csph[10] = 0.05                         # Noll Z11 spherical, 0.05 waves RMS
+_absph = wave.aberrated_psf(_csph, 550.0, 8.0, 10.0, n_grid=256, diam_px=128)
+check("Aberrated PSF: Strehl depends on RMS not mode (spherical 0.05 == astig 0.05)", _absph['strehl'], _abast['strehl'], 8e-3, "Marechal: Strehl(rms) mode-independent")
+
 print("[Field propagation -- the opt-in angular-spectrum layer (free-space dz, off-trace)]")
 from optical_alignment_sim import field
 import numpy as _np

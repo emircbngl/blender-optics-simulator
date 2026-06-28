@@ -209,6 +209,21 @@ def wave_psf(wavelength_nm: float, f_number: float, aperture_diam_mm: float,
 
 
 @mcp.tool()
+def aberrated_psf(mode: str = "spherical", amplitude_waves: float = 0.1, zernike_waves: list = None,
+                  wavelength_nm: float = 550.0, f_number: float = 8.0, aperture_diam_mm: float = 10.0,
+                  n_grid: int = 512, png: bool = False) -> str:
+    """Diffraction PSF aberrated by a ZERNIKE wavefront -- the general (any-mode) form of wave_psf's defocus
+    knob. Either a single named ``mode`` in {defocus, astigmatism, coma, trefoil, spherical} at amplitude_waves
+    RMS, OR a full Noll-indexed ``zernike_waves`` list (j=1..15, in waves; index 0 = piston). Returns {strehl,
+    rms_wavefront_waves, airy_radius_um, ...}; for a small aberration the Strehl follows Marechal
+    exp(-(2*pi*rms)^2). png=True saves the PSF. Off-trace, byte-identical. E.g.
+    aberrated_psf('astigmatism', 0.05) -> strehl ~ 0.906; aberrated_psf('coma', 0.1) -> strehl ~ 0.67."""
+    return _fmt(_call("aberrated_psf", mode=mode, amplitude_waves=amplitude_waves, zernike_waves=zernike_waves,
+                      wavelength_nm=wavelength_nm, f_number=f_number, aperture_diam_mm=aperture_diam_mm,
+                      n_grid=n_grid, png=png))
+
+
+@mcp.tool()
 def propagate_field(wavelength_nm: float, w0_mm: float = None, aperture_mm: float = None,
                     dz_mm: float = 0.0, n_grid: int = 256, dx_mm: float = None, png: bool = False) -> str:
     """Free-space ANGULAR-SPECTRUM propagation of a sampled scalar field over dz_mm -- the OPT-IN field layer,

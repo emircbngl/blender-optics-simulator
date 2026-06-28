@@ -121,3 +121,46 @@ def _render_psf(psf_norm, meta, png_path):
     ax.set_yticks([])
     fig.savefig(png_path, dpi=110, bbox_inches="tight", facecolor="#0d0d10")
     plt.close(fig)
+
+
+# Noll-indexed (n, m) for j=1..15 so the aberrated-PSF builder is self-contained (matches physics._NOLL).
+_NOLL = {1: (0, 0), 2: (1, 1), 3: (1, -1), 4: (2, 0), 5: (2, -2), 6: (2, 2), 7: (3, -1), 8: (3, 1),
+         9: (3, -3), 10: (3, 3), 11: (4, 0), 12: (4, 2), 13: (4, -2), 14: (4, 4), 15: (4, -4)}
+
+
+def _zern_radial_np(n, m, rho):
+    """Radial Zernike polynomial R_n^|m|(rho), vectorized over a numpy array."""
+    m = abs(m)
+    s = np.zeros_like(rho)
+    for k in range((n - m) // 2 + 1):
+        num = ((-1) ** k) * math.factorial(n - k)
+        den = math.factorial(k) * math.factorial((n + m) // 2 - k) * math.factorial((n - m) // 2 - k)
+        s = s + (num / den) * rho ** (n - 2 * k)
+    return s
+
+
+def zernike_wavefront(coeffs, n_grid, diam_px):
+    """Wavefront W(x,y) = sum_j coeffs[j-1] * Z_j(rho,theta) over the unit-disk aperture (diameter diam_px,
+    centred in n_grid), in WAVES; 0 outside. Noll-indexed, RMS-normalized Zernikes, so the RMS over the disk is
+    sqrt(sum of squares of the coeffs excluding piston). The general (any-mode) form of zernike_defocus."""
+    y, x = np.ogrid[-n_grid // 2:n_grid // 2, -n_grid // 2:n_grid // 2]
+    r = np.sqrt(x * x + y * y) / (0.5 * diam_px)
+    th = np.arctan2(y, x)
+    W = np.zeros((n_grid, n_grid))
+    for j, c in enumerate(coeffs, start=1):
+        if abs(c) < 1e-12 or j not in _NOLL:
+            continue
+        n, m = _NOLL[j]
+        norm = math.sqrt(n + 1) if m == 0 else math.sqrt(2.0 * (n + 1))
+        ang = np.cos(m * th) if m >= 0 else np.sin(-m * th)
+        W = W + c * norm * _zern_radial_np(n, m, r) * ang
+    return np.where(r <= 1.0, W, 0.0)
+
+
+def aberrated_psf(coeffs, wavelength_nm, f_number, aperture_diam_mm, n_grid=512, diam_px=128, png_path=None):
+    """Diffraction PSF of a circular aperture aberrated by a Zernike wavefront ``coeffs`` (Noll-indexed, WAVES)
+    + its metrics -- the general (any-mode) form of wave_psf's single defocus. Builds W = sum_j coeffs[j-1]*Z_j
+    and runs psf_metrics. For a SMALL aberration the Strehl follows the Marechal approximation exp(-(2 pi sigma)^2)
+    with sigma = the RMS wavefront error (waves). Returns psf_metrics' {strehl, rms_wavefront_waves, ...}."""
+    W = zernike_wavefront(coeffs, n_grid, diam_px)
+    return psf_metrics(wavelength_nm, f_number, aperture_diam_mm, W=W, n_grid=n_grid, diam_px=diam_px, png_path=png_path)
