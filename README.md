@@ -174,6 +174,15 @@ the Scan + Plot operator, the Detector Fringe Image, and the live sensor window 
   <img src="docs/img/feature-board.png" width="92%" alt="New in v0.10.0: the WFS reads the beam's own curvature defocus; a pyramid WFS slope read; a soft-edge dichroic (R+T=1); a die face read as a zonal wavefront">
 </p>
 
+### New in v0.14.0 — uniaxial crystal optics + Mueller calculus
+
+Closed-form **anisotropic-ray** numbers on the existing ordinary/extraordinary index catalog: birefringent
+**walk-off angle** (calcite @45° → 6.224°), the **index ellipsoid** n_e(θ), true zero-order **waveplate
+thickness** (quartz QWP = 16.19 µm), and the **Type-I SHG phase-matching angle** (BBO 1064→532 nm → 22.78°).
+Plus a **4×4 Mueller calculus** (`M_mueller_polarizer`/`M_mueller_retarder`/`stokes_through`) for
+partially-polarized light, validated against py-pol / SymPy / Malus, and end-to-end CI coverage of the
+waveplate crystal-birefringence dispersion branch. Validation now **152 oracle checks**.
+
 ### New in v0.13.0 — diffraction & focusing examples + a verified FDTD bridge
 
 Single/double/N-slit **Fraunhofer diffraction**, the **Talbot self-imaging** carpet, and a Fresnel

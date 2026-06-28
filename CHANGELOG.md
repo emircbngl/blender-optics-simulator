@@ -6,6 +6,15 @@ semantic versioning.
 
 ## [Unreleased]
 
+## [0.14.0] — Uniaxial crystal optics + Mueller calculus — 2026-06-28
+
+A polarization & anisotropic-materials release. The engine already carried the ordinary/extraordinary index
+data (QUARTZ/CALCITE/MGF2/SAPPHIRE Sellmeier) and a full Jones algebra; this turns that into the textbook
+anisotropic-ray numbers (walk-off, index ellipsoid, waveplate thickness, SHG phase-match angle), adds 4×4
+Mueller calculus for partially-polarized light, and puts the previously-untested waveplate crystal-dispersion
+trace branch under CI. Each result is pinned to an external oracle (Yariv & Yeh, Boyd, py-pol / SymPy, Malus).
+Validation **136 → 152**, regression **363 → 367** (the geometric trace stays byte-identical).
+
 ### Added — uniaxial-crystal optics (closed-form helpers on the existing o/e index catalog)
 - The engine already carries ordinary/extraordinary Sellmeier data (QUARTZ/CALCITE/MGF2/SAPPHIRE `_O`/`_E`,
   Ghosh99/Malitson, CI-validated) and a full Jones algebra, but nothing turned that into the textbook
