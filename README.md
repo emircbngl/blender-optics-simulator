@@ -174,6 +174,15 @@ the Scan + Plot operator, the Detector Fringe Image, and the live sensor window 
   <img src="docs/img/feature-board.png" width="92%" alt="New in v0.10.0: the WFS reads the beam's own curvature defocus; a pyramid WFS slope read; a soft-edge dichroic (R+T=1); a die face read as a zonal wavefront">
 </p>
 
+### New in v0.18.0 — multi-plane field-propagation chain (`propagate_chain`)
+
+`propagate_field` runs the angular-spectrum propagator once; the new **`propagate_chain`** marches a complex
+field through a **sequence** of planes — a POPPY-style multi-plane OpticalSystem built from `prop` / `aperture`
+/ `lens` steps (e.g. `aperture→lens(f)→prop(f)` focuses at z=f). Closes the optics-textbook catalog's principal
+remaining gap (single plane→plane is now a chainable auto-pipeline). Validated against propagator additivity,
+focus-at-f, and the free Gaussian `w(z)`. Off-trace; the geometric trace stays byte-identical. *(Near-field
+layer — a tight focus or Fraunhofer far field is better via direct FFT.)*
+
 ### New in v0.17.0 — dichroic AOI edge + Sellmeier transparency window
 
 Two physical-honesty refinements: a thin-film **dichroic mirror's edge now blue-shifts with the angle of

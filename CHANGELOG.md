@@ -6,6 +6,14 @@ semantic versioning.
 
 ## [Unreleased]
 
+## [0.18.0] — Multi-plane field-propagation chain (propagate_chain) — 2026-06-29
+
+`propagate_field` ran the angular-spectrum propagator once; the new **`propagate_chain`** marches a complex
+field through a SEQUENCE of planes — the POPPY-style multi-plane OpticalSystem (a chain of prop / aperture /
+lens steps). This closes the optics-textbook catalog's principal remaining gap: single plane→plane is now a
+chainable auto-pipeline. Validated (propagator additivity to 3.7e-11, aperture→lens(f)→prop focuses at z=f, free
+Gaussian w(z)). Off-trace; the geometric trace stays byte-identical. Validation **168 → 171**.
+
 ### Added — multi-plane field-propagation chain (`propagate_chain`, POPPY-style OpticalSystem)
 - `propagate_field` runs the angular-spectrum propagator ONCE; **`propagate_chain` marches a complex field
   through a SEQUENCE of planes** — the multi-plane OpticalSystem the single-step layer could not chain. Each
