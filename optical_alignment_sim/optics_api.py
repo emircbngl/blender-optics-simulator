@@ -53,7 +53,7 @@ _TOOL_GROUPS = {
         "fdtd_derive_property"],
     "design (pure math, no scene change)": [
         "design_telescope", "design_4f", "mode_match", "optics_calc", "wave_psf", "propagate_field",
-        "propagate_pulse", "slit_diffraction"],
+        "propagate_pulse", "slit_diffraction", "talbot_effect"],
     "place / assemble (opto-mechanics)": [
         "place_relative", "make_cage", "make_tube", "make_rail", "place_on_grid", "place_on_rail",
         "set_grid", "dress_bench"],
@@ -110,6 +110,7 @@ _SCOPE = {
         "ray/align/beam-walk; Gaussian w(z)/M2/resonator; lens/prism/grating/Fresnel/Malus/dispersion": "a",
         "Airy/Strehl/MTF/encircled-energy PSF": "b: wave_psf",
         "single/double/N-slit Fraunhofer diffraction (sinc^2, Young fringes, grating orders)": "b: slit_diffraction (FFT vs analytic sinc^2 x cos^2, oracle-verified)",
+        "Talbot self-imaging of a periodic grating (z_T = 2 d^2/lambda)": "b: talbot_effect (angular-spectrum; self-image at z_T, d/2-shifted at z_T/2)",
         "free-space field propagation / multi-plane Fresnel / digital-hologram reconstruction": "b: propagate_field (angular spectrum)",
         "full-wave FDTD/RCWA, metasurface/nanophotonics": "c: Meep / Lumerical / Tidy3D -- ORCHESTRATED via fdtd_derive_property (runs the engine if present, else a closed-form fallback: grating dir=grating_angle, stack=exact TMM, metaatom=low-conf EMT) cached as an effective property; live trace byte-identical. Still tier (c): a LIVE full-wave field is not shipped.",
         "split-step NLSE: soliton / dispersion / SPM (1D pulse)": "b: propagate_pulse (split-step Fourier; fundamental soliton is shape-invariant, oracle-verified)",
@@ -496,6 +497,22 @@ def slit_diffraction(width_um=100.0, n_slits=1, sep_um=0.0, wavelength_nm=632.8,
         png_path = os.path.join(tempfile.gettempdir(), "optics_slit.png")
     return field.slit_metrics(width_um * 1.0e-3, n_slits=int(n_slits), sep_mm=sep_um * 1.0e-3,
                               wavelength_nm=wavelength_nm, n_grid=int(n_grid), png_path=png_path)
+
+
+def talbot_effect(period_um=100.0, wavelength_nm=632.8, n_periods=16, n_grid=512, png=False):
+    """TALBOT self-imaging of a periodic grating via angular-spectrum propagation -- the opt-in field layer. A
+    grating reproduces ITSELF at the Talbot distance `z_T = 2*period^2/lambda`, a HALF-PERIOD-SHIFTED copy at
+    z_T/2, and no image at z_T/4. Returns {talbot_distance_mm, self_image_corr (~1 at z_T),
+    half_talbot_shift_corr (~1 at z_T/2 vs a d/2 shift), quarter_corr (~0)} -- the self-image proves
+    z_T=2 d^2/lambda. png=True saves the Talbot carpet (intensity vs x,z). Off-trace; live trace byte-identical."""
+    from . import field
+    png_path = None
+    if png:
+        import os
+        import tempfile
+        png_path = os.path.join(tempfile.gettempdir(), "optics_talbot.png")
+    return field.talbot_metrics(period_um * 1.0e-3, wavelength_nm, n_periods=int(n_periods),
+                                n_grid=int(n_grid), png_path=png_path)
 
 
 def turbulence_screen(n_grid=256, dx_mm=4.0, r0_mm=100.0, L0_mm=None, l0_mm=None, seed=0, subharmonics=3, png=False):

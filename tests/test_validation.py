@@ -230,6 +230,13 @@ check("Double-slit pattern == analytic sinc^2 x cos^2 (rms)", _ds["rms_vs_analyt
 _gr = field.slit_metrics(0.05, n_slits=5, sep_mm=0.2, wavelength_nm=632.8, n_grid=8192)  # 5-slit grating
 check("5-slit grating order spacing = lambda/d + matches analytic (rms)", _gr["rms_vs_analytic"], 0.0, 0.02, "grating; FFT vs analytic")
 
+print("[Talbot self-imaging -- a periodic grating reproduces itself at z_T = 2 d^2/lambda (angular spectrum)]")
+_tb = field.talbot_metrics(0.1, 632.8, n_periods=16, n_grid=512)                      # d=0.1mm, 632.8nm
+check("Talbot distance z_T = 2 d^2 / lambda (mm)", _tb["talbot_distance_mm"], 2.0 * 0.1 ** 2 / (632.8 * 1e-6), 1e-2, "Talbot; oracle")
+check("Talbot self-image at z_T (corr ~ 1)", _tb["self_image_corr"], 1.0, 0.15, "Talbot; angular-spectrum FFT")
+check("Half-Talbot at z_T/2 is the d/2-shifted grating (corr ~ 1)", _tb["half_talbot_shift_corr"], 1.0, 0.15, "Talbot; FFT")
+check("No self-image at z_T/4 (corr ~ 0)", abs(_tb["quarter_corr"]), 0.0, 0.3, "Talbot; FFT")
+
 print("[Atmospheric turbulence -- dense Kolmogorov phase screen (FT method + subharmonics, off-trace)]")
 from optical_alignment_sim import turbulence as _turb
 check("Kolmogorov structure constant 6.88 = 2*(24/5*Gamma(6/5))^(5/6)", _turb.STRUCT_CONST, 6.8839, 1e-3, "Schmidt/Noll; oracle (gamma)")

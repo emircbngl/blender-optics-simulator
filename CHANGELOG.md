@@ -16,6 +16,12 @@ semantic versioning.
   limit. The geometric trace only *clips* a beam at a slit — this is the opt-in field layer that actually
   diffracts; off-trace, the live trace is byte-identical. Every relation `physics_verify` ok=true. **5 new
   oracle checks** → validation **116 → 121**. Demo `docs/img/slit-diffraction-demo.png`.
+- **`field.talbot_grating` / `talbot_metrics` + `talbot_effect` (optics_api + MCP)** — the **Talbot
+  self-imaging** effect: a periodic grating propagated by the angular spectrum reproduces **itself** at the
+  Talbot distance `z_T = 2 d²/λ` (a half-period-shifted copy at z_T/2, no image at z_T/4). The simulated
+  self-image correlation is ~0.93 at z_T and the d/2-shifted copy ~0.93 at z_T/2 — the classic Talbot carpet.
+  `z_T = 2 d²/λ` is `physics_verify` ok=true. **4 new oracle checks** → validation **121 → 125**. Demo
+  `docs/img/talbot-carpet-demo.png`.
 
 ## [0.12.0] — Physical-optics field engine + textbook validation — 2026-06-28
 

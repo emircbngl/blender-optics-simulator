@@ -150,6 +150,80 @@ def slit_metrics(width_mm, n_slits=1, sep_mm=0.0, wavelength_nm=632.8, n_grid=40
     return out
 
 
+def talbot_grating(n_grid, dx_mm, period_mm, duty=0.5):
+    """1-D Ronchi amplitude grating: period_mm, `duty` clear fraction, uniform in y, on an n_grid x n_grid
+    complex array (1 in the clear bars, 0 in the opaque bars)."""
+    x = np.arange(n_grid) * dx_mm
+    row = (np.mod(x, period_mm) < duty * period_mm).astype(float)
+    return np.tile(row, (n_grid, 1)).astype(complex)
+
+
+def talbot_metrics(period_mm, wavelength_nm, n_periods=16, n_grid=512, png_path=None):
+    """Talbot self-imaging: propagate a periodic grating by the angular spectrum and confirm it reproduces
+    itself at the Talbot distance z_T = 2*period^2/lambda (with a HALF-PERIOD-SHIFTED copy at z_T/2, and no
+    image at z_T/4). The grid spans an integer number of periods so the FFT periodicity matches the grating.
+    Returns {talbot_distance_mm, self_image_corr (~1 at z_T), half_talbot_shift_corr (~1 at z_T/2 vs a d/2
+    shift), quarter_corr (~0 at z_T/4)} -- the self-image is the proof that z_T = 2 d^2/lambda. Off-trace."""
+    lam_mm = wavelength_nm * NM_TO_MM
+    z_t = 2.0 * period_mm ** 2 / lam_mm
+    n = int(n_grid)
+    dx_mm = period_mm * n_periods / n                          # integer periods -> exact FFT periodicity
+    U0 = talbot_grating(n, dx_mm, period_mm)
+    row0 = np.abs(U0[n // 2]) ** 2
+    shift = int(round(0.5 * period_mm / dx_mm))
+
+    def _corr(a, b):
+        a = a - a.mean(); b = b - b.mean()
+        den = math.sqrt(float(np.sum(a * a) * np.sum(b * b)))
+        return float(np.sum(a * b) / den) if den > 0 else 0.0
+
+    def _row(frac):
+        u = angular_spectrum(U0, dx_mm, frac * z_t, wavelength_nm, band_limit=False)
+        return np.abs(u[n // 2]) ** 2
+
+    out = {
+        "ok": True,
+        "period_mm": period_mm, "wavelength_nm": wavelength_nm,
+        "talbot_distance_mm": round(z_t, 4),
+        "self_image_corr": round(_corr(_row(1.0), row0), 4),                 # z_T  -> ~1 (self-image)
+        "half_talbot_shift_corr": round(_corr(_row(0.5), np.roll(row0, shift)), 4),  # z_T/2 -> ~1 vs d/2 shift
+        "quarter_corr": round(_corr(_row(0.25), row0), 4),                   # z_T/4 -> ~0 (sub-image)
+        "n_periods": int(n_periods), "n_grid": n,
+    }
+    if png_path:
+        try:
+            _render_talbot(U0, dx_mm, z_t, period_mm, wavelength_nm, n, out, png_path)
+            out["png"] = png_path
+        except Exception as exc:
+            out["png_error"] = str(exc)
+    return out
+
+
+def _render_talbot(U0, dx_mm, z_t, period_mm, wavelength_nm, n, meta, png_path):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    nz = 240
+    zz = np.linspace(0.0, 2.0 * z_t, nz)
+    carpet = np.empty((nz, n))
+    for i, z in enumerate(zz):
+        u = U0 if z == 0 else angular_spectrum(U0, dx_mm, z, wavelength_nm, band_limit=False)
+        carpet[i] = np.abs(u[n // 2]) ** 2
+    xspan = 0.5 * n * dx_mm
+    fig, ax = plt.subplots(figsize=(6.5, 4.6))
+    ax.imshow(carpet, cmap="inferno", aspect="auto", origin="lower",
+              extent=[-xspan, xspan, 0, 2.0 * z_t])
+    for k in (0.5, 1.0, 1.5, 2.0):
+        ax.axhline(k * z_t, color="#5cc0ff", lw=0.7, ls=":")
+    ax.set_xlim(-5 * period_mm, 5 * period_mm)
+    ax.set_xlabel("x [mm]")
+    ax.set_ylabel("propagation z [mm]")
+    ax.set_title("Talbot carpet  d=%g mm  z_T=%.1f mm  (self-image corr %.2f)"
+                 % (period_mm, z_t, meta["self_image_corr"]), color="#e0e0e0", fontsize=10)
+    fig.savefig(png_path, dpi=110, bbox_inches="tight", facecolor="#0d0d10")
+    plt.close(fig)
+
+
 def _render_slit(sin_theta, I, analytic, meta, png_path):
     import matplotlib
     matplotlib.use("Agg")

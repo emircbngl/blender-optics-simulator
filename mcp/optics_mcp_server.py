@@ -218,6 +218,18 @@ def slit_diffraction(width_um: float = 100.0, n_slits: int = 1, sep_um: float = 
 
 
 @mcp.tool()
+def talbot_effect(period_um: float = 100.0, wavelength_nm: float = 632.8, n_periods: int = 16,
+                  n_grid: int = 512, png: bool = False) -> str:
+    """TALBOT self-imaging of a periodic grating via angular-spectrum propagation -- the OPT-IN field layer. A
+    grating reproduces ITSELF at the Talbot distance z_T = 2*period^2/lambda, a half-period-shifted copy at
+    z_T/2, and no image at z_T/4. Returns {talbot_distance_mm, self_image_corr (~1 at z_T),
+    half_talbot_shift_corr (~1 at z_T/2 vs a d/2 shift), quarter_corr (~0)}. png=True saves the Talbot carpet.
+    Off-trace; live trace byte-identical. E.g. talbot_effect(100, 632.8) -> z_T ~ 31.6 mm, self_image_corr ~ 0.93."""
+    return _fmt(_call("talbot_effect", period_um=period_um, wavelength_nm=wavelength_nm,
+                      n_periods=n_periods, n_grid=n_grid, png=png))
+
+
+@mcp.tool()
 def turbulence_screen(n_grid: int = 256, dx_mm: float = 4.0, r0_mm: float = 100.0, L0_mm: float = None,
                       l0_mm: float = None, seed: int = 0, subharmonics: int = 3, png: bool = False) -> str:
     """Generate a DENSE 2D Kolmogorov/von-Karman atmospheric PHASE SCREEN [radians] (FT method + sub-harmonics)
