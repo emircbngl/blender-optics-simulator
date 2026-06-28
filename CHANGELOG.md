@@ -30,7 +30,12 @@ semantic versioning.
   horizontal-linear into circular** (|S₃|=1, S₁=S₂=0); an **HWP@22.5° rotates linear by 45°** (S₂=1); the six
   canonical **Stokes vectors** from Jones (H→S₁=+1, D→S₂=+1, R→S₃=+1). The Mueller path is verified to produce
   the **same output Stokes as the Jones path** for pure states (the S₃ sign follows this module's `stokes(J)`
-  convention). **16 new oracle checks total** → validation **136 → 152**. Trace byte-identical (regression 363/363).
+  convention). **16 new oracle checks** → validation **136 → 152**.
+- **End-to-end CI coverage for the waveplate crystal-birefringence trace branch** — a previously untested path
+  (`tracer.py`, `waveplate_crystal != NONE`). The regression now builds a QUARTZ quarter-wave plate, traces a
+  beam off the design wavelength, and asserts the realized retardance carries the `Δn(λ)/Δn(design)` dispersion
+  (via the frame-robust |S₃|/S₀ = |sin retardance| observable), with a `NONE` control on the ideal 1/λ path.
+  **4 new regression checks** → regression **363 → 367** (the geometric trace stays byte-identical).
 
 ## [0.13.0] — Diffraction & focusing examples + verified FDTD bridge — 2026-06-28
 

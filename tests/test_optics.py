@@ -384,6 +384,52 @@ check("concave mirror focuses the beam (smaller w at the detector than flat)", _
       "concave %.4f vs flat %.4f" % (_wc, _wf))
 check("convex mirror diverges the beam (larger w at the detector than flat)", _wx > _wf * 1.03,
       "convex %.4f vs flat %.4f" % (_wx, _wf))
+
+# WAVEPLATE crystal-birefringence dispersion branch (tracer.py): the realized retardance away from the
+# design wavelength scales by Delta_n(lambda)/Delta_n(design_wl) for a real crystal, vs pure 1/lambda for NONE.
+def _waveplate_trace(wl_nm, crystal):
+    """Build source->QWP->detector at wl_nm, trace, return (J_in, J_out, op, seg_wl) read from the SCENE
+    (so the test uses the actual design_wl / fast_axis / traced wavelength, not assumed defaults)."""
+    for _o in list(sc.objects):
+        if getattr(_o, "optics", None) and _o.optics.is_optical:
+            bpy.data.objects.remove(_o, do_unlink=True)
+    _s = eg.source("WP_S", (-100, 0, 0), (1, 0, 0), coll=_mcoll, wavelength=wl_nm)
+    _s.optics.pol_type = 'LINEAR'; _s.optics.pol_angle = 0.0
+    _wp = eg.waveplate("WP_X", (0, 0, 0), (1, 0, 0), coll=_mcoll, kind='QWP', fast_axis=45.0, design_wl=632.8)
+    _wp.optics.waveplate_crystal = crystal
+    eg.detector("WP_D", (100, 0, 0), (1, 0, 0), coll=_mcoll)
+    bpy.context.view_layer.update()
+    segs = scan._trace(sc)
+    jin = next((s.get("jones") for s in segs if s.get("from") == "WP_S" and s.get("jones")), None)
+    sout = next((s for s in segs if s.get("from") == "WP_X" and s.get("jones")), None)
+    return jin, (sout.get("jones") if sout else None), _wp.optics, (sout.get("wavelength") if sout else None)
+
+def _circ_frac(j4):
+    # segment jones is [Ex_re, Ex_im, Ey_re, Ey_im]; return the degree of circular polarization |S3|/S0,
+    # a frame/global-phase-robust observable. For H-linear input through a waveplate at 45 deg it equals
+    # |sin(retardance)| -- the physical signature of the realized retardance.
+    s0, _s1, _s2, s3 = physics.stokes((complex(j4[0], j4[1]), complex(j4[2], j4[3])))
+    return abs(s3) / s0 if s0 > 1e-12 else 0.0
+
+_jin_q, _jout_q, _op_q, _wl_tr = _waveplate_trace(880.0, 'QUARTZ')
+check("waveplate QUARTZ branch traces (in/out jones present)", _jin_q is not None and _jout_q is not None and _wl_tr is not None)
+if _jout_q is not None:
+    _dwl, _retn = _op_q.design_wl, _op_q.retardance_deg
+    _dn_l = physics.sellmeier_n(_wl_tr, 'QUARTZ_E') - physics.sellmeier_n(_wl_tr, 'QUARTZ_O')
+    _dn_d = physics.sellmeier_n(_dwl, 'QUARTZ_E') - physics.sellmeier_n(_dwl, 'QUARTZ_O')
+    _ret_q = _retn * (_dwl / _wl_tr) * (_dn_l / _dn_d)            # nominal * 1/lambda * Delta_n(lambda)/Delta_n(design)
+    check("waveplate QUARTZ |S3|/S0 = |sin(retardance)| (dispersion-corrected)",
+          abs(_circ_frac(_jout_q) - abs(math.sin(math.radians(_ret_q)))) < 2e-3,
+          "wl=%.0f ret=%.2fdeg circ=%.4f vs %.4f" % (_wl_tr, _ret_q, _circ_frac(_jout_q), abs(math.sin(math.radians(_ret_q)))))
+# NONE crystal -> ideal 1/lambda only (no Delta_n factor)
+_jin_n, _jout_n, _op_n, _wl_n = _waveplate_trace(880.0, 'NONE')
+if _jout_n is not None:
+    _ret_n = _op_n.retardance_deg * (_op_n.design_wl / _wl_n)
+    check("waveplate NONE |S3|/S0 = |sin(ideal 1/lambda retardance)|",
+          abs(_circ_frac(_jout_n) - abs(math.sin(math.radians(_ret_n)))) < 2e-3, "ret=%.2fdeg" % _ret_n)
+    check("QUARTZ birefringence dispersion shifts the realized retardance vs ideal",
+          abs(_circ_frac(_jout_q) - _circ_frac(_jout_n)) > 1e-3,
+          "circQ=%.4f circNONE=%.4f" % (_circ_frac(_jout_q), _circ_frac(_jout_n)))
 def _frontrange(o):          # z-spread of the FRONT-half verts: ~0 for a flat front, big if curved
     zs = [v.co.z for v in o.data.vertices if v.co.z > 0.1]
     return (max(zs) - min(zs)) if zs else 0.0
