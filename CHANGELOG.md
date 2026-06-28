@@ -6,6 +6,21 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Fixed — dichroic-mirror edge now blue-shifts with the angle of incidence
+- A thin-film interference **DICHROIC mirror's** cut wavelength now **blue-shifts with the angle of incidence**
+  — `λ_eff = λ_c·√(1-(sin θ/n_eff)²)` (`tracer._aoi_blueshift`) — exactly like the interference FILTERS already
+  did. A **45° dichroic beamsplitter's edge sits ~8% to the blue** of its normal-incidence spec (650 nm → 600.6
+  nm at 45°, n_eff=1.85) — the well-known fluorescence-microscopy gotcha that the dichroic element previously
+  ignored (it used the un-shifted cut). The split is still exactly energy-conserving (R+T=1) and **byte-identical
+  at normal incidence** (θ=0 → no shift); the seg+ports geometry is unchanged (only the wavelength-dependent
+  R/T *power* split shifts), so the byte-identical regression is preserved. **2 new oracle checks** (650@45°→600.6,
+  550@60°→486) → validation **163 → 165**; the dichroic regression test now verifies the blue-shift (+1) →
+  regression **374 → 375**. `_aoi_blueshift` is `physics_verify` ok=true.
+- *(Element-variant audit note: the `lens_type` (plano/bi-convex/concave) and `bs_form` (cube/plate/pellicle)
+  variants are honestly **mesh-only / cosmetic** — a lumped thin-element trace is characterised by focal length
+  / split ratio, and form-dependent aberration is out of scope; the AOM Bragg modulator already carries real
+  physics. The dichroic AOI edge was the one substantive missing variant-physics, now fixed.)*
+
 ## [0.16.0] — Fabry-Pérot + Talbot emergence (phenomenon catalog complete) — 2026-06-29
 
 Completes the `produce_phenomenon` catalog: `detect_phenomena` now also flags a Fabry-Pérot cavity and a

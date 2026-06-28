@@ -886,10 +886,16 @@ def _dich_split(wl):
     bpy.data.collections.remove(_dc)
     return _T, _R
 
-_T_cut, _R_cut = _dich_split(650.0)         # AT the cut -> 50/50
-check("3.1 dichroic at the cut wavelength splits 50/50 (logistic midpoint R(cut)=0.5)",
-      abs(_T_cut - 0.5) < 1e-3 and abs(_R_cut - 0.5) < 1e-3, "T=%.4f R=%.4f" % (_T_cut, _R_cut))
-_T_tr, _R_tr = _dich_split(630.0)           # in the transition band (below cut) -> partial, R>T
+import math as _dmod
+_aoi_d = _dmod.radians(45.0)                 # the DX_DI dichroic sits at 45 deg (folds +x -> +y)
+_cut_eff = 650.0 * _dmod.sqrt(1.0 - (_dmod.sin(_aoi_d) / 1.85) ** 2)   # AOI blue-shifted edge ~600.6 nm
+_T_cut, _R_cut = _dich_split(_cut_eff)      # AT the blue-shifted cut -> 50/50
+check("3.1 dichroic 50/50 at the AOI-blue-shifted cut (45deg edge ~600.6nm, R(cut_eff)=0.5)",
+      abs(_T_cut - 0.5) < 1e-2 and abs(_R_cut - 0.5) < 1e-2, "cut_eff=%.1f T=%.4f R=%.4f" % (_cut_eff, _T_cut, _R_cut))
+_T_nom, _R_nom = _dich_split(650.0)         # at the NOMINAL 650nm cut -> now mostly TRANSMIT (edge moved blue)
+check("3.1 dichroic edge BLUE-SHIFTS with AOI (45deg: R at nominal 650nm now << 0.5, energy conserved)",
+      _R_nom < 0.1 and abs((_T_nom + _R_nom) - 1.0) < 1e-9, "nominal650 T=%.4f R=%.4f" % (_T_nom, _R_nom))
+_T_tr, _R_tr = _dich_split(_cut_eff - 22.0)  # in the transition band (below the shifted cut) -> partial, R>T
 check("3.1 dichroic transition band splits partially with R+T=1 (energy conserved)",
       abs((_T_tr + _R_tr) - 1.0) < 1e-9 and _R_tr > _T_tr > 0.01, "T=%.4f R=%.4f sum=%.6f" % (_T_tr, _R_tr, _T_tr + _R_tr))
 _T_lo, _R_lo = _dich_split(400.0)           # far below cut (>207 nm at w=10) -> full reflect (short lambda)

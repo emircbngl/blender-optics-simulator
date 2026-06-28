@@ -854,7 +854,7 @@ def _transmission(op, wl, aoi=0.0):
     return 1.0
 
 
-def _dichroic_reflectance(op, wl):
+def _dichroic_reflectance(op, wl, aoi=0.0):
     """Soft-edge dichroic reflectance R(lambda) in [0, 1] for a wavelength-selective mirror. IDEAL
     lossless: the transmitted fraction is T = 1 - R, so energy is conserved exactly (R + T = 1). A
     LONGPASS dichroic transmits long lambda (reflects short); a SHORTPASS transmits short (reflects
@@ -862,15 +862,22 @@ def _dichroic_reflectance(op, wl):
     NEAR the cut the beam PARTIALLY reflects AND transmits -- the finite-slope edge a real coating has,
     not an all-or-nothing step (a narrow edge_width recovers the step). A BANDPASS dichroic reflects
     OUTSIDE its passband. The edge SHAPE is a Tier-1 modelling choice (like the interference-filter
-    logistics); the physics it must obey -- energy conservation R + T = 1 -- is exact by construction."""
-    cut = getattr(op, 'cut_nm', 650.0)
+    logistics); the physics it must obey -- energy conservation R + T = 1 -- is exact by construction.
+
+    Like the interference filters, the cut wavelength(s) BLUE-SHIFT with the angle of incidence ``aoi``
+    (radians): lambda_eff = lambda * sqrt(1 - (sin aoi / n_eff)^2) via _aoi_blueshift -- a 45-deg dichroic
+    edge sits ~8% to the blue of its normal-incidence spec (the well-known fluorescence-microscopy gotcha).
+    aoi=0 -> no shift (byte-identical at normal incidence)."""
+    n_eff = max(getattr(op, 'n_eff', 1.85), 1.0)
+    cut_raw = getattr(op, 'cut_nm', 650.0)
+    cut = _aoi_blueshift(cut_raw, aoi, n_eff)
     w = max(getattr(op, 'edge_width', 3.0), 1e-6)
     pt = getattr(op, 'pass_type', 'LP')
     if pt == 'SP':                          # transmit short -> reflect long: rising edge
         return 1.0 / (1.0 + math.exp(-(wl - cut) / w))
     if pt == 'BP':                          # reflect OUTSIDE the passband [cut_lo, cut_hi]
-        lo = getattr(op, 'cut_lo_nm', cut - 20.0)
-        hi = getattr(op, 'cut_hi_nm', cut + 20.0)
+        lo = _aoi_blueshift(getattr(op, 'cut_lo_nm', cut_raw - 20.0), aoi, n_eff)
+        hi = _aoi_blueshift(getattr(op, 'cut_hi_nm', cut_raw + 20.0), aoi, n_eff)
         t_band = (1.0 / (1.0 + math.exp(-(wl - lo) / w))) * (1.0 / (1.0 + math.exp((wl - hi) / w)))
         return 1.0 - t_band
     return 1.0 / (1.0 + math.exp((wl - cut) / w))   # LP (default): transmit long -> reflect short
@@ -1284,7 +1291,7 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             # conserved exactly). Far from the cut, R saturates to 0 or 1, so the fast paths below are
             # BYTE-IDENTICAL to the old hard-step behaviour; only in the transition band (both ports
             # carry power) does the beam genuinely split -- the finite-slope edge a real coating has.
-            Rd = _dichroic_reflectance(op, ray.wl)
+            Rd = _dichroic_reflectance(op, ray.wl, math.acos(min(1.0, abs(ray.dir.dot(sn)))))
             if Rd <= 1e-9:                                 # full transmit (long lambda for LP)
                 stack.append(_child(ray, E, H, ray.dir, ray.power, 'TRANSMIT', idx, t))
             elif Rd >= 1.0 - 1e-9:                         # full reflect (short lambda for LP)

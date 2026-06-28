@@ -353,6 +353,11 @@ _tbz, _ = _diag._emerge_talbot(0.1, 632.8)
 check("Talbot emergence: z_T = 2 d^2/lambda (mm)", _tbz["talbot_distance_mm"], 31.6056, 1e-2, "Goodman; oracle")
 check("Talbot emergence: self-image correlation ~ 1 at z_T", _tbz["self_image_corr"], 1.0, 0.2, "Goodman; angular-spectrum FFT")
 
+print("[Interference filter / dichroic edge AOI blue-shift -- lambda_c sqrt(1-(sin theta/n_eff)^2)]")
+from optical_alignment_sim import tracer as _trc
+check("Dichroic/filter edge blue-shift: 650nm @45deg, n_eff=1.85 -> 600.6nm", _trc._aoi_blueshift(650.0, _mh.radians(45.0), 1.85), 600.6, 0.1, "thin-film interference; oracle")
+check("Dichroic/filter edge blue-shift: 550nm @60deg, n_eff=1.85 -> 486.0nm", _trc._aoi_blueshift(550.0, _mh.radians(60.0), 1.85), 486.0, 0.1, "thin-film interference; oracle")
+
 print("[Atmospheric turbulence -- dense Kolmogorov phase screen (FT method + subharmonics, off-trace)]")
 from optical_alignment_sim import turbulence as _turb
 check("Kolmogorov structure constant 6.88 = 2*(24/5*Gamma(6/5))^(5/6)", _turb.STRUCT_CONST, 6.8839, 1e-3, "Schmidt/Noll; oracle (gamma)")
