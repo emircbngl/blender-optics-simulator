@@ -140,6 +140,24 @@ def detect_phenomena() -> str:
 
 
 @mcp.tool()
+def produce_phenomenon(phenomenon: str = "", where: str = "", nx: int = 1024,
+                       png: bool = False, accept: bool = False) -> str:
+    """ADVISORY emergence -- PRODUCE a phenomenon detect_phenomena flagged (the interferogram, or the recorded
+    + reconstructed off-axis hologram), off-trace + byte-identical. Two-stage like propose_corrections:
+    accept=False (default) is a DRY-RUN returning {would_produce, what_it_would_compute, maybe_not_wanted_if}
+    and produces NOTHING; weigh the user's intent (refuse / partial / accept) and only then re-call with
+    accept=True for the actual {produced:{...metrics, oracle...}, png}. png=True writes a PNG. The owner
+    principle: conditions met -> the phenomenon CAN be produced, but never silently -- it's an intent-judged
+    act. (phenomenon/where empty -> the first detected phenomenon.) Never mutates the scene/trace."""
+    args = {"nx": nx, "png": png, "accept": accept}
+    if phenomenon:
+        args["phenomenon"] = phenomenon
+    if where:
+        args["where"] = where
+    return _fmt(_call("produce_phenomenon", **args))
+
+
+@mcp.tool()
 def design_telescope(f1: float, f2: float) -> str:
     """Design an afocal two-lens telescope / beam-expander (PURE -- no scene mutation).
     Given objective focal f1 and eyepiece/relay focal f2, returns the afocal lens

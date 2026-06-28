@@ -964,3 +964,185 @@ def detect_phenomena(scene):
                             "fringe_spacing_mm": round(Lam, 6),    # sub-um at large angles -> nm resolution
                             "visibility": round(vis, 3), "confidence": round(min(1.0, vis + 0.1), 2)})
     return out
+
+
+# --------------------------------------------------------------------------- #
+# Phenomenon EMERGENCE (Phase 3.3, second half): detect_phenomena() FLAGS that a phenomenon's conditions
+# are met; produce_phenomenon() actually PRODUCES it (synthesizes the interferogram / records + reconstructs
+# the hologram), reusing the off-trace field/physics kernels. ADVISORY + intent-judged, exactly like
+# propose_corrections: the default is a DRY-RUN that says what it WOULD produce + an intent caveat; the AI
+# weighs the user's intent and only then re-calls with accept=True. READ-ONLY: never mutates scene/trace.
+# --------------------------------------------------------------------------- #
+
+def _coherent_pair_at(scene, det_name):
+    """Re-derive the dominant mutually-coherent co-polarized beam pair reaching ``det_name`` + its geometry
+    (a focused subset of detect_phenomena's pairing) so produce_phenomenon can emerge it. Returns
+    {Ia, Ib, theta_rad, vis, opd_mm, wl_nm} for the highest-power coherent pair, or None."""
+    segs = tracer.cached_segments if tracer.cached_segments else alignment._trace(scene)
+    incoming = [s for s in segs if s.get("to") == det_name]
+    if len(incoming) < 2:
+        return None
+    groups = {}
+    for s in incoming:
+        groups.setdefault(s.get("src_id", -1), []).append(s)
+    for _sid, group in groups.items():
+        if len(group) < 2:
+            continue
+        pair = sorted(group, key=lambda s: s.get("power", 0.0), reverse=True)[:2]
+        Ja, Jb = _jones_of(pair[0]), _jones_of(pair[1])
+        if Ja is None or Jb is None:
+            continue
+        Ia, Ib = physics.intensity(Ja), physics.intensity(Jb)
+        if Ia <= 1e-12 or Ib <= 1e-12:
+            continue
+        overlap = abs(Ja[0] * Jb[0].conjugate() + Ja[1] * Jb[1].conjugate()) / math.sqrt(Ia * Ib)
+        opd = abs(pair[0].get("opl", 0.0) - pair[1].get("opl", 0.0))
+        Lc = min(pair[0].get("coh", float('inf')), pair[1].get("coh", float('inf')))
+        env = physics.fringe_envelope(opd, Lc)
+        if overlap < 0.3 or env < 0.1:
+            continue
+        vis = (2.0 * math.sqrt(Ia * Ib) / (Ia + Ib)) * overlap * env
+        d1, d2 = _seg_dir(pair[0]), _seg_dir(pair[1])
+        theta = 0.0
+        if d1 and d2:
+            dot = max(-1.0, min(1.0, sum(d1[i] * d2[i] for i in range(3))))
+            theta = math.acos(dot)
+        return {"Ia": Ia, "Ib": Ib, "theta_rad": theta, "vis": vis, "opd_mm": opd,
+                "wl_nm": pair[0].get("wavelength", 632.8) or 632.8}
+    return None
+
+
+def _peak_freq(mag, freqs):
+    """Dominant non-DC frequency of a real spectrum, with parabolic peak interpolation for sub-bin accuracy."""
+    import numpy as np
+    i = int(np.argmax(mag[1:])) + 1
+    if 0 < i < len(mag) - 1:
+        a, b, c = mag[i - 1], mag[i], mag[i + 1]
+        denom = a - 2.0 * b + c
+        off = 0.5 * (a - c) / denom if denom != 0 else 0.0
+    else:
+        off = 0.0
+    df = freqs[1] - freqs[0]
+    return freqs[i] + off * df
+
+
+def _emerge_hologram(theta_rad, vis, wl_nm, nx=1024):
+    """Produce the off-axis HOLOGRAM: record the carrier interferogram I(x)=1+vis*cos(2*pi*x/Lambda) of a
+    reference + object beam crossing at ``theta_rad``, measure the carrier spacing off the FFT, and RECONSTRUCT
+    the object by recovering its crossing angle from the carrier frequency. Returns (metrics, raster_for_png)."""
+    import numpy as np
+    wl_mm = wl_nm * 1.0e-6                                      # nm -> mm
+    alpha = max(1e-9, theta_rad / 2.0)
+    Lam = wl_mm / (2.0 * math.sin(alpha))                       # carrier fringe spacing (mm), Goodman Ch.9
+    dx = Lam / 10.0
+    x = (np.arange(nx) - nx // 2) * dx
+    H = 1.0 + vis * np.cos(2.0 * np.pi * x / Lam)               # recorded hologram intensity (normalized)
+    fpk = _peak_freq(np.abs(np.fft.rfft(H - H.mean())), np.fft.rfftfreq(nx, d=dx))
+    Lam_fft = 1.0 / fpk if fpk > 0 else float('inf')
+    theta_rec = 2.0 * math.asin(min(1.0, fpk * wl_mm / 2.0))    # reconstruction: object angle from the carrier
+    metrics = {
+        "carrier_spacing_mm": round(Lam, 6),
+        "carrier_spacing_fft_mm": round(Lam_fft, 6),
+        "nyquist_pixel_pitch_mm": round(Lam / 2.0, 6),          # a camera records it when pixel pitch < Lambda/2
+        "visibility": round(vis, 4),
+        "recovered_crossing_angle_deg": round(math.degrees(theta_rec), 4),
+        "oracle": {"quantity": "carrier spacing Lambda = lambda/(2 sin(theta/2))",
+                   "computed_mm": round(Lam, 6), "fft_measured_mm": round(Lam_fft, 6),
+                   "source": "Goodman, Introduction to Fourier Optics Ch.9; physics_verify ok=true"},
+    }
+    carrier = 1.0 + vis * np.cos(2.0 * np.pi * np.outer(np.ones(min(nx, 96)), x) / Lam)   # 2D for the PNG
+    return metrics, carrier
+
+
+def _emerge_two_beam(vis, wl_nm, nx=512):
+    """Produce the two-beam INTERFEROGRAM: I(phi) = 1 + vis*cos(phi) over two fringe periods as the path
+    difference scans (the classic Michelson/two-beam fringe). Returns (metrics, (phi, I) for the PNG)."""
+    import numpy as np
+    phi = np.linspace(-2.0 * np.pi, 2.0 * np.pi, nx)
+    I = 1.0 + vis * np.cos(phi)
+    imax, imin = float(I.max()), float(I.min())
+    vis_meas = (imax - imin) / (imax + imin) if (imax + imin) > 0 else 0.0
+    metrics = {
+        "visibility": round(vis, 4),
+        "visibility_measured": round(vis_meas, 4),
+        "i_max": round(imax, 4), "i_min": round(imin, 4),
+        "fringe_period": "one lambda of optical path difference",
+        "oracle": {"quantity": "fringe visibility V = (Imax-Imin)/(Imax+Imin)",
+                   "computed": round(vis, 4), "measured": round(vis_meas, 4),
+                   "source": "Hecht, Optics Ch.9; physics_verify ok=true"},
+    }
+    return metrics, (phi, I)
+
+
+def _render_emergence(kind, raster, meta, png_path):
+    """Optional lazy-matplotlib PNG of an emerged phenomenon (mirrors field._render_field: import inside,
+    swallow any failure -- the numbers are the product, the PNG is a convenience). Returns path or None."""
+    if not png_path:
+        return None
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(figsize=(5.4, 3.4))
+        fig.patch.set_facecolor("#0d0d10"); ax.set_facecolor("#0d0d10")
+        if kind == "hologram":
+            ax.imshow(raster, cmap="gray", aspect="auto", origin="lower")
+            ax.set_title("off-axis hologram: carrier interferogram", color="#f4f4f6", fontsize=11)
+            ax.set_xlabel("x (carrier fringes)", color="#e8e8ea"); ax.set_yticks([])
+        else:
+            phi, I = raster
+            ax.plot(phi, I, color="#4a8db0", lw=1.5)
+            ax.set_title("two-beam interference: I(OPD)", color="#f4f4f6", fontsize=11)
+            ax.set_xlabel("phase (rad, = 2*pi*OPD/lambda)", color="#e8e8ea"); ax.set_ylabel("I (norm)", color="#e8e8ea")
+        ax.tick_params(colors="#8a8a92", labelsize=8)
+        for s in ax.spines.values():
+            s.set_color("#33343a")
+        fig.text(0.5, 0.01, meta, color="#8a8a92", fontsize=7.5, ha="center")
+        fig.tight_layout(rect=(0, 0.04, 1, 1))
+        fig.savefig(png_path, dpi=120, facecolor=fig.get_facecolor())
+        plt.close(fig)
+        return png_path
+    except Exception:
+        return None
+
+
+def produce_phenomenon(scene, phenomenon=None, where=None, nx=1024, png_path=None, accept=False):
+    """ADVISORY emergence: PRODUCE a detected optical phenomenon (the interferogram / recorded + reconstructed
+    hologram), off-trace + byte-identical. Two-stage like propose_corrections -- accept=False (default) is a
+    DRY-RUN returning what it WOULD produce + an intent caveat (produces nothing); accept=True runs the
+    emergence. The AI weighs the user's intent between the two calls (refuse / partial / accept)."""
+    detected = detect_phenomena(scene)
+    cands = [p for p in detected
+             if (phenomenon is None or p["phenomenon"] == phenomenon) and (where is None or p["where"] == where)]
+    if not cands:
+        return {"ok": False, "error": "no detected phenomenon matches phenomenon=%r where=%r" % (phenomenon, where),
+                "available": [{"phenomenon": p["phenomenon"], "where": p["where"]} for p in detected]}
+    target = cands[0]
+    name, det = target["phenomenon"], target["where"]
+    if not accept:
+        caveat = {"two_beam_interference": "the detector may be a power meter, not a fringe camera",
+                  "off_axis_hologram": "the camera at the crossing may be a power meter, not a hologram plate",
+                  }.get(name, "confirm this detector is meant to record the phenomenon")
+        would = ("the 2D carrier interferogram + carrier spacing + reconstructed object angle"
+                 if name == "off_axis_hologram" else "the two-beam fringe curve I(OPD) + visibility")
+        return {"ok": True, "would_produce": True, "phenomenon": name, "where": det,
+                "what_it_would_compute": would, "maybe_not_wanted_if": caveat,
+                "confidence": target.get("confidence", 0.0),
+                "hint": "judge the user's intent, then re-call produce_phenomenon(accept=True) to emerge it "
+                        "(refuse / partial / accept, exactly like propose_corrections)"}
+    geo = _coherent_pair_at(scene, det)
+    if geo is None:
+        return {"ok": False, "error": "the coherent pair at %s is no longer resolvable" % det}
+    if name == "off_axis_hologram":
+        metrics, raster = _emerge_hologram(geo["theta_rad"], geo["vis"], geo["wl_nm"], nx=nx)
+        png = _render_emergence("hologram", raster, "Lambda=%.4f um, recovered theta=%.3f deg"
+                                % (metrics["carrier_spacing_mm"] * 1000.0, metrics["recovered_crossing_angle_deg"]), png_path)
+    else:
+        metrics, raster = _emerge_two_beam(geo["vis"], geo["wl_nm"], nx=min(nx, 512))
+        png = _render_emergence("two_beam", raster, "visibility=%.3f" % metrics["visibility"], png_path)
+    out = {"ok": True, "phenomenon": name, "where": det, "produced": metrics}
+    if png:
+        out["png"] = png
+    elif png_path:
+        out["png_error"] = "matplotlib unavailable (numbers are unaffected)"
+    return out

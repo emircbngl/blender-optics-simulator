@@ -6,6 +6,27 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Added — phenomenon emergence (`produce_phenomenon`): conditions met → the phenomenon is produced
+- `detect_phenomena` only FLAGS when a phenomenon's conditions are met (read-only). The new
+  **`produce_phenomenon(phenomenon, where, nx, png, accept)`** (optics_api + MCP) closes the owner's loop —
+  *"if the conditions for a hologram are met, a hologram should actually form"* — by PRODUCING the phenomenon
+  off-trace, while staying **advisory + intent-judged** exactly like `propose_corrections`:
+  - **`accept=False` (default) is a DRY-RUN** — it returns `{would_produce, what_it_would_compute,
+    maybe_not_wanted_if}` (e.g. *"the camera at the crossing may be a power meter, not a hologram plate"*) and
+    produces **nothing**. The AI weighs the user's intent (refuse / partial / accept) and only then re-calls
+    with **`accept=True`** to get the actual `{produced:{…metrics, oracle…}, png}`. Emergence is never silent.
+  - **off-axis hologram** — records the carrier interferogram, measures its spacing off the FFT, and
+    **reconstructs the object beam's crossing angle** from the carrier peak. Carrier `Λ = λ/(2 sin(θ/2))`
+    (HeNe @10° → **3.63028 µm**, Goodman Ch.9); reconstruction recovers 10° to ~0.02°.
+  - **two-beam interference** — synthesizes the fringe curve `I(OPD) = 1 + V cos(φ)` and its visibility
+    `V = 2√(IaIb)/(Ia+Ib)` (equal beams → **V=1**, 4:1 → **0.8**, Hecht Ch.9).
+  - Each produced phenomenon carries a self-checking **oracle block** (textbook quantity + computed value +
+    source). Off-trace / byte-identical; optional PNG via the lazy-matplotlib pattern. Demo
+    `docs/img/phenomenon-emergence-demo.png`. Deferred (no cheap bench condition / primitive): Fabry-Pérot
+    Airy curve + Talbot (need new detection logic), speckle, caustics, Newton's-rings 2D, cavity TEM modes.
+  - **5 new oracle checks** → validation **152 → 157**; **3 functional regression checks** (detect → dry-run →
+    accept on a Michelson) → regression **367 → 370** (geometric trace byte-identical; MCP↔API parity intact).
+
 ## [0.14.0] — Uniaxial crystal optics + Mueller calculus — 2026-06-28
 
 A polarization & anisotropic-materials release. The engine already carried the ordinary/extraordinary index

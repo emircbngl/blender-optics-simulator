@@ -1041,6 +1041,22 @@ _a10_michelson(linewidth_nm=2.0, stage_mm=0.0)
 check("A10 coherence_mismatch CLEARS when OPD < Lc (stage centred)",
       not any(i["kind"] in _A10K for i in _a10_flags()))
 
+# (3b) phenomenon EMERGENCE: a clean Michelson recombines two coherent collinear beams -> detect_phenomena
+#      FLAGS it, and produce_phenomenon EMERGES the interferogram -- advisory (dry-run first, then accept).
+_a10_michelson(linewidth_nm=0.0, stage_mm=0.0)            # monochromatic, zero OPD -> high-visibility fringes
+tracer.cached_segments = scan._trace(sc)
+_pdet = optics_api.detect_phenomena()
+check("phenomenon: detect_phenomena flags interference on the clean Michelson",
+      _pdet["ok"] and _pdet["count"] >= 1, str([(p["phenomenon"], p["where"]) for p in _pdet["phenomena"]]))
+_dry = optics_api.produce_phenomenon(accept=False)        # DRY-RUN: must NOT produce, must give the intent caveat
+check("phenomenon: produce_phenomenon(accept=False) is an intent-gated dry-run (no produce)",
+      _dry.get("would_produce") is True and "maybe_not_wanted_if" in _dry and "produced" not in _dry,
+      str(list(_dry.keys())))
+_made = optics_api.produce_phenomenon(accept=True)        # ACCEPT: emerges the actual metrics + oracle block
+check("phenomenon: produce_phenomenon(accept=True) emerges the pattern with an oracle block",
+      _made.get("ok") and isinstance(_made.get("produced"), dict) and "oracle" in _made["produced"],
+      str((_made.get("phenomenon"), sorted((_made.get("produced") or {}).keys()))))
+
 # (4) crossed_polarizer: arms H, analyzer V -> fires (each arm Malus-killed); clears when uncrossed (H).
 _a10_mz(hwp_fast=None, analyzer='V')
 _xf = {i["kind"] for i in _a10_flags()}

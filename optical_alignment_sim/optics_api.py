@@ -45,8 +45,8 @@ def _trace(scene):
 # public optics_api function not listed still works and is appended to "other" so this never goes stale.
 _TOOL_GROUPS = {
     "read / inspect (the AI's eyes -- call these to SEE the bench, never guess)": [
-        "capabilities", "get_state", "diagnose", "propose_corrections", "detect_phenomena", "inspect_beam",
-        "inspect_element", "beam_profile", "ao_measure", "get_wavefront", "sensor_capture",
+        "capabilities", "get_state", "diagnose", "propose_corrections", "detect_phenomena", "produce_phenomenon",
+        "inspect_beam", "inspect_element", "beam_profile", "ao_measure", "get_wavefront", "sensor_capture",
         "check_mechanics", "coupling_efficiency"],
     "build / scene": [
         "build_example", "add_component", "tag_element", "swap_part", "set_param", "set_mount", "import_glass",
@@ -301,6 +301,21 @@ def detect_phenomena():
     tracer.cached_segments = _trace(scene)
     phen = _diagnostics.detect_phenomena(scene)
     return {"ok": True, "phenomena": phen, "count": len(phen)}
+
+
+def produce_phenomenon(phenomenon=None, where=None, nx=1024, png=False, accept=False):
+    """ADVISORY emergence -- PRODUCE a phenomenon detect_phenomena flagged (the interferogram, or the
+    recorded + reconstructed off-axis hologram), off-trace + byte-identical. Two-stage like
+    propose_corrections: accept=False (default) is a DRY-RUN returning {would_produce, what_it_would_compute,
+    maybe_not_wanted_if} and produces NOTHING; the AI weighs the user's intent (refuse / partial / accept) and
+    only then re-calls with accept=True to get the actual {produced:{...metrics, oracle...}, png}. ``png=True``
+    writes a PNG of the emerged pattern. The owner principle: if a phenomenon's conditions are MET it can be
+    produced -- but NOT silently; emergence is an intent-judged act. Never mutates the scene/trace."""
+    scene = _scene()
+    tracer.cached_segments = _trace(scene)
+    png_path = os.path.join(tempfile.gettempdir(), "optics_phenomenon.png") if png else None
+    return _diagnostics.produce_phenomenon(scene, phenomenon=phenomenon, where=where, nx=int(nx),
+                                           png_path=png_path, accept=bool(accept))
 
 
 def design_telescope(f1, f2):

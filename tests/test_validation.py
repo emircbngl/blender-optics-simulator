@@ -329,6 +329,20 @@ check("Thin-lens (quadratic phase) focuses at z = f (300mm)", _ln_best, _ln_f, 3
 check("Newton dark-ring r_10 = sqrt(10 lambda R) (R=10m, 589nm)", physics.newton_ring_radius(10, 589.0, 10000.0), 7.6746, 1e-3, "Hecht; oracle")
 check("Newton central dark spot r_0 = 0", physics.newton_ring_radius(0, 589.0, 10000.0), 0.0, 1e-9, "Hecht; oracle")
 
+print("[Phenomenon emergence -- produce_phenomenon: synthesize the interferogram + record/reconstruct a hologram]")
+from optical_alignment_sim import diagnostics as _diag
+import math as _mh
+# off-axis hologram: record the carrier interferogram, measure its spacing off the FFT, reconstruct the angle
+_holo, _ = _diag._emerge_hologram(_mh.radians(10.0), 1.0, 632.8, nx=1024)
+check("Hologram carrier spacing = lambda/(2 sin(theta/2)) (HeNe@10deg)", _holo["carrier_spacing_mm"] * 1000.0, 3.63028, 1e-3, "Goodman Ch.9; oracle")
+check("Hologram FFT-measured carrier ~ theory (produced + measured)", _holo["carrier_spacing_fft_mm"], _holo["carrier_spacing_mm"], 0.02 * _holo["carrier_spacing_mm"], "FFT vs theory")
+check("Hologram reconstruction recovers the crossing angle ~10deg", _holo["recovered_crossing_angle_deg"], 10.0, 0.15, "digital holography; FFT")
+# two-beam interferogram: visibility V = 2 sqrt(Ia Ib)/(Ia+Ib)
+_tb1, _ = _diag._emerge_two_beam(1.0, 632.8, nx=512)
+check("Two-beam interferogram visibility V=1 (equal beams)", _tb1["visibility_measured"], 1.0, 1e-6, "Hecht Ch.9; oracle")
+_tb2, _ = _diag._emerge_two_beam(0.8, 632.8, nx=512)
+check("Two-beam interferogram visibility V=0.8 (4:1 beams)", _tb2["visibility_measured"], 0.8, 1e-6, "Hecht Ch.9; oracle")
+
 print("[Atmospheric turbulence -- dense Kolmogorov phase screen (FT method + subharmonics, off-trace)]")
 from optical_alignment_sim import turbulence as _turb
 check("Kolmogorov structure constant 6.88 = 2*(24/5*Gamma(6/5))^(5/6)", _turb.STRUCT_CONST, 6.8839, 1e-3, "Schmidt/Noll; oracle (gamma)")
