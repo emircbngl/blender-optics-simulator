@@ -53,7 +53,8 @@ _TOOL_GROUPS = {
         "fdtd_derive_property"],
     "design (pure math, no scene change)": [
         "design_telescope", "design_4f", "mode_match", "optics_calc", "wave_psf", "propagate_field",
-        "propagate_chain", "gerchberg_saxton", "propagate_pulse", "slit_diffraction", "talbot_effect"],
+        "propagate_chain", "gerchberg_saxton", "spatial_filter", "propagate_pulse", "slit_diffraction",
+        "talbot_effect"],
     "place / assemble (opto-mechanics)": [
         "place_relative", "make_cage", "make_tube", "make_rail", "place_on_grid", "place_on_rail",
         "set_grid", "dress_bench"],
@@ -559,6 +560,46 @@ def gerchberg_saxton(target="ring", n_grid=128, n_iter=60, seed=0, png=False):
             for a_ in ax:
                 a_.set_xticks([]); a_.set_yticks([]); a_.set_facecolor("#0d0d10")
             png_path = os.path.join(tempfile.gettempdir(), "optics_gs.png")
+            fig.tight_layout()
+            fig.savefig(png_path, dpi=120, facecolor=fig.get_facecolor())
+            plt.close(fig)
+            out["png"] = png_path
+        except Exception as exc:
+            out["png_error"] = str(exc)
+    return out
+
+
+def spatial_filter(obj="grating", kind="lowpass", cutoff_frac=0.15, n_grid=256, png=False):
+    """4f FOURIER-PLANE spatial filtering (the Abbe-Porter experiment / coherent optical image processing).
+    FFTs a canonical object, applies a Fourier-plane mask, and IFFTs back. obj in {grating, edge, phase};
+    kind in {lowpass (smooths / removes fine detail), highpass (edge enhancement / removes the DC background),
+    phase_contrast (Zernike: a pi/2 dot on the zero order makes a PURE-PHASE object visible in intensity)}.
+    Returns {ok, obj, kind, input_intensity_std, output_intensity_std, output_mean_amp, contrast_ratio};
+    png=True saves the input vs filtered image. Off-trace; live trace byte-identical."""
+    if obj not in ("grating", "edge", "phase"):
+        return {"error": "obj must be one of: grating, edge, phase"}
+    if kind not in ("lowpass", "highpass", "phase_contrast"):
+        return {"error": "kind must be one of: lowpass, highpass, phase_contrast"}
+    out = field.spatial_filter(obj=obj, kind=kind, cutoff_frac=float(cutoff_frac), n_grid=int(n_grid))
+    if png:
+        try:
+            import os
+            import tempfile
+            import numpy as _np
+            import matplotlib
+            matplotlib.use("Agg")
+            import matplotlib.pyplot as plt
+            U = field._filter_object(obj, int(n_grid))
+            V = field.fourier_filter(U, kind, float(cutoff_frac))
+            fig, ax = plt.subplots(1, 2, figsize=(7.0, 3.4))
+            fig.patch.set_facecolor("#0d0d10")
+            ax[0].imshow(_np.abs(U) ** 2, cmap="gray", origin="lower")
+            ax[0].set_title("input intensity (%s)" % obj, color="#f4f4f6", fontsize=10)
+            ax[1].imshow(_np.abs(V) ** 2, cmap="gray", origin="lower")
+            ax[1].set_title("%s filtered" % kind, color="#f4f4f6", fontsize=10)
+            for a_ in ax:
+                a_.set_xticks([]); a_.set_yticks([]); a_.set_facecolor("#0d0d10")
+            png_path = os.path.join(tempfile.gettempdir(), "optics_spatial_filter.png")
             fig.tight_layout()
             fig.savefig(png_path, dpi=120, facecolor=fig.get_facecolor())
             plt.close(fig)

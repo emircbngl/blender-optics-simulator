@@ -432,3 +432,58 @@ def gerchberg_saxton_design(target="ring", n_grid=128, n_iter=60, seed=0):
     return {"ok": True, "target": target, "correlation": r["correlation"], "final_error": r["final_error"],
             "initial_error": round(r["errors"][0], 6) if r["errors"] else None,
             "monotone": r["monotone"], "n_iter": r["n_iter"]}
+
+
+def fourier_filter(U, kind="lowpass", cutoff_frac=0.15, phase_shift_deg=90.0):
+    """4f FOURIER-PLANE spatial filter (Abbe-Porter): FFT the field, multiply by a Fourier-plane mask, IFFT
+    back. ``kind``: 'lowpass' passes |f| <= cutoff_frac (smooths / removes fine detail), 'highpass' blocks it
+    (edge enhancement / removes the DC background), 'phase_contrast' puts ``phase_shift_deg`` on the zero-order
+    only (Zernike phase contrast: makes a PURE-PHASE object visible in intensity). cutoff_frac is the cutoff
+    radius as a fraction of the grid. Off-trace; live trace byte-identical. Returns the filtered complex field."""
+    U = np.asarray(U, dtype=complex)
+    n = U.shape[0]
+    c = n // 2
+    F = _fft2c(U)
+    x = np.arange(n) - c
+    X, Y = np.meshgrid(x, x)
+    R = np.hypot(X, Y)
+    rc = cutoff_frac * n
+    if kind == "lowpass":
+        M = (R <= rc).astype(complex)
+    elif kind == "highpass":
+        M = (R > rc).astype(complex)
+    elif kind == "phase_contrast":
+        M = np.ones_like(R, dtype=complex)
+        M[R <= max(rc, 1.5)] = np.exp(1j * math.radians(phase_shift_deg))
+    else:
+        M = np.ones_like(R, dtype=complex)
+    return _ifft2c(F * M)
+
+
+def _filter_object(name, n_grid):
+    """A canonical test object for Fourier filtering: 'grating' (square-wave), 'edge' (half-plane step),
+    'phase' (a weak pure-phase bump -- uniform intensity, invisible without phase contrast)."""
+    c = n_grid // 2
+    x = np.arange(n_grid) - c
+    X, Y = np.meshgrid(x, x)
+    nm = (name or "grating").lower()
+    if nm == "edge":
+        return (X >= 0).astype(complex)
+    if nm == "phase":
+        return np.exp(1j * 0.3 * (np.hypot(X, Y) < 0.3 * n_grid)).astype(complex)
+    return (np.sign(np.sin(2.0 * np.pi * X / (0.08 * n_grid))) * 0.5 + 0.5).astype(complex)
+
+
+def spatial_filter(obj="grating", kind="lowpass", cutoff_frac=0.15, n_grid=256):
+    """4f Fourier spatial filtering on a canonical object -> JSON-able metrics. obj in {grating, edge, phase};
+    kind in {lowpass, highpass, phase_contrast}. Returns {ok, obj, kind, input_intensity_std,
+    output_intensity_std, output_mean_amp, contrast_ratio}."""
+    U = _filter_object(obj, int(n_grid))
+    V = fourier_filter(U, kind, cutoff_frac)
+    Iin = np.abs(U) ** 2
+    Iout = np.abs(V) ** 2
+    return {"ok": True, "obj": obj, "kind": kind,
+            "input_intensity_std": round(float(np.std(Iin)), 5),
+            "output_intensity_std": round(float(np.std(Iout)), 5),
+            "output_mean_amp": round(float(np.abs(V.mean())), 5),
+            "contrast_ratio": round(float(np.std(Iout) / (np.std(Iin) + 1e-9)), 4)}

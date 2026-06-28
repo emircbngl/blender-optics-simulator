@@ -291,6 +291,18 @@ check("Gerchberg-Saxton: error decreases (final < 0.4 x initial)", _gs["final_er
 _gs2 = field.gerchberg_saxton_design("double", 128, 80)
 check("Gerchberg-Saxton: CGH 'double' target produced (correlation > 0.9)", _gs2["correlation"], 1.0, 0.1, "CGH design; FFT")
 
+print("[4f Fourier spatial filtering -- Abbe-Porter (highpass removes DC, lowpass smooths, phase-contrast)]")
+# highpass blocks the zero order -> the DC background is removed (output mean amplitude ~ 0)
+_sfhp = field.spatial_filter("grating", "highpass", 0.02)
+check("Spatial filter highpass removes the DC background (output mean ~ 0)", _sfhp["output_mean_amp"], 0.0, 1e-3, "Abbe-Porter; FFT")
+# lowpass passing only the zero order -> the grating is erased, output is uniform (intensity std ~ 0)
+_sflp = field.spatial_filter("grating", "lowpass", 0.008)
+check("Spatial filter lowpass (DC only) erases the grating -> uniform (std ~ 0)", _sflp["output_intensity_std"], 0.0, 0.02, "Abbe-Porter; FFT")
+# Zernike phase contrast: a PURE-phase object (input intensity std = 0) becomes visible in intensity
+_sfpc = field.spatial_filter("phase", "phase_contrast", 0.02)
+check("Phase contrast: pure-phase object is invisible in intensity (input std = 0)", _sfpc["input_intensity_std"], 0.0, 1e-9, "Zernike; FFT")
+check("Phase contrast makes the phase object VISIBLE in intensity (output std > 0.02)", _sfpc["output_intensity_std"], 0.078, 0.05, "Zernike phase contrast; FFT")
+
 print("[Fraunhofer slit diffraction -- single / double / grating (FFT vs analytic sinc^2 x cos^2)]")
 _ss = field.slit_metrics(0.1, n_slits=1, wavelength_nm=632.8, n_grid=8192)            # single slit a=0.1mm
 check("Single-slit first min at sin(theta)=lambda/a", _ss["first_min_sin_theta"], _ss["first_min_theory"], 0.05 * _ss["first_min_theory"], "Goodman; FFT vs sinc^2")

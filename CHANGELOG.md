@@ -6,6 +6,20 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Added — 4f Fourier-plane spatial filtering (`spatial_filter`, the Abbe-Porter experiment)
+- **Coherent optical image processing**: FFT an object, apply a **Fourier-plane mask**, IFFT back. (`field` +
+  optics_api + MCP, design group.) `kind` ∈ {**lowpass** (smooths / removes fine detail — a square grating
+  becomes sinusoidal), **highpass** (edge enhancement — blocks the zero order, removing the DC background),
+  **phase_contrast** (a π/2 dot on the zero order — **Zernike phase contrast**, makes a PURE-PHASE object
+  visible in intensity)}; canonical objects {grating, edge, phase}. Validated:
+  - **highpass removes the DC background** (output mean amplitude → 0, exact);
+  - a **lowpass passing only the zero order erases the grating** → uniform output (intensity std → ~0.01);
+  - a **pure-phase object is invisible in intensity** (input std = 0) and **phase contrast makes it visible**
+    (output std 0.078) — the principle of phase-contrast microscopy.
+- Reuses the verified Fraunhofer FFT; the companion to `gerchberg_saxton` (that *designs* a Fourier-plane phase
+  mask, this *applies* one). Off-trace; live trace byte-identical. **4 new oracle checks** → validation
+  **175 → 179**. Demo `docs/img/spatial-filter-demo.png`.
+
 ### Added — Gerchberg-Saxton phase retrieval / CGH design (`gerchberg_saxton`)
 - The **iterative Fourier-transform algorithm**: find a source-plane **phase** whose far-field `|FFT|` matches
   a target pattern, by alternating amplitude constraints in the source and far-field planes. (`field` +

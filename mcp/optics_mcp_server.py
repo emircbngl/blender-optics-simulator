@@ -249,6 +249,17 @@ def gerchberg_saxton(target: str = "ring", n_grid: int = 128, n_iter: int = 60,
 
 
 @mcp.tool()
+def spatial_filter(obj: str = "grating", kind: str = "lowpass", cutoff_frac: float = 0.15,
+                   n_grid: int = 256, png: bool = False) -> str:
+    """4f FOURIER-PLANE spatial filtering (the Abbe-Porter experiment / coherent optical image processing):
+    FFT a canonical object, apply a Fourier-plane mask, IFFT back. obj in {grating, edge, phase}; kind in
+    {lowpass (smooths), highpass (edge enhancement / removes the DC background), phase_contrast (Zernike: a
+    phase dot on the zero order makes a PURE-PHASE object visible in intensity)}. Returns {ok, input/output
+    intensity std, output_mean_amp, contrast_ratio}; png=True saves input vs filtered. Off-trace, byte-identical."""
+    return _fmt(_call("spatial_filter", obj=obj, kind=kind, cutoff_frac=cutoff_frac, n_grid=n_grid, png=png))
+
+
+@mcp.tool()
 def slit_diffraction(width_um: float = 100.0, n_slits: int = 1, sep_um: float = 0.0,
                      wavelength_nm: float = 632.8, n_grid: int = 4096, png: bool = False) -> str:
     """Single / double / N-slit FRAUNHOFER diffraction by FFT, validated against the textbook closed forms --
