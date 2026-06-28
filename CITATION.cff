@@ -26,8 +26,8 @@ keywords:
   - gaussian-beam
   - polarization
   - mcp
-version: "0.15.0"
-date-released: "2026-06-28"
+version: "0.16.0"
+date-released: "2026-06-29"
 doi: "10.5281/zenodo.20778997"
 identifiers:
   - type: doi

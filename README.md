@@ -174,6 +174,13 @@ the Scan + Plot operator, the Detector Fringe Image, and the live sensor window 
   <img src="docs/img/feature-board.png" width="92%" alt="New in v0.10.0: the WFS reads the beam's own curvature defocus; a pyramid WFS slope read; a soft-edge dichroic (R+T=1); a die face read as a zonal wavefront">
 </p>
 
+### New in v0.16.0 — Fabry-Pérot + Talbot emergence (phenomenon catalog complete)
+
+`produce_phenomenon` now covers **all four** phenomena: `detect_phenomena` also flags a **Fabry-Pérot cavity**
+and a **Talbot grating**, and `produce_phenomenon` emerges the **Airy transmission resonance** (finesse, FSR,
+contrast) and the **Talbot self-imaging** (`z_T = 2 d²/λ`) — behind the same advisory accept-gate. Validation
+now **163 oracle checks**.
+
 ### New in v0.15.0 — phenomenon emergence (conditions met → the phenomenon is produced)
 
 `detect_phenomena` flags when an optical phenomenon's conditions are met; the new **`produce_phenomenon`** now

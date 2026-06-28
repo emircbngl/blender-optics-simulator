@@ -6,6 +6,13 @@ semantic versioning.
 
 ## [Unreleased]
 
+## [0.16.0] — Fabry-Pérot + Talbot emergence (phenomenon catalog complete) — 2026-06-29
+
+Completes the `produce_phenomenon` catalog: `detect_phenomena` now also flags a Fabry-Pérot cavity and a
+Talbot grating, and `produce_phenomenon` emerges the Airy transmission resonance and the Talbot self-imaging —
+all four phenomena (two-beam interference, off-axis hologram, Fabry-Pérot, Talbot) behind the same advisory
+accept-gate. Validation **157 → 163**, regression **370 → 374** (geometric trace byte-identical).
+
 ### Added — Fabry-Pérot + Talbot emergence (the `produce_phenomenon` catalog is now complete)
 - `detect_phenomena` now also flags **`fabry_perot_resonance`** (a `CAVITY` element is present) and
   **`talbot_self_imaging`** (a `GRATING` element), and `produce_phenomenon` emerges them — completing the
