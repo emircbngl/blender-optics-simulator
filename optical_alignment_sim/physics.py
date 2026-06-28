@@ -294,6 +294,18 @@ DNDT = {
 }
 DNDT_T0_C = 20.0
 
+# Transparency / Sellmeier-fit VALIDITY window (micron) per glass -- the range over which the published fit
+# reproduces the measured index. sellmeier_n SILENTLY CLAMPS outside this (so a sweep step stays finite); this
+# table lets sellmeier_in_range() flag an out-of-window query as an honesty signal WITHOUT changing the
+# (byte-identical) numeric output. Ranges from the same datasheet sources as the Sellmeier coefficients.
+GLASS_RANGE_UM = {
+    'N-BK7': (0.30, 2.50), 'FUSED_SILICA': (0.21, 3.71), 'N-SF11': (0.37, 2.50), 'F2': (0.32, 2.50),
+    'N-F2': (0.33, 2.50), 'CaF2': (0.23, 9.70), 'N-SF6': (0.37, 2.50), 'N-LAK22': (0.33, 2.50),
+    'N-SF2': (0.37, 2.50), 'ZnSe': (0.54, 18.2), 'GE': (2.0, 14.0), 'SI': (1.36, 11.0), 'BaF2': (0.27, 10.3),
+    'QUARTZ_O': (0.20, 2.05), 'QUARTZ_E': (0.20, 2.05), 'CALCITE_O': (0.20, 2.17), 'CALCITE_E': (0.20, 2.17),
+    'MGF2_O': (0.20, 7.0), 'MGF2_E': (0.20, 7.0), 'SAPPHIRE_O': (0.20, 5.5), 'SAPPHIRE_E': (0.20, 5.5),
+}
+
 
 # --- user-extensible glass catalog -----------------------------------------------------------------
 # The BUILTIN GLASSES above are always present. A user (or the AI) can ADD glasses without editing code
@@ -425,6 +437,17 @@ def sellmeier_n(wl_nm, glass='N-BK7', temp_C=None):
     if temp_C is not None:
         n += DNDT.get(glass, 0.0) * (temp_C - DNDT_T0_C)
     return n
+
+
+def sellmeier_in_range(wl_nm, glass='N-BK7'):
+    """True if wl_nm is within the glass's published Sellmeier-fit validity window (GLASS_RANGE_UM). Outside
+    it, sellmeier_n still returns a clamped value -- this is the honesty flag that it is an EXTRAPOLATION, not
+    a measured index. Unknown glasses (no range on file) return True (no claim either way)."""
+    rng = GLASS_RANGE_UM.get(glass)
+    if rng is None:
+        return True
+    lam_um = wl_nm * 1.0e-3
+    return rng[0] <= lam_um <= rng[1]
 
 
 # --- closed-form helpers for textbook validation (pure scalar functions) ----

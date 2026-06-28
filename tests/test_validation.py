@@ -95,6 +95,10 @@ check("N-SF6 n_d @587.6", physics.sellmeier_n(587.6, 'N-SF6'), 1.80518, 5e-4, "S
 check("BaF2 n @587.6", physics.sellmeier_n(587.6, 'BaF2'), 1.47448, 5e-4, "Malitson64 [datasheet]")
 check("ZnSe n @10.6um (CO2 laser line)", physics.sellmeier_n(10600.0, 'ZnSe'), 2.4028, 2e-3, "Connolly79 [datasheet]")
 check("Ge n @10um (IR; tests clamp window)", physics.sellmeier_n(10000.0, 'GE'), 4.0040, 3e-3, "Burnett16 [datasheet]")
+# transparency-window honesty flag: in-window -> True, out-of-window (extrapolated/clamped) -> False
+check("Sellmeier in-range: N-BK7 @587nm is within its window (->1)", 1.0 if physics.sellmeier_in_range(587.6, 'N-BK7') else 0.0, 1.0, 1e-9, "GLASS_RANGE_UM; metadata")
+check("Sellmeier OUT-of-range: N-BK7 @200nm flagged (->0)", 1.0 if physics.sellmeier_in_range(200.0, 'N-BK7') else 0.0, 0.0, 1e-9, "GLASS_RANGE_UM; metadata")
+check("Sellmeier OUT-of-range: Ge @1000nm flagged (range 2-14um) (->0)", 1.0 if physics.sellmeier_in_range(1000.0, 'GE') else 0.0, 0.0, 1e-9, "GLASS_RANGE_UM; metadata")
 
 print("[Uniaxial crystal optics — walk-off / index ellipsoid / waveplate thickness / SHG phase-match]")
 # index ellipsoid: n_e(theta) -> n_o along the optic axis (theta=0), -> n_e at theta=90 (calcite o/e)

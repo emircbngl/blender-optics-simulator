@@ -6,6 +6,17 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Added — Sellmeier transparency-window honesty flag (`sellmeier_in_range`)
+- `sellmeier_n` SILENTLY clamps the index outside each glass's published fit window (so a sweep step stays
+  finite). The new **`GLASS_RANGE_UM`** table (validity window per glass, from the same datasheet sources) +
+  **`physics.sellmeier_in_range(wl_nm, glass)`** flag when a query is an **extrapolation** rather than a measured
+  index — e.g. N-BK7 @200 nm or Ge @1000 nm (Ge's fit is 2–14 µm) return `False`. The numeric output of
+  `sellmeier_n` is **unchanged / byte-identical**; this only adds the honesty signal. **3 new oracle checks** →
+  validation **165 → 168**.
+- *(Deferred, honest scope note: a wavelength-dependent **AR-coating curve** `R(λ)` turned out low-value — it
+  only affects opt-in GHOST power (~0.25%), needs a substrate-index + design-wavelength model, and would perturb
+  the ghost-power tests; `ar_reflectance` stays a user-editable scalar. Logged for a later pass.)*
+
 ### Fixed — dichroic-mirror edge now blue-shifts with the angle of incidence
 - A thin-film interference **DICHROIC mirror's** cut wavelength now **blue-shifts with the angle of incidence**
   — `λ_eff = λ_c·√(1-(sin θ/n_eff)²)` (`tracer._aoi_blueshift`) — exactly like the interference FILTERS already
