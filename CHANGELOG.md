@@ -6,6 +6,14 @@ semantic versioning.
 
 ## [Unreleased]
 
+## [0.19.0] — Fourier optics: phase retrieval + spatial filtering — 2026-06-29
+
+A Fourier-optics pair built on the verified FFT/propagator. **`gerchberg_saxton`** — the iterative
+Fourier-transform algorithm — *designs* a source-plane phase mask (a computer-generated hologram) whose
+far-field matches a target, with the monotone-error convergence guarantee. **`spatial_filter`** — the
+Abbe-Porter experiment — *applies* a Fourier-plane mask (lowpass / highpass / Zernike phase contrast) to an
+object. Off-trace; the geometric trace stays byte-identical. Validation **168 → 179**.
+
 ### Added — 4f Fourier-plane spatial filtering (`spatial_filter`, the Abbe-Porter experiment)
 - **Coherent optical image processing**: FFT an object, apply a **Fourier-plane mask**, IFFT back. (`field` +
   optics_api + MCP, design group.) `kind` ∈ {**lowpass** (smooths / removes fine detail — a square grating

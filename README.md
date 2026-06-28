@@ -174,6 +174,14 @@ the Scan + Plot operator, the Detector Fringe Image, and the live sensor window 
   <img src="docs/img/feature-board.png" width="92%" alt="New in v0.10.0: the WFS reads the beam's own curvature defocus; a pyramid WFS slope read; a soft-edge dichroic (R+T=1); a die face read as a zonal wavefront">
 </p>
 
+### New in v0.19.0 — Fourier optics: phase retrieval + spatial filtering
+
+A Fourier-optics pair on the verified FFT: **`gerchberg_saxton`** (the iterative Fourier-transform algorithm)
+*designs* a source-plane phase mask — a computer-generated hologram — whose far-field matches a target, with
+the monotone-error convergence guarantee; **`spatial_filter`** (the Abbe-Porter experiment) *applies* a
+Fourier-plane mask (lowpass / highpass / Zernike phase contrast that makes a pure-phase object visible). Both
+off-trace; the geometric trace stays byte-identical.
+
 ### New in v0.18.0 — multi-plane field-propagation chain (`propagate_chain`)
 
 `propagate_field` runs the angular-spectrum propagator once; the new **`propagate_chain`** marches a complex
