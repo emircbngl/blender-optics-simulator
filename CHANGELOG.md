@@ -20,7 +20,17 @@ semantic versioning.
     — Type-I critical phase-matching from `n_e(θ,2ω)=n_o(ω)`; **BBO 1064→532 nm → 22.78°** (Boyd).
 - **Exposed the WAVEPLATE dispersion params** (`design_wl`, `waveplate_crystal`, `waveplate_order`) in the
   optics-API inventory so an AI agent can discover/set the wavelength-dependent-retardance machinery the tracer
-  already runs. **6 new oracle checks** → validation **136 → 142**. Trace byte-identical (regression 363/363).
+  already runs.
+
+### Added — Mueller calculus (4×4) for partially-polarized / depolarizing light
+- **`physics.M_mueller_polarizer(axis)` / `M_mueller_retarder(retardance, fast_axis)` / `stokes_through(M, S)`**
+  — the 4×4 Stokes→Stokes counterpart of the existing 2×2 Jones matrices, so the engine can now carry
+  partially-polarized light (DOP<1) that Jones cannot. Validated against py-pol / SymPy / Malus oracles:
+  **Malus's law** I/I₀ = cos²θ through an analyzer (0.75/0.50/0.25 at 30/45/60°); a **QWP@45° turns
+  horizontal-linear into circular** (|S₃|=1, S₁=S₂=0); an **HWP@22.5° rotates linear by 45°** (S₂=1); the six
+  canonical **Stokes vectors** from Jones (H→S₁=+1, D→S₂=+1, R→S₃=+1). The Mueller path is verified to produce
+  the **same output Stokes as the Jones path** for pure states (the S₃ sign follows this module's `stokes(J)`
+  convention). **16 new oracle checks total** → validation **136 → 152**. Trace byte-identical (regression 363/363).
 
 ## [0.13.0] — Diffraction & focusing examples + verified FDTD bridge — 2026-06-28
 

@@ -202,6 +202,46 @@ def stokes_dofp(J):
             "S0": s0, "S1": s1, "S2": s2, "dolp": dolp, "aolp_deg": aolp}
 
 
+# --- Mueller calculus (4x4 real) -- Stokes -> Stokes, the counterpart of the 2x2 Jones matrices above.
+# Unlike Jones, Mueller can carry PARTIALLY-polarized / depolarizing light (DOP < 1). Same S3 sign
+# convention as stokes(J) (S3 = -2 Im(ex ey*)) -- verified to agree with the Jones path for pure states.
+
+def M_mueller_polarizer(axis_deg=0.0):
+    """Ideal linear polarizer as a 4x4 Mueller matrix, transmission axis at ``axis_deg``. Row 0 is
+    0.5*[1, cos2t, sin2t, 0] -> Malus's law: a fully-polarized input emerges with I = I0 cos^2(theta_rel)."""
+    c = math.cos(2.0 * math.radians(axis_deg))
+    s = math.sin(2.0 * math.radians(axis_deg))
+    return (
+        (0.5, 0.5 * c, 0.5 * s, 0.0),
+        (0.5 * c, 0.5 * c * c, 0.5 * c * s, 0.0),
+        (0.5 * s, 0.5 * c * s, 0.5 * s * s, 0.0),
+        (0.0, 0.0, 0.0, 0.0),
+    )
+
+
+def M_mueller_retarder(retardance_deg=180.0, fast_axis_deg=0.0):
+    """Linear retarder (HWP=180, QWP=90) as a 4x4 Mueller matrix, fast axis at ``fast_axis_deg``. A QWP at
+    0 deg is [[1,0,0,0],[0,1,0,0],[0,0,0,-1],[0,0,1,0]] and at 45 deg turns horizontal-linear into circular
+    (S -> (S0,0,0,-S0)). NB the S3 sign follows this module's stokes(J) convention (S3 = -2 Im(ex ey*)), so a
+    Mueller retarder and the Jones M_waveplate produce the SAME output Stokes for pure states (verified) --
+    that consistency is kept even though it flips the circular handedness vs some textbook/library tables."""
+    c = math.cos(2.0 * math.radians(fast_axis_deg))
+    s = math.sin(2.0 * math.radians(fast_axis_deg))
+    cd = math.cos(math.radians(retardance_deg))
+    sd = -math.sin(math.radians(retardance_deg))      # -sin: match the stokes() S3 = -2 Im convention
+    return (
+        (1.0, 0.0, 0.0, 0.0),
+        (0.0, c * c + s * s * cd, c * s * (1.0 - cd), -s * sd),
+        (0.0, c * s * (1.0 - cd), s * s + c * c * cd, c * sd),
+        (0.0, s * sd, -c * sd, cd),
+    )
+
+
+def stokes_through(M, S):
+    """Apply a 4x4 Mueller matrix ``M`` to a Stokes 4-vector ``S`` -> the output Stokes 4-vector."""
+    return tuple(sum(M[i][j] * S[j] for j in range(4)) for i in range(4))
+
+
 # --- dispersion (Sellmeier n(lambda)) ---------------------------------------
 
 # Sellmeier coefficients (B1,B2,B3,C1,C2,C3; lambda in micron) for common glasses.

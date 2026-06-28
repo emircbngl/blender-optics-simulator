@@ -109,6 +109,27 @@ check("Quartz HWP thickness = lambda/(2 dn) = 32.38um", physics.waveplate_thickn
 # Type-I SHG critical phase-matching angle from the BBO index ellipsoid (Eimerl 1987 Sellmeier)
 check("BBO Type-I SHG phase-match angle 1064->532 = 22.78 deg", physics.shg_phase_match_angle('BBO', 1064.0), 22.78, 0.3, "Boyd/Eimerl87; oracle")
 
+print("[Mueller calculus + canonical Stokes (py-pol / SymPy / Malus oracles)]")
+# Malus's law through an ideal linear analyzer on horizontal-linear input [1,1,0,0]: I/I0 = cos^2(theta)
+_Hs = (1.0, 1.0, 0.0, 0.0)
+check("Malus I/I0 @30deg = cos^2 = 0.75", physics.stokes_through(physics.M_mueller_polarizer(30.0), _Hs)[0], 0.75, 1e-9, "Malus; oracle")
+check("Malus I/I0 @45deg = cos^2 = 0.50", physics.stokes_through(physics.M_mueller_polarizer(45.0), _Hs)[0], 0.50, 1e-9, "Malus; oracle")
+check("Malus I/I0 @60deg = cos^2 = 0.25", physics.stokes_through(physics.M_mueller_polarizer(60.0), _Hs)[0], 0.25, 1e-9, "Malus; oracle")
+# QWP at 45 deg turns horizontal-linear into CIRCULAR: |S3| = 1, S1 = S2 = 0
+_qc = physics.stokes_through(physics.M_mueller_retarder(90.0, 45.0), _Hs)
+check("Mueller QWP@45 on H -> circular |S3|=1", abs(_qc[3]), 1.0, 1e-9, "py-pol; Mueller")
+check("Mueller QWP@45 on H -> S1=S2=0", abs(_qc[1]) + abs(_qc[2]), 0.0, 1e-9, "py-pol; Mueller")
+# Mueller path agrees with the Jones path for a pure state (internal-consistency oracle)
+_qj = physics.stokes(physics.apply(physics.M_waveplate(90.0, 45.0), (1 + 0j, 0j)))
+check("Mueller QWP == Jones M_waveplate (S3 agree)", _qc[3], _qj[3], 1e-9, "internal consistency")
+# HWP at 22.5 deg rotates linear polarization by 45 deg: H -> +45 (S2 = 1)
+check("Mueller HWP@22.5 on H -> +45 linear (S2=1)", physics.stokes_through(physics.M_mueller_retarder(180.0, 22.5), _Hs)[2], 1.0, 1e-9, "Mueller HWP")
+# canonical Stokes from Jones (SymPy/py-pol vectors): H S1=+1, D S2=+1, R(1,i)/sqrt2 S3=+1
+import math as _ma
+check("Stokes(H=[1,0]) S1 = +1", physics.stokes((1 + 0j, 0j))[1], 1.0, 1e-9, "SymPy/py-pol; oracle")
+check("Stokes(D=[1,1]/sqrt2) S2 = +1", physics.stokes(((1 + 0j) / _ma.sqrt(2), (1 + 0j) / _ma.sqrt(2)))[2], 1.0, 1e-9, "SymPy/py-pol; oracle")
+check("Stokes(R=[1,i]/sqrt2) S3 = +1", physics.stokes(((1 + 0j) / _ma.sqrt(2), 1j / _ma.sqrt(2)))[3], 1.0, 1e-9, "SymPy/py-pol; oracle")
+
 print("[Thermo-optic dn/dT — n_eff = n(lambda) + dn/dT*(T-20C)]")
 check("Fused silica dn/dT +100K shift", physics.sellmeier_n(587.6, 'FUSED_SILICA', 120.0) - physics.sellmeier_n(587.6, 'FUSED_SILICA'),
       1.0e-3, 1e-9, "Corning7980; oracle")
