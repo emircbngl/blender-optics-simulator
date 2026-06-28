@@ -6,6 +6,21 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Added — Fabry-Pérot + Talbot emergence (the `produce_phenomenon` catalog is now complete)
+- `detect_phenomena` now also flags **`fabry_perot_resonance`** (a `CAVITY` element is present) and
+  **`talbot_self_imaging`** (a `GRATING` element), and `produce_phenomenon` emerges them — completing the
+  four-phenomenon catalog (two-beam interference, off-axis hologram, Fabry-Pérot, Talbot), all behind the same
+  advisory accept-gate:
+  - **Fabry-Pérot** — sweeps the **Airy transmission** `T(λ)` across ±1 FSR from the cavity's `L` and `R`,
+    reporting **finesse `π√R/(1-R)`** (29.80 at R=0.9), **`T_min = ((1-R)/(1+R))²`** (0.00277), **contrast
+    `((1+R)/(1-R))²`** (361), and **FSR `λ²/(2nL)`** (0.020022 nm at 632.8 nm / 10 mm). Reuses the verified
+    `physics.airy_transmission` / `cavity_finesse` / `cavity_fsr_nm`.
+  - **Talbot** — the grating's near field self-images at **`z_T = 2 d²/λ`** (31.61 mm for a 10 lines/mm grating
+    at 632.8 nm), self-image correlation ~0.89 at z_T. Reuses `field.talbot_metrics`.
+  - **6 new oracle checks** → validation **157 → 163**; **4 functional regression checks** (a CAVITY detected
+    + Airy produced, a GRATING detected + Talbot produced) → regression **370 → 374** (geometric trace
+    byte-identical; MCP↔API parity intact). Demo `docs/img/phenomenon-emergence-demo.png` (now 4 panels).
+
 ## [0.15.0] — Phenomenon emergence (produce_phenomenon) — 2026-06-28
 
 When a phenomenon's conditions are MET, the engine can now actually PRODUCE it — not just flag it. The new

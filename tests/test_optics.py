@@ -430,6 +430,32 @@ if _jout_n is not None:
     check("QUARTZ birefringence dispersion shifts the realized retardance vs ideal",
           abs(_circ_frac(_jout_q) - _circ_frac(_jout_n)) > 1e-3,
           "circQ=%.4f circNONE=%.4f" % (_circ_frac(_jout_q), _circ_frac(_jout_n)))
+
+# phenomenon EMERGENCE, element-conditioned: a CAVITY -> Fabry-Perot resonance; a GRATING -> Talbot imaging.
+def _emerge_element(build_fn):
+    for _o in list(sc.objects):
+        if getattr(_o, "optics", None) and _o.optics.is_optical:
+            bpy.data.objects.remove(_o, do_unlink=True)
+    eg.source("PH_S", (-100, 0, 0), (1, 0, 0), coll=_mcoll)
+    build_fn()
+    eg.detector("PH_D", (100, 0, 0), (1, 0, 0), coll=_mcoll)
+    bpy.context.view_layer.update()
+    return optics_api.detect_phenomena(), optics_api.produce_phenomenon(accept=True)
+_fpd, _fpp = _emerge_element(lambda: eg.cavity("PH_CAV", (0, 0, 0), (1, 0, 0), coll=_mcoll, spacing_mm=10.0, R=0.9))
+check("phenomenon: a CAVITY is detected as fabry_perot_resonance",
+      any(p["phenomenon"] == "fabry_perot_resonance" for p in _fpd["phenomena"]),
+      str([p["phenomenon"] for p in _fpd["phenomena"]]))
+check("phenomenon: produce(accept=True) emerges the Airy curve (finesse ~ 29.8 at R=0.9)",
+      _fpp.get("ok") and abs((_fpp.get("produced") or {}).get("finesse", 0.0) - 29.804) < 0.05,
+      str((_fpp.get("produced") or {}).get("finesse")))
+_grd, _grp = _emerge_element(lambda: eg.grating("PH_GR", (0, 0, 0), (1, 0, 0), (0, 1, 0), coll=_mcoll, lines_per_mm=10.0))
+check("phenomenon: a GRATING is detected as talbot_self_imaging",
+      any(p["phenomenon"] == "talbot_self_imaging" for p in _grd["phenomena"]),
+      str([p["phenomenon"] for p in _grd["phenomena"]]))
+check("phenomenon: produce(accept=True) emerges Talbot (z_T = 2 d^2/lambda ~ 31.6 mm, d=0.1mm)",
+      _grp.get("ok") and abs((_grp.get("produced") or {}).get("talbot_distance_mm", 0.0) - 31.6056) < 0.1,
+      str((_grp.get("produced") or {}).get("talbot_distance_mm")))
+
 def _frontrange(o):          # z-spread of the FRONT-half verts: ~0 for a flat front, big if curved
     zs = [v.co.z for v in o.data.vertices if v.co.z > 0.1]
     return (max(zs) - min(zs)) if zs else 0.0

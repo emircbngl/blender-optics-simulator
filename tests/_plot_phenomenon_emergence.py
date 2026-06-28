@@ -12,6 +12,9 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "optical_alignment_sim"))
+import physics as P
+
 BG, FG, TX, MU, GR, AC = "#0d0d10", "#f4f4f6", "#e8e8ea", "#8a8a92", "#33343a", "#4a8db0"
 wl_nm, theta_deg, vis = 632.8, 10.0, 1.0
 wl_mm = wl_nm * 1e-6
@@ -22,7 +25,7 @@ dx = Lam / 10.0
 x = (np.arange(nx) - nx // 2) * dx
 H = 1.0 + vis * np.cos(2.0 * np.pi * x / Lam)             # recorded hologram intensity
 
-fig, ax = plt.subplots(1, 3, figsize=(13.2, 3.9))
+fig, ax = plt.subplots(1, 4, figsize=(17.2, 3.9))
 fig.patch.set_facecolor(BG)
 fig.suptitle("Phenomenon emergence -- detect_phenomena FLAGS the condition, produce_phenomenon PRODUCES it",
              color=FG, fontsize=13.5, fontweight="bold", y=0.99)
@@ -59,6 +62,18 @@ ax[2].set_title("(c) two-beam interference: I(OPD)", color=TX, fontsize=11)
 ax[2].set_xlabel("optical path difference  (lambda)", color=TX, fontsize=9.5)
 ax[2].set_ylabel("I (norm)", color=TX, fontsize=9.5)
 ax[2].legend(facecolor=BG, edgecolor=GR, labelcolor=TX, fontsize=8.2, loc="upper right")
+
+# (d) Fabry-Perot Airy resonance T(lambda) -- from a CAVITY element
+R, L = 0.9, 10.0
+fsr = P.cavity_fsr_nm(wl_nm, L, 1.0)
+wls = wl_nm + np.linspace(-1.5 * fsr, 1.5 * fsr, 2000)
+Tfp = np.array([P.airy_transmission(float(w), L, R) for w in wls])
+ax[3].plot(wls - wl_nm, Tfp, color=AC, lw=1.0)
+ax[3].set_title("(d) Fabry-Perot: Airy transmission T(lambda)", color=TX, fontsize=11)
+ax[3].set_xlabel("detuning (nm)  -- FSR=%.4f nm" % fsr, color=TX, fontsize=9.5)
+ax[3].set_ylabel("T", color=TX, fontsize=9.5)
+ax[3].annotate("finesse %.1f\ncontrast %.0f" % (P.cavity_finesse(R), ((1 + R) / (1 - R)) ** 2),
+               xy=(0.04, 0.74), xycoords="axes fraction", color=TX, fontsize=8.4)
 
 for a_ in ax:
     a_.set_facecolor(BG); a_.tick_params(colors=MU, labelsize=8)

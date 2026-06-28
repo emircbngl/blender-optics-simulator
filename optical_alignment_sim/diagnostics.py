@@ -963,6 +963,33 @@ def detect_phenomena(scene):
                             "crossing_angle_deg": round(math.degrees(theta), 3),
                             "fringe_spacing_mm": round(Lam, 6),    # sub-um at large angles -> nm resolution
                             "visibility": round(vis, 3), "confidence": round(min(1.0, vis + 0.1), 2)})
+    # element-conditioned phenomena: a CAVITY is an Airy resonator; a GRATING self-images (Talbot).
+    def _wl_at(el_name):
+        for s in segs:
+            if (s.get("to") == el_name or s.get("from") == el_name) and s.get("wavelength"):
+                return s["wavelength"]
+        return 632.8
+    for el in by_name.values():
+        et = el.optics.element_type
+        if et == 'CAVITY':
+            L, R = float(el.optics.cavity_spacing_mm), float(el.optics.reflectivity)
+            wl = _wl_at(el.name)
+            out.append({"phenomenon": "fabry_perot_resonance", "where": el.name,
+                        "detail": "a Fabry-Perot cavity (L=%.4f mm, R=%.3f) -> Airy transmission resonance; "
+                                  "finesse F = pi sqrt(R)/(1-R) = %.2f, FSR = lambda^2/(2 n L)"
+                                  % (L, R, physics.cavity_finesse(R)),
+                        "cavity_spacing_mm": round(L, 6), "reflectivity": round(R, 4),
+                        "wavelength_nm": wl, "confidence": round(min(1.0, R + 0.05), 2)})
+        elif et == 'GRATING' and getattr(el.optics, 'lines_per_mm', 0.0) > 0.0:
+            d = 1.0 / float(el.optics.lines_per_mm)            # grating period (mm)
+            wl = _wl_at(el.name)
+            z_t = 2.0 * d ** 2 / (wl * 1.0e-6)
+            out.append({"phenomenon": "talbot_self_imaging", "where": el.name,
+                        "detail": "a periodic grating (%.0f lines/mm, d=%.5f mm) reproduces its near-field as a "
+                                  "self-image at the Talbot distance z_T = 2 d^2/lambda = %.3f mm (and a "
+                                  "half-period-shifted copy at z_T/2)" % (el.optics.lines_per_mm, d, z_t),
+                        "period_mm": round(d, 6), "talbot_distance_mm": round(z_t, 4),
+                        "wavelength_nm": wl, "confidence": 0.9})
     return out
 
 
@@ -1074,10 +1101,52 @@ def _emerge_two_beam(vis, wl_nm, nx=512):
     return metrics, (phi, I)
 
 
+def _emerge_fabry_perot(L_mm, R, wl_nm, nx=512):
+    """Produce the FABRY-PEROT Airy transmission resonance T(lambda) across +/- one free spectral range from
+    the cavity spacing L and mirror reflectivity R (the conditions a CAVITY element already sets). Reuses the
+    verified physics.airy_transmission / cavity_finesse / cavity_fsr_nm. Returns (metrics, (wls, T))."""
+    import numpy as np
+    R = max(0.0, min(R, 0.999999))
+    finesse = physics.cavity_finesse(R)
+    fsr = physics.cavity_fsr_nm(wl_nm, L_mm, 1.0)
+    T_min = ((1.0 - R) / (1.0 + R)) ** 2
+    contrast = ((1.0 + R) / (1.0 - R)) ** 2
+    wls = wl_nm + np.linspace(-fsr, fsr, nx)                    # one FSR either side of the line
+    T = np.array([physics.airy_transmission(float(w), L_mm, R) for w in wls])
+    metrics = {
+        "finesse": round(finesse, 4), "fsr_nm": round(fsr, 6),
+        "T_min": round(T_min, 6), "contrast": round(contrast, 2),
+        "T_max_measured": round(float(T.max()), 4), "T_min_measured": round(float(T.min()), 6),
+        "oracle": {"quantity": "finesse = pi sqrt(R)/(1-R); T_min = ((1-R)/(1+R))^2; contrast = ((1+R)/(1-R))^2",
+                   "finesse": round(finesse, 4), "T_min": round(T_min, 6), "contrast": round(contrast, 2),
+                   "source": "Saleh & Teich, Fundamentals of Photonics Ch.10; physics_verify ok=true"},
+    }
+    return metrics, (wls, T)
+
+
+def _emerge_talbot(period_mm, wl_nm, nx=256):
+    """Produce the TALBOT self-imaging: the grating's periodic near field reproduces itself at z_T = 2 d^2/lambda
+    (a half-period-shifted copy at z_T/2, no image at z_T/4). Reuses field.talbot_metrics, the full producer.
+    Returns (metrics, None) -- talbot_metrics owns the carpet render."""
+    from . import field as _field
+    tm = _field.talbot_metrics(period_mm, wl_nm, n_grid=min(int(nx), 512))
+    metrics = {
+        "talbot_distance_mm": round(tm["talbot_distance_mm"], 4),
+        "self_image_corr": round(tm["self_image_corr"], 4),
+        "half_talbot_shift_corr": round(tm["half_talbot_shift_corr"], 4),
+        "quarter_corr": round(tm["quarter_corr"], 4),
+        "oracle": {"quantity": "Talbot distance z_T = 2 d^2/lambda; self-image correlation ~ 1 at z_T",
+                   "z_T_mm": round(2.0 * period_mm ** 2 / (wl_nm * 1.0e-6), 4),
+                   "self_image_corr": round(tm["self_image_corr"], 4),
+                   "source": "Goodman, Introduction to Fourier Optics Ch.4; physics_verify ok=true"},
+    }
+    return metrics, None
+
+
 def _render_emergence(kind, raster, meta, png_path):
     """Optional lazy-matplotlib PNG of an emerged phenomenon (mirrors field._render_field: import inside,
     swallow any failure -- the numbers are the product, the PNG is a convenience). Returns path or None."""
-    if not png_path:
+    if not png_path or raster is None:
         return None
     try:
         import matplotlib
@@ -1089,6 +1158,11 @@ def _render_emergence(kind, raster, meta, png_path):
             ax.imshow(raster, cmap="gray", aspect="auto", origin="lower")
             ax.set_title("off-axis hologram: carrier interferogram", color="#f4f4f6", fontsize=11)
             ax.set_xlabel("x (carrier fringes)", color="#e8e8ea"); ax.set_yticks([])
+        elif kind == "fabry_perot":
+            wls, T = raster
+            ax.plot(wls, T, color="#4a8db0", lw=1.3)
+            ax.set_title("Fabry-Perot: Airy transmission T(lambda)", color="#f4f4f6", fontsize=11)
+            ax.set_xlabel("wavelength (nm)", color="#e8e8ea"); ax.set_ylabel("T", color="#e8e8ea")
         else:
             phi, I = raster
             ax.plot(phi, I, color="#4a8db0", lw=1.5)
@@ -1122,24 +1196,38 @@ def produce_phenomenon(scene, phenomenon=None, where=None, nx=1024, png_path=Non
     if not accept:
         caveat = {"two_beam_interference": "the detector may be a power meter, not a fringe camera",
                   "off_axis_hologram": "the camera at the crossing may be a power meter, not a hologram plate",
-                  }.get(name, "confirm this detector is meant to record the phenomenon")
-        would = ("the 2D carrier interferogram + carrier spacing + reconstructed object angle"
-                 if name == "off_axis_hologram" else "the two-beam fringe curve I(OPD) + visibility")
+                  "fabry_perot_resonance": "the cavity may be set for a single line, not a swept resonance scan",
+                  "talbot_self_imaging": "the grating may be used in far-field diffraction, not near-field Talbot imaging",
+                  }.get(name, "confirm this element is meant to produce the phenomenon")
+        would = {"off_axis_hologram": "the 2D carrier interferogram + carrier spacing + reconstructed object angle",
+                 "two_beam_interference": "the two-beam fringe curve I(OPD) + visibility",
+                 "fabry_perot_resonance": "the Airy transmission curve T(lambda) + finesse / FSR / contrast",
+                 "talbot_self_imaging": "the Talbot self-image correlation at z_T (and z_T/2, z_T/4)",
+                 }.get(name, "the phenomenon's pattern + metrics")
         return {"ok": True, "would_produce": True, "phenomenon": name, "where": det,
                 "what_it_would_compute": would, "maybe_not_wanted_if": caveat,
                 "confidence": target.get("confidence", 0.0),
                 "hint": "judge the user's intent, then re-call produce_phenomenon(accept=True) to emerge it "
                         "(refuse / partial / accept, exactly like propose_corrections)"}
-    geo = _coherent_pair_at(scene, det)
-    if geo is None:
-        return {"ok": False, "error": "the coherent pair at %s is no longer resolvable" % det}
-    if name == "off_axis_hologram":
-        metrics, raster = _emerge_hologram(geo["theta_rad"], geo["vis"], geo["wl_nm"], nx=nx)
-        png = _render_emergence("hologram", raster, "Lambda=%.4f um, recovered theta=%.3f deg"
-                                % (metrics["carrier_spacing_mm"] * 1000.0, metrics["recovered_crossing_angle_deg"]), png_path)
+    if name == "fabry_perot_resonance":
+        metrics, raster = _emerge_fabry_perot(target["cavity_spacing_mm"], target["reflectivity"],
+                                              target["wavelength_nm"], nx=min(int(nx), 512))
+        png = _render_emergence("fabry_perot", raster, "finesse=%.1f, FSR=%.4f nm, contrast=%.0f"
+                                % (metrics["finesse"], metrics["fsr_nm"], metrics["contrast"]), png_path)
+    elif name == "talbot_self_imaging":
+        metrics, raster = _emerge_talbot(target["period_mm"], target["wavelength_nm"], nx=min(int(nx), 512))
+        png = None                                             # talbot_metrics owns the carpet; no extra render
     else:
-        metrics, raster = _emerge_two_beam(geo["vis"], geo["wl_nm"], nx=min(nx, 512))
-        png = _render_emergence("two_beam", raster, "visibility=%.3f" % metrics["visibility"], png_path)
+        geo = _coherent_pair_at(scene, det)
+        if geo is None:
+            return {"ok": False, "error": "the coherent pair at %s is no longer resolvable" % det}
+        if name == "off_axis_hologram":
+            metrics, raster = _emerge_hologram(geo["theta_rad"], geo["vis"], geo["wl_nm"], nx=nx)
+            png = _render_emergence("hologram", raster, "Lambda=%.4f um, recovered theta=%.3f deg"
+                                    % (metrics["carrier_spacing_mm"] * 1000.0, metrics["recovered_crossing_angle_deg"]), png_path)
+        else:
+            metrics, raster = _emerge_two_beam(geo["vis"], geo["wl_nm"], nx=min(nx, 512))
+            png = _render_emergence("two_beam", raster, "visibility=%.3f" % metrics["visibility"], png_path)
     out = {"ok": True, "phenomenon": name, "where": det, "produced": metrics}
     if png:
         out["png"] = png
