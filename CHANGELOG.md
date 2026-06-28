@@ -6,6 +6,16 @@ semantic versioning.
 
 ## [Unreleased]
 
+## [0.13.0] — Diffraction & focusing examples + verified FDTD bridge — 2026-06-28
+
+A validation + examples release. Adds single/double/N-slit Fraunhofer diffraction, the Talbot self-imaging
+effect, and a Fresnel diffraction & focusing batch sourced from textbook computational examples (circular-
+aperture zones, knife-edge, Fresnel zone-plate, thin-lens focus, Fabry–Pérot Airy minimum, Newton's rings) —
+each reproduced by the off-trace angular-spectrum field engine and pinned to its closed form (validation
+**116 → 136** oracle checks). And it makes the FDTD bridge's Meep API **verified, not just written**: confirmed
+against a real Meep 1.33.0 (12/12 checks vs exact analytic oracles), fixing three real setup bugs in the
+process. The geometric + Gaussian-q core trace is **byte-identical** to v0.12.0 (regression 363/363).
+
 ### Verified + Fixed — FDTD bridge Meep API (`fdtd_bridge.py`) confirmed against a real Meep
 - **The `_meep_*` paths in `fdtd_bridge.py` were UNTESTED (written from the Meep docs, every version-sensitive
   call flagged `# VERIFY:`). They are now VERIFIED against Meep 1.33.0** (conda-forge, run in a throwaway Linux

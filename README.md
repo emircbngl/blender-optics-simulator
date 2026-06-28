@@ -174,6 +174,15 @@ the Scan + Plot operator, the Detector Fringe Image, and the live sensor window 
   <img src="docs/img/feature-board.png" width="92%" alt="New in v0.10.0: the WFS reads the beam's own curvature defocus; a pyramid WFS slope read; a soft-edge dichroic (R+T=1); a die face read as a zonal wavefront">
 </p>
 
+### New in v0.13.0 — diffraction & focusing examples + a verified FDTD bridge
+
+Single/double/N-slit **Fraunhofer diffraction**, the **Talbot self-imaging** carpet, and a Fresnel
+diffraction & focusing batch (circular-aperture zones, knife-edge, Fresnel **zone-plate**, thin-lens focus,
+Fabry–Pérot Airy minimum, **Newton's rings**) — each reproduced by the field engine and pinned to its
+textbook closed form (validation now **136 oracle checks**). And the **FDTD bridge's Meep API is now verified**
+against a real Meep 1.33.0 (12/12 vs exact analytic oracles; `tools/verify_fdtd_meep.py`), with three real
+setup bugs fixed. Core trace byte-identical to v0.12.0.
+
 ### New in v0.12.0 — the physical-optics field engine (opt-in, off-trace)
 
 A complete sampled-field layer on top of the geometric + Gaussian-q core. Every panel is computed **on
