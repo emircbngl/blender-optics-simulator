@@ -205,6 +205,19 @@ def propagate_field(wavelength_nm: float, w0_mm: float = None, aperture_mm: floa
 
 
 @mcp.tool()
+def slit_diffraction(width_um: float = 100.0, n_slits: int = 1, sep_um: float = 0.0,
+                     wavelength_nm: float = 632.8, n_grid: int = 4096, png: bool = False) -> str:
+    """Single / double / N-slit FRAUNHOFER diffraction by FFT, validated against the textbook closed forms --
+    the OPT-IN field layer (the geometric trace only CLIPS a beam at a slit; it cannot diffract). n_slits=1 ->
+    single slit (sinc^2, first min at sin(theta)=lambda/width); 2 -> Young's double slit (sinc^2 envelope x
+    cos^2, fringes spaced lambda/sep); N -> a coarse grating (orders at sin(theta)=m*lambda/sep). Returns
+    {rms_vs_analytic (~1e-3), first_min_sin_theta/theory (single), fringe_spacing_sin_theta/theory (multi)}.
+    Off-trace; live trace byte-identical. E.g. slit_diffraction(100, 2, sep_um=500) -> Young's fringes."""
+    return _fmt(_call("slit_diffraction", width_um=width_um, n_slits=n_slits, sep_um=sep_um,
+                      wavelength_nm=wavelength_nm, n_grid=n_grid, png=png))
+
+
+@mcp.tool()
 def turbulence_screen(n_grid: int = 256, dx_mm: float = 4.0, r0_mm: float = 100.0, L0_mm: float = None,
                       l0_mm: float = None, seed: int = 0, subharmonics: int = 3, png: bool = False) -> str:
     """Generate a DENSE 2D Kolmogorov/von-Karman atmospheric PHASE SCREEN [radians] (FT method + sub-harmonics)

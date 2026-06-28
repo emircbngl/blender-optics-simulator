@@ -6,6 +6,17 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Added — single / double / N-slit Fraunhofer diffraction (`slit_diffraction`)
+- **`field.slit_aperture` / `fraunhofer_diffraction` / `slit_metrics` + `slit_diffraction` (optics_api + MCP)** —
+  Fraunhofer diffraction of a 1-D aperture by FFT (`I = |FT{aperture}|²`, angle axis `sin θ = λf`), validated
+  against the textbook closed forms: a **single slit** → sinc² with its first minimum at `sin θ = λ/a`; a
+  **Young's double slit** → the sinc² envelope × cos², fringes spaced `λ/d`; an **N-slit grating** → sharp
+  orders at `sin θ = mλ/d`. The measured FFT pattern matches the analytic **sinc² (× cos²) to rms ≈ 1–2 × 10⁻³**;
+  the first diffraction minimum tracks `λ/a` and the fringe/order spacing tracks `λ/d` to the aperture-sampling
+  limit. The geometric trace only *clips* a beam at a slit — this is the opt-in field layer that actually
+  diffracts; off-trace, the live trace is byte-identical. Every relation `physics_verify` ok=true. **5 new
+  oracle checks** → validation **116 → 121**. Demo `docs/img/slit-diffraction-demo.png`.
+
 ## [0.12.0] — Physical-optics field engine + textbook validation — 2026-06-28
 
 A major feature release. Adds a complete **opt-in, off-trace physical-optics field engine** on top of the

@@ -220,6 +220,16 @@ _fUb = field.angular_spectrum(_fUf, _fdx, -300.0, _flam)     # back-propagate = 
 check("AngSpec round-trip +z/-z recovers U0", float(_np.max(_np.abs(_fUb - _fU0)) / _np.max(_np.abs(_fU0))), 0.0, 1e-5, "reversibility; FFT")
 check("AngSpec power conserved P(z)/P(0)", float(_np.sum(_np.abs(_fUf) ** 2) / _np.sum(_np.abs(_fU0) ** 2)), 1.0, 1e-3, "energy; FFT")
 
+print("[Fraunhofer slit diffraction -- single / double / grating (FFT vs analytic sinc^2 x cos^2)]")
+_ss = field.slit_metrics(0.1, n_slits=1, wavelength_nm=632.8, n_grid=8192)            # single slit a=0.1mm
+check("Single-slit first min at sin(theta)=lambda/a", _ss["first_min_sin_theta"], _ss["first_min_theory"], 0.05 * _ss["first_min_theory"], "Goodman; FFT vs sinc^2")
+check("Single-slit pattern == analytic sinc^2 (rms)", _ss["rms_vs_analytic"], 0.0, 0.02, "Goodman/Voelz; FFT")
+_ds = field.slit_metrics(0.1, n_slits=2, sep_mm=0.5, wavelength_nm=632.8, n_grid=8192)  # double slit a=0.1, d=0.5
+check("Double-slit fringe (order) spacing = lambda/d", _ds["fringe_spacing_sin_theta"], _ds["fringe_spacing_theory"], 0.03 * _ds["fringe_spacing_theory"], "Young; FFT")
+check("Double-slit pattern == analytic sinc^2 x cos^2 (rms)", _ds["rms_vs_analytic"], 0.0, 0.02, "Goodman/Voelz; FFT")
+_gr = field.slit_metrics(0.05, n_slits=5, sep_mm=0.2, wavelength_nm=632.8, n_grid=8192)  # 5-slit grating
+check("5-slit grating order spacing = lambda/d + matches analytic (rms)", _gr["rms_vs_analytic"], 0.0, 0.02, "grating; FFT vs analytic")
+
 print("[Atmospheric turbulence -- dense Kolmogorov phase screen (FT method + subharmonics, off-trace)]")
 from optical_alignment_sim import turbulence as _turb
 check("Kolmogorov structure constant 6.88 = 2*(24/5*Gamma(6/5))^(5/6)", _turb.STRUCT_CONST, 6.8839, 1e-3, "Schmidt/Noll; oracle (gamma)")

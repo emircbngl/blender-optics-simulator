@@ -53,7 +53,7 @@ _TOOL_GROUPS = {
         "fdtd_derive_property"],
     "design (pure math, no scene change)": [
         "design_telescope", "design_4f", "mode_match", "optics_calc", "wave_psf", "propagate_field",
-        "propagate_pulse"],
+        "propagate_pulse", "slit_diffraction"],
     "place / assemble (opto-mechanics)": [
         "place_relative", "make_cage", "make_tube", "make_rail", "place_on_grid", "place_on_rail",
         "set_grid", "dress_bench"],
@@ -109,6 +109,7 @@ _SCOPE = {
     "request_to_tier": {
         "ray/align/beam-walk; Gaussian w(z)/M2/resonator; lens/prism/grating/Fresnel/Malus/dispersion": "a",
         "Airy/Strehl/MTF/encircled-energy PSF": "b: wave_psf",
+        "single/double/N-slit Fraunhofer diffraction (sinc^2, Young fringes, grating orders)": "b: slit_diffraction (FFT vs analytic sinc^2 x cos^2, oracle-verified)",
         "free-space field propagation / multi-plane Fresnel / digital-hologram reconstruction": "b: propagate_field (angular spectrum)",
         "full-wave FDTD/RCWA, metasurface/nanophotonics": "c: Meep / Lumerical / Tidy3D -- ORCHESTRATED via fdtd_derive_property (runs the engine if present, else a closed-form fallback: grating dir=grating_angle, stack=exact TMM, metaatom=low-conf EMT) cached as an effective property; live trace byte-identical. Still tier (c): a LIVE full-wave field is not shipped.",
         "split-step NLSE: soliton / dispersion / SPM (1D pulse)": "b: propagate_pulse (split-step Fourier; fundamental soliton is shape-invariant, oracle-verified)",
@@ -476,6 +477,25 @@ def propagate_field(wavelength_nm, w0_mm=None, aperture_mm=None, dz_mm=0.0, n_gr
     if w0_mm:
         out["w_analytic_mm"] = round(w0_mm * math.sqrt(1.0 + (dz_mm / zR) ** 2), 5)
     return out
+
+
+def slit_diffraction(width_um=100.0, n_slits=1, sep_um=0.0, wavelength_nm=632.8, n_grid=4096, png=False):
+    """Single / double / N-slit FRAUNHOFER diffraction by FFT, validated against the textbook closed forms --
+    the opt-in field layer (the geometric trace only CLIPS a beam at a slit; it cannot diffract). `n_slits`=1 ->
+    single slit (sinc^2, first diffraction min at sin(theta)=lambda/width); 2 -> Young's double slit (the sinc^2
+    envelope x cos^2, fringes spaced lambda/sep); N -> a coarse grating (sharp orders at sin(theta)=m*lambda/sep).
+    Returns {rms_vs_analytic, first_min_sin_theta/first_min_theory (single), fringe_spacing_sin_theta/
+    fringe_spacing_theory (multi), ...}: the measured pattern matches the analytic sinc^2 (x cos^2) to
+    rms_vs_analytic (~1e-3). Off-trace; the live trace is byte-identical. E.g.
+    slit_diffraction(100, 2, sep_um=500) -> double slit, fringes at lambda/d under a lambda/a envelope."""
+    from . import field
+    png_path = None
+    if png:
+        import os
+        import tempfile
+        png_path = os.path.join(tempfile.gettempdir(), "optics_slit.png")
+    return field.slit_metrics(width_um * 1.0e-3, n_slits=int(n_slits), sep_mm=sep_um * 1.0e-3,
+                              wavelength_nm=wavelength_nm, n_grid=int(n_grid), png_path=png_path)
 
 
 def turbulence_screen(n_grid=256, dx_mm=4.0, r0_mm=100.0, L0_mm=None, l0_mm=None, seed=0, subharmonics=3, png=False):

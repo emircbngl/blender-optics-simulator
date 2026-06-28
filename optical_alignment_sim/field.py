@@ -67,6 +67,109 @@ def angular_spectrum(U0, dx_mm, dz_mm, wavelength_nm, band_limit=True):
     return np.fft.ifft2(np.fft.fft2(U0) * H)
 
 
+def slit_aperture(n_grid, dx_mm, width_mm, n_slits=1, sep_mm=0.0):
+    """1-D transmission aperture: `n_slits` clear slits of width `width_mm`, centre-to-centre separation
+    `sep_mm`, symmetric about the grid centre. n_slits=1 -> single slit; 2 -> Young's double slit; N -> a
+    coarse grating. Returns a length-n_grid float array (1 inside a slit, 0 outside)."""
+    x = (np.arange(n_grid) - n_grid // 2) * dx_mm
+    a = np.zeros(n_grid)
+    offsets = (np.arange(n_slits) - (n_slits - 1) / 2.0) * sep_mm
+    for o in offsets:
+        a[np.abs(x - o) <= 0.5 * width_mm] = 1.0
+    return a
+
+
+def fraunhofer_diffraction(aperture_1d, dx_mm, wavelength_nm):
+    """Far-field (Fraunhofer) diffraction pattern of a 1-D aperture: I(theta) = |FT{aperture}|^2, with the
+    angle axis sin(theta) = lambda * f (f = spatial frequency). Returns (sin_theta, I_normalised). This is the
+    textbook recipe (Goodman; Voelz, Computational Fourier Optics): a single slit -> sinc^2 with its first
+    zero at sin(theta) = lambda/a; a double slit -> the same sinc^2 ENVELOPE times cos^2(pi d sin(theta)/lambda),
+    fringes spaced lambda/d. Off-trace, pure analysis."""
+    a = np.asarray(aperture_1d, dtype=complex)
+    n = a.size
+    spec = np.fft.fftshift(np.fft.fft(np.fft.ifftshift(a)))
+    inten = np.abs(spec) ** 2
+    f = np.fft.fftshift(np.fft.fftfreq(n, d=dx_mm))                # cyc/length
+    sin_theta = (wavelength_nm * NM_TO_MM) * f
+    peak = inten.max()
+    return sin_theta, (inten / peak if peak > 0 else inten)
+
+
+def slit_metrics(width_mm, n_slits=1, sep_mm=0.0, wavelength_nm=632.8, n_grid=4096, dx_mm=None, png_path=None):
+    """Simulate single/double/N-slit Fraunhofer diffraction by FFT and validate it against the closed forms.
+
+    Returns {ok, first_min_sin_theta, first_min_theory (=lambda/a), fringe_spacing_sin_theta,
+    fringe_spacing_theory (=lambda/d), rms_vs_analytic, ...}: the measured first diffraction minimum matches
+    lambda/width, the double-slit fringe spacing matches lambda/sep, and the whole FFT pattern matches the
+    analytic sinc^2 (x cos^2) to rms_vs_analytic. Pure analysis; off-trace."""
+    lam_mm = wavelength_nm * NM_TO_MM
+    if dx_mm is None:
+        dx_mm = width_mm / 48.0                                    # ~48 samples across the narrowest slit (edge-sampling bias ~1/48)
+    n_grid = int(n_grid)
+    ap = slit_aperture(n_grid, dx_mm, width_mm, n_slits=n_slits, sep_mm=sep_mm)
+    st, I = fraunhofer_diffraction(ap, dx_mm, wavelength_nm)
+    # analytic: sinc^2(pi a sinT/lam) * (sin(N pi d sinT/lam)/(N sin(pi d sinT/lam)))^2  (N-slit grating factor)
+    beta = np.pi * width_mm * st / lam_mm
+    env = np.where(np.abs(beta) < 1e-9, 1.0, (np.sin(beta) / np.where(beta == 0, 1, beta)) ** 2)
+    if n_slits > 1:
+        gamma = np.pi * sep_mm * st / lam_mm
+        num = np.sin(n_slits * gamma)
+        den = n_slits * np.sin(gamma)
+        grating = np.where(np.abs(np.sin(gamma)) < 1e-9, 1.0, (num / np.where(den == 0, 1, den)) ** 2)
+        analytic = env * grating
+    else:
+        analytic = env
+    rms = float(np.sqrt(np.mean((I - analytic) ** 2)))
+    c = n_grid // 2
+    pos, Ipos = st[c:], I[c:]
+    out = {
+        "ok": True,
+        "width_mm": width_mm, "n_slits": int(n_slits), "sep_mm": sep_mm, "wavelength_nm": wavelength_nm,
+        "rms_vs_analytic": round(rms, 5),
+        "n_grid": n_grid, "dx_mm": round(dx_mm, 6),
+    }
+    if n_slits == 1:
+        # first DIFFRACTION minimum at sin(theta)=lambda/a -- the deepest dip in (0, 1.6*lambda/a]
+        w = np.where((pos > 0) & (pos <= 1.6 * lam_mm / width_mm))[0]
+        out["first_min_sin_theta"] = round(float(pos[w[np.argmin(Ipos[w])]]), 7) if w.size else None
+        out["first_min_theory"] = round(lam_mm / width_mm, 7)                       # lambda / slit-width
+    else:
+        out["fringe_spacing_theory"] = round(lam_mm / sep_mm, 7)                    # lambda / slit-separation (grating eqn)
+        out["envelope_first_min_theory"] = round(lam_mm / width_mm, 7)
+        # measured principal-maximum (order) spacing: the first interference peak after the centre
+        pk = [c + i for i in range(2, len(Ipos) - 1)
+              if Ipos[i] > Ipos[i - 1] and Ipos[i] > Ipos[i + 1] and Ipos[i] > 0.25]
+        if pk:
+            out["fringe_spacing_sin_theta"] = round(float(abs(st[pk[0]] - st[c])), 7)
+    if png_path:
+        try:
+            _render_slit(st, I, analytic, out, png_path)
+            out["png"] = png_path
+        except Exception as exc:
+            out["png_error"] = str(exc)
+    return out
+
+
+def _render_slit(sin_theta, I, analytic, meta, png_path):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    lim = 6.0 * (meta["first_min_theory"] or 0.01)
+    m = np.abs(sin_theta) <= lim
+    fig, ax = plt.subplots(figsize=(7, 4))
+    ax.plot(sin_theta[m] * 1e3, analytic[m], "--", color="#888", lw=1.3, label="analytic sinc²(·cos²)")
+    ax.plot(sin_theta[m] * 1e3, I[m], color="#4ea3ff", lw=1.6, label="FFT simulation")
+    title = "%d-slit Fraunhofer  width=%g mm" % (meta["n_slits"], meta["width_mm"])
+    if meta["n_slits"] > 1:
+        title += ", sep=%g mm" % meta["sep_mm"]
+    ax.set_title("%s   (rms vs analytic = %.1e)" % (title, meta["rms_vs_analytic"]))
+    ax.set_xlabel("sin θ  (×10⁻³)")
+    ax.set_ylabel("normalised intensity")
+    ax.legend(fontsize=8)
+    fig.savefig(png_path, dpi=110, bbox_inches="tight", facecolor="#0d0d10")
+    plt.close(fig)
+
+
 def field_metrics(U, dx_mm, wavelength_nm=None, png_path=None):
     """Beam metrics of a sampled field: peak, total power, centroid, 2nd-moment 1/e^2 radius, Fresnel number.
 
