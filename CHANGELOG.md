@@ -6,6 +6,14 @@ semantic versioning.
 
 ## [Unreleased]
 
+## [0.17.0] — Dichroic AOI edge + Sellmeier transparency window — 2026-06-29
+
+Two physical-honesty refinements. A thin-film **dichroic mirror's edge now blue-shifts with the angle of
+incidence** (a 45° dichroic sits ~8% to the blue — the fluorescence-microscopy gotcha), consistent with the
+interference filters. And **`sellmeier_in_range`** flags when a refractive-index query falls outside a glass's
+published fit window (an extrapolation, not a measured value). Both keep the geometric trace byte-identical.
+Validation **163 → 168**, regression **374 → 375**.
+
 ### Added — Sellmeier transparency-window honesty flag (`sellmeier_in_range`)
 - `sellmeier_n` SILENTLY clamps the index outside each glass's published fit window (so a sweep step stays
   finite). The new **`GLASS_RANGE_UM`** table (validity window per glass, from the same datasheet sources) +

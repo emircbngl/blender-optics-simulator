@@ -174,6 +174,14 @@ the Scan + Plot operator, the Detector Fringe Image, and the live sensor window 
   <img src="docs/img/feature-board.png" width="92%" alt="New in v0.10.0: the WFS reads the beam's own curvature defocus; a pyramid WFS slope read; a soft-edge dichroic (R+T=1); a die face read as a zonal wavefront">
 </p>
 
+### New in v0.17.0 — dichroic AOI edge + Sellmeier transparency window
+
+Two physical-honesty refinements: a thin-film **dichroic mirror's edge now blue-shifts with the angle of
+incidence** (a 45° dichroic sits ~8% to the blue of its normal-incidence spec — the fluorescence-microscopy
+gotcha), consistent with the interference filters; and **`sellmeier_in_range`** flags when a refractive-index
+query falls outside a glass's published fit window (an extrapolation, not a measured value). Both keep the
+geometric trace byte-identical.
+
 ### New in v0.16.0 — Fabry-Pérot + Talbot emergence (phenomenon catalog complete)
 
 `produce_phenomenon` now covers **all four** phenomena: `detect_phenomena` also flags a **Fabry-Pérot cavity**
