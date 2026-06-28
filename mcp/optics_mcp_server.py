@@ -223,6 +223,20 @@ def propagate_field(wavelength_nm: float, w0_mm: float = None, aperture_mm: floa
 
 
 @mcp.tool()
+def propagate_chain(steps: list, wavelength_nm: float = 632.8, w0_mm: float = None,
+                    aperture_mm: float = None, n_grid: int = 512, dx_mm: float = None, png: bool = False) -> str:
+    """March a sampled field through a SEQUENCE of planes -- the POPPY-style multi-plane OpticalSystem that
+    CHAINS the single-step angular-spectrum propagator (propagate_field runs it once). `steps` is a list of
+    [kind, value]: ["prop", dz_mm] free-space propagation, ["aperture", D_mm] hard circular aperture, ["lens",
+    f_mm] thin lens. Source: a Gaussian w0_mm OR a clear aperture_mm. Returns {final beam metrics, z_total_mm,
+    per-step trace}; png=True saves the last plane. E.g. propagate_chain([["aperture",3],["lens",200],
+    ["prop",200]], aperture_mm=3) focuses at z=f=200mm. Off-trace / byte-identical. NEAR-field only -- a tight
+    focus or Fraunhofer far field is better via direct FFT (wave_psf / slit_diffraction)."""
+    return _fmt(_call("propagate_chain", steps=steps, wavelength_nm=wavelength_nm, w0_mm=w0_mm,
+                      aperture_mm=aperture_mm, n_grid=n_grid, dx_mm=dx_mm, png=png))
+
+
+@mcp.tool()
 def slit_diffraction(width_um: float = 100.0, n_slits: int = 1, sep_um: float = 0.0,
                      wavelength_nm: float = 632.8, n_grid: int = 4096, png: bool = False) -> str:
     """Single / double / N-slit FRAUNHOFER diffraction by FFT, validated against the textbook closed forms --

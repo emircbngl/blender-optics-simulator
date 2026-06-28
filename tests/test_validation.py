@@ -258,6 +258,23 @@ _fUb = field.angular_spectrum(_fUf, _fdx, -300.0, _flam)     # back-propagate = 
 check("AngSpec round-trip +z/-z recovers U0", float(_np.max(_np.abs(_fUb - _fU0)) / _np.max(_np.abs(_fU0))), 0.0, 1e-5, "reversibility; FFT")
 check("AngSpec power conserved P(z)/P(0)", float(_np.sum(_np.abs(_fUf) ** 2) / _np.sum(_np.abs(_fU0) ** 2)), 1.0, 1e-3, "energy; FFT")
 
+print("[Multi-plane field-propagation CHAIN -- propagate_chain (POPPY-style OpticalSystem, chains the propagator)]")
+# (1) propagator additivity: the pure angular spectrum composes EXACTLY -- prop(z1)*prop(z2) == prop(z1+z2)
+_mc1, _, _, _ = field._run_chain([("prop", 50.0), ("prop", 70.0)], 632.8, 0.5, None, 512, None, False)
+_mc2, _, _, _ = field._run_chain([("prop", 120.0)], 632.8, 0.5, None, 512, None, False)
+check("Chain: propagator additivity prop(z1)+prop(z2) = prop(z1+z2)", float(_np.abs(_mc1 - _mc2).max()), 0.0, 1e-7, "angular spectrum; exact")
+# (2) a CHAINED aperture->lens(f)->prop focuses at z=f (the chain reproduces the validated thin-lens focus)
+_mc_wmin, _mc_zf = 1e9, None
+for _mcz in _np.linspace(0.6 * 200.0, 1.4 * 200.0, 17):
+    _mcw = field.propagate_chain([("aperture", 3.0), ("lens", 200.0), ("prop", float(_mcz))], 632.8, None, 3.0, 512)["final"]["w_2sigma_mm"]
+    if _mcw < _mc_wmin:
+        _mc_wmin, _mc_zf = _mcw, _mcz
+check("Chain: aperture->lens(f)->prop focuses at z=f (200mm)", _mc_zf, 200.0, 12.0, "Goodman; chained")
+# (3) a free-space Gaussian marched through the chain reproduces the analytic w(z)
+_mc_zR = math.pi * 0.5 ** 2 / (632.8 * 1e-6)
+_mc_wch = field.propagate_chain([("prop", 600.0)], 632.8, 0.5, None, 512)["final"]["w_2sigma_mm"]
+check("Chain: free Gaussian w(z) = w0 sqrt(1+(z/zR)^2) (z=600mm)", _mc_wch, 0.5 * math.sqrt(1.0 + (600.0 / _mc_zR) ** 2), 0.02, "Saleh&Teich; chained")
+
 print("[Fraunhofer slit diffraction -- single / double / grating (FFT vs analytic sinc^2 x cos^2)]")
 _ss = field.slit_metrics(0.1, n_slits=1, wavelength_nm=632.8, n_grid=8192)            # single slit a=0.1mm
 check("Single-slit first min at sin(theta)=lambda/a", _ss["first_min_sin_theta"], _ss["first_min_theory"], 0.05 * _ss["first_min_theory"], "Goodman; FFT vs sinc^2")

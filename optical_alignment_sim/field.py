@@ -302,3 +302,60 @@ def _render_field(intensity, meta, png_path):
     fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
     fig.savefig(png_path, dpi=110, bbox_inches="tight", facecolor="#0d0d10")
     plt.close(fig)
+
+
+def _lens_phase(n_grid, dx_mm, focal_mm, wavelength_nm):
+    """Thin-lens quadratic phase mask exp(-i pi r^2 / (lambda f)) (converging for f>0)."""
+    c = n_grid // 2
+    x = (np.arange(n_grid) - c) * dx_mm
+    X, Y = np.meshgrid(x, x)
+    lam_mm = wavelength_nm * NM_TO_MM
+    return np.exp(-1j * np.pi * (X * X + Y * Y) / (lam_mm * focal_mm))
+
+
+def _run_chain(steps, wavelength_nm, w0_mm, aperture_mm, n_grid, dx_mm, band_limit):
+    """Core multi-plane marcher -> (U_final, dx_mm, z_total, trace). Returns the raw field (for field-level
+    checks like propagator additivity); propagate_chain() wraps it into JSON-able metrics."""
+    src_extent = max(w0_mm or 0.0, (aperture_mm or 0.0) * 0.5) or 1.0
+    if dx_mm is None:
+        dx_mm = 2.5 * src_extent * 2.0 / n_grid              # span ~2.5x the source diameter
+    if w0_mm:
+        U = gaussian_field(n_grid, dx_mm, w0_mm)
+    elif aperture_mm:
+        U = circular_aperture(n_grid, dx_mm, aperture_mm).astype(complex)
+    else:
+        U = np.ones((n_grid, n_grid), dtype=complex)
+    z, trace = 0.0, []
+    for (kind, val) in steps:
+        k = str(kind).lower()
+        if k in ("prop", "propagate", "p"):
+            U = angular_spectrum(U, dx_mm, float(val), wavelength_nm, band_limit=band_limit); z += float(val)
+        elif k in ("aperture", "ap", "a"):
+            U = U * circular_aperture(n_grid, dx_mm, float(val))
+        elif k in ("lens", "l"):
+            U = U * _lens_phase(n_grid, dx_mm, float(val), wavelength_nm)
+        else:
+            raise ValueError("unknown step kind %r (use prop/aperture/lens)" % (kind,))
+        I = np.abs(U) ** 2
+        trace.append({"step": k, "value": float(val), "z_mm": round(z, 4),
+                      "peak": round(float(I.max()), 6), "power": round(float(I.sum()), 4)})
+    return U, dx_mm, z, trace
+
+
+def propagate_chain(steps, wavelength_nm=632.8, w0_mm=None, aperture_mm=None,
+                    n_grid=512, dx_mm=None, band_limit=True, png_path=None):
+    """March a complex field through a SEQUENCE of optical steps -- the POPPY-style multi-plane OpticalSystem
+    that CHAINS the single-step angular_spectrum propagator (which alone cannot march a field through a
+    sequence). Each step is (kind, value):
+        ("prop", dz_mm)     free-space angular-spectrum propagation by dz (mm)
+        ("aperture", D_mm)  hard circular aperture, diameter D (mm)
+        ("lens", f_mm)      ideal thin lens, phase exp(-i pi r^2 / (lambda f))
+    The source is a Gaussian beam (w0_mm) OR a uniform field clipped by a circular aperture (aperture_mm). The
+    grid auto-sizes to ~2.5x the source diameter unless dx_mm is given. Returns {ok, final (field_metrics of the
+    last plane), z_total_mm, trace:[per-step z/w/peak/power]}. Off-trace; the live ray-trace is byte-identical.
+    NB this layer is for NEAR-field / moderate propagation; a tight focus or a Fraunhofer-distance far field is
+    better via direct FFT (wave_psf / slit_metrics) -- the anti-alias band-limit degrades far-field nulls."""
+    U, dx_mm, z, trace = _run_chain(steps, wavelength_nm, w0_mm, aperture_mm, n_grid, dx_mm, band_limit)
+    fm = field_metrics(U, dx_mm, wavelength_nm, png_path=png_path)
+    return {"ok": True, "final": fm, "z_total_mm": round(z, 4), "n_steps": len(steps),
+            "dx_mm": round(dx_mm, 6), "trace": trace}

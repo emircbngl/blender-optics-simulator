@@ -6,6 +6,24 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Added — multi-plane field-propagation chain (`propagate_chain`, POPPY-style OpticalSystem)
+- `propagate_field` runs the angular-spectrum propagator ONCE; **`propagate_chain` marches a complex field
+  through a SEQUENCE of planes** — the multi-plane OpticalSystem the single-step layer could not chain. Each
+  step is `["prop", dz_mm]` (free-space propagation), `["aperture", D_mm]` (hard circular aperture), or
+  `["lens", f_mm]` (thin lens, phase `exp(-iπr²/(λf))`); the source is a Gaussian `w0_mm` or a clear
+  `aperture_mm`. (optics_api + MCP, in the design group.) Validated:
+  - **propagator additivity** — the pure angular spectrum composes EXACTLY: `prop(z1)·prop(z2) = prop(z1+z2)`
+    to **3.7×10⁻¹¹** (FFT round-trip);
+  - a chained **aperture→lens(f)→prop focuses at z=f** (200 mm) — the chain reproduces the validated thin-lens
+    focus by stacking the propagator and a lens phase mask;
+  - a **free Gaussian marched through the chain** reproduces `w(z)=w0√(1+(z/zR)²)` (0.5554 mm at z=600 mm).
+- This closes the optics-textbook catalog's principal remaining gap: **single plane→plane is now a chainable
+  auto-pipeline** (Voelz `propTF`, POPPY-style multi-plane). Kept honest: it's a **near-field / moderate-
+  propagation** layer — a tight focus or a Fraunhofer far field is better via direct FFT (`wave_psf` /
+  `slit_diffraction`), since the anti-alias band-limit degrades far-field null spacing. Off-trace; the live
+  ray-trace stays byte-identical. **3 new oracle checks** → validation **168 → 171**. Demo
+  `docs/img/multiplane-chain-demo.png`.
+
 ## [0.17.0] — Dichroic AOI edge + Sellmeier transparency window — 2026-06-29
 
 Two physical-honesty refinements. A thin-film **dichroic mirror's edge now blue-shifts with the angle of

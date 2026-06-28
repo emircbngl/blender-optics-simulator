@@ -53,7 +53,7 @@ _TOOL_GROUPS = {
         "fdtd_derive_property"],
     "design (pure math, no scene change)": [
         "design_telescope", "design_4f", "mode_match", "optics_calc", "wave_psf", "propagate_field",
-        "propagate_pulse", "slit_diffraction", "talbot_effect"],
+        "propagate_chain", "propagate_pulse", "slit_diffraction", "talbot_effect"],
     "place / assemble (opto-mechanics)": [
         "place_relative", "make_cage", "make_tube", "make_rail", "place_on_grid", "place_on_rail",
         "set_grid", "dress_bench"],
@@ -498,6 +498,35 @@ def propagate_field(wavelength_nm, w0_mm=None, aperture_mm=None, dz_mm=0.0, n_gr
     if w0_mm:
         out["w_analytic_mm"] = round(w0_mm * math.sqrt(1.0 + (dz_mm / zR) ** 2), 5)
     return out
+
+
+def propagate_chain(steps, wavelength_nm=632.8, w0_mm=None, aperture_mm=None, n_grid=512, dx_mm=None, png=False):
+    """March a complex field through a SEQUENCE of optical planes -- the POPPY-style multi-plane OpticalSystem
+    that CHAINS the single-step angular-spectrum propagator (which `propagate_field` runs once). `steps` is a
+    list of [kind, value]: ["prop", dz_mm] free-space propagation, ["aperture", D_mm] hard circular aperture,
+    ["lens", f_mm] thin lens (phase exp(-i pi r^2/(lam f))). Source: a Gaussian (w0_mm) or a uniform field
+    clipped by aperture_mm. e.g. an aperture->lens(f)->prop(f) chain focuses at z=f. Returns {ok, final
+    (field_metrics of the last plane), z_total_mm, trace:[per-step z/w/peak/power]}. Off-trace / byte-identical.
+    NEAR-field / moderate propagation only -- a tight focus or Fraunhofer far field is better via direct FFT
+    (wave_psf / slit_diffraction): the anti-alias band-limit degrades far-field null spacing."""
+    if not steps:
+        return {"error": "give a non-empty steps list, e.g. [['aperture',3.0],['lens',200.0],['prop',200.0]]"}
+    if not (w0_mm or aperture_mm):
+        return {"error": "give a Gaussian w0_mm or a circular aperture_mm source"}
+    try:
+        norm = [(str(s[0]), float(s[1])) for s in steps]
+    except Exception:
+        return {"error": "each step must be [kind, value]; kind in {prop, aperture, lens}"}
+    png_path = None
+    if png:
+        import os
+        import tempfile
+        png_path = os.path.join(tempfile.gettempdir(), "optics_chain.png")
+    try:
+        return field.propagate_chain(norm, wavelength_nm=wavelength_nm, w0_mm=w0_mm, aperture_mm=aperture_mm,
+                                     n_grid=int(n_grid), dx_mm=dx_mm, png_path=png_path)
+    except ValueError as exc:
+        return {"error": str(exc)}
 
 
 def slit_diffraction(width_um=100.0, n_slits=1, sep_um=0.0, wavelength_nm=632.8, n_grid=4096, png=False):
