@@ -371,6 +371,7 @@ _CALCULATORS = {
     "cavity_finesse": (physics.cavity_finesse, ("R",), "Fabry-Perot finesse pi*sqrt(R)/(1-R)"),
     "cavity_fsr_nm": (physics.cavity_fsr_nm, ("wl_nm", "L_mm", "n"), "Fabry-Perot free spectral range, nm"),
     "grating_angle": (physics.grating_angle, ("lines_per_mm", "m", "wl_nm", "theta_i_deg"), "diffracted order angle, deg"),
+    "newton_ring_radius": (physics.newton_ring_radius, ("m", "wl_nm", "R_mm"), "Newton dark-ring radius sqrt(m*lambda*R), mm"),
     "grating_resolving_power": (physics.grating_resolving_power, ("lines_per_mm", "illuminated_mm", "m"), "R = m*N"),
     "ar_quarter_wave_reflectance": (physics.ar_quarter_wave_reflectance, ("n0", "n1", "ns"), "single quarter-wave AR layer R"),
     "fiber_na": (physics.fiber_na, ("n_core", "n_clad"), "step-index fiber numerical aperture"),

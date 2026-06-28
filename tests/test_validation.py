@@ -237,6 +237,64 @@ check("Talbot self-image at z_T (corr ~ 1)", _tb["self_image_corr"], 1.0, 0.15, 
 check("Half-Talbot at z_T/2 is the d/2-shifted grating (corr ~ 1)", _tb["half_talbot_shift_corr"], 1.0, 0.15, "Talbot; FFT")
 check("No self-image at z_T/4 (corr ~ 0)", abs(_tb["quarter_corr"]), 0.0, 0.3, "Talbot; FFT")
 
+print("[Fresnel diffraction + foci -- circular-aperture zones, knife-edge, zone-plate, lens, Newton's rings]")
+# Fabry-Perot Airy minimum transmission T_min = ((1-R)/(1+R))^2 (resonance dip; delta=pi)
+_fpR = 0.9
+check("Fabry-Perot Airy T_min = ((1-R)/(1+R))^2 (R=0.9)",
+      physics.airy_transmission(632.8, 632.8e-6 / 4.0, _fpR), ((1 - _fpR) / (1 + _fpR)) ** 2, 1e-4, "Hecht; oracle")
+# Circular-aperture on-axis Fresnel zones: I_axis/I0 = 4 sin^2(pi N_F/2); odd N_F -> 4 I0, even N_F -> 0
+_ca_a, _ca_lam, _ca_N = 0.5, 500.0, 1024
+_ca_dx = 2.2 * 2 * _ca_a / _ca_N
+_ca_ap = field.circular_aperture(_ca_N, _ca_dx, 2 * _ca_a)
+_ca_c = _ca_N // 2
+for _nf in (1, 2, 3, 4):
+    _ca_z = _ca_a ** 2 / (_ca_lam * 1e-6 * _nf)
+    _ca_I = float(_np.abs(field.angular_spectrum(_ca_ap, _ca_dx, _ca_z, _ca_lam)[_ca_c, _ca_c]) ** 2)
+    if _nf % 2 == 1:
+        check("Circular aperture odd N_F=%d -> I_axis ~ 4 I0" % _nf, _ca_I, 4.0, 0.6, "Hecht/Born&Wolf; FFT zones")
+    else:
+        check("Circular aperture even N_F=%d -> I_axis ~ 0" % _nf, _ca_I, 0.0, 0.1, "Hecht/Born&Wolf; FFT zones")
+# Knife-edge (straight-edge) Fresnel diffraction: I at the geometric edge = 1/4 I0, deep shadow -> 0
+_ke_N, _ke_dx = 2048, 0.004
+_ke_x = (_np.arange(_ke_N) - _ke_N // 2) * _ke_dx
+_ke_U0 = _np.zeros((_ke_N, _ke_N), dtype=complex)
+_ke_U0[:, _ke_x >= 0] = 1.0
+_ke_U = field.angular_spectrum(_ke_U0, _ke_dx, 300.0, 500.0)
+_ke_c = _ke_N // 2
+check("Knife-edge: I at the geometric edge = 1/4 I0", float(_np.abs(_ke_U[_ke_c, _ke_c]) ** 2), 0.25, 0.03, "Cornu/Fresnel; FFT")
+check("Knife-edge: deep shadow -> 0", float(_np.abs(_ke_U[_ke_c, _ke_c - 250]) ** 2), 0.0, 0.03, "Fresnel; FFT")
+# Fresnel zone-plate focuses on axis at z = f = r1^2 / lambda (primary order)
+_zp_lam, _zp_f = 500.0, 200.0
+_zp_r1 = (_zp_lam * 1e-6 * _zp_f) ** 0.5
+_zp_N = 1024
+_zp_dx = 20 * _zp_r1 / _zp_N
+_zp_x = (_np.arange(_zp_N) - _zp_N // 2) * _zp_dx
+_zp_X, _zp_Y = _np.meshgrid(_zp_x, _zp_x)
+_zp_r = _np.sqrt(_zp_X ** 2 + _zp_Y ** 2)
+_zp_ap = ((_np.sin(_np.pi * _zp_r ** 2 / (_zp_lam * 1e-6 * _zp_f)) > 0) & (_zp_r <= 8 * _zp_r1)).astype(complex)
+_zp_c, _zp_best, _zp_pk = _zp_N // 2, None, -1.0
+for _zz in _np.linspace(0.6 * _zp_f, 1.4 * _zp_f, 17):
+    _zI = float(_np.abs(field.angular_spectrum(_zp_ap, _zp_dx, _zz, _zp_lam)[_zp_c, _zp_c]) ** 2)
+    if _zI > _zp_pk:
+        _zp_pk, _zp_best = _zI, _zz
+check("Zone-plate focus on axis at z = r1^2/lambda (200mm)", _zp_best, _zp_f, 12.0, "Hecht; FFT axial scan")
+# Thin-lens (quadratic phase mask) focuses at z = f (2nd-moment waist minimum)
+_ln_f, _ln_D, _ln_lam, _ln_N = 300.0, 4.0, 500.0, 1024
+_ln_dx = 2.5 * _ln_D / _ln_N
+_ln_x = (_np.arange(_ln_N) - _ln_N // 2) * _ln_dx
+_ln_X, _ln_Y = _np.meshgrid(_ln_x, _ln_x)
+_ln_r2 = _ln_X ** 2 + _ln_Y ** 2
+_ln_ap = (_ln_r2 <= (_ln_D / 2) ** 2).astype(complex) * _np.exp(-1j * _np.pi * _ln_r2 / (_ln_lam * 1e-6 * _ln_f))
+_ln_best, _ln_wmin = None, 1e9
+for _lz in _np.linspace(0.5 * _ln_f, 1.5 * _ln_f, 15):
+    _lw = field.field_metrics(field.angular_spectrum(_ln_ap, _ln_dx, _lz, _ln_lam), _ln_dx, _ln_lam)["w_2sigma_mm"]
+    if _lw < _ln_wmin:
+        _ln_wmin, _ln_best = _lw, _lz
+check("Thin-lens (quadratic phase) focuses at z = f (300mm)", _ln_best, _ln_f, 30.0, "Goodman; FFT 2nd-moment scan")
+# Newton's rings: m-th DARK ring radius r_m = sqrt(m lambda R) (reflection), central spot dark
+check("Newton dark-ring r_10 = sqrt(10 lambda R) (R=10m, 589nm)", physics.newton_ring_radius(10, 589.0, 10000.0), 7.6746, 1e-3, "Hecht; oracle")
+check("Newton central dark spot r_0 = 0", physics.newton_ring_radius(0, 589.0, 10000.0), 0.0, 1e-9, "Hecht; oracle")
+
 print("[Atmospheric turbulence -- dense Kolmogorov phase screen (FT method + subharmonics, off-trace)]")
 from optical_alignment_sim import turbulence as _turb
 check("Kolmogorov structure constant 6.88 = 2*(24/5*Gamma(6/5))^(5/6)", _turb.STRUCT_CONST, 6.8839, 1e-3, "Schmidt/Noll; oracle (gamma)")

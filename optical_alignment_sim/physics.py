@@ -1331,6 +1331,12 @@ def airy_transmission(wl_nm, L_mm, R, n=1.0, theta=0.0):
     return 1.0 / (1.0 + F * math.sin(delta / 2.0) ** 2)
 
 
+def newton_ring_radius(m, wl_nm, R_mm):
+    """Newton's-rings DARK-ring radius (reflection) of the m-th ring: r_m = sqrt(m * lambda * R), where R is
+    the radius of curvature of the lens against the flat (Hecht). m=0 -> 0 (the central dark spot)."""
+    return math.sqrt(max(0.0, m) * (wl_nm * NM_TO_MM) * R_mm)
+
+
 def fringe_envelope(opd_mm, Lc_mm):
     """Visibility envelope vs optical path difference (Gaussian coherence decay).
 

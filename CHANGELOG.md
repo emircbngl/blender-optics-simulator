@@ -23,6 +23,25 @@ semantic versioning.
   `z_T = 2 d²/λ` is `physics_verify` ok=true. **4 new oracle checks** → validation **121 → 125**. Demo
   `docs/img/talbot-carpet-demo.png`.
 
+### Added — Fresnel diffraction & focusing batch (sourced from textbook computational examples)
+- **Five more textbook setups, each reproduced LIVE by the off-trace angular-spectrum field engine and pinned
+  to its closed form** (surveyed from Hecht, Born & Wolf, Goodman and the Voelz/Schmidt computational-Fourier
+  texts, then adversarially verified — **no engine bug found**, the engine already matches every book):
+  1. **Circular-aperture on-axis Fresnel zones** — `I_axis/I0 = 4 sin²(πN_F/2)`: an **odd** Fresnel number
+     gives a bright on-axis point (≈ 4 I₀), an **even** one a dark point (≈ 0). FFT got 3.98 / 0.001 / 4.04 / 0.000.
+  2. **Straight-edge (knife-edge) Fresnel pattern** — the intensity at the geometric shadow edge is exactly
+     **¼ I₀** (FFT 0.252), decaying to 0 deep in shadow, with the Cornu overshoot fringes on the lit side.
+  3. **Fresnel zone-plate** — focuses on axis at `z = f = r₁²/λ` (FFT peak at the design f = 200 mm).
+  4. **Thin-lens (quadratic phase mask)** — its 2nd-moment waist minimum lands at `z = f` (FFT min at 300 mm).
+  5. **Fabry–Pérot Airy minimum transmission** — `T_min = ((1−R)/(1+R))² = 1/(1+F)` (0.002770 at R=0.9), on the
+     existing `airy_transmission` kernel.
+- **`physics.newton_ring_radius(m, λ, R)`** (+ `optics_calc`/MCP) — Newton's-rings dark-ring radius
+  `r_m = √(m λ R)` (r₁₀ = 7.6746 mm at R=10 m, 589 nm; central spot dark). `physics_verify` ok=true.
+- The N-slit grating array factor `(sin Nγ / N sin γ)²` and the Talbot self-imaging condition (every Fresnel
+  harmonic phase = 2πm² at z_T) were both `physics_verify` ok=true this cycle, so the analytic forms the FFT is
+  matched against are themselves oracle-grounded. **11 new oracle checks** → validation **125 → 136**. Demo
+  `docs/img/fresnel-foci-demo.png`.
+
 ## [0.12.0] — Physical-optics field engine + textbook validation — 2026-06-28
 
 A major feature release. Adds a complete **opt-in, off-trace physical-optics field engine** on top of the

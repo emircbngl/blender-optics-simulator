@@ -178,7 +178,7 @@ the Scan + Plot operator, the Detector Fringe Image, and the live sensor window 
 
 A complete sampled-field layer on top of the geometric + Gaussian-q core. Every panel is computed **on
 demand** and **never touches the live trace** (the byte-identical regression is preserved); every formula is
-machine-verified against the physicist Docker oracle (the validation suite now runs **116 checks**).
+machine-verified against the physicist Docker oracle (the validation suite now runs **136 checks**).
 
 | | |
 |:---:|:---:|
