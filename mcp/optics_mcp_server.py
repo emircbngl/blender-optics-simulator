@@ -762,6 +762,15 @@ def export_svg(filepath: str) -> str:
 
 
 @mcp.tool()
+def export_report(filepath: str = "", title: str = "Optical Bench Report", with_render: bool = False) -> str:
+    """Bundle the WHOLE-BENCH analysis into ONE self-contained HTML spec sheet -- the 'show me everything'
+    command. Binds get_state + inspect_all (per-element dashboard) + diagnose + beam_profile (plot embedded) +
+    an optional render (with_render=True), images inlined as base64 so the file is portable. Returns {ok, path,
+    n_elements, n_issues}. READ-ONLY; byte-identical."""
+    return _fmt(_call("export_report", filepath=(filepath or None), title=title, with_render=with_render))
+
+
+@mcp.tool()
 def dress_bench(enable: bool = True) -> str:
     """Spawn (enable=True) or remove (enable=False) the procedural opto-mechanics: a hole-grid
     breadboard, a post + pedestal under each optic, and a mount ring framing it. Optics are NOT

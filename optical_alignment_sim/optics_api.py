@@ -64,7 +64,7 @@ _TOOL_GROUPS = {
     "adaptive optics + surface figure": [
         "ao_command", "ao_close_loop", "ao_close_loop_recon", "ao_kolmogorov", "zonal_render", "pyramid_wfs",
         "turbulence_screen", "propagate_turbulent"],
-    "render / export": ["render", "render_sequence", "export_svg"],
+    "render / export": ["render", "render_sequence", "export_svg", "export_report"],
 }
 
 _WORKFLOWS = [
@@ -497,6 +497,92 @@ def aberrated_psf(mode="spherical", amplitude_waves=0.1, zernike_waves=None,
                              n_grid=int(n_grid), diam_px=int(diam_px), png_path=png_path)
     out["mode"] = mode if zernike_waves is None else "custom"
     return out
+
+
+def export_report(filepath=None, title="Optical Bench Report", with_render=False):
+    """Bundle the WHOLE-BENCH analysis into ONE self-contained HTML spec sheet -- the 'show me everything'
+    command. Binds the existing read tools: the topology/summary (get_state), the per-element inspection
+    dashboard (inspect_all), the diagnostics (diagnose), and the beam profile (beam_profile, its plot embedded),
+    plus an optional Cycles/EEVEE render (with_render=True). Pure HTML, no external deps, images inlined as base64
+    so the file is portable. Returns {ok, path, n_elements, n_issues}. READ-ONLY; the live trace is byte-identical."""
+    import os
+    import html as _html
+    import base64
+    import tempfile
+
+    def _img_tag(path, cap=""):
+        try:
+            with open(path, "rb") as fh:
+                b64 = base64.b64encode(fh.read()).decode("ascii")
+            return ('<figure><img src="data:image/png;base64,%s"/>'
+                    '<figcaption>%s</figcaption></figure>' % (b64, _html.escape(cap)))
+        except Exception:
+            return ""
+
+    state = get_state() or {}
+    dash = inspect_all() or {}
+    diag = diagnose() or {}
+    prof = beam_profile() if any(True for _o in _scene().objects
+                                 if getattr(_o, "optics", None) and getattr(_o.optics, "is_optical", False)) else {}
+    rows = dash.get("elements", [])
+    issues = diag.get("issues") or diag.get("problems") or []
+    parts = ["<!doctype html><meta charset=utf-8><title>%s</title>" % _html.escape(title),
+             "<style>body{background:#0d0d10;color:#e8e8ea;font:14px/1.5 system-ui,sans-serif;margin:0;padding:28px}"
+             "h1{color:#f4f4f6}h2{color:#4a8db0;border-bottom:1px solid #33343a;padding-bottom:4px;margin-top:28px}"
+             "table{border-collapse:collapse;width:100%;font-size:12.5px}th,td{border:1px solid #33343a;padding:5px 8px;text-align:left}"
+             "th{background:#1a1b1f;color:#9ab}tr:nth-child(even){background:#141519}.bad{color:#e0653a}.ok{color:#5ab07a}"
+             "figure{margin:14px 0}img{max-width:100%;border:1px solid #33343a;border-radius:4px}"
+             "figcaption{color:#8a8a92;font-size:11px}.muted{color:#8a8a92}</style>"]
+    parts.append("<h1>%s</h1>" % _html.escape(title))
+    parts.append('<p class=muted>Blender Optics Simulator &mdash; off-trace analysis report. '
+                 '%d optical elements, %d diagnostic note(s).</p>' % (len(rows), len(issues)))
+
+    parts.append("<h2>Per-element inspection</h2><table><tr><th>Element</th><th>Type</th><th>Role</th>"
+                 "<th>In power</th><th>Throughput</th><th>w (mm)</th><th>Curvature</th><th>M&sup2;</th>"
+                 "<th>Pol</th><th>Outputs</th></tr>")
+    for r in rows:
+        outs = r.get("outputs") or []
+        okind = ", ".join("%s %.3g" % (o.get("kind", "?"), o.get("power", 0.0)) for o in outs) if outs else "&mdash;"
+        parts.append("<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td>"
+                     "<td>%s</td><td>%s</td><td>%s</td></tr>" % tuple(_html.escape(str(x)) for x in (
+                         r.get("name"), r.get("type"), r.get("role") or "", r.get("in_power"), r.get("throughput"),
+                         r.get("w_mm"), r.get("curvature") or "", r.get("m2"), r.get("polarization") or "", okind)))
+    parts.append("</table>")
+
+    if issues:
+        parts.append("<h2>Diagnostics</h2><table><tr><th>Severity</th><th>Issue</th><th>Where</th></tr>")
+        for it in issues:
+            sev = str(it.get("severity", it.get("state", "")))
+            cls = "bad" if sev in ("BAD", "WARN", "high", "medium") else "ok"
+            parts.append("<tr><td class=%s>%s</td><td>%s</td><td>%s</td></tr>" % (
+                cls, _html.escape(sev), _html.escape(str(it.get("issue", it.get("problem", it.get("kind", ""))))),
+                _html.escape(str(it.get("where", it.get("element", ""))))))
+        parts.append("</table>")
+    else:
+        parts.append("<h2>Diagnostics</h2><p class=ok>No issues flagged.</p>")
+
+    if isinstance(prof, dict) and prof.get("ok"):
+        w = prof.get("waist", {})
+        parts.append("<h2>Beam profile</h2><p>Waist w&#8320; = %s mm at z = %s mm.</p>" % (
+            _html.escape(str(w.get("w_mm"))), _html.escape(str(w.get("z_mm")))))
+        if prof.get("png"):
+            parts.append(_img_tag(prof["png"], "Gaussian spot radius w(z) along the beam path"))
+
+    if with_render:
+        try:
+            rp = os.path.join(tempfile.gettempdir(), "optics_report_render.png")
+            render(filepath=rp)
+            parts.append("<h2>Scene render</h2>" + _img_tag(rp, "Cycles/EEVEE view of the bench"))
+        except Exception as exc:
+            parts.append("<p class=muted>(render skipped: %s)</p>" % _html.escape(str(exc)))
+
+    out = filepath or os.path.join(tempfile.gettempdir(), "optics_report.html")
+    try:
+        with open(out, "w", encoding="utf-8") as fh:
+            fh.write("\n".join(parts))
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+    return {"ok": True, "path": out, "n_elements": len(rows), "n_issues": len(issues)}
 
 
 def gpu_status(enable=None):

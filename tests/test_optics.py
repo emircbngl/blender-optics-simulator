@@ -1532,6 +1532,13 @@ check("export_svg ok (elements+beams)", svgres.get("ok") and svgres["elements"] 
 check("SVG well-formed XML", wellformed)
 check("SVG has glyphs + beam lines", "<circle" in svgtext and svgtext.count("<line") >= 1)
 
+# inspect_all dashboard + export_report bundler (the new outputs) run end-to-end on a built example
+_ia = optics_api.inspect_all()
+check("inspect_all dashboard: per-element table for every optic", _ia.get("ok") and _ia["n_elements"] >= 4, str(_ia.get("n_elements")))
+_rep = optics_api.export_report(filepath="/tmp/oas_report.html", title="Regress")
+_rep_html = open("/tmp/oas_report.html").read() if _rep.get("ok") else ""
+check("export_report: self-contained HTML with the dashboard table", _rep.get("ok") and "<table>" in _rep_html and _rep["n_elements"] >= 4, str(_rep.get("path")))
+
 print("[beam profile w(z)]")
 optics_api.build_example("newton_rings")
 bp = optics_api.beam_profile("NR_D")
