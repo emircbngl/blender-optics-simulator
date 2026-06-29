@@ -1106,12 +1106,27 @@ def _own_new(coll, before, owner, optics=()):
     support-cluster `owner` id. The interpenetration check treats one cluster's parts (a post + its
     holder + its mount; a periscope's shared pillar + both clamps; a cage's rods + plates + members) as
     designed-to-touch, and only flags collisions BETWEEN clusters. The shared breadboard / feet / holes
-    stay untagged (owner == None) so nothing is flagged for resting on the board."""
-    for o in coll.objects:
-        if o not in before:
-            o["oa_owner"] = owner
+    stay untagged (owner == None) so nothing is flagged for resting on the board.
+
+    Also makes the cluster a RIGID ASSEMBLY: the new hardware is Blender-parented to a representative member
+    optic, so the mount/post RIDES the optic when it is grabbed (instead of the optic floating free of its
+    mechanics -- the reported bug). `matrix_parent_inverse` freezes each child's world pose at parent time, so
+    parenting causes ZERO visible motion AND the optic's own `matrix_world` is untouched -> the trace stays
+    byte-identical (the tracer keys off `is_optical` optics, not this decoration). The shared board/feet/holes
+    are created before any snapshot, so they are never in `new` and stay world-anchored (one optic must not
+    drag the table)."""
+    new = [o for o in coll.objects if o not in before]
+    for o in new:
+        o["oa_owner"] = owner
     for o in optics:
         o["oa_owner"] = owner
+    rep = optics[0] if optics else None                  # the representative optic the cluster rides
+    if rep is not None:
+        inv = rep.matrix_world.inverted()
+        for o in new:
+            if o.parent is None:                         # don't re-parent anything already linked
+                o.parent = rep
+                o.matrix_parent_inverse = inv            # cancel the optic's transform -> no jump, no trace change
 
 
 def _interpenetration_issues(scene, min_faces=2):
