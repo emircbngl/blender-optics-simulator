@@ -174,7 +174,7 @@ the Scan + Plot operator, the Detector Fringe Image, and the live sensor window 
   <img src="docs/img/feature-board.png" width="92%" alt="New in v0.10.0: the WFS reads the beam's own curvature defocus; a pyramid WFS slope read; a soft-edge dichroic (R+T=1); a die face read as a zonal wavefront">
 </p>
 
-### New in v0.22.0 — biaxial nonlinear crystals (KTP + LBO)
+### New in v0.22.0 — biaxial nonlinear crystals (KTP + LBO) + Newton's-rings 2D
 
 <p align="center">
   <img src="docs/img/biaxial-crystals-demo.png" width="92%" alt="New in v0.22.0: KTP and LBO XY-plane SHG phase-match tuning curves passing through the textbook 1064-to-532 cuts (KTP Type-II 23.5 deg, LBO Type-I 11.6 deg), plus their three principal indices">
@@ -188,6 +188,10 @@ and from the sourced coefficients the solver reproduces the textbook Nd:YAG gree
 ~4 mrad, LBO ~7 mrad). Off-trace calculators; the live trace stays byte-identical. *(The in-plane index order
 was caught and corrected via `physics_verify` before coding — the polarization is perpendicular to the
 wavevector, so `1/n² = sin²φ/n_x² + cos²φ/n_y²`.)*
+
+Also new: **`newton_rings`** produces the 2-D Newton's-rings reflected pattern of a plano-convex surface on a
+flat — `I(r)=sin²(πr²/λR)`, a central dark spot and dark rings falling exactly on `r_m=√(mλR)`
+(`docs/img/newton-rings-demo.png`).
 
 ### New in v0.21.0 — birefringence: o/e double refraction + a χ² coupled-wave solver
 

@@ -6,7 +6,7 @@ semantic versioning.
 
 ## [Unreleased]
 
-## [0.22.0] — Biaxial nonlinear crystals: KTP + LBO principal-plane phase matching — 2026-06-29
+## [0.22.0] — Biaxial nonlinear crystals (KTP + LBO) + Newton's-rings 2D pattern — 2026-06-29
 
 The last big-ticket crystal item: the Sellmeier-derived SHG phase matching covered only **uniaxial** crystals;
 this adds the two workhorse **biaxial** doublers, KTP and LBO, with real principal-plane phase matching + walk-off
@@ -29,6 +29,14 @@ Off-trace calculators; the live trace stays byte-identical.
   drifts by `uniaxial_walkoff_angle(n_y, n_x, φ)` — **KTP Type-II ~4.4 mrad** (datasheet ~4), **LBO Type-I
   ~6.9 mrad** (datasheet ~7). Two new `optics_calc` calculators. (Scope: the XY plane / θ=90° critical case; the
   YZ/XZ planes + NCPM temperature tuning deferred.) Validation **219 → 225**; byte-identical (off-trace calc).
+
+### Added — Newton's-rings 2D pattern (`newton_rings`)
+- The engine had the closed-form ring radius; this adds the full **2-D reflected pattern** of a plano-convex
+  surface on a flat — `I(r) = sin²(π r²/(λ R))`, a central **dark** spot (the half-wave reflection phase) and
+  dark rings that fall exactly on `r_m = √(m λ R)` (reuses the oracle-verified `newton_ring_radius`). Off-trace
+  producer in `diagnostics` + optics_api + MCP (design group). Validated: central spot dark, the r₄ ring is an
+  intensity null. Demo `docs/img/newton-rings-demo.png`. Validation **225 → 227**; regression **389 → 390** (the
+  new end-to-end wrapper smoke).
 
 ## [0.21.0] — Birefringence: o/e spatial ray-splitting + a χ² coupled-wave solver — 2026-06-29
 

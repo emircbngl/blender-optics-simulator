@@ -54,7 +54,7 @@ _TOOL_GROUPS = {
     "design (pure math, no scene change)": [
         "design_telescope", "design_4f", "mode_match", "optics_calc", "wave_psf", "aberrated_psf",
         "propagate_field", "propagate_chain", "gerchberg_saxton", "fienup_phase_retrieval", "spatial_filter",
-        "tem_mode", "propagate_pulse", "slit_diffraction", "talbot_effect"],
+        "tem_mode", "newton_rings", "propagate_pulse", "slit_diffraction", "talbot_effect"],
     "place / assemble (opto-mechanics)": [
         "place_relative", "make_cage", "make_tube", "make_rail", "place_on_grid", "place_on_rail",
         "set_grid", "dress_bench"],
@@ -729,6 +729,38 @@ def tem_mode(family="HG", i=1, j=0, w_mm=0.5, n_grid=256, png=False):
             for a_ in ax[0]:
                 a_.set_xticks([]); a_.set_yticks([]); a_.set_facecolor("#0d0d10")
             png_path = os.path.join(tempfile.gettempdir(), "optics_tem_mode.png")
+            fig.tight_layout()
+            fig.savefig(png_path, dpi=120, facecolor=fig.get_facecolor())
+            plt.close(fig)
+            out["png"] = png_path
+        except Exception as exc:
+            out["png_error"] = str(exc)
+    return out
+
+
+def newton_rings(radius_of_curvature_mm=1000.0, wavelength_nm=589.3, n_rings=8, n_grid=256, png=False):
+    """The 2-D NEWTON'S-RINGS reflected pattern of a plano-convex surface (radius of curvature R) on a flat: the
+    quadratic air gap makes the two reflections interfere as I(r)=sin^2(pi r^2/(lambda R)) -- a central DARK spot
+    + dark rings at r_m = sqrt(m lambda R). Returns {ok, radius_of_curvature_mm, wavelength_nm, n_rings, field_mm,
+    dark_ring_radii_mm, central_intensity (~0), oracle}. png=True saves the ring image. Off-trace; byte-identical."""
+    out, raster = _diagnostics.newton_rings_2d(float(radius_of_curvature_mm), float(wavelength_nm),
+                                               n_rings=int(n_rings), nx=int(n_grid))
+    if png:
+        try:
+            import os
+            import tempfile
+            import matplotlib
+            matplotlib.use("Agg")
+            import matplotlib.pyplot as plt
+            fig, ax = plt.subplots(figsize=(4.0, 4.0))
+            fig.patch.set_facecolor("#0d0d10")
+            ext = 0.5 * out["field_mm"]
+            ax.imshow(raster, cmap="gray", origin="lower", extent=(-ext, ext, -ext, ext))
+            ax.set_title("Newton's rings (R=%g mm, %g nm)" % (radius_of_curvature_mm, wavelength_nm),
+                         color="#f4f4f6", fontsize=10)
+            ax.set_xlabel("mm", color="#8a8a92", fontsize=8); ax.tick_params(colors="#8a8a92", labelsize=7)
+            ax.set_facecolor("#0d0d10")
+            png_path = os.path.join(tempfile.gettempdir(), "optics_newton_rings.png")
             fig.tight_layout()
             fig.savefig(png_path, dpi=120, facecolor=fig.get_facecolor())
             plt.close(fig)

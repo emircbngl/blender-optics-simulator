@@ -475,6 +475,20 @@ check("Thin-lens (quadratic phase) focuses at z = f (300mm)", _ln_best, _ln_f, 3
 # Newton's rings: m-th DARK ring radius r_m = sqrt(m lambda R) (reflection), central spot dark
 check("Newton dark-ring r_10 = sqrt(10 lambda R) (R=10m, 589nm)", physics.newton_ring_radius(10, 589.0, 10000.0), 7.6746, 1e-3, "Hecht; oracle")
 check("Newton central dark spot r_0 = 0", physics.newton_ring_radius(0, 589.0, 10000.0), 0.0, 1e-9, "Hecht; oracle")
+# the 2-D Newton's-rings producer: central spot DARK, and the intensity nulls at the closed-form dark radii
+from optical_alignment_sim import diagnostics as _ndiag
+_nrm, _nrI = _ndiag.newton_rings_2d(1000.0, 589.3, n_rings=8, nx=400)
+check("Newton 2D: central spot is dark (I(0) ~ 0)", _nrm["central_intensity"], 0.0, 1e-3, "Hecht; sin^2 phase")
+# the m=4 dark ring is an intensity null: the radial profile reaches ~0 in a small window around r_4
+# (window-min, robust to the half-pixel grid offset -- the null sits exactly at r_4 = sqrt(4 lambda R))
+import numpy as _np4
+_r4 = physics.newton_ring_radius(4, 589.3, 1000.0)
+_field = _nrm["field_mm"]; _nx4 = _nrI.shape[0]
+_c4 = (_nx4 - 1) / 2.0                                          # x=0 pixel (linspace centre)
+_j4 = _c4 + _r4 / (_field / (_nx4 - 1))                         # pixel index at radius r_4 along +x
+_lo, _hi = int(_j4) - 2, int(_j4) + 3
+_ring_min = float(_nrI[int(round(_c4)), _lo:_hi].min())
+check("Newton 2D: dark ring at r_4 = sqrt(4 lambda R) is an intensity null", _ring_min, 0.0, 0.01, "Hecht; sin^2(pi r^2/(lambda R))")
 
 print("[Phenomenon emergence -- produce_phenomenon: synthesize the interferogram + record/reconstruct a hologram]")
 from optical_alignment_sim import diagnostics as _diag

@@ -1143,6 +1143,32 @@ def _emerge_talbot(period_mm, wl_nm, nx=256):
     return metrics, None
 
 
+def newton_rings_2d(R_mm, wl_nm=589.3, n_rings=8, field_mm=None, nx=256):
+    """Produce the 2-D NEWTON'S-RINGS reflected-intensity pattern of a plano-convex surface (radius of curvature
+    R_mm) resting on a flat. The air gap grows quadratically, t(r) = r^2/(2R), so the two reflections (off the
+    curved face and the flat) interfere as  I(r) = sin^2(pi r^2 / (lambda R))  -- a central DARK spot (the
+    half-wave reflection phase) and dark rings wherever 2t = m*lambda, i.e. at r_m = sqrt(m lambda R) (exactly
+    physics.newton_ring_radius, oracle-verified). Off-trace, pure analysis. Returns (metrics, intensity_2d)."""
+    import numpy as np
+    lam_mm = wl_nm * 1.0e-6
+    if field_mm is None:
+        field_mm = 2.2 * physics.newton_ring_radius(n_rings, wl_nm, R_mm)        # ~ out to the n_rings-th ring
+    ax = np.linspace(-0.5 * field_mm, 0.5 * field_mm, int(nx))
+    X, Y = np.meshgrid(ax, ax)
+    r2 = X * X + Y * Y
+    inten = np.sin(np.pi * r2 / (lam_mm * R_mm)) ** 2
+    radii = [physics.newton_ring_radius(m, wl_nm, R_mm) for m in range(int(n_rings) + 1)]
+    metrics = {
+        "radius_of_curvature_mm": R_mm, "wavelength_nm": wl_nm, "n_rings": int(n_rings),
+        "field_mm": round(field_mm, 5), "dark_ring_radii_mm": [round(r, 5) for r in radii],
+        "central_intensity": round(float(inten[int(nx) // 2, int(nx) // 2]), 6),   # ~0: the central dark spot
+        "oracle": {"quantity": "dark-ring radius r_m = sqrt(m lambda R); I(r) = sin^2(pi r^2/(lambda R))",
+                   "r1_mm": round(physics.newton_ring_radius(1, wl_nm, R_mm), 5),
+                   "source": "Hecht, Optics Ch.9; physics_verify ok=true (newton-ring-radius)"},
+    }
+    return metrics, inten
+
+
 def _render_emergence(kind, raster, meta, png_path):
     """Optional lazy-matplotlib PNG of an emerged phenomenon (mirrors field._render_field: import inside,
     swallow any failure -- the numbers are the product, the PNG is a convenience). Returns path or None."""

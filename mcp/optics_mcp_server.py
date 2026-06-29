@@ -290,6 +290,18 @@ def tem_mode(family: str = "HG", i: int = 1, j: int = 0, w_mm: float = 0.5,
 
 
 @mcp.tool()
+def newton_rings(radius_of_curvature_mm: float = 1000.0, wavelength_nm: float = 589.3,
+                 n_rings: int = 8, n_grid: int = 256, png: bool = False) -> str:
+    """The 2-D NEWTON'S-RINGS reflected pattern of a plano-convex surface (radius of curvature R) resting on a
+    flat: the quadratic air gap makes the two reflections interfere as I(r)=sin^2(pi r^2/(lambda R)) -- a central
+    DARK spot + dark rings at r_m = sqrt(m lambda R). Returns {ok, radius_of_curvature_mm, wavelength_nm,
+    n_rings, field_mm, dark_ring_radii_mm, central_intensity (~0), oracle}; png=True saves the ring image.
+    Off-trace; live trace byte-identical."""
+    return _fmt(_call("newton_rings", radius_of_curvature_mm=radius_of_curvature_mm, wavelength_nm=wavelength_nm,
+                      n_rings=n_rings, n_grid=n_grid, png=png))
+
+
+@mcp.tool()
 def spatial_filter(obj: str = "grating", kind: str = "lowpass", cutoff_frac: float = 0.15,
                    n_grid: int = 256, png: bool = False) -> str:
     """4f FOURIER-PLANE spatial filtering (the Abbe-Porter experiment / coherent optical image processing):

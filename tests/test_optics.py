@@ -1502,6 +1502,7 @@ _otw = [
     ("fienup_phase_retrieval", dict(obj="dots", n_grid=48, n_iter=30)),
     ("spatial_filter", dict(obj="grating", kind="lowpass", n_grid=48)),
     ("tem_mode", dict(family="LG", i=0, j=1, w_mm=0.5, n_grid=48)),
+    ("newton_rings", dict(radius_of_curvature_mm=1000.0, wavelength_nm=589.3, n_grid=64)),
     ("propagate_chain", dict(steps=[["aperture", 3.0], ["lens", 200.0], ["prop", 200.0]], w0_mm=0.5, n_grid=48)),
     ("propagate_field", dict(wavelength_nm=632.8, w0_mm=0.3, dz_mm=50.0, n_grid=48)),
     ("aberrated_psf", dict(mode="coma", amplitude_waves=0.1, n_grid=64)),
