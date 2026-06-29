@@ -38,6 +38,17 @@ Off-trace calculators; the live trace stays byte-identical.
   intensity null. Demo `docs/img/newton-rings-demo.png`. Validation **225 → 227**; regression **389 → 390** (the
   new end-to-end wrapper smoke).
 
+### Added — quantum photon statistics (`quantum_stats`) — analytic core + QuTiP scaffold
+- The first **quantum** observables in the engine, the ones the χ²/SPDC layer implies: **g^(2)(0)** (coherent=1,
+  thermal=2, single-photon=0, Fock n = 1−1/n — antibunching is non-classical), the **Hong-Ou-Mandel** two-photon
+  dip (coincidence (1−V)/2 → 0 for indistinguishable photons), **squeezing** (squeezed-quadrature variance,
+  sub-shot-noise; 10 dB → 0.1; pure-state product = 1), and the **SPDC** source g² (heralded single photon → 0,
+  a single arm → 2 thermal — ties to the crystal down-conversion the tracer already emits). The closed-form core
+  is **physics_verify ok=true** (Fock g2 = 1−1/n; squeezed variance e^(−2r)/4). The full many-mode / non-Gaussian
+  state is a **QuTiP scaffold** (`quantum_state_observables`): present → QuTiP builds the squeezed vacuum and
+  measures g²; absent → the verified closed form + an honest "needs qutip" note (owner-run). `quantum_stats`
+  optics_api + MCP. Off-trace; byte-identical. Validation **240 → 249**.
+
 ### Added — opt-in GPU backend for the off-trace FFT field engine (scaffold)
 - A NumPy-compatible array namespace (`gpu.py`) that is **NumPy by default** and switches to **CuPy** (NVIDIA)
   or **MLX** (Apple Silicon) when present + enabled (`gpu_status` / `OAS_GPU=1`). `gpu.angular_spectrum` mirrors

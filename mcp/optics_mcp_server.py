@@ -312,6 +312,19 @@ def gpu_status(enable: str = None) -> str:
 
 
 @mcp.tool()
+def quantum_stats(observable: str = "g2", state: str = "coherent", n: int = 1,
+                  indistinguishability: float = 1.0, squeeze_db: float = 10.0, heralded: bool = True) -> str:
+    """QUANTUM photon-statistics observables (off-trace; verified analytic core + a QuTiP scaffold). observable:
+    'g2' (g^(2)(0) of state in {coherent=1, thermal=2, single_photon=0, fock n=1-1/n}), 'hom' (Hong-Ou-Mandel
+    two-photon dip at indistinguishability -- coincidence (1-V)/2, 0 for perfect overlap), 'squeezing'
+    (squeezed-quadrature variance at squeeze_db, sub-shot-noise), 'spdc' (the chi2 down-conversion g2: heralded
+    -> 0, single arm -> 2), 'full_state' (QuTiP-backed; closed-form fallback if qutip absent). Off-trace; live
+    trace byte-identical."""
+    return _fmt(_call("quantum_stats", observable=observable, state=state, n=n,
+                      indistinguishability=indistinguishability, squeeze_db=squeeze_db, heralded=heralded))
+
+
+@mcp.tool()
 def spatial_filter(obj: str = "grating", kind: str = "lowpass", cutoff_frac: float = 0.15,
                    n_grid: int = 256, png: bool = False) -> str:
     """4f FOURIER-PLANE spatial filtering (the Abbe-Porter experiment / coherent optical image processing):

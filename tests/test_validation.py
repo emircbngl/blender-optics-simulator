@@ -164,6 +164,18 @@ check("Type-II SHG balanced -> full conversion at strong drive", physics.chi2_sh
 _t2cap = max(physics.chi2_shg_type2_efficiency(s, 0.2) for s in (1.0, 2.0, 4.0, 8.0, 16.0, 32.0))
 check("Type-II SHG unbalanced (frac_o=0.2) caps at 2*min = 0.4 (Manley-Rowe)", _t2cap, 0.4, 0.02, "photon-number conservation")
 check("Type-II SHG never exceeds the Manley-Rowe cap (frac_o=0.3 -> <= 0.6)", 1.0 if all(physics.chi2_shg_type2_efficiency(s, 0.3) <= 0.6 + 1e-6 for s in (2.0, 8.0, 32.0, 128.0)) else 0.0, 1.0, 1e-9, "Manley-Rowe bound")
+
+print("[Quantum photon statistics -- g2(0), Hong-Ou-Mandel, squeezing (analytic core; physics_verify ok)]")
+from optical_alignment_sim import quantum as _q
+check("g2(0): coherent (laser) = 1 (Poisson)", _q.g2_zero('coherent'), 1.0, 1e-12, "Loudon; oracle")
+check("g2(0): thermal/chaotic = 2 (bunching)", _q.g2_zero('thermal'), 2.0, 1e-12, "Loudon; oracle")
+check("g2(0): single photon = 0 (antibunching)", _q.g2_zero('single_photon'), 0.0, 1e-12, "Loudon; oracle")
+check("g2(0): n-photon Fock = 1 - 1/n (n=2 -> 0.5)", _q.g2_zero('fock', 2), 0.5, 1e-12, "physics_verify ok")
+check("HOM: indistinguishable photons -> coincidence 0 (the dip)", _q.hom_dip(1.0)["coincidence_prob"], 0.0, 1e-12, "Hong-Ou-Mandel; (1-V)/2")
+check("HOM: distinguishable photons -> classical coincidence 0.5", _q.hom_dip(0.0)["coincidence_prob"], 0.5, 1e-12, "Hong-Ou-Mandel; classical")
+check("Squeezing: 10 dB -> squeezed variance 0.1 (sub-shot-noise)", _q.squeezing_variance(10.0)["squeezed_var"], 0.1, 1e-9, "physics_verify ok")
+check("Squeezing: pure state is minimum-uncertainty (squeezed*antisqueezed = 1)", _q.squeezing_variance(7.3)["product"], 1.0, 1e-6, "Heisenberg bound")
+check("SPDC: heralded single photon g2(0) = 0 (antibunched)", _q.spdc_g2(True)["g2_zero"], 0.0, 1e-12, "heralded source; oracle")
 # Sellmeier-DERIVED SHG walk-off (replaces the lumped literal when the solver is on): BBO 1064->532 over 10 mm
 check("BBO Sellmeier SHG walk-off over 10 mm ~ 0.50 mm (rho ~ 2.87 deg)", physics.shg_walkoff_mm('BBO', 1064.0, 10.0), 0.502, 0.02, "index ellipsoid; oracle")
 

@@ -54,7 +54,8 @@ _TOOL_GROUPS = {
     "design (pure math, no scene change)": [
         "design_telescope", "design_4f", "mode_match", "optics_calc", "wave_psf", "aberrated_psf",
         "propagate_field", "propagate_chain", "gerchberg_saxton", "fienup_phase_retrieval", "spatial_filter",
-        "tem_mode", "newton_rings", "gpu_status", "propagate_pulse", "slit_diffraction", "talbot_effect"],
+        "tem_mode", "newton_rings", "quantum_stats", "gpu_status", "propagate_pulse", "slit_diffraction",
+        "talbot_effect"],
     "place / assemble (opto-mechanics)": [
         "place_relative", "make_cage", "make_tube", "make_rail", "place_on_grid", "place_on_rail",
         "set_grid", "dress_bench"],
@@ -513,6 +514,28 @@ def gpu_status(enable=None):
     out = gpu.info()
     out["ok"] = True
     return out
+
+
+def quantum_stats(observable="g2", state="coherent", n=1, indistinguishability=1.0, squeeze_db=10.0, heralded=True):
+    """QUANTUM photon-statistics observables (off-trace; verified analytic core + a QuTiP scaffold for the full
+    state). `observable`: 'g2' (g^(2)(0) of `state` in {coherent=1, thermal=2, single_photon=0, fock n=1-1/n}),
+    'hom' (Hong-Ou-Mandel two-photon dip at `indistinguishability`), 'squeezing' (squeezed-quadrature variance
+    at `squeeze_db`, sub-shot-noise), 'spdc' (the chi2 down-conversion source g2: heralded single photon -> 0,
+    a single arm -> 2 thermal), 'full_state' (the QuTiP-backed many-mode state; closed-form fallback if qutip is
+    absent). Off-trace; the live ray trace is byte-identical."""
+    from . import quantum as _qm
+    obs = (observable or "g2").lower()
+    if obs == "g2":
+        return {"ok": True, "observable": "g2", "state": state, "g2_zero": _qm.g2_zero(state, int(n))}
+    if obs == "hom":
+        return {"ok": True, "observable": "hom", **_qm.hom_dip(float(indistinguishability))}
+    if obs == "squeezing":
+        return {"ok": True, "observable": "squeezing", **_qm.squeezing_variance(float(squeeze_db))}
+    if obs == "spdc":
+        return {"ok": True, "observable": "spdc", **_qm.spdc_g2(bool(heralded))}
+    if obs == "full_state":
+        return _qm.quantum_state_observables("squeezed_vacuum", float(squeeze_db))
+    return {"error": "observable must be one of: g2, hom, squeezing, spdc, full_state"}
 
 
 def propagate_field(wavelength_nm, w0_mm=None, aperture_mm=None, dz_mm=0.0, n_grid=256, dx_mm=None, png=False):
