@@ -728,6 +728,15 @@ def _clip_axis_world(E, roll_deg):
     return (E.matrix_world.to_3x3() @ ax_local).normalized()
 
 
+def _oe_axis_world(E, cut_deg):
+    """World unit vector of a uniaxial crystal's OPTIC AXIS: the element's local +Z (its optical/propagation
+    axis, the same convention _clip_axis_world uses) tilted by the cut angle ``cut_deg`` toward local +X, then
+    mapped to world. cut=0 -> axis along the beam (no double refraction); cut=45 -> max walk-off."""
+    r = math.radians(cut_deg)
+    ax_local = Vector((math.sin(r), 0.0, math.cos(r)))
+    return (E.matrix_world.to_3x3() @ ax_local).normalized()
+
+
 def _slit_T(ray, E, H, t):
     """Power transmission of a 1-D SLIT (a pair of blades at +/-b on the clipped axis) on the ray's incident
     Gaussian: T = erf(sqrt2 * b / w) of the part within |x| <= b, MINUS the chief-ray's offset off the slit
@@ -1058,6 +1067,39 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
         segments.append(_seg(ray, H, E, sn))
         et = E.optics.element_type
         op = E.optics
+
+        if et in ('CRYSTAL', 'WAVEPLATE') and getattr(op, 'oe_split', False):
+            # TRUE ordinary/extraordinary SPATIAL double refraction (A-tier birefringence; opt-in, default
+            # OFF -> byte-identical for every scene that doesn't set it). One incident ray forks into an
+            # ORDINARY child (pol perpendicular to the principal plane, index n_o) and an EXTRAORDINARY child
+            # (pol in-plane, walking off by rho). Modeled as a uniaxial SLAB: both exit PARALLEL to the input,
+            # the e-beam laterally displaced by L*tan(rho) (the textbook calcite double image -- a FIXED
+            # displacement set by the crystal thickness, not the screen distance), so we offset the e-child's
+            # emission point rather than tilt it. The o/e power split is Malus on the eigen-axes.
+            mat = getattr(op, 'oe_material', 'CALCITE')
+            n_o = physics.sellmeier_n(ray.wl, mat + '_O')
+            n_e = physics.sellmeier_n(ray.wl, mat + '_E')
+            axis_w = _oe_axis_world(E, getattr(op, 'oe_axis_deg', 45.0))
+            _theta, rho, pol_o, pol_e, walk = physics.oe_split_geometry(
+                (ray.dir.x, ray.dir.y, ray.dir.z), (axis_w.x, axis_w.y, axis_w.z), n_o, n_e)
+            ev = ray.evec if ray.evec is not None else (
+                physics.field_from_jones(ray.jones, ray.dir) if ray.jones is not None else None)
+            if ev is not None:
+                Eo = ev[0] * pol_o[0] + ev[1] * pol_o[1] + ev[2] * pol_o[2]     # complex projections
+                Ee = ev[0] * pol_e[0] + ev[1] * pol_e[1] + ev[2] * pol_e[2]
+                tot = (abs(ev[0]) ** 2 + abs(ev[1]) ** 2 + abs(ev[2]) ** 2) or 1.0
+                fo, fe = abs(Eo) ** 2 / tot, abs(Ee) ** 2 / tot
+                evec_o = (Eo * pol_o[0], Eo * pol_o[1], Eo * pol_o[2])
+                evec_e = (Ee * pol_e[0], Ee * pol_e[1], Ee * pol_e[2])
+            else:                                                              # unpolarized -> 50/50, each pol'd
+                fo = fe = 0.5
+                evec_o = (complex(pol_o[0]), complex(pol_o[1]), complex(pol_o[2]))
+                evec_e = (complex(pol_e[0]), complex(pol_e[1]), complex(pol_e[2]))
+            L = getattr(op, 'oe_length_mm', 10.0)
+            Hoff = H + Vector(walk) * (L * math.tan(math.radians(rho)))         # fixed slab displacement
+            stack.append(_child(ray, E, H, ray.dir, ray.power * fo, 'SPLIT_O', idx, t, evec=evec_o))
+            stack.append(_child(ray, E, Hoff, ray.dir, ray.power * fe, 'SPLIT_E', idx, t, evec=evec_e))
+            continue
 
         if et == 'CRYSTAL':
             # chi(2) nonlinear family (C7). Every child sits at the ENERGY-conserving wavelength

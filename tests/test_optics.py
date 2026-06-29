@@ -493,6 +493,40 @@ _spdc = _wls_to_detector('SPDC', 405.0)
 check("SPDC crystal emits degenerate down-converted light (405 -> 810 nm)",
       any(abs(w - 810.0) < 1.0 for w in _spdc), str(_spdc))
 
+# TRUE o/e SPATIAL double refraction (opt-in; full physics in tests/_verify_birefringence.py). A calcite
+# crystal forks the ray into an ordinary + extraordinary beam, the e-beam displaced by L*tan(rho). Off the
+# default path (oe_split default OFF) so the baselines stay byte-identical.
+def _oe_split_scene(cut_deg, L_mm=10.0):
+    for _o in list(sc.objects):
+        if getattr(_o, "optics", None) and _o.optics.is_optical:
+            bpy.data.objects.remove(_o, do_unlink=True)
+    _s = eg.source("OE_S", (-80, 0, 0), (1, 0, 0), coll=_nlc); _s.optics.pol_type = 'CIRCULAR'
+    eg.crystal("OE_X", (0, 0, 0), (1, 0, 0), coll=_nlc, oe_split=True, oe_material='CALCITE',
+               oe_axis_deg=cut_deg, oe_length_mm=L_mm)
+    eg.detector("OE_D", (80, 0, 0), (1, 0, 0), coll=_nlc)
+    bpy.context.view_layer.update()
+    return [s for s in scan._trace(sc) if s.get("to") == "OE_D"]
+
+
+_oed = _oe_split_scene(45.0, 10.0)
+_oe_o = next((s for s in _oed if s.get("kind") == "SPLIT_O"), None)
+_oe_e = next((s for s in _oed if s.get("kind") == "SPLIT_E"), None)
+check("o/e split: calcite emits BOTH an ordinary and an extraordinary beam",
+      _oe_o is not None and _oe_e is not None, "kinds=%s" % sorted(s.get("kind") for s in _oed))
+if _oe_o and _oe_e:
+    import mathutils as _mu
+    _po, _pe = _mu.Vector(_oe_o["p2"]), _mu.Vector(_oe_e["p2"])
+    _bx = _mu.Vector((1.0, 0.0, 0.0))
+    _sv = _pe - _po
+    _sep = (_sv - _sv.dot(_bx) * _bx).length
+    _no = physics.sellmeier_n(632.8, 'CALCITE_O'); _ne = physics.sellmeier_n(632.8, 'CALCITE_E')
+    _exp = 10.0 * math.tan(math.radians(physics.uniaxial_walkoff_angle(_no, _ne, 45.0)))
+    check("o/e split: e-beam displaced by L*tan(walk-off) (calcite double image)",
+          abs(_sep - _exp) < 5e-3, "sep=%.4f expect=%.4f mm" % (_sep, _exp))
+    check("o/e split: energy conserved P_o + P_e = P_in",
+          abs(_oe_o["power"] + _oe_e["power"] - 1.0) < 1e-4,
+          "sum=%.6f" % (_oe_o["power"] + _oe_e["power"]))
+
 # C7: the rest of the chi(2) family. Every child wavelength is exact ENERGY conservation, each
 # oracle-VERIFIED (tests/_verify_nlcrystal.py): THG l/3, SFG/DFG 1/l3=1/l1+-1/l2, OPO pump->idler.
 _phys = physics

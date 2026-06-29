@@ -490,6 +490,41 @@ def uniaxial_walkoff_angle(n_o, n_e, theta_deg):
     return math.degrees(math.atan((n_o ** 2 - n_e ** 2) * t / (n_o ** 2 + n_e ** 2 * t ** 2)))
 
 
+def oe_split_geometry(d_in, axis, n_o, n_e):
+    """Geometry of ORDINARY / EXTRAORDINARY double refraction in a uniaxial crystal. Given the unit
+    propagation direction ``d_in`` and the crystal optic axis ``axis`` (unit, world frame), return
+    ``(theta_deg, rho_deg, pol_o, pol_e, walk_dir)``:
+
+      - theta_deg : angle of the wave to the optic axis (0 = along the axis -> no splitting).
+      - rho_deg   : the extraordinary walk-off angle (``uniaxial_walkoff_angle``); the e-ray's Poynting
+                    vector drifts off its wavevector by rho. Inside a slab of thickness L the e-beam emerges
+                    laterally displaced by ``L * tan(rho)`` along ``walk_dir`` and PARALLEL to the input (the
+                    textbook calcite double image -- the displacement is fixed by L, independent of the screen
+                    distance), so the tracer offsets the e-child's emission point rather than tilting it.
+      - pol_o     : ordinary polarization, PERPENDICULAR to the principal plane (the plane of d_in and axis).
+      - pol_e     : extraordinary polarization, IN the principal plane and transverse to d_in.
+      - walk_dir  : the transverse direction (in the principal plane) the e-ray walks toward -- toward the
+                    optic-axis projection. (pol_e and walk_dir share the same line; walk_dir fixes the sign.)
+
+    Degenerates gracefully to rho=0 / walk_dir=(0,0,0) when d_in is along the optic axis. Pure geometry; the
+    power split onto pol_o / pol_e (Malus on the eigen-axes) is the caller's job from the incident field."""
+    d = _rnorm(d_in)
+    a = _rnorm(axis)
+    ad = _rdot(d, a)
+    cos_th = min(1.0, abs(ad))
+    theta = math.degrees(math.acos(cos_th))
+    rho = uniaxial_walkoff_angle(n_o, n_e, theta)
+    oc = _rcross(d, a)                                   # normal to the principal plane (d, a)
+    if math.sqrt(oc[0] ** 2 + oc[1] ** 2 + oc[2] ** 2) < 1.0e-9:   # d || a: principal plane undefined
+        e1, _e2 = transverse_basis(d)
+        return 0.0, 0.0, e1, _e2, (0.0, 0.0, 0.0)
+    pol_o = _rnorm(oc)                                   # ordinary: perpendicular to the principal plane
+    pol_e = _rnorm(_rcross(pol_o, d))                    # extraordinary: in-plane, transverse to d
+    at = (a[0] - ad * d[0], a[1] - ad * d[1], a[2] - ad * d[2])    # transverse component of the optic axis
+    walk = pol_e if _rdot(pol_e, at) >= 0.0 else (-pol_e[0], -pol_e[1], -pol_e[2])   # toward the axis
+    return theta, rho, pol_o, pol_e, walk
+
+
 def waveplate_thickness(order, wl_nm, dn):
     """Physical thickness d of a true ZERO-ORDER waveplate giving the requested retardance order at wl_nm,
     from the crystal birefringence dn = |n_e - n_o|:  d = order * lambda / dn  (order = 0.25 quarter-wave,

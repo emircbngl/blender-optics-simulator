@@ -1104,7 +1104,8 @@ def regenerate_iris(obj):
 def crystal(name, loc, beam_dir, coll=None, size=14.0, nl_process='NONE',
             crystal_material='BBO', phase_matching_type='TYPE1', pm_scheme='CRITICAL',
             crystal_temp_C=25.0, poling_period_um=6.5, crystal_length_mm=None,
-            nl_lambda2_nm=532.0, oven=False, ppln_show_stripes=True):
+            nl_lambda2_nm=532.0, oven=False, ppln_show_stripes=True,
+            oe_split=False, oe_material='CALCITE', oe_axis_deg=45.0, oe_length_mm=None):
     """A nonlinear crystal block (the C7 chi(2) family). With a conversion nl_process (SHG/THG/SFG/
     DFG/OPO/SPDC) it is a real TRANSMISSIVE chi(2) element (IN/OUT on the pump axis) and the tracer
     emits the converted beam(s) at the ENERGY-conserving wavelength (each relation oracle-VERIFIED).
@@ -1119,13 +1120,17 @@ def crystal(name, loc, beam_dir, coll=None, size=14.0, nl_process='NONE',
     the slab's physical +Z extent so the sinc^2(dk*L/2) overlay uses the geometry the user sees."""
     o = _cube(name, (size * 0.6, size * 0.6, size), coll)
     o.data.materials.clear(); o.data.materials.append(MATS["bbo"]())
-    conv = nl_process in ('SHG', 'THG', 'SFG', 'DFG', 'OPO', 'SPDC')
+    # a passive o/e double-refractor is ALSO a real transmissive CRYSTAL (IN/OUT on the beam axis), not a
+    # pump-dump -- so oe_split keeps the conv (transmissive) geometry even when nl_process is NONE.
+    conv = nl_process in ('SHG', 'THG', 'SFG', 'DFG', 'OPO', 'SPDC') or oe_split
     if conv:
         L = crystal_length_mm if crystal_length_mm is not None else size
         _tag(o, 'CRYSTAL', clear_aperture=size, nl_process=nl_process,
              crystal_material=crystal_material, phase_matching_type=phase_matching_type,
              pm_scheme=pm_scheme, crystal_temp_C=crystal_temp_C, poling_period_um=poling_period_um,
-             crystal_length_mm=L, nl_lambda2_nm=nl_lambda2_nm)
+             crystal_length_mm=L, nl_lambda2_nm=nl_lambda2_nm,
+             oe_split=oe_split, oe_material=oe_material, oe_axis_deg=oe_axis_deg,
+             oe_length_mm=(oe_length_mm if oe_length_mm is not None else L))
         _add_port(o, "IN", 'IN', (0, 0, -size * 0.5), (0, 0, -1), size)
         _add_port(o, "OUT", 'OUT', (0, 0, size * 0.5), (0, 0, 1), size)
         # PPLN (QPM): fine alternating poling-domain stripes along the beam (+Z), proud of the slab faces so

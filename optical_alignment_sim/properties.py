@@ -538,6 +538,20 @@ class OpticalElementProps(PropertyGroup):
         description="Grow literal alternating poling-domain slabs on the PPLN slab (cosmetic; trace unchanged)")
     crystal_length_mm: FloatProperty(name="Interaction length (mm)", default=10.0, min=0.01)  # L for sinc^2(dk L/2)
     nl_walkoff_mm: FloatProperty(name="Walk-off offset (mm)", default=0.6, min=0.0)  # CRITICAL transverse offset
+    # --- TRUE o/e SPATIAL double refraction (opt-in; default OFF -> byte-identical). When ON, a CRYSTAL or
+    #     WAVEPLATE forks the ray into an ordinary + extraordinary beam (the calcite double image / Wollaston-
+    #     class split), the e-beam displaced by L*tan(rho) -- see tracer o/e branch + physics.oe_split_geometry.
+    oe_split: BoolProperty(name="o/e double refraction", default=False,
+        description="Split the ray into ordinary + extraordinary beams (true birefringent double refraction)")
+    oe_material: EnumProperty(name="Birefringent material", default='CALCITE',
+        items=[('CALCITE', "Calcite (CaCO3)", "Strong negative uniaxial; the classic double-refractor"),
+               ('QUARTZ', "Quartz (alpha-SiO2)", "Weak positive uniaxial"),
+               ('MGF2', "MgF2", "Weak positive uniaxial; UV-IR"),
+               ('SAPPHIRE', "Sapphire (Al2O3)", "Negative uniaxial; UV-IR")])
+    oe_axis_deg: FloatProperty(name="Optic-axis cut (deg)", default=45.0, min=0.0, max=90.0,
+        description="Angle of the optic axis from the beam (0=along beam, no split; 45=max walk-off)")
+    oe_length_mm: FloatProperty(name="Crystal thickness (mm)", default=10.0, min=0.01,
+        description="Slab thickness L; the e-beam is displaced by L*tan(walk-off)")
     # microscope objective (VERIFIED microscope-objective-magnification + numerical-aperture):
     # f_obj = f_tube/M (infinity) or tube_length/M (finite); the tracer focuses with f_obj.
     obj_mag: FloatProperty(name="Magnification (x)", default=10.0, min=1.0)
