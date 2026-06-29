@@ -116,6 +116,11 @@ check("BBO Type-I SHG phase-match angle 1064->532 = 22.78 deg", physics.shg_phas
 check("KDP n_o @1064nm = 1.4938 (Zernike Sellmeier)", math.sqrt(physics._nl_n2(physics.NL_CRYSTAL_SELLMEIER['KDP'][0], 1.064)), 1.4938, 1e-3, "Zernike1964 [datasheet]")
 check("KDP n_e @532nm = 1.4705 (Zernike Sellmeier)", math.sqrt(physics._nl_n2(physics.NL_CRYSTAL_SELLMEIER['KDP'][1], 0.532)), 1.4705, 1e-3, "Zernike1964 [datasheet]")
 check("KDP Type-I SHG phase-match angle 1064->532 = 41.2 deg", physics.shg_phase_match_angle('KDP', 1064.0), 41.2, 0.3, "textbook; index ellipsoid")
+# LiIO3 (Umegaki 1971) + ADP (Zernike 1964): the Type-I 1064->532 angle reproduces the textbook value, which
+# validates the sourced Sellmeier coefficients (a wrong coefficient would miss the known angle).
+check("LiIO3 n_o @1064nm = 1.857 (Umegaki Sellmeier)", math.sqrt(physics._nl_n2(physics.NL_CRYSTAL_SELLMEIER['LIIO3'][0], 1.064)), 1.857, 1e-3, "Umegaki1971 [datasheet]")
+check("LiIO3 Type-I SHG phase-match angle 1064->532 = 30.0 deg", physics.shg_phase_match_angle('LIIO3', 1064.0), 30.0, 0.2, "textbook; index ellipsoid")
+check("ADP Type-I SHG phase-match angle 1064->532 = 41.7 deg", physics.shg_phase_match_angle('ADP', 1064.0), 41.7, 0.3, "Zernike1964; index ellipsoid")
 
 # o/e SPATIAL double refraction geometry (physics.oe_split_geometry): composes the verified ellipsoid +
 # walk-off + vector geometry. Calcite cut 45 deg -> rho 6.224 deg; the o/e eigen-pols are orthogonal.

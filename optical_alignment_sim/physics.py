@@ -871,6 +871,14 @@ NL_CRYSTAL_SELLMEIER = {
     # n_e(532)=1.4705; Type-I 1064->532 phase-match angle 41.2 deg (textbook).
     'KDP': ((2.259276, 0.01008956, 0.0129426, 13.00522, 400.0),
             (2.132668, 0.008637494, 0.0122810, 3.2279924, 400.0)),
+    # ADP (NH4H2PO4), Zernike 1964 via refractiveindex.info (0.214-1.53 um, ~25 C; 1064 just past the fit edge,
+    # extrapolated). Same double-resonance form as KDP. Type-I 1064->532 angle 41.7 deg (~41-42 lit).
+    'ADP': ((2.302842, 0.011125165, 0.01325366, 15.102464, 400.0),
+            (2.163510, 0.009616676, 0.01298912, 5.919896, 400.0)),
+    # LiIO3 (lithium iodate), Umegaki 1971 via refractiveindex.info (0.4-5.7 um). 4-param Eimerl form.
+    # n_o(1064)=1.857, n_e(1064)=1.7165; Type-I 1064->532 angle 30.0 deg (textbook).
+    'LIIO3': ((3.415716, 0.047031, 0.035306, 0.008801),
+              (2.918692, 0.035145, 0.028224, 0.003641)),
 }
 
 
