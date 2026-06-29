@@ -6,6 +6,13 @@ semantic versioning.
 
 ## [Unreleased]
 
+## [0.22.0] — Biaxial nonlinear crystals: KTP + LBO principal-plane phase matching — 2026-06-29
+
+The last big-ticket crystal item: the Sellmeier-derived SHG phase matching covered only **uniaxial** crystals;
+this adds the two workhorse **biaxial** doublers, KTP and LBO, with real principal-plane phase matching + walk-off
+derived from sourced three-axis Sellmeier — self-validated by reproducing the textbook Nd:YAG green-doubler cuts.
+Off-trace calculators; the live trace stays byte-identical.
+
 ### Added — biaxial nonlinear crystals: KTP + LBO principal-plane phase matching
 - The Sellmeier-derived SHG phase matching covered only **uniaxial** crystals; added the two workhorse
   **biaxial** doublers, **KTP** and **LBO**, with all three principal-axis Sellmeier (n_x, n_y, n_z) sourced
