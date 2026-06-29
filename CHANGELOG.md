@@ -43,8 +43,13 @@ children, so each feature is the **same SPLIT-TWO `_child()` pattern**, not a ne
   `_nl_n2` generalized to the double-resonance (UV + IR pole) form. (KTP/LBO are **biaxial**, and congruent
   LiNbO3 has **no** room-temperature critical angle for 1064→532 — all three honestly stay outside the uniaxial
   angle path rather than be modeled wrong.)
+- **Type-II phase matching** (`shg_phase_match_angle_type2`): the solver previously approximated Type-II as
+  Type-I; added the real Type-II condition `2·n_e(2ω,θ) = n_o(ω) + n_e(ω,θ)` (one o + one e fundamental photon
+  → an e harmonic), solved by bisection — **BBO 32.84°** (lit ~32.9°), **KDP 59.1°**, both larger than their
+  Type-I cuts as a negative uniaxial demands. The walk-off (`shg_walkoff_mm`) is now per-type, so a Type-II BBO
+  SHG crystal walks off by **0.65 mm** (vs 0.50 Type-I). New `optics_calc` `shg_phase_match_angle_type2`.
 
-Both byte-identical (default-off flags). Validation **216 / 216** (+14 oracles), regression **389 / 389** (+6,
+Both byte-identical (default-off flags). Validation **219 / 219** (+17 oracles), regression **389 / 389** (+6,
 the new opt-in scenes never touch the baselines), and the bare-interpreter `physics.py` self-test now covers the
 new birefringence/χ²/KDP physics too. MCP↔API parity green. Verifiers: `tests/_verify_birefringence.py`,
 `tests/_verify_chi2_tensor.py`.

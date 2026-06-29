@@ -918,14 +918,51 @@ def shg_phase_match_angle(crystal, wl_fund_nm):
     return math.degrees(math.asin(math.sqrt(s2)))
 
 
-def shg_walkoff_mm(crystal, wl_fund_nm, L_mm):
+def shg_phase_match_angle_type2(crystal, wl_fund_nm):
+    """Type-II SHG critical phase-match angle (deg from the optic axis): one ORDINARY + one EXTRAORDINARY
+    fundamental photon make an extraordinary harmonic, so 2*n_e(2w, theta) = n_o(w) + n_e(w, theta), i.e.
+        n_e(2w, theta) = 0.5*(n_o(w) + n_e(w, theta)),
+    with n_e(.,theta) the angle-tuned extraordinary index (n_e_theta). Implicit in theta (both sides depend on
+    it), solved by bisection on [0,90]. Returns the angle, or None if there is no root (not Type-II angle-phase-
+    matchable). For a negative uniaxial e.g. BBO 1064->532 -> ~32.9 deg (larger than the 22.78 deg Type-I)."""
+    coeffs = NL_CRYSTAL_SELLMEIER.get((crystal or '').upper())
+    if coeffs is None:
+        return None
+    o, e = coeffs
+    lam_w = wl_fund_nm * 1.0e-3
+    no_w = math.sqrt(_nl_n2(o, lam_w))
+    ne_w = math.sqrt(_nl_n2(e, lam_w))
+    no_2w = math.sqrt(_nl_n2(o, lam_w / 2.0))
+    ne_2w = math.sqrt(_nl_n2(e, lam_w / 2.0))
+
+    def _f(th):
+        return n_e_theta(no_2w, ne_2w, th) - 0.5 * (no_w + n_e_theta(no_w, ne_w, th))
+
+    a, b = 0.0, 90.0
+    fa, fb = _f(a), _f(b)
+    if fa == 0.0:
+        return 0.0
+    if fa * fb > 0.0:
+        return None                               # no sign change -> not Type-II angle-phase-matchable
+    for _ in range(60):                           # bisection to ~1e-16 deg
+        m = 0.5 * (a + b)
+        fm = _f(m)
+        if fa * fm <= 0.0:
+            b = m
+        else:
+            a, fa = m, fm
+    return 0.5 * (a + b)
+
+
+def shg_walkoff_mm(crystal, wl_fund_nm, L_mm, pm_type='TYPE1'):
     """Sellmeier-DERIVED spatial walk-off OFFSET (mm) of the extraordinary second harmonic over a crystal of
-    length L_mm at the Type-I critical phase-match angle: the e-wave (2w) Poynting drifts off its wavevector by
-    rho = uniaxial_walkoff_angle(n_o(2w), n_e(2w), theta_pm), giving a lateral offset L*tan(rho) at the exit.
-    The first-principles replacement for the lumped ``nl_walkoff_mm`` literal (used when the chi2 solver is on).
-    Returns 0.0 if the crystal has no Sellmeier entry or is not angle-phase-matchable. e.g. BBO 1064->532 over
-    10 mm -> ~0.56 mm (rho ~ 3.2 deg)."""
-    th = shg_phase_match_angle(crystal, wl_fund_nm)
+    length L_mm at the critical phase-match angle (Type-I or Type-II per ``pm_type``): the e-wave (2w) Poynting
+    drifts off its wavevector by rho = uniaxial_walkoff_angle(n_o(2w), n_e(2w), theta_pm), giving a lateral
+    offset L*tan(rho) at the exit. The first-principles replacement for the lumped ``nl_walkoff_mm`` literal
+    (used when the chi2 solver is on). Returns 0.0 if the crystal has no Sellmeier entry or is not angle-phase-
+    matchable. e.g. BBO 1064->532 Type-I over 10 mm -> ~0.50 mm (rho ~ 2.9 deg)."""
+    th = (shg_phase_match_angle_type2 if (pm_type or '').upper() == 'TYPE2'
+          else shg_phase_match_angle)(crystal, wl_fund_nm)
     coeffs = NL_CRYSTAL_SELLMEIER.get((crystal or '').upper())
     if th is None or coeffs is None:
         return 0.0
@@ -2020,9 +2057,11 @@ if __name__ == "__main__":
         fails.append("chi2 ODE @phase-match %.6f != tanh^2(2)" % chi2_shg_efficiency(4.0, 0.0))
     if chi2_shg_efficiency(100.0, 0.0) > 1.0 + 1e-9:
         fails.append("chi2 ODE exceeds 1 (Manley-Rowe violated)")
-    # KDP Sellmeier -> textbook Type-I 1064->532 phase-match angle 41.2 deg
+    # KDP Sellmeier -> textbook Type-I 1064->532 phase-match angle 41.2 deg; BBO Type-II ~32.9
     if not close(shg_phase_match_angle('KDP', 1064.0), 41.2, 0.3):
         fails.append("KDP phase-match angle %.2f != 41.2" % shg_phase_match_angle('KDP', 1064.0))
+    if not close(shg_phase_match_angle_type2('BBO', 1064.0), 32.9, 0.3):
+        fails.append("BBO Type-II angle %.2f != 32.9" % shg_phase_match_angle_type2('BBO', 1064.0))
 
     if fails:
         print("PHYSICS SELFTEST FAILED:")

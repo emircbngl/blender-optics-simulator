@@ -1146,7 +1146,7 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 return H + Vector(u) * walk
             woff = getattr(op, 'nl_walkoff_mm', 0.0)
             if getattr(op, 'use_chi2_solver', False):
-                _sw = physics.shg_walkoff_mm(mat, ray.wl, L_mm)     # replace-when-on: Sellmeier-derived rho
+                _sw = physics.shg_walkoff_mm(mat, ray.wl, L_mm, pmt)   # replace-when-on: Sellmeier rho (per type)
                 if _sw > 0.0:
                     woff = _sw                                     # (else fall back to the literal)
 

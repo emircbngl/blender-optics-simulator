@@ -121,6 +121,10 @@ check("KDP Type-I SHG phase-match angle 1064->532 = 41.2 deg", physics.shg_phase
 check("LiIO3 n_o @1064nm = 1.857 (Umegaki Sellmeier)", math.sqrt(physics._nl_n2(physics.NL_CRYSTAL_SELLMEIER['LIIO3'][0], 1.064)), 1.857, 1e-3, "Umegaki1971 [datasheet]")
 check("LiIO3 Type-I SHG phase-match angle 1064->532 = 30.0 deg", physics.shg_phase_match_angle('LIIO3', 1064.0), 30.0, 0.2, "textbook; index ellipsoid")
 check("ADP Type-I SHG phase-match angle 1064->532 = 41.7 deg", physics.shg_phase_match_angle('ADP', 1064.0), 41.7, 0.3, "Zernike1964; index ellipsoid")
+# Type-II phase matching (o+e->e): 2*n_e(2w,theta) = n_o(w) + n_e(w,theta). BBO ~32.9 deg (> the 22.78 Type-I).
+check("BBO Type-II SHG phase-match angle 1064->532 = 32.9 deg", physics.shg_phase_match_angle_type2('BBO', 1064.0), 32.9, 0.3, "Boyd; index ellipsoid")
+check("KDP Type-II SHG phase-match angle 1064->532 ~ 59 deg", physics.shg_phase_match_angle_type2('KDP', 1064.0), 59.1, 0.5, "textbook; index ellipsoid")
+check("Type-II angle > Type-I angle (o+e needs a larger cut, BBO)", physics.shg_phase_match_angle_type2('BBO', 1064.0) - physics.shg_phase_match_angle('BBO', 1064.0), 10.06, 0.3, "negative uniaxial; ordering")
 
 # o/e SPATIAL double refraction geometry (physics.oe_split_geometry): composes the verified ellipsoid +
 # walk-off + vector geometry. Calcite cut 45 deg -> rho 6.224 deg; the o/e eigen-pols are orthogonal.
