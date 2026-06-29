@@ -392,6 +392,8 @@ _CALCULATORS = {
     "uniaxial_walkoff_angle": (physics.uniaxial_walkoff_angle, ("n_o", "n_e", "theta_deg"), "birefringent double-refraction walk-off angle, deg"),
     "waveplate_thickness": (physics.waveplate_thickness, ("order", "wl_nm", "dn"), "zero-order waveplate thickness d=order*lambda/dn, mm"),
     "shg_phase_match_angle": (physics.shg_phase_match_angle, ("crystal", "wl_fund_nm"), "Type-I SHG phase-match angle theta_pm, deg (e.g. BBO 1064->532 ~22.8)"),
+    "shg_walkoff_mm": (physics.shg_walkoff_mm, ("crystal", "wl_fund_nm", "L_mm"), "Sellmeier-derived SHG spatial walk-off offset L*tan(rho), mm (BBO 1064->532, 10mm ~0.50)"),
+    "chi2_shg_efficiency": (physics.chi2_solve, ("deff_pm_V", "L_mm", "P_W", "dk_per_mm"), "SHG efficiency from the Manley-Rowe coupled-wave ODE (depletion+mismatch); tanh^2(sqrt(eta_lin)) at phase match"),
     "grating_resolving_power": (physics.grating_resolving_power, ("lines_per_mm", "illuminated_mm", "m"), "R = m*N"),
     "ar_quarter_wave_reflectance": (physics.ar_quarter_wave_reflectance, ("n0", "n1", "ns"), "single quarter-wave AR layer R"),
     "fiber_na": (physics.fiber_na, ("n_core", "n_clad"), "step-index fiber numerical aperture"),

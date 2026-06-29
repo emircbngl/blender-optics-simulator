@@ -789,6 +789,54 @@ def nl_conversion_efficiency(deff_pm_V, L_mm, P_W, dk_per_mm=0.0,
     return math.tanh(math.sqrt(max(eta_lin, 0.0))) ** 2   # high-conversion: tanh^2(sqrt(eta_lin)) <= 1
 
 
+def chi2_shg_efficiency(eta_lin, dkL, n_steps=400):
+    """SECOND-HARMONIC conversion efficiency from the FULL Manley-Rowe coupled-wave equations, integrated
+    (RK4) with pump DEPLETION and an arbitrary phase mismatch -- the rigorous generalization of both
+    ``phase_match_efficiency`` (the undepleted sinc^2) and the ``tanh^2`` depletion clamp, valid where neither
+    alone is (strong conversion AND off phase match together).
+
+    The slowly-varying coupled equations for SHG (Boyd, *Nonlinear Optics*), in dimensionless form with
+    a1 = A_w/A_w(0), a2 = A_2w/A_w(0), s = z/L_NL (1/L_NL = kappa*|A_w(0)|), and delta = Delta_k*L_NL:
+        da1/ds = i a1* a2 exp(-i delta s),   da2/ds = i a1^2 exp(+i delta s).
+    They conserve power |a1|^2 + |a2|^2 = 1 (Manley-Rowe energy: one 2w photon per two w photons).
+
+    Inputs: ``eta_lin`` = the ON-phase-match UNDEPLETED efficiency (deff^2 L^2 I ...), so the normalized length
+    is S = sqrt(eta_lin); ``dkL`` = Delta_k * L (the phase slip over the crystal, = delta*S). Returns
+    eta = |a2(S)|^2 in [0,1]. LIMITS (both oracle-checkable): dkL=0 -> tanh^2(sqrt(eta_lin)); eta_lin -> 0
+    (undepleted) -> eta_lin * sinc^2(dkL/2). Numpy-free; deterministic."""
+    S = math.sqrt(max(eta_lin, 0.0))                 # normalized crystal length L/L_NL
+    if S <= 0.0:
+        return 0.0
+    delta = dkL / S                                  # normalized mismatch Delta_k*L_NL
+    ds = S / int(n_steps)
+
+    def _deriv(a1, a2, s):
+        e = cmath.exp(-1j * delta * s)
+        return (1j * a1.conjugate() * a2 * e, 1j * a1 * a1 * e.conjugate())
+
+    a1, a2 = complex(1.0, 0.0), complex(0.0, 0.0)
+    for k in range(int(n_steps)):
+        s = k * ds
+        k1 = _deriv(a1, a2, s)
+        k2 = _deriv(a1 + 0.5 * ds * k1[0], a2 + 0.5 * ds * k1[1], s + 0.5 * ds)
+        k3 = _deriv(a1 + 0.5 * ds * k2[0], a2 + 0.5 * ds * k2[1], s + 0.5 * ds)
+        k4 = _deriv(a1 + ds * k3[0], a2 + ds * k3[1], s + ds)
+        a1 += ds / 6.0 * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0])
+        a2 += ds / 6.0 * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1])
+    return min(1.0, abs(a2) ** 2)
+
+
+def chi2_solve(deff_pm_V, L_mm, P_W, dk_per_mm=0.0, prefactor=2.0e-4, n_steps=400):
+    """SHG conversion efficiency via the Manley-Rowe ODE (``chi2_shg_efficiency``). Builds the on-phase-match
+    undepleted efficiency eta_lin = prefactor*deff^2*L^2*P (the SAME lumped Tier-1 coefficient as
+    ``nl_conversion_efficiency`` -- a relative/shape constant, not a first-principles absolute) and the phase
+    slip dkL = dk_per_mm*L_mm, then integrates the depleted+mismatched coupled-wave equations. Returns eta in
+    [0,1]: at the phase-matched point (dk=0) eta = tanh^2(sqrt(eta_lin)); detuned it follows the rigorous
+    depleted tuning curve (which narrows + pumps-down vs the bare sinc^2)."""
+    eta_lin = prefactor * (deff_pm_V ** 2) * (L_mm ** 2) * P_W
+    return chi2_shg_efficiency(eta_lin, dk_per_mm * L_mm, n_steps=n_steps)
+
+
 # Crystal-material catalog: effective nonlinear coefficient deff (pm/V, order-of-magnitude
 # literature values) + a SIMPLE LINEAR phase-mismatch temperature model dk(T) ~ dk_dT*(T - T_pm).
 # The dk_dT slope is a HONEST PLACEHOLDER (deg-1 per mm) tuned only to give a realistic sinc^2(T)
@@ -847,6 +895,24 @@ def shg_phase_match_angle(crystal, wl_fund_nm):
     if not (0.0 <= s2 <= 1.0):
         return None
     return math.degrees(math.asin(math.sqrt(s2)))
+
+
+def shg_walkoff_mm(crystal, wl_fund_nm, L_mm):
+    """Sellmeier-DERIVED spatial walk-off OFFSET (mm) of the extraordinary second harmonic over a crystal of
+    length L_mm at the Type-I critical phase-match angle: the e-wave (2w) Poynting drifts off its wavevector by
+    rho = uniaxial_walkoff_angle(n_o(2w), n_e(2w), theta_pm), giving a lateral offset L*tan(rho) at the exit.
+    The first-principles replacement for the lumped ``nl_walkoff_mm`` literal (used when the chi2 solver is on).
+    Returns 0.0 if the crystal has no Sellmeier entry or is not angle-phase-matchable. e.g. BBO 1064->532 over
+    10 mm -> ~0.56 mm (rho ~ 3.2 deg)."""
+    th = shg_phase_match_angle(crystal, wl_fund_nm)
+    coeffs = NL_CRYSTAL_SELLMEIER.get((crystal or '').upper())
+    if th is None or coeffs is None:
+        return 0.0
+    lam_2w = 0.5 * wl_fund_nm * 1.0e-3                 # second-harmonic wavelength, micron
+    n_o2 = math.sqrt(_nl_n2(coeffs[0], lam_2w))
+    n_e2 = math.sqrt(_nl_n2(coeffs[1], lam_2w))
+    rho = uniaxial_walkoff_angle(n_o2, n_e2, th)
+    return L_mm * math.tan(math.radians(rho))
 
 
 # --- Fresnel reflection (s/p amplitude + phase) -----------------------------

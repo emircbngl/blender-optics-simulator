@@ -1118,7 +1118,14 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             L_mm = getattr(op, 'crystal_length_mm', 10.0)
             dk = physics.nl_phase_mismatch_T(mat, getattr(op, 'crystal_temp_C', 25.0))
             pm_eff = physics.phase_match_efficiency(dk, L_mm)
-            eff = getattr(op, 'nl_efficiency', 0.4) * pm_eff
+            if getattr(op, 'use_chi2_solver', False):
+                # chi(2) TENSOR SOLVER (opt-in): the conversion efficiency from the full Manley-Rowe
+                # coupled-wave ODE (pump depletion + phase mismatch), driven by deff / length / pump power
+                # -- not the static nl_efficiency scalar. At the phase-matched point this is tanh^2(sqrt(eta_lin)).
+                deff = physics.NL_CRYSTALS.get((mat or 'BBO').upper(), physics.NL_CRYSTALS['BBO'])[0]
+                eff = physics.chi2_solve(deff, L_mm, getattr(op, 'nl_pump_power_W', 1.0), dk)
+            else:
+                eff = getattr(op, 'nl_efficiency', 0.4) * pm_eff
 
             def _q_at(wl_out):
                 """Tier-1 MODELING CHOICE (not an oracle-verified law): seed the converted beam with a
@@ -1138,6 +1145,10 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 u, _v = physics.transverse_basis(ray.dir)
                 return H + Vector(u) * walk
             woff = getattr(op, 'nl_walkoff_mm', 0.0)
+            if getattr(op, 'use_chi2_solver', False):
+                _sw = physics.shg_walkoff_mm(mat, ray.wl, L_mm)     # replace-when-on: Sellmeier-derived rho
+                if _sw > 0.0:
+                    woff = _sw                                     # (else fall back to the literal)
 
             if proc in ('SHG', 'THG'):
                 wco = physics.nl_child_wavelength(proc, ray.wl)

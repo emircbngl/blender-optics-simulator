@@ -527,6 +527,33 @@ if _oe_o and _oe_e:
           abs(_oe_o["power"] + _oe_e["power"] - 1.0) < 1e-4,
           "sum=%.6f" % (_oe_o["power"] + _oe_e["power"]))
 
+# chi(2) TENSOR SOLVER (opt-in Manley-Rowe ODE; full physics in tests/_verify_chi2_tensor.py). An SHG crystal
+# with use_chi2_solver=ON converts MORE as the pump power rises (depletion), energy conserved. Off the default
+# path (use_chi2_solver default OFF) so the baselines stay byte-identical.
+def _shg_eta(pump_W, solver=True):
+    for _o in list(sc.objects):
+        if getattr(_o, "optics", None) and _o.optics.is_optical:
+            bpy.data.objects.remove(_o, do_unlink=True)
+    _s = eg.source("C2_S", (-80, 0, 0), (1, 0, 0), coll=_nlc); _s.optics.wavelength = 1064.0
+    eg.crystal("C2_X", (0, 0, 0), (1, 0, 0), coll=_nlc, nl_process='SHG', crystal_material='BBO',
+               crystal_length_mm=10.0, use_chi2_solver=solver, nl_pump_power_W=pump_W)
+    eg.detector("C2_D", (80, 0, 0), (1, 0, 0), coll=_nlc)
+    bpy.context.view_layer.update()
+    _segs = [s for s in scan._trace(sc) if s.get("to") == "C2_D"]
+    _p2 = sum(s["power"] for s in _segs if abs(s["wavelength"] - 532.0) < 1.0)
+    _p1 = sum(s["power"] for s in _segs if abs(s["wavelength"] - 1064.0) < 1.0)
+    return _p2, _p1
+
+
+_c2_lo, _c2_lo1 = _shg_eta(1.0)
+_c2_hi, _c2_hi1 = _shg_eta(50.0)
+check("chi2 solver: conversion rises with pump power (Manley-Rowe depletion)",
+      _c2_hi > _c2_lo and abs(_c2_hi - 0.9293) < 0.01, "eta(1W)=%.4f eta(50W)=%.4f" % (_c2_lo, _c2_hi))
+check("chi2 solver: energy conserved through the trace (pump-residual + harmonic = input)",
+      abs(_c2_hi + _c2_hi1 - 1.0) < 1e-4, "sum=%.6f" % (_c2_hi + _c2_hi1))
+check("chi2 solver OFF -> legacy nl_efficiency*sinc^2 = 0.4 (byte-identical gate)",
+      abs(_shg_eta(50.0, solver=False)[0] - 0.4) < 1e-6, "eff_off=%.6f" % _shg_eta(50.0, solver=False)[0])
+
 # C7: the rest of the chi(2) family. Every child wavelength is exact ENERGY conservation, each
 # oracle-VERIFIED (tests/_verify_nlcrystal.py): THG l/3, SFG/DFG 1/l3=1/l1+-1/l2, OPO pump->idler.
 _phys = physics

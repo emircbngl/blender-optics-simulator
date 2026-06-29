@@ -113,6 +113,23 @@ check("Quartz HWP thickness = lambda/(2 dn) = 32.38um", physics.waveplate_thickn
 # Type-I SHG critical phase-matching angle from the BBO index ellipsoid (Eimerl 1987 Sellmeier)
 check("BBO Type-I SHG phase-match angle 1064->532 = 22.78 deg", physics.shg_phase_match_angle('BBO', 1064.0), 22.78, 0.3, "Boyd/Eimerl87; oracle")
 
+# o/e SPATIAL double refraction geometry (physics.oe_split_geometry): composes the verified ellipsoid +
+# walk-off + vector geometry. Calcite cut 45 deg -> rho 6.224 deg; the o/e eigen-pols are orthogonal.
+_oth, _orho, _opo, _ope, _owk = physics.oe_split_geometry((0.0, 0.0, 1.0),
+    (math.sin(math.radians(45.0)), 0.0, math.cos(math.radians(45.0))), 1.6584, 1.4864)
+check("o/e geometry: extraordinary walk-off at 45 deg = 6.224 deg", _orho, 6.224, 0.02, "Yariv&Yeh; oracle")
+check("o/e geometry: ordinary & extraordinary polarizations are orthogonal", abs(physics._rdot(_opo, _ope)), 0.0, 1e-9, "double refraction; eigen-axes")
+check("o/e geometry: both eigen-pols transverse to the wave (pol_o . d = 0)", abs(physics._rdot(_opo, (0.0, 0.0, 1.0))), 0.0, 1e-9, "transverse field")
+
+# chi(2) TENSOR SOLVER -- the full Manley-Rowe coupled-wave ODE (physics.chi2_shg_efficiency). At perfect
+# phase match it equals the depleted closed form tanh^2(sqrt(eta_lin)); undepleted it is eta_lin*sinc^2(dkL/2).
+check("Manley-Rowe SHG ODE @phase-match == tanh^2(sqrt(eta_lin=0.5))", physics.chi2_shg_efficiency(0.5, 0.0), math.tanh(math.sqrt(0.5)) ** 2, 1e-6, "Boyd coupled-wave; RK4")
+check("Manley-Rowe SHG ODE @phase-match == tanh^2(sqrt(eta_lin=4)) = 0.9293", physics.chi2_shg_efficiency(4.0, 0.0), 0.929349, 1e-5, "Boyd; RK4 vs analytic")
+check("Manley-Rowe SHG ODE undepleted limit -> eta_lin*sinc^2(dkL/2)", physics.chi2_shg_efficiency(1e-3, math.pi) / (1e-3 * (math.sin(math.pi / 2) / (math.pi / 2)) ** 2), 1.0, 5e-3, "undepleted SHG; sinc^2")
+check("Manley-Rowe SHG ODE energy bound: eta <= 1 (strong drive)", physics.chi2_shg_efficiency(100.0, 0.0), 1.0, 1e-3, "Manley-Rowe; conservation")
+# Sellmeier-DERIVED SHG walk-off (replaces the lumped literal when the solver is on): BBO 1064->532 over 10 mm
+check("BBO Sellmeier SHG walk-off over 10 mm ~ 0.50 mm (rho ~ 2.87 deg)", physics.shg_walkoff_mm('BBO', 1064.0, 10.0), 0.502, 0.02, "index ellipsoid; oracle")
+
 print("[Mueller calculus + canonical Stokes (py-pol / SymPy / Malus oracles)]")
 # Malus's law through an ideal linear analyzer on horizontal-linear input [1,1,0,0]: I/I0 = cos^2(theta)
 _Hs = (1.0, 1.0, 0.0, 0.0)

@@ -538,6 +538,14 @@ class OpticalElementProps(PropertyGroup):
         description="Grow literal alternating poling-domain slabs on the PPLN slab (cosmetic; trace unchanged)")
     crystal_length_mm: FloatProperty(name="Interaction length (mm)", default=10.0, min=0.01)  # L for sinc^2(dk L/2)
     nl_walkoff_mm: FloatProperty(name="Walk-off offset (mm)", default=0.6, min=0.0)  # CRITICAL transverse offset
+    # --- chi(2) TENSOR SOLVER (opt-in; default OFF -> the legacy nl_efficiency*sinc^2 path stays byte-identical).
+    #     ON: the conversion efficiency comes from the full Manley-Rowe coupled-wave ODE (pump depletion +
+    #     phase mismatch, physics.chi2_solve) driven by deff/length/pump-power, and the CRITICAL walk-off is
+    #     DERIVED from the index ellipsoid (replace-when-on) instead of the literal nl_walkoff_mm.
+    use_chi2_solver: BoolProperty(name="chi(2) tensor solver", default=False,
+        description="Derive conversion efficiency from the Manley-Rowe coupled-wave ODE (depletion + mismatch)")
+    nl_pump_power_W: FloatProperty(name="Pump power (W)", default=1.0, min=0.0,
+        description="Peak pump power driving the chi(2) solver's depletion (higher -> more conversion)")
     # --- TRUE o/e SPATIAL double refraction (opt-in; default OFF -> byte-identical). When ON, a CRYSTAL or
     #     WAVEPLATE forks the ray into an ordinary + extraordinary beam (the calcite double image / Wollaston-
     #     class split), the e-beam displaced by L*tan(rho) -- see tracer o/e branch + physics.oe_split_geometry.
