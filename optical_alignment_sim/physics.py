@@ -1999,6 +1999,23 @@ if __name__ == "__main__":
         fails.append("fit_zernike round-trip max err %.2e (want <1e-6)"
                      % max(abs(rec[k] - inj[k]) for k in range(N_ZERNIKE)))
 
+    # o/e double-refraction geometry: calcite cut-45 walk-off + orthogonal eigen-pols
+    _oth, _orho, _opo, _ope, _owk = oe_split_geometry(
+        (0.0, 0.0, 1.0), (math.sin(math.radians(45.0)), 0.0, math.cos(math.radians(45.0))), 1.6584, 1.4864)
+    if not close(_orho, 6.224, 0.02):
+        fails.append("oe_split walk-off %.4f != 6.224" % _orho)
+    if not close(_rdot(_opo, _ope), 0.0, 1e-9) or not close(_rdot(_opo, (0, 0, 1)), 0.0, 1e-9):
+        fails.append("oe_split eigen-pols not orthogonal/transverse")
+
+    # chi(2) Manley-Rowe SHG ODE: tanh^2 limit at phase match + energy bound
+    if not close(chi2_shg_efficiency(4.0, 0.0), math.tanh(2.0) ** 2, 1e-5):
+        fails.append("chi2 ODE @phase-match %.6f != tanh^2(2)" % chi2_shg_efficiency(4.0, 0.0))
+    if chi2_shg_efficiency(100.0, 0.0) > 1.0 + 1e-9:
+        fails.append("chi2 ODE exceeds 1 (Manley-Rowe violated)")
+    # KDP Sellmeier -> textbook Type-I 1064->532 phase-match angle 41.2 deg
+    if not close(shg_phase_match_angle('KDP', 1064.0), 41.2, 0.3):
+        fails.append("KDP phase-match angle %.2f != 41.2" % shg_phase_match_angle('KDP', 1064.0))
+
     if fails:
         print("PHYSICS SELFTEST FAILED:")
         for f in fails:
