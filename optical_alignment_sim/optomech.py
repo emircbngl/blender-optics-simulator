@@ -401,6 +401,20 @@ def _build_mount(o, coll, idx):
         _bevel(ring, 0.5, 2)
         _ocyl(pre + "RSPset_" + nm, 1.3, 5.0, mw, (0.0, ca * 0.95, 4.0), coll, "hole", axis='Y')  # recessed setscrew
         return 3
+    if mt == 'TRANSLATION':
+        # a linear TRANSLATION STAGE (was silently falling through to the kinematic mount): a base plinth + a
+        # sliding top platform (the dovetail carriage) holding the optic in a bored cell, with a micrometer
+        # barrel + knob projecting from one side -- the "this slides" cue. (The FIXED/kinematic defaults for
+        # mirrors are unchanged, so the example scenes' renders are unaffected.)
+        _bevel(_obox(pre + "XSbase_" + nm, (ca * 2.6, ca * 1.7, 7.0), mw, (0, 0, -13.0), coll, "mount"), 0.8, 2)
+        plat = _obox(pre + "XSslide_" + nm, (ca * 2.3, ca * 1.5, 6.0), mw, (0, 0, -6.0), coll, "mount")
+        _bevel(plat, 0.7, 2)
+        cell = _ocyl(pre + "XScell_" + nm, ca * 1.15, 8.0, mw, (0, 0, 0.5), coll, "mount")
+        _bore_local(cell, mw, (0, 0, 0.5), ca * 0.95, 20.0, axis='Z')
+        _bevel(cell, 0.5, 2)
+        _ocyl(pre + "XSmic_" + nm, 2.4, ca * 1.6, mw, (ca * 1.5, 0.0, -6.0), coll, "steel", axis='X')   # micrometer barrel
+        _bevel(_ocyl(pre + "XSknob_" + nm, 3.6, 5.0, mw, (ca * 2.4, 0.0, -6.0), coll, "steel", axis='X'), 0.8, 2)
+        return 6
     if mt in ('KINEMATIC_2AXIS', 'KINEMATIC_3AXIS', 'GIMBAL') or et == 'MIRROR':
         # KM100/KS1-style kinematic mount: TWIN same-outline plates floating on a visible air gap;
         # the round optic seats flush in the bored front plate; long fine adjuster screws project out
