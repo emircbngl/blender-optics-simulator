@@ -131,6 +131,8 @@ check("KTP n_z @1064nm = 1.8297 (Kato2002 formula-4)", math.sqrt(physics._formul
 check("LBO n_z @1064nm = 1.6056 (Chen/Hanson formula-4)", math.sqrt(physics._formula4_n2(physics.BIAXIAL_SELLMEIER['LBO'][2], 1.064)), 1.6056, 1e-3, "Chen1989 [datasheet]")
 check("KTP Type-II XY-plane SHG phase-match azimuth phi = 23.5 deg", physics.biaxial_shg_phase_match_phi('KTP', 1064.0, 'TYPE2'), 23.5, 0.3, "EKSMA datasheet; index ellipsoid")
 check("LBO Type-I XY-plane SHG phase-match azimuth phi = 11.6 deg", physics.biaxial_shg_phase_match_phi('LBO', 1064.0, 'TYPE1'), 11.6, 0.3, "EKSMA datasheet; index ellipsoid")
+check("KTP Type-II XY SHG walk-off = 4 mrad (datasheet)", physics.biaxial_shg_walkoff_mrad('KTP', 1064.0, 'TYPE2'), 4.0, 0.6, "EKSMA; double refraction")
+check("LBO Type-I XY SHG walk-off = 7 mrad (datasheet)", physics.biaxial_shg_walkoff_mrad('LBO', 1064.0, 'TYPE1'), 7.0, 0.6, "EKSMA; double refraction")
 
 # o/e SPATIAL double refraction geometry (physics.oe_split_geometry): composes the verified ellipsoid +
 # walk-off + vector geometry. Calcite cut 45 deg -> rho 6.224 deg; the o/e eigen-pols are orthogonal.

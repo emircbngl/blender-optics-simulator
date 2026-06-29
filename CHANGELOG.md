@@ -17,8 +17,11 @@ semantic versioning.
   which **physics_verify confirmed** (the index order was caught and corrected via the verifier before coding).
   `biaxial_shg_phase_match_phi` solves the φ azimuth by bisection. **Self-validated**: from the sourced
   coefficients it reproduces the textbook Nd:YAG green-doubler cuts — **KTP Type-II XY φ=23.58°** (lit 23.5°),
-  **LBO Type-I XY φ=11.76°** (lit 11.6°). New `optics_calc` calculator. (Scope: the XY plane / θ=90° critical
-  case; biaxial walk-off and other planes deferred.) Validation **219 → 223**; byte-identical (off-trace calc).
+  **LBO Type-I XY φ=11.76°** (lit 11.6°).
+- The companion **biaxial spatial walk-off** (`biaxial_shg_walkoff_mrad`): the in-plane harmonic's Poynting
+  drifts by `uniaxial_walkoff_angle(n_y, n_x, φ)` — **KTP Type-II ~4.4 mrad** (datasheet ~4), **LBO Type-I
+  ~6.9 mrad** (datasheet ~7). Two new `optics_calc` calculators. (Scope: the XY plane / θ=90° critical case; the
+  YZ/XZ planes + NCPM temperature tuning deferred.) Validation **219 → 225**; byte-identical (off-trace calc).
 
 ## [0.21.0] — Birefringence: o/e spatial ray-splitting + a χ² coupled-wave solver — 2026-06-29
 

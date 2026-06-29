@@ -394,6 +394,7 @@ _CALCULATORS = {
     "shg_phase_match_angle": (physics.shg_phase_match_angle, ("crystal", "wl_fund_nm"), "Type-I SHG phase-match angle theta_pm, deg (e.g. BBO 1064->532 ~22.8)"),
     "shg_phase_match_angle_type2": (physics.shg_phase_match_angle_type2, ("crystal", "wl_fund_nm"), "Type-II SHG phase-match angle, deg (o+e->e; e.g. BBO 1064->532 ~32.9)"),
     "biaxial_shg_phase_match_phi": (physics.biaxial_shg_phase_match_phi, ("crystal", "wl_fund_nm", "pm_type"), "BIAXIAL XY-plane (theta=90) SHG phase-match azimuth phi, deg (KTP Type-II ~23.5; LBO Type-I ~11.6)"),
+    "biaxial_shg_walkoff_mrad": (physics.biaxial_shg_walkoff_mrad, ("crystal", "wl_fund_nm", "pm_type"), "BIAXIAL XY-plane SHG spatial walk-off, mrad (KTP Type-II ~4; LBO Type-I ~7)"),
     "shg_walkoff_mm": (physics.shg_walkoff_mm, ("crystal", "wl_fund_nm", "L_mm"), "Sellmeier-derived SHG spatial walk-off offset L*tan(rho), mm (BBO 1064->532, 10mm ~0.50)"),
     "chi2_shg_efficiency": (physics.chi2_solve, ("deff_pm_V", "L_mm", "P_W", "dk_per_mm"), "SHG efficiency from the Manley-Rowe coupled-wave ODE (depletion+mismatch); tanh^2(sqrt(eta_lin)) at phase match"),
     "grating_resolving_power": (physics.grating_resolving_power, ("lines_per_mm", "illuminated_mm", "m"), "R = m*N"),

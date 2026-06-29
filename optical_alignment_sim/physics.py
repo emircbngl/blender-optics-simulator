@@ -981,6 +981,22 @@ def biaxial_shg_phase_match_phi(crystal, wl_fund_nm, pm_type='TYPE1'):
     return 0.5 * (a + b)
 
 
+def biaxial_shg_walkoff_mrad(crystal, wl_fund_nm, pm_type='TYPE1'):
+    """Spatial WALK-OFF of the in-plane second harmonic for a biaxial crystal phase-matched in the XY plane,
+    in milliradians. At the phase-match azimuth phi, the in-plane (2w) eigenwave has index n(phi) between n_y
+    and n_x, so its Poynting walks off its wavevector by rho = uniaxial_walkoff_angle(n_y(2w), n_x(2w), phi)
+    -- the same double-refraction relation, with the in-plane principal indices as the (n_o, n_e) pair. Returns
+    mrad, or None if the crystal is unknown. e.g. KTP Type-II ~4 mrad, LBO Type-I ~7 mrad (datasheet)."""
+    phi = biaxial_shg_phase_match_phi(crystal, wl_fund_nm, pm_type)
+    cs = BIAXIAL_SELLMEIER.get((crystal or '').upper())
+    if phi is None or cs is None:
+        return None
+    lam_2w = 0.5 * wl_fund_nm * 1.0e-3
+    n_x2 = math.sqrt(_formula4_n2(cs[0], lam_2w))
+    n_y2 = math.sqrt(_formula4_n2(cs[1], lam_2w))
+    return math.radians(uniaxial_walkoff_angle(n_y2, n_x2, phi)) * 1000.0
+
+
 def shg_phase_match_angle(crystal, wl_fund_nm):
     """Type-I SHG critical phase-matching ANGLE theta_pm (degrees from the optic axis) of a negative-uniaxial
     crystal: the extraordinary index of the second harmonic is tuned by angle to equal the ordinary index of
@@ -2154,6 +2170,8 @@ if __name__ == "__main__":
         fails.append("KTP Type-II phi %.2f != 23.5" % biaxial_shg_phase_match_phi('KTP', 1064.0, 'TYPE2'))
     if not close(biaxial_shg_phase_match_phi('LBO', 1064.0, 'TYPE1'), 11.6, 0.3):
         fails.append("LBO Type-I phi %.2f != 11.6" % biaxial_shg_phase_match_phi('LBO', 1064.0, 'TYPE1'))
+    if not close(biaxial_shg_walkoff_mrad('KTP', 1064.0, 'TYPE2'), 4.0, 0.6):
+        fails.append("KTP walk-off %.2f mrad != 4" % biaxial_shg_walkoff_mrad('KTP', 1064.0, 'TYPE2'))
 
     if fails:
         print("PHYSICS SELFTEST FAILED:")
