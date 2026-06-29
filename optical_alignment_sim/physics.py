@@ -864,13 +864,26 @@ def nl_phase_mismatch_T(crystal_material, temp_C):
 # phase-matching ANGLE can be DERIVED from the index ellipsoid (vs the lumped dk(T) scalar above). Each
 # entry is (o-params, e-params) for  n^2(lambda_um) = A + B/(lambda_um^2 - C) - D*lambda_um^2.
 NL_CRYSTAL_SELLMEIER = {
+    # 4-param Eimerl form (A,B,C,D): n^2 = A + B/(lam^2 - C) - D*lam^2
     'BBO': ((2.7359, 0.01878, 0.01822, 0.01354), (2.3753, 0.01224, 0.01667, 0.01516)),   # Eimerl 1987
+    # 5-param Zernike double-resonance form (A,B,C,E,F): n^2 = A + B/(lam^2 - C) + E*lam^2/(lam^2 - F)
+    # KDP (KH2PO4), Zernike 1964 via refractiveindex.info (0.214-1.53 um, ~25 C). n_o(1064)=1.4938,
+    # n_e(532)=1.4705; Type-I 1064->532 phase-match angle 41.2 deg (textbook).
+    'KDP': ((2.259276, 0.01008956, 0.0129426, 13.00522, 400.0),
+            (2.132668, 0.008637494, 0.0122810, 3.2279924, 400.0)),
 }
 
 
 def _nl_n2(params, lam_um):
+    """Squared index n^2(lambda_um) of a nonlinear crystal. A 4-tuple is the Eimerl form
+    A + B/(lam^2-C) - D*lam^2; a 5-tuple is the Zernike double-resonance form A + B/(lam^2-C) + E*lam^2/(lam^2-F)
+    (a UV pole at C plus an IR pole at F)."""
+    l2 = lam_um ** 2
+    if len(params) == 5:
+        A, B, C, E, F = params
+        return A + B / (l2 - C) + E * l2 / (l2 - F)
     A, B, C, D = params
-    return A + B / (lam_um ** 2 - C) - D * lam_um ** 2
+    return A + B / (l2 - C) - D * l2
 
 
 def shg_phase_match_angle(crystal, wl_fund_nm):

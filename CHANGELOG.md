@@ -36,8 +36,13 @@ children, so each feature is the **same SPLIT-TWO `_child()` pattern**, not a ne
 - In-trace, a 1064→532 BBO SHG crystal converts **more** as the pump rises (η 0.076 → 0.93 → 0.999), pump
   residual + harmonic = input at every level; the Sellmeier walk-off is **0.50 mm** over 10 mm BBO (vs the 0.6
   literal). New `optics_calc` calculators `chi2_shg_efficiency` + `shg_walkoff_mm`. Demo `docs/img/chi2-solver-demo.png`.
+- **Crystal catalog**: added **KDP** (KH₂PO₄) to `NL_CRYSTAL_SELLMEIER` from the Zernike-1964 Sellmeier
+  (refractiveindex.info), so the phase-match angle + walk-off are now real for it too — `n_o(1064)=1.4938`,
+  `n_e(532)=1.4705`, Type-I 1064→532 angle **41.2°** (textbook), walk-off 0.28 mm/10 mm. `_nl_n2` generalized to
+  the double-resonance (UV + IR pole) form. (KTP/LBO are biaxial — they honestly stay outside the uniaxial
+  angle path.)
 
-Both byte-identical (default-off flags). Validation **210 / 210** (+8 oracles), regression **389 / 389** (+6,
+Both byte-identical (default-off flags). Validation **213 / 213** (+11 oracles), regression **389 / 389** (+6,
 the new opt-in scenes never touch the baselines), MCP↔API parity green. Verifiers:
 `tests/_verify_birefringence.py`, `tests/_verify_chi2_tensor.py`.
 

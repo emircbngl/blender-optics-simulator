@@ -112,6 +112,10 @@ check("Quartz QWP thickness = lambda/(4 dn) = 16.19um", physics.waveplate_thickn
 check("Quartz HWP thickness = lambda/(2 dn) = 32.38um", physics.waveplate_thickness(0.50, 589.3, _dn_q), 0.03238, 1e-4, "d=m*lambda/dn; oracle")
 # Type-I SHG critical phase-matching angle from the BBO index ellipsoid (Eimerl 1987 Sellmeier)
 check("BBO Type-I SHG phase-match angle 1064->532 = 22.78 deg", physics.shg_phase_match_angle('BBO', 1064.0), 22.78, 0.3, "Boyd/Eimerl87; oracle")
+# KDP (Zernike 1964 Sellmeier, refractiveindex.info): indices + the textbook Type-I phase-match angle
+check("KDP n_o @1064nm = 1.4938 (Zernike Sellmeier)", math.sqrt(physics._nl_n2(physics.NL_CRYSTAL_SELLMEIER['KDP'][0], 1.064)), 1.4938, 1e-3, "Zernike1964 [datasheet]")
+check("KDP n_e @532nm = 1.4705 (Zernike Sellmeier)", math.sqrt(physics._nl_n2(physics.NL_CRYSTAL_SELLMEIER['KDP'][1], 0.532)), 1.4705, 1e-3, "Zernike1964 [datasheet]")
+check("KDP Type-I SHG phase-match angle 1064->532 = 41.2 deg", physics.shg_phase_match_angle('KDP', 1064.0), 41.2, 0.3, "textbook; index ellipsoid")
 
 # o/e SPATIAL double refraction geometry (physics.oe_split_geometry): composes the verified ellipsoid +
 # walk-off + vector geometry. Calcite cut 45 deg -> rho 6.224 deg; the o/e eigen-pols are orthogonal.
