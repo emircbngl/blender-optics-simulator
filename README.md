@@ -174,7 +174,7 @@ the Scan + Plot operator, the Detector Fringe Image, and the live sensor window 
   <img src="docs/img/feature-board.png" width="92%" alt="New in v0.10.0: the WFS reads the beam's own curvature defocus; a pyramid WFS slope read; a soft-edge dichroic (R+T=1); a die face read as a zonal wavefront">
 </p>
 
-### New in v0.20.0 — wavefront & phase: Zernike-aberrated PSF + Fienup phase retrieval
+### New in v0.20.0 — wave optics: aberrated PSF, phase retrieval & cavity modes
 
 <p align="center">
   <img src="docs/img/aberrated-psf-demo.png" width="92%" alt="New in v0.20.0: the diffraction PSF aberrated by single Zernike modes — defocus, astigmatism, coma, spherical — each 0.10 waves RMS; the Strehl collapses to ~0.674 (Maréchal) for all of them while the PSF shape is the mode's fingerprint">
@@ -196,7 +196,18 @@ diffraction **intensity** `|FFT(object)|²`; the phase is lost. Given that magni
 mask**, Fienup's **Hybrid-Input-Output** algorithm reconstructs the hidden object (correlation 0.996, up to the
 inherent translation + twin ambiguity). Where v0.19.0's Gerchberg-Saxton knows the amplitude in *both* planes
 (CGH design), here the object is **unknown** — only its support is; the HIO feedback escapes the stagnation pure
-error-reduction falls into. Both off-trace; the geometric trace stays byte-identical.
+error-reduction falls into.
+
+<p align="center">
+  <img src="docs/img/tem-modes-demo.png" width="92%" alt="New in v0.20.0: laser cavity transverse modes — Hermite-Gaussian TEM_mn lobe patterns and Laguerre-Gaussian donut modes with their exp(i*l*phi) phase vortices carrying orbital angular momentum">
+</p>
+
+**`tem_mode`** — the laser cavity **transverse eigenmodes** a real resonator emits. `family="HG"` gives the
+**Hermite-Gaussian TEM_mn** (rectangular, (m+1)(n+1) lobes, an orthonormal set); `family="LG"` gives the
+**Laguerre-Gaussian** donut `LG_{p,l}` with an on-axis null and an `exp(i·l·φ)` **phase vortex** carrying
+**orbital angular momentum** `l·ħ`. All three additions are off-trace; the geometric trace stays byte-identical.
+*(This release also fixes a latent `NameError` that would have crashed the `gerchberg_saxton` / `spatial_filter`
+/ `propagate_chain` MCP tools when called by an agent, and adds an end-to-end guard so it can't recur.)*
 
 ### New in v0.19.0 — Fourier optics: phase retrieval + spatial filtering
 

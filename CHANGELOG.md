@@ -6,13 +6,16 @@ semantic versioning.
 
 ## [Unreleased]
 
-## [0.20.0] — Wavefront & phase: Zernike-aberrated PSF + Fienup phase retrieval — 2026-06-29
+## [0.20.0] — Wave optics: aberrated PSF, phase retrieval & cavity modes — 2026-06-29
 
-Two additions on the verified wave/FFT layer. **`aberrated_psf`** generalizes the PSF's defocus knob to **any
+Three additions on the verified wave/FFT layer. **`aberrated_psf`** generalizes the PSF's defocus knob to **any
 Zernike mode** (the *forward* problem: wavefront → image). **`fienup_phase_retrieval`** solves the *inverse*
 problem — reconstruct a hidden object from its diffraction **intensity alone** (the genuine "phase problem" of
-coherent diffractive imaging), the Hybrid-Input-Output companion to v0.19.0's Gerchberg-Saxton. Both off-trace;
-the geometric trace stays byte-identical. Validation **179 → 190**.
+coherent diffractive imaging), the Hybrid-Input-Output companion to v0.19.0's Gerchberg-Saxton. **`tem_mode`**
+builds the laser cavity transverse eigenmodes — Hermite-Gaussian TEM_mn and the Laguerre-Gaussian donut /
+orbital-angular-momentum vortices. All off-trace; the geometric trace stays byte-identical. A latent
+`NameError` in three previously-shipped off-trace wrappers is fixed and guarded. Validation **179 → 202**;
+regression **375 → 382**.
 
 ### Added — `aberrated_psf` (any-mode Zernike aberration of the diffraction PSF)
 - **PSF = |FFT(pupil · exp(2πi·W))|²** where the pupil wavefront **W** is built from RMS-normalized Noll
@@ -44,6 +47,20 @@ the geometric trace stays byte-identical. Validation **179 → 190**.
   - seed-pinned reproducible.
 - The inverse-problem / closed-loop companion to `gerchberg_saxton`. Off-trace; live trace byte-identical.
   **5 new oracle checks** -> validation **185 → 190**. Demo `docs/img/fienup-phase-retrieval-demo.png`.
+
+### Added — `tem_mode` (laser cavity transverse modes: Hermite-Gaussian + Laguerre-Gaussian)
+- **The resonator's transverse eigenmodes**, the patterns a real laser actually emits (`field` + optics_api +
+  MCP, design group). `family="HG"` builds the **Hermite-Gaussian TEM_mn** (rectangular: `H_m H_n × Gaussian`);
+  `family="LG"` builds the **Laguerre-Gaussian LG_{p,l}** (cylindrical: the **donut** mode with an on-axis null
+  and an `exp(i·l·φ)` phase vortex carrying **orbital angular momentum** `l·ħ`). Hermite via numpy's physicists'
+  Hermite; generalized Laguerre via its explicit finite sum (no scipy). Validated:
+  - the HG modes are **orthonormal** — `⟨TEM00|TEM00⟩ = 1`, `⟨TEM00|TEM10⟩ = ⟨TEM10|TEM01⟩ = 0`;
+  - the HG_m0 **second moment scales as (2m+1)** — `⟨x²⟩₁/⟨x²⟩₀ = 3`, `⟨x²⟩₂/⟨x²⟩₀ = 5` (exact);
+  - **lobe count = (m+1)(n+1)** — TEM_11 → 4, TEM_21 → 6;
+  - the **LG donut LG_{0,1}** has an on-axis intensity null, and its azimuthal **phase winds 2π·l** (l=1 → 1
+    turn, l=2 → 2 turns) — the optical-vortex / OAM signature;
+  - the **Gouy order** is `m+n+1` (HG) / `2p+|l|+1` (LG).
+- **12 new oracle checks** -> validation **190 → 202**. Demo `docs/img/tem-modes-demo.png`.
 
 ### Fixed — off-trace `optics_api` wrappers crashed with `NameError`
 - `gerchberg_saxton`, `spatial_filter` (both v0.19.0) and `propagate_chain` (v0.18.0) referenced a bare,

@@ -54,7 +54,7 @@ _TOOL_GROUPS = {
     "design (pure math, no scene change)": [
         "design_telescope", "design_4f", "mode_match", "optics_calc", "wave_psf", "aberrated_psf",
         "propagate_field", "propagate_chain", "gerchberg_saxton", "fienup_phase_retrieval", "spatial_filter",
-        "propagate_pulse", "slit_diffraction", "talbot_effect"],
+        "tem_mode", "propagate_pulse", "slit_diffraction", "talbot_effect"],
     "place / assemble (opto-mechanics)": [
         "place_relative", "make_cage", "make_tube", "make_rail", "place_on_grid", "place_on_rail",
         "set_grid", "dress_bench"],
@@ -682,6 +682,48 @@ def spatial_filter(obj="grating", kind="lowpass", cutoff_frac=0.15, n_grid=256, 
             for a_ in ax:
                 a_.set_xticks([]); a_.set_yticks([]); a_.set_facecolor("#0d0d10")
             png_path = os.path.join(tempfile.gettempdir(), "optics_spatial_filter.png")
+            fig.tight_layout()
+            fig.savefig(png_path, dpi=120, facecolor=fig.get_facecolor())
+            plt.close(fig)
+            out["png"] = png_path
+        except Exception as exc:
+            out["png_error"] = str(exc)
+    return out
+
+
+def tem_mode(family="HG", i=1, j=0, w_mm=0.5, n_grid=256, png=False):
+    """Laser cavity TRANSVERSE mode pattern -- the TEM_mn / donut shapes a resonator supports. family in {HG
+    (Hermite-Gaussian TEM_ij, rectangular: (i+1)(j+1) bright lobes), LG (Laguerre-Gaussian LG_{p=i, l=j},
+    cylindrical: a DONUT with an on-axis null + an exp(i l phi) phase vortex carrying orbital angular momentum
+    l*hbar when l!=0)}. Returns {ok, family, indices, n_lobes, gouy_order (the mode's extra Gouy phase factor:
+    i+j+1 for HG, 2p+|l|+1 for LG), on_axis_intensity_frac, x2_over_w2 (= (2i+1)/4 for HG_i0), oam_winding_turns
+    (LG)}. png=True saves the intensity (+ the phase vortex for LG). Off-trace; live trace byte-identical."""
+    if (family or "HG").upper() not in ("HG", "LG"):
+        return {"error": "family must be HG (Hermite-Gaussian) or LG (Laguerre-Gaussian)"}
+    from . import field
+    out = field.tem_mode_metrics(family, int(i), int(j), float(w_mm), n_grid=int(n_grid))
+    if png:
+        try:
+            import os
+            import tempfile
+            import numpy as _np
+            import matplotlib
+            matplotlib.use("Agg")
+            import matplotlib.pyplot as plt
+            U = field.tem_mode(family, int(i), int(j), float(w_mm), n_grid=int(n_grid))
+            fam = (family or "HG").upper()
+            ncol = 2 if fam == "LG" else 1
+            fig, ax = plt.subplots(1, ncol, figsize=(3.6 * ncol, 3.5), squeeze=False)
+            fig.patch.set_facecolor("#0d0d10")
+            ax[0][0].imshow(_np.abs(U) ** 2, cmap="inferno", origin="lower")
+            ax[0][0].set_title("%s_%d%d intensity (%d lobes)" % (fam, i, j, out["n_lobes"]), color="#f4f4f6", fontsize=10)
+            if fam == "LG":
+                ax[0][1].imshow(_np.angle(U), cmap="twilight", origin="lower")
+                ax[0][1].set_title("phase vortex (l=%d, %g turns)" % (j, out.get("oam_winding_turns", 0)),
+                                   color="#f4f4f6", fontsize=10)
+            for a_ in ax[0]:
+                a_.set_xticks([]); a_.set_yticks([]); a_.set_facecolor("#0d0d10")
+            png_path = os.path.join(tempfile.gettempdir(), "optics_tem_mode.png")
             fig.tight_layout()
             fig.savefig(png_path, dpi=120, facecolor=fig.get_facecolor())
             plt.close(fig)

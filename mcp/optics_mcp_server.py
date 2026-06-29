@@ -278,6 +278,18 @@ def fienup_phase_retrieval(obj: str = "dots", n_grid: int = 128, n_iter: int = 3
 
 
 @mcp.tool()
+def tem_mode(family: str = "HG", i: int = 1, j: int = 0, w_mm: float = 0.5,
+             n_grid: int = 256, png: bool = False) -> str:
+    """Laser cavity TRANSVERSE mode pattern -- the TEM_mn / donut shapes a resonator supports. family in {HG
+    (Hermite-Gaussian TEM_ij, rectangular: (i+1)(j+1) bright lobes), LG (Laguerre-Gaussian LG_{p=i, l=j},
+    cylindrical: a DONUT with an on-axis null + an exp(i l phi) phase vortex carrying orbital angular momentum
+    l*hbar when l!=0)}. Returns {ok, family, indices, n_lobes, gouy_order (i+j+1 for HG, 2p+|l|+1 for LG),
+    on_axis_intensity_frac, x2_over_w2 (= (2i+1)/4 for HG_i0), oam_winding_turns (LG)}. png=True saves the
+    intensity (+ the phase vortex for LG). Off-trace; live trace byte-identical."""
+    return _fmt(_call("tem_mode", family=family, i=i, j=j, w_mm=w_mm, n_grid=n_grid, png=png))
+
+
+@mcp.tool()
 def spatial_filter(obj: str = "grating", kind: str = "lowpass", cutoff_frac: float = 0.15,
                    n_grid: int = 256, png: bool = False) -> str:
     """4f FOURIER-PLANE spatial filtering (the Abbe-Porter experiment / coherent optical image processing):

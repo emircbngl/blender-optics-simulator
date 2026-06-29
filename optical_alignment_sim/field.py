@@ -596,3 +596,127 @@ def spatial_filter(obj="grating", kind="lowpass", cutoff_frac=0.15, n_grid=256):
             "output_intensity_std": round(float(np.std(Iout)), 5),
             "output_mean_amp": round(float(np.abs(V.mean())), 5),
             "contrast_ratio": round(float(np.std(Iout) / (np.std(Iin) + 1e-9)), 4)}
+
+
+# --- laser cavity transverse modes (Hermite-Gaussian / Laguerre-Gaussian, the TEM_mn / donut patterns) -------
+def _gen_laguerre(p, alpha, x):
+    """Generalized Laguerre L_p^alpha(x) by its explicit finite sum (no scipy): sum_k (-1)^k C(p+alpha, p-k) x^k/k!.
+    p, alpha are non-negative integers here (radial index p, |azimuthal| alpha=|l|)."""
+    p = int(p)
+    out = np.zeros_like(np.asarray(x, dtype=float))
+    for k in range(p + 1):
+        # binomial C(p+alpha, p-k) for integer args
+        from math import comb, factorial
+        out = out + ((-1) ** k) * comb(p + int(alpha), p - k) * np.power(x, k) / factorial(k)
+    return out
+
+
+def hermite_gaussian(m, n, w_mm, n_grid=256, dx_mm=None):
+    """Hermite-Gaussian transverse cavity mode TEM_mn at the waist -- the rectangular-symmetry laser mode:
+    U_mn(x,y) = H_m(sqrt2 x/w) H_n(sqrt2 y/w) exp(-(x^2+y^2)/w^2), grid-normalized to unit power. m nodal lines
+    in x, n in y -> (m+1)(n+1) bright lobes. Returns the complex field (numpy)."""
+    from numpy.polynomial.hermite import hermval
+    n_grid = int(n_grid)
+    if dx_mm is None:
+        dx_mm = 8.0 * float(w_mm) / n_grid
+    c = n_grid // 2
+    ax = (np.arange(n_grid) - c) * dx_mm
+    X, Y = np.meshgrid(ax, ax)
+    w = float(w_mm)
+    Hm = hermval(np.sqrt(2.0) * X / w, [0] * int(m) + [1])
+    Hn = hermval(np.sqrt(2.0) * Y / w, [0] * int(n) + [1])
+    U = (Hm * Hn * np.exp(-(X * X + Y * Y) / (w * w))).astype(complex)
+    U = U / (np.sqrt(np.sum(np.abs(U) ** 2)) or 1.0)            # grid L2-normalize -> <U,U> = 1
+    return U
+
+
+def laguerre_gaussian(p, l, w_mm, n_grid=256, dx_mm=None):
+    """Laguerre-Gaussian transverse cavity mode LG_{p,l} at the waist -- the cylindrical laser mode carrying
+    orbital angular momentum l*hbar: U ∝ (sqrt2 r/w)^|l| L_p^|l|(2r^2/w^2) exp(-r^2/w^2) exp(i l phi). For p=0,
+    l!=0 it is the DONUT mode (on-axis null + an exp(i l phi) phase vortex). Grid-normalized to unit power.
+    Returns the complex field (numpy)."""
+    n_grid = int(n_grid)
+    if dx_mm is None:
+        dx_mm = 8.0 * float(w_mm) / n_grid
+    c = n_grid // 2
+    ax = (np.arange(n_grid) - c) * dx_mm
+    X, Y = np.meshgrid(ax, ax)
+    w = float(w_mm)
+    R = np.hypot(X, Y)
+    PHI = np.arctan2(Y, X)
+    al = abs(int(l))
+    rho2 = 2.0 * R * R / (w * w)
+    U = (np.power(np.sqrt(2.0) * R / w, al) * _gen_laguerre(p, al, rho2)
+         * np.exp(-(R * R) / (w * w)) * np.exp(1j * int(l) * PHI))
+    U = U / (np.sqrt(np.sum(np.abs(U) ** 2)) or 1.0)
+    return U
+
+
+def _mode_inner(A, B):
+    """Discrete inner product <A,B> of two grid fields (already L2-normalized): sum(conj(A)*B)."""
+    return complex(np.sum(np.conj(A) * B))
+
+
+def _count_lobes(I, thresh_frac=0.18):
+    """Count bright lobes = connected components of {I > thresh_frac*max} via a tiny flood fill (4-neighbour)."""
+    mask = I > (thresh_frac * I.max())
+    seen = np.zeros_like(mask, dtype=bool)
+    n = 0
+    rows, cols = mask.shape
+    for i0 in range(rows):
+        for j0 in range(cols):
+            if mask[i0, j0] and not seen[i0, j0]:
+                n += 1
+                stack = [(i0, j0)]
+                seen[i0, j0] = True
+                while stack:
+                    i, j = stack.pop()
+                    for di, dj in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                        a, b = i + di, j + dj
+                        if 0 <= a < rows and 0 <= b < cols and mask[a, b] and not seen[a, b]:
+                            seen[a, b] = True
+                            stack.append((a, b))
+    return n
+
+
+def tem_mode(family="HG", i=1, j=0, w_mm=0.5, n_grid=256, dx_mm=None):
+    """Build a named laser cavity transverse mode field. family in {HG (Hermite-Gaussian TEM_ij), LG
+    (Laguerre-Gaussian LG_{p=i, l=j})}. Returns the complex field (numpy)."""
+    if (family or "HG").upper() == "LG":
+        return laguerre_gaussian(i, j, w_mm, n_grid=n_grid, dx_mm=dx_mm)
+    return hermite_gaussian(i, j, w_mm, n_grid=n_grid, dx_mm=dx_mm)
+
+
+def tem_mode_metrics(family="HG", i=1, j=0, w_mm=0.5, n_grid=256, dx_mm=None):
+    """Laser cavity transverse mode -> JSON-able metrics. For HG TEM_ij: (i+1)(j+1) lobes, Gouy order i+j+1,
+    second-moment <x^2> = (2 i + 1) w^2/4. For LG_{p=i, l=j}: a donut (on-axis null) when l!=0, with an
+    exp(i l phi) phase vortex (azimuthal winding 2 pi l) and Gouy order 2 p + |l| + 1. Returns {ok, family,
+    indices, n_lobes, gouy_order, on_axis_intensity_frac, x2_over_w2, oam_winding_turns (LG)}."""
+    n_grid = int(n_grid)
+    if dx_mm is None:
+        dx_mm = 8.0 * float(w_mm) / n_grid
+    fam = (family or "HG").upper()
+    U = tem_mode(fam, i, j, w_mm, n_grid=n_grid, dx_mm=dx_mm)
+    I = np.abs(U) ** 2
+    c = n_grid // 2
+    ax = (np.arange(n_grid) - c) * dx_mm
+    X, _Y = np.meshgrid(ax, ax)
+    x2 = float(np.sum(I * X * X))                              # <x^2> (I is unit-power normalized)
+    out = {"ok": True, "family": fam, "indices": [int(i), int(j)],
+           "n_lobes": int(_count_lobes(I)),
+           "on_axis_intensity_frac": round(float(I[c, c] / (I.max() or 1.0)), 5),
+           "x2_over_w2": round(x2 / (float(w_mm) ** 2), 5)}
+    if fam == "LG":
+        out["gouy_order"] = 2 * int(i) + abs(int(j)) + 1
+        # azimuthal phase winding around a ring at r ~ w: total turns = l
+        ring = max(2, int(0.5 * float(w_mm) / dx_mm))
+        ph = []
+        for t in np.linspace(0, 2 * np.pi, 73)[:-1]:
+            ii = int(round(c + ring * np.sin(t)))
+            jj = int(round(c + ring * np.cos(t)))
+            ph.append(np.angle(U[ii, jj]))
+        dwind = np.diff(np.unwrap(ph + [ph[0]]))
+        out["oam_winding_turns"] = round(float(np.sum(dwind) / (2 * np.pi)), 3)
+    else:
+        out["gouy_order"] = int(i) + int(j) + 1
+    return out
