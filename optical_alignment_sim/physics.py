@@ -582,6 +582,24 @@ def ar_quarter_wave_reflectance(n0, n1, ns):
     return ((n0 * ns - n1 * n1) / den) ** 2 if den != 0.0 else 0.0
 
 
+def ar_coating_reflectance(wl_nm, design_wl_nm, n1, ns, n0=1.0):
+    """Wavelength-dependent reflectance R(lambda) of a single-layer quarter-wave AR coating (film index n1 of
+    optical thickness lambda0/4) on substrate ns in medium n0 -- the V-shaped 'ghost curve' that a real AR
+    coating shows: a minimum at the design wavelength, rising to either side. From the two-interface Airy sum
+    (Born & Wolf / Hecht thin-film):
+        R = (r1^2 + r2^2 + 2 r1 r2 cos 2d) / (1 + r1^2 r2^2 + 2 r1 r2 cos 2d),
+        r1 = (n0-n1)/(n0+n1),  r2 = (n1-ns)/(n1+ns),  d = (pi/2)*(lambda0/lambda)  (= pi/2 at design).
+    At lambda = design_wl this reduces EXACTLY to ar_quarter_wave_reflectance(n0,n1,ns) (cos 2d = -1), and it is
+    0 there for the ideal index n1 = sqrt(n0*ns). Returns R in [0,1]."""
+    r1 = (n0 - n1) / (n0 + n1)
+    r2 = (n1 - ns) / (n1 + ns)
+    d = 0.5 * math.pi * (design_wl_nm / wl_nm)            # round-trip phase pi/2 at the design wavelength
+    c = math.cos(2.0 * d)
+    num = r1 * r1 + r2 * r2 + 2.0 * r1 * r2 * c
+    den = 1.0 + (r1 * r2) ** 2 + 2.0 * r1 * r2 * c
+    return num / den if den != 0.0 else 0.0
+
+
 def abcd_surface(n1, n2, R_mm):
     """Refraction at one curved dielectric surface (radius R_mm, sign per the usual lensmaker convention):
     ABCD = [[1, 0], [-(n2-n1)/(n2*R), n1/n2]]. R_mm=0/inf -> a flat interface (no power)."""
@@ -2172,6 +2190,11 @@ if __name__ == "__main__":
         fails.append("LBO Type-I phi %.2f != 11.6" % biaxial_shg_phase_match_phi('LBO', 1064.0, 'TYPE1'))
     if not close(biaxial_shg_walkoff_mrad('KTP', 1064.0, 'TYPE2'), 4.0, 0.6):
         fails.append("KTP walk-off %.2f mrad != 4" % biaxial_shg_walkoff_mrad('KTP', 1064.0, 'TYPE2'))
+    # AR(lambda) ghost curve reduces to the verified quarter-wave R at the design wl; min there (V-shape)
+    if not close(ar_coating_reflectance(550.0, 550.0, 1.38, 1.52), ar_quarter_wave_reflectance(1.0, 1.38, 1.52), 1e-9):
+        fails.append("AR(lambda) design != quarter-wave R")
+    if not (ar_coating_reflectance(450.0, 550.0, 1.38, 1.52) > ar_coating_reflectance(550.0, 550.0, 1.38, 1.52)):
+        fails.append("AR(lambda) not a V (off-design R not greater than design min)")
 
     if fails:
         print("PHYSICS SELFTEST FAILED:")

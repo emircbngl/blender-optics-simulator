@@ -215,6 +215,10 @@ check("TIR |rs|=1 (n=1.5->air, 45deg)", abs(_ts), 1.0, 1e-6, "Born&Wolf; oracle"
 check("TIR s-p relative phase (deg)", abs(math.degrees(cmath.phase(_tp) - cmath.phase(_ts))), 36.8699, 1e-2, "Born&Wolf; oracle")
 check("AR quarter-wave R (MgF2 on crown)", physics.ar_quarter_wave_reflectance(1.0, 1.38, 1.52), 0.012601, 1e-5, "Born&Wolf; oracle")
 check("AR ideal n1=sqrt(n0 ns) -> R=0", physics.ar_quarter_wave_reflectance(1.0, math.sqrt(1.52), 1.52), 0.0, 1e-9, "Born&Wolf; oracle")
+# AR ghost-curve R(lambda): the V-shaped reflectance of the quarter-wave layer -- min at the design wl, rising away
+check("AR(lambda) at design wl == quarter-wave R (MgF2, 550nm)", physics.ar_coating_reflectance(550.0, 550.0, 1.38, 1.52), physics.ar_quarter_wave_reflectance(1.0, 1.38, 1.52), 1e-9, "Airy thin-film; reduces to oracle")
+check("AR(lambda) is a V: R(450) > R(550) min (rises off design)", physics.ar_coating_reflectance(450.0, 550.0, 1.38, 1.52) - physics.ar_coating_reflectance(550.0, 550.0, 1.38, 1.52), 0.0036, 1e-3, "Born&Wolf; thin-film")
+check("AR(lambda) ideal index -> 0 at design (perfect AR)", physics.ar_coating_reflectance(550.0, 550.0, math.sqrt(1.52), 1.52), 0.0, 1e-9, "Airy thin-film; oracle")
 
 print("[Gaussian beam w(z)/R(z)/Gouy + M^2 (Saleh&Teich/Siegman scan)]")
 _zR = physics.q_from_waist(1.0, 632.8).imag

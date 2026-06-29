@@ -38,6 +38,14 @@ Off-trace calculators; the live trace stays byte-identical.
   intensity null. Demo `docs/img/newton-rings-demo.png`. Validation **225 → 227**; regression **389 → 390** (the
   new end-to-end wrapper smoke).
 
+### Added — AR coating ghost curve `ar_coating_reflectance(λ)`
+- The catalog had the quarter-wave AR reflectance only at the design wavelength; this adds the full
+  **V-shaped R(λ)** of a single-layer quarter-wave coating from the two-interface Airy sum — a minimum at the
+  design wavelength, rising to either side (MgF2/crown ≈ 1.26% at 550 nm vs 4.3% uncoated). At the design
+  wavelength it reduces **exactly** to the oracle `ar_quarter_wave_reflectance`, and it is 0 for the ideal index
+  `n1=√(n0·ns)`. **physics_verify'd**; a pure off-trace `optics_calc` calculator (no tracer change → byte-
+  identical). Validation **227 → 230**.
+
 ## [0.21.0] — Birefringence: o/e spatial ray-splitting + a χ² coupled-wave solver — 2026-06-29
 
 The two biggest-ticket architectural items on the backlog, both landing **in the live tracer** (not off-trace)
