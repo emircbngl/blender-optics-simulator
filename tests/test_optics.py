@@ -1432,6 +1432,29 @@ allowed = bridge._allowed()
 check("MCP tools == optics_api surface", tool_names == allowed,
       "MCP-only=%s API-only=%s" % (sorted(tool_names - allowed), sorted(allowed - tool_names)))
 
+# Off-trace optics_api wrappers must actually RUN end-to-end (not just match names): the parity guard above
+# checks only the tool *surface*, so a wrapper that referenced a bare (un-imported) `field` shipped a latent
+# NameError -- it was never exercised through optics_api. This block CALLS each field/wave-backed wrapper with a
+# tiny grid and asserts a non-raising dict result with no error key.
+_otw = [
+    ("gerchberg_saxton", dict(target="ring", n_grid=48, n_iter=8)),
+    ("fienup_phase_retrieval", dict(obj="dots", n_grid=48, n_iter=30)),
+    ("spatial_filter", dict(obj="grating", kind="lowpass", n_grid=48)),
+    ("propagate_chain", dict(steps=[["aperture", 3.0], ["lens", 200.0], ["prop", 200.0]], w0_mm=0.5, n_grid=48)),
+    ("propagate_field", dict(wavelength_nm=632.8, w0_mm=0.3, dz_mm=50.0, n_grid=48)),
+    ("aberrated_psf", dict(mode="coma", amplitude_waves=0.1, n_grid=64)),
+    ("wave_psf", dict(wavelength_nm=550.0, f_number=8.0, aperture_diam_mm=10.0, n_grid=64)),
+]
+for _nm, _kw in _otw:
+    try:
+        _r = getattr(optics_api, _nm)(**_kw)
+        _ok = isinstance(_r, dict) and "error" not in _r
+        _detail = "ran" if _ok else ("error=%s" % _r.get("error") if isinstance(_r, dict) else type(_r).__name__)
+    except Exception as _exc:
+        _ok = False
+        _detail = "%s: %s" % (type(_exc).__name__, _exc)
+    check("off-trace optics_api wrapper runs end-to-end: %s" % _nm, _ok, _detail)
+
 # SVG export: well-formed XML with a glyph per element and a line per beam
 import xml.dom.minidom as minidom
 optics_api.build_example("michelson")

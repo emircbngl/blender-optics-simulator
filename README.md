@@ -174,18 +174,29 @@ the Scan + Plot operator, the Detector Fringe Image, and the live sensor window 
   <img src="docs/img/feature-board.png" width="92%" alt="New in v0.10.0: the WFS reads the beam's own curvature defocus; a pyramid WFS slope read; a soft-edge dichroic (R+T=1); a die face read as a zonal wavefront">
 </p>
 
-### New in v0.20.0 — Zernike-aberrated diffraction PSF (`aberrated_psf`)
+### New in v0.20.0 — wavefront & phase: Zernike-aberrated PSF + Fienup phase retrieval
 
 <p align="center">
   <img src="docs/img/aberrated-psf-demo.png" width="92%" alt="New in v0.20.0: the diffraction PSF aberrated by single Zernike modes — defocus, astigmatism, coma, spherical — each 0.10 waves RMS; the Strehl collapses to ~0.674 (Maréchal) for all of them while the PSF shape is the mode's fingerprint">
 </p>
 
-`wave_psf` could only add **Z4 defocus**; the new **`aberrated_psf`** aberrates the diffraction PSF with **any
-Zernike mode** (defocus, astigmatism, coma, trefoil, spherical) at a chosen RMS, or a full Noll-indexed
-wavefront vector. The **Strehl** ratio collapses the same way for every mode — it depends only on the RMS
-wavefront error (the **Maréchal** approximation exp(−(2π·rms)²): 0.05 waves → 0.906, 0.10 waves → 0.674) —
-but the PSF *morphology* is the mode's fingerprint: defocus blurs symmetrically, astigmatism elongates, coma
-flares one-sided, spherical haloes. Off-trace; the geometric trace stays byte-identical.
+**`aberrated_psf`** — the *forward* problem (wavefront → image). `wave_psf` could only add **Z4 defocus**; this
+aberrates the diffraction PSF with **any Zernike mode** (defocus, astigmatism, coma, trefoil, spherical) at a
+chosen RMS, or a full Noll-indexed wavefront vector. The **Strehl** ratio collapses the same way for every
+mode — it depends only on the RMS wavefront error (the **Maréchal** approximation exp(−(2π·rms)²): 0.05 waves →
+0.906, 0.10 waves → 0.674) — but the PSF *morphology* is the mode's fingerprint: defocus blurs symmetrically,
+astigmatism elongates, coma flares one-sided, spherical haloes.
+
+<p align="center">
+  <img src="docs/img/fienup-phase-retrieval-demo.png" width="92%" alt="New in v0.20.0: Fienup HIO phase retrieval — reconstruct a hidden object from its diffraction intensity |FFT|^2 plus a support mask; HIO escapes the error-reduction stagnation, recovering the object to correlation 0.996">
+</p>
+
+**`fienup_phase_retrieval`** — the *inverse* problem (the genuine **phase problem**). A detector records only the
+diffraction **intensity** `|FFT(object)|²`; the phase is lost. Given that magnitude plus a real-space **support
+mask**, Fienup's **Hybrid-Input-Output** algorithm reconstructs the hidden object (correlation 0.996, up to the
+inherent translation + twin ambiguity). Where v0.19.0's Gerchberg-Saxton knows the amplitude in *both* planes
+(CGH design), here the object is **unknown** — only its support is; the HIO feedback escapes the stagnation pure
+error-reduction falls into. Both off-trace; the geometric trace stays byte-identical.
 
 ### New in v0.19.0 — Fourier optics: phase retrieval + spatial filtering
 

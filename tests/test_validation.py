@@ -308,6 +308,23 @@ check("Gerchberg-Saxton: error decreases (final < 0.4 x initial)", _gs["final_er
 _gs2 = field.gerchberg_saxton_design("double", 128, 80)
 check("Gerchberg-Saxton: CGH 'double' target produced (correlation > 0.9)", _gs2["correlation"], 1.0, 0.1, "CGH design; FFT")
 
+print("[Fienup phase retrieval -- recover a hidden object from |FFT|^2 + support ALONE (the genuine phase problem)]")
+# HIO recovers the unknown object from its diffraction INTENSITY only (correlation invariant to the inherent
+# translation + conjugate-twin ambiguities). The off-centre support breaks the twin.
+_fp = field.fienup_design("dots", 128, n_iter=300, seed=0)
+check("Fienup HIO: recovers a hidden object from |FFT|^2 + support (correlation > 0.95)", _fp["correlation"], 1.0, 0.05, "phase retrieval; HIO")
+check("Fienup HIO: Fourier-magnitude error converges (final < 0.01, from ~0.8)", _fp["final_error"], 0.0, 0.01, "CDI; FFT")
+check("Fienup HIO: error actually dropped (final < 0.05 x initial)", _fp["final_error"] / _fp["initial_error"], 0.0, 0.05, "HIO convergence")
+# HIO escapes the stagnation that pure error-reduction (the GS-analogue here) gets stuck in
+_fp_truth, _fp_supp = field._fienup_object("dots", 128)
+_fp_meas = _np.abs(field._fft2c(_fp_truth)) ** 2
+_fp_hio = field.fienup_phase_retrieval(_fp_meas, _fp_supp, n_iter=300, mode="hio", seed=0)
+_fp_er = field.fienup_phase_retrieval(_fp_meas, _fp_supp, n_iter=320, mode="er", seed=0)
+check("Fienup HIO escapes the error-reduction stagnation (HIO final error < 0.3 x ER's)", _fp_hio["final_error"] / _fp_er["final_error"], 0.0, 0.3, "Fienup 1982; HIO vs ER")
+# seed-pinned: same seed -> same recovery (deterministic, off-trace)
+_fp_b = field.fienup_design("dots", 128, n_iter=300, seed=0)
+check("Fienup HIO: seed-pinned reproducible (same seed -> same final error)", _fp_b["final_error"], _fp["final_error"], 1e-9, "determinism")
+
 print("[4f Fourier spatial filtering -- Abbe-Porter (highpass removes DC, lowpass smooths, phase-contrast)]")
 # highpass blocks the zero order -> the DC background is removed (output mean amplitude ~ 0)
 _sfhp = field.spatial_filter("grating", "highpass", 0.02)

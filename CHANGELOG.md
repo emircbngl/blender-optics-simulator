@@ -6,14 +6,13 @@ semantic versioning.
 
 ## [Unreleased]
 
-## [0.20.0] — Zernike-aberrated diffraction PSF (`aberrated_psf`) — 2026-06-29
+## [0.20.0] — Wavefront & phase: Zernike-aberrated PSF + Fienup phase retrieval — 2026-06-29
 
-The general form of the wave layer's defocus knob. `wave_psf` could only add **Z4 defocus**; the new
-**`aberrated_psf`** aberrates the diffraction PSF with **any Zernike mode** — defocus, astigmatism, coma,
-trefoil, spherical — at a chosen RMS, or a full Noll-indexed wavefront vector. The Strehl ratio collapses the
-**same** way for every mode (it depends only on the RMS wavefront error, per the Maréchal approximation), but
-the PSF *morphology* is the mode's fingerprint. Off-trace; the geometric trace stays byte-identical.
-Validation **179 → 185**.
+Two additions on the verified wave/FFT layer. **`aberrated_psf`** generalizes the PSF's defocus knob to **any
+Zernike mode** (the *forward* problem: wavefront → image). **`fienup_phase_retrieval`** solves the *inverse*
+problem — reconstruct a hidden object from its diffraction **intensity alone** (the genuine "phase problem" of
+coherent diffractive imaging), the Hybrid-Input-Output companion to v0.19.0's Gerchberg-Saxton. Both off-trace;
+the geometric trace stays byte-identical. Validation **179 → 190**.
 
 ### Added — `aberrated_psf` (any-mode Zernike aberration of the diffraction PSF)
 - **PSF = |FFT(pupil · exp(2πi·W))|²** where the pupil wavefront **W** is built from RMS-normalized Noll
@@ -29,6 +28,33 @@ Validation **179 → 185**.
     haloed).
 - The general-aberration companion to `wave_psf` (defocus-only). Off-trace; live trace byte-identical.
   **6 new oracle checks** -> validation **179 → 185**. Demo `docs/img/aberrated-psf-demo.png`.
+
+### Added — `fienup_phase_retrieval` (recover a hidden object from its diffraction intensity)
+- **The genuine "phase problem"**: a detector records only `measured = |FFT(object)|²` — the phase is lost.
+  Given that magnitude **plus a real-space support mask**, Fienup's **Hybrid-Input-Output** algorithm
+  reconstructs the unknown object (`field` + optics_api + MCP, design group). Where Gerchberg-Saxton knows the
+  amplitude in **both** planes (CGH design), here the object-plane amplitude is **unknown** — only its support
+  is. The HIO feedback `g − β·g'` (β ≈ 0.9) drives the off-support / negative pixels instead of zeroing them,
+  which **escapes the stagnation** that pure error-reduction falls into. `obj` ∈ {dots, ell, tri} are canonical
+  asymmetric objects in an **off-centre support that breaks the conjugate twin**. Validated:
+  - **recovers the hidden object from `|FFT|²` + support alone** — correlation **0.996** (invariant to the
+    inherent translation + twin ambiguities);
+  - the **Fourier-magnitude error converges** ~0.8 → **1×10⁻⁴**;
+  - **HIO escapes error-reduction stagnation** — HIO's final error is **<0.3×** ER's (ER stalls at ~0.09);
+  - seed-pinned reproducible.
+- The inverse-problem / closed-loop companion to `gerchberg_saxton`. Off-trace; live trace byte-identical.
+  **5 new oracle checks** -> validation **185 → 190**. Demo `docs/img/fienup-phase-retrieval-demo.png`.
+
+### Fixed — off-trace `optics_api` wrappers crashed with `NameError`
+- `gerchberg_saxton`, `spatial_filter` (both v0.19.0) and `propagate_chain` (v0.18.0) referenced a bare,
+  un-imported `field` module — they ran fine when `field.*` was called directly (as the validation suite does)
+  but raised `NameError: name 'field' is not defined` when invoked **through `optics_api` / the MCP tool**, the
+  path an AI agent actually takes. The `field` submodule is imported lazily (per-function `from . import field`)
+  to keep numpy out of the add-on's startup path; these four wrappers omitted that import. Added it to each.
+- **Hardening**: the MCP↔API parity meta-test only checked tool *names*, so a never-run wrapper could ship
+  broken. Added a regression block that **actually invokes** every off-trace `optics_api` wrapper end-to-end
+  (`gerchberg_saxton` / `fienup_phase_retrieval` / `spatial_filter` / `propagate_chain` / `propagate_field` /
+  `aberrated_psf` / `wave_psf`) on a tiny grid and asserts a non-raising result. Regression **375 → 382**.
 
 ## [0.19.0] — Fourier optics: phase retrieval + spatial filtering — 2026-06-29
 

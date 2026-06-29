@@ -434,6 +434,115 @@ def gerchberg_saxton_design(target="ring", n_grid=128, n_iter=60, seed=0):
             "monotone": r["monotone"], "n_iter": r["n_iter"]}
 
 
+def fienup_phase_retrieval(measured_intensity, support, n_iter=300, beta=0.9, mode="hio", seed=0,
+                           er_polish=20):
+    """Fienup phase retrieval -- recover a REAL, NON-NEGATIVE object from its Fourier-magnitude (the diffraction
+    INTENSITY) ALONE, given a real-space SUPPORT mask. This is the genuine 'phase problem' of coherent
+    diffractive imaging / crystallography: ``measured_intensity = |FFT(object)|^2`` is all a detector records --
+    the phase is lost -- and the object is reconstructed from magnitude + the support (and reality + positivity)
+    constraints. Where Gerchberg-Saxton knows the amplitude in BOTH planes (CGH design), here the object-plane
+    amplitude is UNKNOWN; only its support is.
+
+    ``mode='hio'`` is the Hybrid-Input-Output update: outside the support (or where negative) it does NOT zero
+    the estimate but drives it with ``g - beta*g'`` feedback -- this is what escapes the stagnation/twin-image
+    traps that pure error-reduction (``mode='er'``, the Gerchberg-Saxton analogue here) falls into. A short
+    ``er_polish`` tail of error-reduction cleans the final magnitude. Off-trace; seed-pinned local RNG for the
+    initial random Fourier phase. Returns {ok, recovered (2D real), fourier_error (per-iter), final_error,
+    initial_error, support_frac}."""
+    F_mag = np.sqrt(np.maximum(np.asarray(measured_intensity, dtype=float), 0.0))
+    support = np.asarray(support).astype(bool)
+    Tn = float(np.linalg.norm(F_mag)) or 1.0
+    rng = np.random.default_rng(int(seed))
+    g = np.real(_ifft2c(F_mag * np.exp(1j * rng.uniform(-np.pi, np.pi, F_mag.shape))))
+    errs = []
+    g_est = np.where(support, np.maximum(g, 0.0), 0.0)
+    total = int(n_iter) + int(er_polish)
+    for k in range(total):
+        G = _fft2c(g)
+        gp = np.real(_ifft2c(F_mag * np.exp(1j * np.angle(G))))     # Fourier-magnitude + reality projection
+        viol = (~support) | (gp < 0.0)                              # outside support OR negative
+        # the support-constrained estimate (the 'shadow' error-reduction object): this -- NOT the raw HIO
+        # feedback iterate, which deliberately carries energy outside the support -- is the actual reconstruction,
+        # and its Fourier-magnitude residual is the honest monotone-ish convergence metric (the literature's R_F).
+        g_est = np.where(viol, 0.0, gp)
+        errs.append(float(np.linalg.norm(F_mag - np.abs(_fft2c(g_est))) / Tn))
+        if (mode == "er") or (k >= int(n_iter)):                    # ER for mode='er' and for the polish tail
+            g = g_est
+        else:                                                       # HIO feedback (off-support / negative driven)
+            g = np.where(viol, g - beta * gp, gp)
+    recovered = g_est
+    return {"ok": True, "recovered": recovered, "fourier_error": errs,
+            "final_error": round(errs[-1], 6) if errs else None,
+            "initial_error": round(errs[0], 6) if errs else None,
+            "support_frac": round(float(support.mean()), 4)}
+
+
+def _fienup_object(name, n_grid):
+    """Build a canonical REAL, non-negative test object + an OFF-CENTRE support mask (the off-centre placement
+    breaks the conjugate twin-image ambiguity -- the twin falls outside the support). name in {dots, ell, tri}.
+    Returns (object, support)."""
+    n = int(n_grid)
+    y = np.arange(n)[:, None]
+    x = np.arange(n)[None, :]
+    # off-centre support box in the (+,+) quadrant so the point-reflected twin lands outside it
+    r0, r1 = int(0.50 * n), int(0.86 * n)
+    c0, c1 = int(0.50 * n), int(0.86 * n)
+    support = np.zeros((n, n), dtype=bool)
+    support[r0:r1, c0:c1] = True
+    obj = np.zeros((n, n), dtype=float)
+    s = 0.018 * n
+    nm = (name or "dots").lower()
+
+    def blob(cy, cx, amp):
+        return amp * np.exp(-(((y - cy) ** 2 + (x - cx) ** 2) / (2.0 * s * s)))
+
+    if nm == "ell":                                                 # an asymmetric 'L'
+        ry = np.linspace(r0 + 0.10 * n, r1 - 0.06 * n, 7)
+        for cy in ry:
+            obj += blob(cy, c0 + 0.10 * n, 1.0)
+        rx = np.linspace(c0 + 0.10 * n, c1 - 0.06 * n, 5)
+        for cx in rx:
+            obj += blob(r1 - 0.06 * n, cx, 1.0)
+    elif nm == "tri":                                               # three corners of a triangle
+        obj += blob(r0 + 0.08 * n, c0 + 0.08 * n, 1.0)
+        obj += blob(r1 - 0.08 * n, c0 + 0.10 * n, 0.7)
+        obj += blob(r0 + 0.20 * n, c1 - 0.08 * n, 0.85)
+    else:                                                           # dots: 3 unequal blobs, asymmetric layout
+        obj += blob(r0 + 0.10 * n, c0 + 0.09 * n, 1.0)
+        obj += blob(r0 + 0.22 * n, c0 + 0.20 * n, 0.6)
+        obj += blob(r0 + 0.12 * n, c0 + 0.26 * n, 0.85)
+    return obj, support
+
+
+def _register_corr(rec, truth):
+    """Correlation of a recovery against the truth, INVARIANT to the unavoidable phase-retrieval AMBIGUITIES:
+    a TRANSLATION (a centred-FFT magnitude is shift-invariant, so the object can sit anywhere in its support)
+    and the conjugate TWIN (point reflection). Returns the peak normalized cross-correlation over all shifts,
+    maximized over {as-is, point-reflected} -- i.e. how well the recovered object matches the truth once the
+    free shift/flip is removed."""
+    def _xc(a, b):
+        a = a - a.mean()
+        b = b - b.mean()
+        na = float(np.linalg.norm(a)) or 1.0
+        nb = float(np.linalg.norm(b)) or 1.0
+        cc = np.fft.ifft2(np.fft.fft2(a) * np.conj(np.fft.fft2(b))).real
+        return float(cc.max() / (na * nb))
+    return max(_xc(rec, truth), _xc(rec, truth[::-1, ::-1]))
+
+
+def fienup_design(obj="dots", n_grid=128, n_iter=300, beta=0.9, seed=0):
+    """Run Fienup HIO on a named canonical object -> JSON-able recovery metrics (no big arrays). Forms the
+    object's diffraction intensity |FFT(obj)|^2, hands the algorithm ONLY that magnitude + the support, and
+    reports how well the hidden object is recovered. ``correlation`` allows the conjugate twin ambiguity.
+    Returns {ok, obj, correlation, final_error, initial_error, n_iter, support_frac}."""
+    truth, support = _fienup_object(obj, n_grid)
+    measured = np.abs(_fft2c(truth)) ** 2
+    r = fienup_phase_retrieval(measured, support, n_iter=n_iter, beta=beta, seed=seed)
+    corr = _register_corr(r["recovered"], truth)
+    return {"ok": True, "obj": obj, "correlation": round(corr, 5), "final_error": r["final_error"],
+            "initial_error": r["initial_error"], "n_iter": int(n_iter), "support_frac": r["support_frac"]}
+
+
 def fourier_filter(U, kind="lowpass", cutoff_frac=0.15, phase_shift_deg=90.0):
     """4f FOURIER-PLANE spatial filter (Abbe-Porter): FFT the field, multiply by a Fourier-plane mask, IFFT
     back. ``kind``: 'lowpass' passes |f| <= cutoff_frac (smooths / removes fine detail), 'highpass' blocks it

@@ -53,8 +53,8 @@ _TOOL_GROUPS = {
         "fdtd_derive_property"],
     "design (pure math, no scene change)": [
         "design_telescope", "design_4f", "mode_match", "optics_calc", "wave_psf", "aberrated_psf",
-        "propagate_field", "propagate_chain", "gerchberg_saxton", "spatial_filter", "propagate_pulse",
-        "slit_diffraction", "talbot_effect"],
+        "propagate_field", "propagate_chain", "gerchberg_saxton", "fienup_phase_retrieval", "spatial_filter",
+        "propagate_pulse", "slit_diffraction", "talbot_effect"],
     "place / assemble (opto-mechanics)": [
         "place_relative", "make_cage", "make_tube", "make_rail", "place_on_grid", "place_on_rail",
         "set_grid", "dress_bench"],
@@ -546,6 +546,7 @@ def propagate_chain(steps, wavelength_nm=632.8, w0_mm=None, aperture_mm=None, n_
         return {"error": "give a non-empty steps list, e.g. [['aperture',3.0],['lens',200.0],['prop',200.0]]"}
     if not (w0_mm or aperture_mm):
         return {"error": "give a Gaussian w0_mm or a circular aperture_mm source"}
+    from . import field
     try:
         norm = [(str(s[0]), float(s[1])) for s in steps]
     except Exception:
@@ -571,6 +572,7 @@ def gerchberg_saxton(target="ring", n_grid=128, n_iter=60, seed=0, png=False):
     saves the achieved far-field + the recovered phase mask. Off-trace; live trace byte-identical."""
     if target not in ("ring", "double", "tophat", "spot"):
         return {"error": "target must be one of: ring, double, tophat, spot"}
+    from . import field
     T, src = field.gs_named_target(target, int(n_grid))
     r = field.gerchberg_saxton(T, src, n_iter=int(n_iter), seed=int(seed))
     out = {"ok": True, "target": target, "correlation": r["correlation"], "final_error": r["final_error"],
@@ -601,6 +603,53 @@ def gerchberg_saxton(target="ring", n_grid=128, n_iter=60, seed=0, png=False):
     return out
 
 
+def fienup_phase_retrieval(obj="dots", n_grid=128, n_iter=300, beta=0.9, seed=0, png=False):
+    """Fienup HIO phase retrieval -- recover a hidden REAL, non-negative object from its diffraction INTENSITY
+    (|FFT|^2) ALONE plus a real-space SUPPORT mask: the genuine 'phase problem' of coherent diffractive imaging
+    / crystallography. Where Gerchberg-Saxton knows the amplitude in BOTH planes (CGH design), here the object
+    is UNKNOWN -- only its support is given. The Hybrid-Input-Output feedback (beta ~ 0.9) escapes the
+    stagnation / twin-image traps that pure error-reduction falls into. `obj` in {dots, ell, tri} (canonical
+    asymmetric objects in an off-centre support that breaks the conjugate twin). Returns {ok, obj, correlation
+    (recovered-vs-truth, INVARIANT to the inherent translation + twin ambiguities, 0..1), final_error,
+    initial_error, n_iter, support_frac}. png=True saves truth / recovered / Fourier-error curve. Off-trace;
+    live trace byte-identical."""
+    if obj not in ("dots", "ell", "tri"):
+        return {"error": "obj must be one of: dots, ell, tri"}
+    from . import field
+    out = field.fienup_design(obj, n_grid=int(n_grid), n_iter=int(n_iter), beta=float(beta), seed=int(seed))
+    if png:
+        try:
+            import os
+            import tempfile
+            import numpy as _np
+            import matplotlib
+            matplotlib.use("Agg")
+            import matplotlib.pyplot as plt
+            truth, support = field._fienup_object(obj, int(n_grid))
+            measured = _np.abs(field._fft2c(truth)) ** 2
+            r = field.fienup_phase_retrieval(measured, support, n_iter=int(n_iter), beta=float(beta), seed=int(seed))
+            fig, ax = plt.subplots(1, 3, figsize=(10.6, 3.4))
+            fig.patch.set_facecolor("#0d0d10")
+            ax[0].imshow(truth, cmap="inferno", origin="lower")
+            ax[0].set_title("hidden object (obj=%s)" % obj, color="#f4f4f6", fontsize=10)
+            ax[1].imshow(r["recovered"], cmap="inferno", origin="lower")
+            ax[1].set_title("HIO recovery (corr=%.3f)" % out["correlation"], color="#f4f4f6", fontsize=10)
+            ax[2].semilogy(r["fourier_error"], color="#4a8db0")
+            ax[2].set_title("Fourier-magnitude error", color="#f4f4f6", fontsize=10)
+            ax[2].set_facecolor("#0d0d10")
+            ax[2].tick_params(colors="#8a8a92")
+            for a_ in ax[:2]:
+                a_.set_xticks([]); a_.set_yticks([]); a_.set_facecolor("#0d0d10")
+            png_path = os.path.join(tempfile.gettempdir(), "optics_fienup.png")
+            fig.tight_layout()
+            fig.savefig(png_path, dpi=120, facecolor=fig.get_facecolor())
+            plt.close(fig)
+            out["png"] = png_path
+        except Exception as exc:
+            out["png_error"] = str(exc)
+    return out
+
+
 def spatial_filter(obj="grating", kind="lowpass", cutoff_frac=0.15, n_grid=256, png=False):
     """4f FOURIER-PLANE spatial filtering (the Abbe-Porter experiment / coherent optical image processing).
     FFTs a canonical object, applies a Fourier-plane mask, and IFFTs back. obj in {grating, edge, phase};
@@ -612,6 +661,7 @@ def spatial_filter(obj="grating", kind="lowpass", cutoff_frac=0.15, n_grid=256, 
         return {"error": "obj must be one of: grating, edge, phase"}
     if kind not in ("lowpass", "highpass", "phase_contrast"):
         return {"error": "kind must be one of: lowpass, highpass, phase_contrast"}
+    from . import field
     out = field.spatial_filter(obj=obj, kind=kind, cutoff_frac=float(cutoff_frac), n_grid=int(n_grid))
     if png:
         try:

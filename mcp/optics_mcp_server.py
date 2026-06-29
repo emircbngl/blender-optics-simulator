@@ -264,6 +264,20 @@ def gerchberg_saxton(target: str = "ring", n_grid: int = 128, n_iter: int = 60,
 
 
 @mcp.tool()
+def fienup_phase_retrieval(obj: str = "dots", n_grid: int = 128, n_iter: int = 300,
+                           beta: float = 0.9, seed: int = 0, png: bool = False) -> str:
+    """Fienup HIO phase retrieval -- recover a hidden REAL, non-negative object from its diffraction INTENSITY
+    (|FFT|^2) ALONE plus a real-space SUPPORT mask: the genuine 'phase problem' of coherent diffractive imaging
+    / crystallography. Where Gerchberg-Saxton knows the amplitude in BOTH planes (CGH design), here the object
+    is UNKNOWN -- only its support is. The Hybrid-Input-Output feedback (beta ~ 0.9) escapes the stagnation /
+    twin-image traps that pure error-reduction falls into. obj in {dots, ell, tri} (asymmetric objects in an
+    off-centre support that breaks the conjugate twin). Returns {ok, correlation (recovered-vs-truth, invariant
+    to the inherent translation + twin ambiguities, 0..1), final_error, initial_error, n_iter, support_frac};
+    png=True saves truth / recovery / Fourier-error curve. Off-trace; live trace byte-identical."""
+    return _fmt(_call("fienup_phase_retrieval", obj=obj, n_grid=n_grid, n_iter=n_iter, beta=beta, seed=seed, png=png))
+
+
+@mcp.tool()
 def spatial_filter(obj: str = "grating", kind: str = "lowpass", cutoff_frac: float = 0.15,
                    n_grid: int = 256, png: bool = False) -> str:
     """4f FOURIER-PLANE spatial filtering (the Abbe-Porter experiment / coherent optical image processing):
