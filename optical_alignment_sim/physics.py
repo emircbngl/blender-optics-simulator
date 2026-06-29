@@ -855,6 +855,38 @@ def chi2_solve(deff_pm_V, L_mm, P_W, dk_per_mm=0.0, prefactor=2.0e-4, n_steps=40
     return chi2_shg_efficiency(eta_lin, dk_per_mm * L_mm, n_steps=n_steps)
 
 
+def chi2_shg_type2_efficiency(eta_lin, frac_o=0.5, n_steps=400):
+    """TYPE-II SHG conversion efficiency (o+e -> e) from the THREE-wave coupled equations with pump depletion, at
+    perfect phase match. Unlike Type-I (two identical fundamental photons), the harmonic consumes ONE ordinary +
+    ONE extraordinary photon, so when the input pump splits unevenly the conversion SATURATES at the WEAKER
+    polarization (Manley-Rowe): the maximum harmonic power fraction is ``2*min(frac_o, 1-frac_o)``.
+
+    ``frac_o`` is the ordinary photon fraction of the input (0.5 = balanced -> the same shape as the Type-I
+    tanh^2; a 45-deg input gives 0.5). ``eta_lin`` sets the drive (normalized length S = sqrt(eta_lin)). The
+    dimensionless equations da_o/ds = i a_e* a_2, da_e/ds = i a_o* a_2, da_2/ds = i a_o a_e (RK4) conserve photon
+    number |a_o|^2+|a_2|^2 = frac_o and |a_e|^2+|a_2|^2 = 1-frac_o. Returns eta = 2|a_2(S)|^2 (harmonic power
+    fraction) in [0,1]."""
+    S = math.sqrt(max(eta_lin, 0.0))
+    if S <= 0.0:
+        return 0.0
+    fo = min(max(frac_o, 0.0), 1.0)
+    ds = S / int(n_steps)
+    a_o, a_e, a_2 = complex(math.sqrt(fo)), complex(math.sqrt(1.0 - fo)), complex(0.0)
+
+    def _d(ao, ae, a2):
+        return (1j * ae.conjugate() * a2, 1j * ao.conjugate() * a2, 1j * ao * ae)
+
+    for _ in range(int(n_steps)):
+        k1 = _d(a_o, a_e, a_2)
+        k2 = _d(a_o + 0.5 * ds * k1[0], a_e + 0.5 * ds * k1[1], a_2 + 0.5 * ds * k1[2])
+        k3 = _d(a_o + 0.5 * ds * k2[0], a_e + 0.5 * ds * k2[1], a_2 + 0.5 * ds * k2[2])
+        k4 = _d(a_o + ds * k3[0], a_e + ds * k3[1], a_2 + ds * k3[2])
+        a_o += ds / 6.0 * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0])
+        a_e += ds / 6.0 * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1])
+        a_2 += ds / 6.0 * (k1[2] + 2 * k2[2] + 2 * k3[2] + k4[2])
+    return min(1.0, 2.0 * abs(a_2) ** 2)
+
+
 # Crystal-material catalog: effective nonlinear coefficient deff (pm/V, order-of-magnitude
 # literature values) + a SIMPLE LINEAR phase-mismatch temperature model dk(T) ~ dk_dT*(T - T_pm).
 # The dk_dT slope is a HONEST PLACEHOLDER (deg-1 per mm) tuned only to give a realistic sinc^2(T)
@@ -2230,6 +2262,11 @@ if __name__ == "__main__":
         fails.append("chi2 ODE @phase-match %.6f != tanh^2(2)" % chi2_shg_efficiency(4.0, 0.0))
     if chi2_shg_efficiency(100.0, 0.0) > 1.0 + 1e-9:
         fails.append("chi2 ODE exceeds 1 (Manley-Rowe violated)")
+    # Type-II SHG: balanced == Type-I at half eta_lin; unbalanced never exceeds the 2*min Manley-Rowe cap
+    if not close(chi2_shg_type2_efficiency(4.0, 0.5), chi2_shg_efficiency(2.0, 0.0), 1e-4):
+        fails.append("Type-II balanced != Type-I(eta/2)")
+    if any(chi2_shg_type2_efficiency(s, 0.3) > 0.6 + 1e-6 for s in (2.0, 8.0, 32.0)):
+        fails.append("Type-II exceeds Manley-Rowe cap 2*min(0.3,0.7)=0.6")
     # KDP Sellmeier -> textbook Type-I 1064->532 phase-match angle 41.2 deg; BBO Type-II ~32.9
     if not close(shg_phase_match_angle('KDP', 1064.0), 41.2, 0.3):
         fails.append("KDP phase-match angle %.2f != 41.2" % shg_phase_match_angle('KDP', 1064.0))

@@ -399,6 +399,7 @@ _CALCULATORS = {
     "lbo_ncpm_temperature_estimate": (physics.lbo_ncpm_temperature_estimate, ("wl_fund_nm",), "LBO Type-I NCPM temperature (X-axis, zero walk-off) from CONSTANT datasheet dn/dT, deg C. CAVEAT: model ~256C; the REAL value is 148C (constant dn/dT under-predict the slope; lambda-resolved Tang/Kato paywalled)"),
     "shg_walkoff_mm": (physics.shg_walkoff_mm, ("crystal", "wl_fund_nm", "L_mm"), "Sellmeier-derived SHG spatial walk-off offset L*tan(rho), mm (BBO 1064->532, 10mm ~0.50)"),
     "chi2_shg_efficiency": (physics.chi2_solve, ("deff_pm_V", "L_mm", "P_W", "dk_per_mm"), "SHG efficiency from the Manley-Rowe coupled-wave ODE (depletion+mismatch); tanh^2(sqrt(eta_lin)) at phase match"),
+    "chi2_shg_type2_efficiency": (physics.chi2_shg_type2_efficiency, ("eta_lin", "frac_o"), "Type-II SHG (o+e->e) efficiency from the 3-wave coupled equations; balanced=Type-I at half eta_lin, unbalanced caps at 2*min(frac_o,1-frac_o) (Manley-Rowe)"),
     "grating_resolving_power": (physics.grating_resolving_power, ("lines_per_mm", "illuminated_mm", "m"), "R = m*N"),
     "ar_quarter_wave_reflectance": (physics.ar_quarter_wave_reflectance, ("n0", "n1", "ns"), "single quarter-wave AR layer R"),
     "fiber_na": (physics.fiber_na, ("n_core", "n_clad"), "step-index fiber numerical aperture"),

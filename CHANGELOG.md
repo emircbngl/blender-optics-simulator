@@ -38,6 +38,14 @@ Off-trace calculators; the live trace stays byte-identical.
   intensity null. Demo `docs/img/newton-rings-demo.png`. Validation **225 → 227**; regression **389 → 390** (the
   new end-to-end wrapper smoke).
 
+### Added — Type-II SHG coupled-wave efficiency (`chi2_shg_type2_efficiency`)
+- The χ² solver's depletion ODE was Type-I (two identical fundamental photons); added the rigorous **Type-II**
+  three-wave coupled equations (o + e → e), where the harmonic consumes **one ordinary + one extraordinary**
+  photon. Consequences, all validated: a **balanced** pump (frac_o=0.5) reduces to **Type-I at half η_lin**
+  (continuity, exact) and can fully convert; an **unbalanced** pump **saturates at the weaker polarization** —
+  the Manley-Rowe cap `2·min(frac_o, 1-frac_o)` (e.g. a 0.2/0.8 split caps at 40%), and the harmonic never
+  exceeds it. New `optics_calc` calculator. Validation **234 → 238**.
+
 ### Added — LBO non-critical phase matching (temperature-tuned) — with an honest limitation
 - LBO's **NCPM** route (propagation along X, θ=90° φ=0°, zero walk-off, temperature-tuned) needs the
   thermo-optic `dn/dT`. Added the **constant datasheet dn/dT** (LaserComponents / CASTECH: `dn_x/dT=−9.3e−6`,

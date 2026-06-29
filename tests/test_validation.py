@@ -157,6 +157,13 @@ check("Manley-Rowe SHG ODE @phase-match == tanh^2(sqrt(eta_lin=0.5))", physics.c
 check("Manley-Rowe SHG ODE @phase-match == tanh^2(sqrt(eta_lin=4)) = 0.9293", physics.chi2_shg_efficiency(4.0, 0.0), 0.929349, 1e-5, "Boyd; RK4 vs analytic")
 check("Manley-Rowe SHG ODE undepleted limit -> eta_lin*sinc^2(dkL/2)", physics.chi2_shg_efficiency(1e-3, math.pi) / (1e-3 * (math.sin(math.pi / 2) / (math.pi / 2)) ** 2), 1.0, 5e-3, "undepleted SHG; sinc^2")
 check("Manley-Rowe SHG ODE energy bound: eta <= 1 (strong drive)", physics.chi2_shg_efficiency(100.0, 0.0), 1.0, 1e-3, "Manley-Rowe; conservation")
+# TYPE-II SHG (o+e->e): the 3-wave coupled equations. Balanced (frac_o=0.5) reduces to Type-I at HALF eta_lin;
+# an unbalanced pump SATURATES at the weaker polarization (Manley-Rowe cap 2*min(frac_o, 1-frac_o)).
+check("Type-II SHG balanced == Type-I at half eta_lin (continuity)", physics.chi2_shg_type2_efficiency(4.0, 0.5), physics.chi2_shg_efficiency(2.0, 0.0), 1e-4, "Boyd; 3-wave RK4")
+check("Type-II SHG balanced -> full conversion at strong drive", physics.chi2_shg_type2_efficiency(64.0, 0.5), 1.0, 1e-3, "Manley-Rowe; coupled-wave")
+_t2cap = max(physics.chi2_shg_type2_efficiency(s, 0.2) for s in (1.0, 2.0, 4.0, 8.0, 16.0, 32.0))
+check("Type-II SHG unbalanced (frac_o=0.2) caps at 2*min = 0.4 (Manley-Rowe)", _t2cap, 0.4, 0.02, "photon-number conservation")
+check("Type-II SHG never exceeds the Manley-Rowe cap (frac_o=0.3 -> <= 0.6)", 1.0 if all(physics.chi2_shg_type2_efficiency(s, 0.3) <= 0.6 + 1e-6 for s in (2.0, 8.0, 32.0, 128.0)) else 0.0, 1.0, 1e-9, "Manley-Rowe bound")
 # Sellmeier-DERIVED SHG walk-off (replaces the lumped literal when the solver is on): BBO 1064->532 over 10 mm
 check("BBO Sellmeier SHG walk-off over 10 mm ~ 0.50 mm (rho ~ 2.87 deg)", physics.shg_walkoff_mm('BBO', 1064.0, 10.0), 0.502, 0.02, "index ellipsoid; oracle")
 
