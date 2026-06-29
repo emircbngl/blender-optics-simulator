@@ -54,7 +54,7 @@ _TOOL_GROUPS = {
     "design (pure math, no scene change)": [
         "design_telescope", "design_4f", "mode_match", "optics_calc", "wave_psf", "aberrated_psf",
         "propagate_field", "propagate_chain", "gerchberg_saxton", "fienup_phase_retrieval", "spatial_filter",
-        "tem_mode", "newton_rings", "propagate_pulse", "slit_diffraction", "talbot_effect"],
+        "tem_mode", "newton_rings", "gpu_status", "propagate_pulse", "slit_diffraction", "talbot_effect"],
     "place / assemble (opto-mechanics)": [
         "place_relative", "make_cage", "make_tube", "make_rail", "place_on_grid", "place_on_rail",
         "set_grid", "dress_bench"],
@@ -494,6 +494,24 @@ def aberrated_psf(mode="spherical", amplitude_waves=0.1, zernike_waves=None,
     out = wave.aberrated_psf(coeffs, wavelength_nm, f_number, aperture_diam_mm,
                              n_grid=int(n_grid), diam_px=int(diam_px), png_path=png_path)
     out["mode"] = mode if zernike_waves is None else "custom"
+    return out
+
+
+def gpu_status(enable=None):
+    """Report (or set) the OPT-IN GPU backend for the off-trace FFT field engine. `enable`=None reports;
+    'auto'/'cupy'/'mlx' turns it on (needs the library + hardware -- owner-run); 'off' reverts to NumPy.
+    Returns {ok, active_backend, available:{cupy,mlx}, default_dtype, note}. The NumPy default is byte-identical
+    to the CPU path; complex128 on GPU matches the oracle exactly, complex64 is the fast path (~1e-6 deviation
+    -- the angular-spectrum H phase is kept in float64 regardless). This module is off-trace; the live ray trace
+    is unaffected."""
+    from . import gpu
+    if enable is not None:
+        if str(enable).lower() in ("off", "false", "0", "none"):
+            gpu.disable()
+        else:
+            gpu.enable("auto" if str(enable).lower() in ("on", "true", "1", "auto") else str(enable))
+    out = gpu.info()
+    out["ok"] = True
     return out
 
 

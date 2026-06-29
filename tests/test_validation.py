@@ -332,6 +332,13 @@ _fUf = field.angular_spectrum(_fU0, _fdx, 300.0, _flam)
 _fUb = field.angular_spectrum(_fUf, _fdx, -300.0, _flam)     # back-propagate = digital-hologram reconstruction
 check("AngSpec round-trip +z/-z recovers U0", float(_np.max(_np.abs(_fUb - _fU0)) / _np.max(_np.abs(_fU0))), 0.0, 1e-5, "reversibility; FFT")
 check("AngSpec power conserved P(z)/P(0)", float(_np.sum(_np.abs(_fUf) ** 2) / _np.sum(_np.abs(_fU0) ** 2)), 1.0, 1e-3, "energy; FFT")
+# opt-in GPU backend (scaffold): the NumPy-fallback complex128 path reproduces field.angular_spectrum EXACTLY
+# (so the GPU-ready code is correct); the complex64 fast path deviates only ~1e-6 (H-phase kept in float64).
+from optical_alignment_sim import gpu as _gpu
+_gpu128 = _gpu.angular_spectrum(_fU0, _fdx, 300.0, _flam, dtype='complex128')
+check("GPU backend (numpy/complex128) == field.angular_spectrum EXACTLY", float(_np.max(_np.abs(_gpu128 - _fUf))), 0.0, 1e-12, "GPU scaffold; numpy-parity")
+_gpu64 = _gpu.angular_spectrum(_fU0, _fdx, 300.0, _flam, dtype='complex64')
+check("GPU backend complex64 fast path deviates only ~1e-6 (phase kept float64)", float(_np.max(_np.abs(_gpu64 - _fUf))), 0.0, 1e-5, "GPU scaffold; complex64 caveat")
 
 print("[Multi-plane field-propagation CHAIN -- propagate_chain (POPPY-style OpticalSystem, chains the propagator)]")
 # (1) propagator additivity: the pure angular spectrum composes EXACTLY -- prop(z1)*prop(z2) == prop(z1+z2)

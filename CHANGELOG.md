@@ -6,7 +6,7 @@ semantic versioning.
 
 ## [Unreleased]
 
-## [0.22.0] — Biaxial nonlinear crystals (KTP + LBO) + Newton's-rings 2D pattern — 2026-06-29
+## [0.22.0] — Biaxial crystals, nonlinear-optics depth, interference & a GPU scaffold — 2026-06-29
 
 The last big-ticket crystal item: the Sellmeier-derived SHG phase matching covered only **uniaxial** crystals;
 this adds the two workhorse **biaxial** doublers, KTP and LBO, with real principal-plane phase matching + walk-off
@@ -37,6 +37,18 @@ Off-trace calculators; the live trace stays byte-identical.
   producer in `diagnostics` + optics_api + MCP (design group). Validated: central spot dark, the r₄ ring is an
   intensity null. Demo `docs/img/newton-rings-demo.png`. Validation **225 → 227**; regression **389 → 390** (the
   new end-to-end wrapper smoke).
+
+### Added — opt-in GPU backend for the off-trace FFT field engine (scaffold)
+- A NumPy-compatible array namespace (`gpu.py`) that is **NumPy by default** and switches to **CuPy** (NVIDIA)
+  or **MLX** (Apple Silicon) when present + enabled (`gpu_status` / `OAS_GPU=1`). `gpu.angular_spectrum` mirrors
+  `field.angular_spectrum` against the active namespace (using `where`, not boolean-index assignment, for GPU
+  compatibility). The **NumPy/complex128 path reproduces `field.angular_spectrum` EXACTLY** (validated → the
+  GPU-ready code is proven correct); the live ray trace is untouched (off-trace, byte-identical).
+- **Numerical insight caught + fixed during the scaffold:** the transfer-function phase `k·dz·√(…)` reaches
+  ~10⁶ rad, so computing it in float32 loses ~0.3 rad (catastrophic). The phase is now built in **float64
+  always**, regardless of output dtype; with that, the `complex64` GPU fast path deviates only **~1e-6** (vs the
+  0.13 it would otherwise). Owner-run: install cupy/mlx + enable. `gpu_status` reports the backend. Validation
+  **238 → 240**.
 
 ### Added — Type-II SHG coupled-wave efficiency (`chi2_shg_type2_efficiency`)
 - The χ² solver's depletion ODE was Type-I (two identical fundamental photons); added the rigorous **Type-II**

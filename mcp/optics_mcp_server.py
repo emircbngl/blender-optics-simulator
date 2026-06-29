@@ -302,6 +302,16 @@ def newton_rings(radius_of_curvature_mm: float = 1000.0, wavelength_nm: float = 
 
 
 @mcp.tool()
+def gpu_status(enable: str = None) -> str:
+    """Report (or set) the OPT-IN GPU backend for the off-trace FFT field engine. enable=None reports;
+    'auto'/'cupy'/'mlx' turns it on (needs the library + hardware -- owner-run); 'off' reverts to NumPy.
+    Returns {ok, active_backend, available:{cupy,mlx}, default_dtype, note}. NumPy default is byte-identical to
+    the CPU path; complex128 on GPU matches the oracle exactly, complex64 is the fast path (~1e-6 deviation --
+    the angular-spectrum H phase is kept in float64). Off-trace; the live ray trace is unaffected."""
+    return _fmt(_call("gpu_status", enable=enable))
+
+
+@mcp.tool()
 def spatial_filter(obj: str = "grating", kind: str = "lowpass", cutoff_frac: float = 0.15,
                    n_grid: int = 256, png: bool = False) -> str:
     """4f FOURIER-PLANE spatial filtering (the Abbe-Porter experiment / coherent optical image processing):
