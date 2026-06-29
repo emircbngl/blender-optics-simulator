@@ -125,6 +125,12 @@ check("ADP Type-I SHG phase-match angle 1064->532 = 41.7 deg", physics.shg_phase
 check("BBO Type-II SHG phase-match angle 1064->532 = 32.9 deg", physics.shg_phase_match_angle_type2('BBO', 1064.0), 32.9, 0.3, "Boyd; index ellipsoid")
 check("KDP Type-II SHG phase-match angle 1064->532 ~ 59 deg", physics.shg_phase_match_angle_type2('KDP', 1064.0), 59.1, 0.5, "textbook; index ellipsoid")
 check("Type-II angle > Type-I angle (o+e needs a larger cut, BBO)", physics.shg_phase_match_angle_type2('BBO', 1064.0) - physics.shg_phase_match_angle('BBO', 1064.0), 10.06, 0.3, "negative uniaxial; ordering")
+# BIAXIAL crystals (KTP, LBO) -- principal-PLANE (XY, theta=90) phase matching reduces to effective-uniaxial.
+# The sourced formula-4 Sellmeier (refractiveindex.info) reproduces both indices AND the textbook XY azimuth phi.
+check("KTP n_z @1064nm = 1.8297 (Kato2002 formula-4)", math.sqrt(physics._formula4_n2(physics.BIAXIAL_SELLMEIER['KTP'][2], 1.064)), 1.8297, 1e-3, "Kato2002 [datasheet]")
+check("LBO n_z @1064nm = 1.6056 (Chen/Hanson formula-4)", math.sqrt(physics._formula4_n2(physics.BIAXIAL_SELLMEIER['LBO'][2], 1.064)), 1.6056, 1e-3, "Chen1989 [datasheet]")
+check("KTP Type-II XY-plane SHG phase-match azimuth phi = 23.5 deg", physics.biaxial_shg_phase_match_phi('KTP', 1064.0, 'TYPE2'), 23.5, 0.3, "EKSMA datasheet; index ellipsoid")
+check("LBO Type-I XY-plane SHG phase-match azimuth phi = 11.6 deg", physics.biaxial_shg_phase_match_phi('LBO', 1064.0, 'TYPE1'), 11.6, 0.3, "EKSMA datasheet; index ellipsoid")
 
 # o/e SPATIAL double refraction geometry (physics.oe_split_geometry): composes the verified ellipsoid +
 # walk-off + vector geometry. Calcite cut 45 deg -> rho 6.224 deg; the o/e eigen-pols are orthogonal.

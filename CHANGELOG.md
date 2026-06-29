@@ -6,6 +6,20 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Added — biaxial nonlinear crystals: KTP + LBO principal-plane phase matching
+- The Sellmeier-derived SHG phase matching covered only **uniaxial** crystals; added the two workhorse
+  **biaxial** doublers, **KTP** and **LBO**, with all three principal-axis Sellmeier (n_x, n_y, n_z) sourced
+  verbatim from refractiveindex.info (KTP: Kato & Takaoka 2002; LBO: Chen 1989 / Hanson-Dick 1991) in the RII
+  `formula 4` form (new `_formula4_n2` evaluator + `BIAXIAL_SELLMEIER`).
+- For the common **XY principal plane** (θ=90°), the biaxial problem reduces to an effective-uniaxial one: the
+  Z-polarized eigenwave sees the fixed polar index n_z, the in-plane eigenwave sees a φ-tuned index between n_y
+  (φ=0) and n_x (φ=90°), `1/n² = sin²φ/n_x² + cos²φ/n_y²` — the polarization is perpendicular to the wavevector,
+  which **physics_verify confirmed** (the index order was caught and corrected via the verifier before coding).
+  `biaxial_shg_phase_match_phi` solves the φ azimuth by bisection. **Self-validated**: from the sourced
+  coefficients it reproduces the textbook Nd:YAG green-doubler cuts — **KTP Type-II XY φ=23.58°** (lit 23.5°),
+  **LBO Type-I XY φ=11.76°** (lit 11.6°). New `optics_calc` calculator. (Scope: the XY plane / θ=90° critical
+  case; biaxial walk-off and other planes deferred.) Validation **219 → 223**; byte-identical (off-trace calc).
+
 ## [0.21.0] — Birefringence: o/e spatial ray-splitting + a χ² coupled-wave solver — 2026-06-29
 
 The two biggest-ticket architectural items on the backlog, both landing **in the live tracer** (not off-trace)

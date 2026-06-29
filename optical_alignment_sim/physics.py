@@ -894,6 +894,93 @@ def _nl_n2(params, lam_um):
     return A + B / (l2 - C) - D * l2
 
 
+def _formula4_n2(c, lam_um):
+    """refractiveindex.info database 'formula 4' for n^2(lambda_um), lambda in microns:
+        n^2 = c0 + c1*lam^c2 / (lam^2 - c3^c4) + c5*lam^c6 / (lam^2 - c7^c8) + c9*lam^c10 + c11*lam^c12 + ...
+    Two resonance terms (each 4 coeffs after c0), then polynomial lam-power pairs. ``c`` is the raw coefficient
+    list exactly as the RII database stores it; a zero numerator (c1 or c5 == 0) drops that resonance term."""
+    l2 = lam_um ** 2
+    n2 = c[0]
+    if len(c) >= 5 and c[1] != 0.0:
+        n2 += c[1] * lam_um ** c[2] / (l2 - c[3] ** c[4])
+    if len(c) >= 9 and c[5] != 0.0:
+        n2 += c[5] * lam_um ** c[6] / (l2 - c[7] ** c[8])
+    i = 9
+    while i + 1 < len(c):                                 # trailing polynomial terms c[i]*lam^c[i+1]
+        n2 += c[i] * lam_um ** c[i + 1]
+        i += 2
+    return n2
+
+
+# Principal-axis Sellmeier (n_x, n_y, n_z) for the common BIAXIAL nonlinear crystals, in RII 'formula 4' form
+# (lambda in microns), sourced verbatim from refractiveindex.info. Used for principal-PLANE (theta=90, the XY
+# plane) SHG phase matching, where the biaxial problem reduces to an effective-uniaxial one (validated below by
+# reproducing the textbook angles). Indices ordered n_x < n_y < n_z.
+BIAXIAL_SELLMEIER = {
+    # KTP (KTiOPO4), Kato & Takaoka, Appl. Opt. 41, 5040 (2002). n@1064 1.738/1.745/1.830; Type-II XY phi 23.5.
+    'KTP': ([3.29100, 0.04140, 0, 0.03978, 1, 9.35522, 0, 31.45571, 1],
+            [3.45018, 0.04341, 0, 0.04597, 1, 16.98825, 0, 39.43799, 1],
+            [4.59423, 0.06206, 0, 0.04763, 1, 110.80672, 0, 86.12171, 1]),
+    # LBO (LiB3O5), Chen 1989 / Hanson-Dick 1991. n@1064 1.566/1.591/1.606; Type-I XY phi ~11.6 (or NCPM 149 C).
+    'LBO': ([2.45768, 0.0098877, 0, 0.026095, 1, 0, 0, 0, 1, -0.013847, 2],
+            [2.52500, 0.017123, 0, -0.0060517, 1, 0, 0, 0, 1, -0.0087838, 2],
+            [2.58488, 0.012737, 0, 0.021414, 1, 0, 0, 0, 1, -0.016293, 2]),
+}
+
+
+def biaxial_index_xy(crystal, wl_nm, phi_deg):
+    """The two eigen-refractive-indices of a biaxial crystal for a wave propagating in the XY principal plane
+    (polar angle theta=90 deg) at azimuth ``phi_deg`` from the X axis. Returns (n_polar, n_inplane):
+      - n_polar = n_z, the index of the eigenwave polarized ALONG Z (perpendicular to the plane; phi-independent);
+      - n_inplane = the index of the eigenwave polarized IN the plane (perpendicular to k), which interpolates
+        between n_y (phi=0) and n_x (phi=90) as  1/n^2 = sin^2(phi)/n_x^2 + cos^2(phi)/n_y^2  (= n_e_theta(n_y,
+        n_x, phi)). The polarization is PERPENDICULAR to the wavevector, hence the sin<->n_x / cos<->n_y pairing
+        (physics_verify'd; reproduces the textbook KTP/LBO phase-match angles). Valid ONLY for k in the XY plane.
+    """
+    cs = BIAXIAL_SELLMEIER.get((crystal or '').upper())
+    if cs is None:
+        return None
+    lam = wl_nm * 1.0e-3
+    n_x = math.sqrt(_formula4_n2(cs[0], lam))
+    n_y = math.sqrt(_formula4_n2(cs[1], lam))
+    n_z = math.sqrt(_formula4_n2(cs[2], lam))
+    return n_z, n_e_theta(n_y, n_x, phi_deg)
+
+
+def biaxial_shg_phase_match_phi(crystal, wl_fund_nm, pm_type='TYPE1'):
+    """Critical SHG phase-match AZIMUTH phi (deg from X) for a biaxial crystal in the XY principal plane
+    (theta=90 deg), solved by bisection. The in-plane eigenwave (n_inplane(phi)) tunes with phi; the polar
+    eigenwave (n_z) is fixed:
+      - TYPE1 (both fundamentals same pol): n_inplane(2w, phi) = n_z(w)   [the SH on the in-plane branch].
+      - TYPE2 (one in-plane + one polar fundamental): n_inplane(2w, phi) = 0.5*(n_inplane(w, phi) + n_z(w)).
+    Returns phi in deg, or None if the crystal is unknown / no root in [0,90]. Validated: KTP Type-II -> ~23.5
+    deg, LBO Type-I -> ~11.6 deg (the textbook Nd:YAG green-doubler cuts)."""
+    if BIAXIAL_SELLMEIER.get((crystal or '').upper()) is None:
+        return None
+    t2 = (pm_type or '').upper() == 'TYPE2'
+
+    def _f(phi):
+        nz_w, nin_w = biaxial_index_xy(crystal, wl_fund_nm, phi)
+        _nz_2w, nin_2w = biaxial_index_xy(crystal, 0.5 * wl_fund_nm, phi)
+        target = 0.5 * (nin_w + nz_w) if t2 else nz_w
+        return nin_2w - target
+
+    a, b = 0.0, 90.0
+    fa, fb = _f(a), _f(b)
+    if fa == 0.0:
+        return 0.0
+    if fa * fb > 0.0:
+        return None
+    for _ in range(60):
+        m = 0.5 * (a + b)
+        fm = _f(m)
+        if fa * fm <= 0.0:
+            b = m
+        else:
+            a, fa = m, fm
+    return 0.5 * (a + b)
+
+
 def shg_phase_match_angle(crystal, wl_fund_nm):
     """Type-I SHG critical phase-matching ANGLE theta_pm (degrees from the optic axis) of a negative-uniaxial
     crystal: the extraordinary index of the second harmonic is tuned by angle to equal the ordinary index of
@@ -2062,6 +2149,11 @@ if __name__ == "__main__":
         fails.append("KDP phase-match angle %.2f != 41.2" % shg_phase_match_angle('KDP', 1064.0))
     if not close(shg_phase_match_angle_type2('BBO', 1064.0), 32.9, 0.3):
         fails.append("BBO Type-II angle %.2f != 32.9" % shg_phase_match_angle_type2('BBO', 1064.0))
+    # biaxial KTP/LBO XY-plane phase-match azimuth (sourced formula-4 Sellmeier -> textbook angles)
+    if not close(biaxial_shg_phase_match_phi('KTP', 1064.0, 'TYPE2'), 23.5, 0.3):
+        fails.append("KTP Type-II phi %.2f != 23.5" % biaxial_shg_phase_match_phi('KTP', 1064.0, 'TYPE2'))
+    if not close(biaxial_shg_phase_match_phi('LBO', 1064.0, 'TYPE1'), 11.6, 0.3):
+        fails.append("LBO Type-I phi %.2f != 11.6" % biaxial_shg_phase_match_phi('LBO', 1064.0, 'TYPE1'))
 
     if fails:
         print("PHYSICS SELFTEST FAILED:")
