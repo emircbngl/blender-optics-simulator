@@ -6,6 +6,41 @@ semantic versioning.
 
 ## [Unreleased]
 
+## [0.21.0] — Birefringence: o/e spatial ray-splitting + a χ² coupled-wave solver — 2026-06-29
+
+The two biggest-ticket architectural items on the backlog, both landing **in the live tracer** (not off-trace)
+yet **byte-identical** — each gated behind a per-element opt-in flag (default OFF), so all 18 baseline examples
+trace unchanged. The tracer already branches rays (beamsplitter, Wollaston) and already emits walk-off SHG
+children, so each feature is the **same SPLIT-TWO `_child()` pattern**, not a new engine.
+
+### Added — true ordinary/extraordinary SPATIAL double refraction (`oe_split`)
+- A uniaxial **CRYSTAL / WAVEPLATE** with `oe_split` ON forks one incident ray into an **ordinary** beam (pol
+  perpendicular to the principal plane, index n_o) and an **extraordinary** beam (pol in-plane, index n_e),
+  modeled as a slab: both exit **parallel** to the input, the e-beam laterally displaced by **L·tan(ρ)** — the
+  textbook calcite double image (a *fixed* displacement set by the crystal thickness, not the screen distance).
+- `physics.oe_split_geometry(d_in, axis, n_o, n_e)` composes the verified index-ellipsoid `n_e(θ)` +
+  `uniaxial_walkoff_angle` + vector geometry → the two Poynting directions, the orthogonal o/e eigen-pols, and
+  the walk direction; the power split is **Malus on the eigen-axes**. `oe_material` ∈ {calcite, quartz, MgF2,
+  sapphire} (the o/e Sellmeier was already in the catalog). Validated (`tests/_verify_birefringence.py`):
+  calcite cut-45° emits both beams, e displaced by **L·tan(6.19°)=1.08 mm**, energy conserved, beams
+  **orthogonally polarized**, wavelength unchanged, and re-converging when the optic axis is along the beam.
+- Demos `docs/img/birefringence-demo.png` + `…-double-refraction-render.png`.
+
+### Added — χ² tensor solver: the Manley-Rowe coupled-wave ODE (`use_chi2_solver`)
+- A nonlinear CRYSTAL with `use_chi2_solver` ON derives its SHG conversion efficiency from the **full
+  Manley-Rowe coupled-wave equations** (pump **depletion** + arbitrary phase mismatch, RK4-integrated) instead
+  of the static `nl_efficiency·sinc²` scalar; the CRITICAL walk-off is **derived from the index ellipsoid**
+  (replace-when-on). `physics.chi2_shg_efficiency(η_lin, ΔkL)` is verified against **both** analytic limits to
+  ~1e-12 (perfect phase match → `tanh²(√η_lin)`; undepleted → `η_lin·sinc²(ΔkL/2)`) and conserves photon number
+  (`|a₁|²+|a₂|²=1`); the `tanh²` solution, energy conservation and the η≤1 bound are **physics_verify ok=true**.
+- In-trace, a 1064→532 BBO SHG crystal converts **more** as the pump rises (η 0.076 → 0.93 → 0.999), pump
+  residual + harmonic = input at every level; the Sellmeier walk-off is **0.50 mm** over 10 mm BBO (vs the 0.6
+  literal). New `optics_calc` calculators `chi2_shg_efficiency` + `shg_walkoff_mm`. Demo `docs/img/chi2-solver-demo.png`.
+
+Both byte-identical (default-off flags). Validation **210 / 210** (+8 oracles), regression **389 / 389** (+6,
+the new opt-in scenes never touch the baselines), MCP↔API parity green. Verifiers:
+`tests/_verify_birefringence.py`, `tests/_verify_chi2_tensor.py`.
+
 ## [0.20.0] — Wave optics: aberrated PSF, phase retrieval & cavity modes — 2026-06-29
 
 Three additions on the verified wave/FFT layer. **`aberrated_psf`** generalizes the PSF's defocus knob to **any

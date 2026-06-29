@@ -174,6 +174,25 @@ the Scan + Plot operator, the Detector Fringe Image, and the live sensor window 
   <img src="docs/img/feature-board.png" width="92%" alt="New in v0.10.0: the WFS reads the beam's own curvature defocus; a pyramid WFS slope read; a soft-edge dichroic (R+T=1); a die face read as a zonal wavefront">
 </p>
 
+### New in v0.21.0 — birefringence: o/e double refraction + a χ² coupled-wave solver
+
+<p align="center">
+  <img src="docs/img/birefringence-demo.png" width="92%" alt="New in v0.21.0: true ordinary/extraordinary double refraction — one beam enters a calcite crystal and two parallel beams (ordinary + extraordinary) leave, separated by L*tan(rho), the textbook double image">
+</p>
+
+The two biggest architectural items on the backlog — both **in the live tracer**, yet **byte-identical** (each
+behind a per-element opt-in flag, default off). **`oe_split`** gives a uniaxial crystal **true ordinary/
+extraordinary spatial double refraction**: one beam in, two orthogonally-polarized beams out, the extraordinary
+one walked off by `L·tan(ρ)` (the calcite double image). **`use_chi2_solver`** derives a nonlinear crystal's
+SHG efficiency from the **full Manley-Rowe coupled-wave ODE** — pump depletion + phase mismatch, RK4-integrated,
+reproducing `tanh²(√η_lin)` at phase match and `η_lin·sinc²` undepleted (both verified to ~1e-12), with the
+walk-off derived from the index ellipsoid. The tracer already branches rays (beamsplitter, Wollaston) and emits
+walk-off SHG children, so each is the same split-two pattern — not a new engine.
+
+<p align="center">
+  <img src="docs/img/chi2-solver-demo.png" width="92%" alt="New in v0.21.0: the chi(2) tensor solver — SHG conversion saturating with pump depletion, Manley-Rowe energy conservation (pump + harmonic = input), and the depleted vs undepleted phase-mismatch tuning curve">
+</p>
+
 ### New in v0.20.0 — wave optics: aberrated PSF, phase retrieval & cavity modes
 
 <p align="center">
