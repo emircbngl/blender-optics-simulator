@@ -38,6 +38,18 @@ Off-trace calculators; the live trace stays byte-identical.
   intensity null. Demo `docs/img/newton-rings-demo.png`. Validation **225 → 227**; regression **389 → 390** (the
   new end-to-end wrapper smoke).
 
+### Added — LBO non-critical phase matching (temperature-tuned) — with an honest limitation
+- LBO's **NCPM** route (propagation along X, θ=90° φ=0°, zero walk-off, temperature-tuned) needs the
+  thermo-optic `dn/dT`. Added the **constant datasheet dn/dT** (LaserComponents / CASTECH: `dn_x/dT=−9.3e−6`,
+  `dn_y/dT=−13.6e−6`, `dn_z/dT=(−6.3−2.1λ)e−6`) + `lbo_index_T(λ,T)` + `lbo_ncpm_temperature_estimate` (solves
+  `n_y(2ω,T)=n_z(ω,T)`). The room-T mismatch (+0.0012) is correct and the model is self-consistent.
+- **HONEST LIMITATION (no fabrication):** the *constant* dn/dT **under-predict** the thermal tuning slope, so
+  the model lands at **~256 °C**, not the real **148 °C** (stored as the cited `LBO_NCPM_TEMP_LIT_C`). The
+  wavelength-resolved `dn/dT` near the 532 nm band edge (Tang JOSA B 1995; Kato IEEE JQE 1994) that *do*
+  reproduce 148 °C are paywalled and were **not transcribed** — so the calculator ships the real datasheet
+  constants + the literature value + the documented gap, rather than a coefficient calibrated to fit. Validation
+  asserts the model's self-consistency **and** the honest gap. Validation **230 → 234**.
+
 ### Added — AR coating ghost curve `ar_coating_reflectance(λ)`
 - The catalog had the quarter-wave AR reflectance only at the design wavelength; this adds the full
   **V-shaped R(λ)** of a single-layer quarter-wave coating from the two-interface Airy sum — a minimum at the

@@ -396,6 +396,7 @@ _CALCULATORS = {
     "biaxial_shg_phase_match_phi": (physics.biaxial_shg_phase_match_phi, ("crystal", "wl_fund_nm", "pm_type"), "BIAXIAL XY-plane (theta=90) SHG phase-match azimuth phi, deg (KTP Type-II ~23.5; LBO Type-I ~11.6)"),
     "biaxial_shg_walkoff_mrad": (physics.biaxial_shg_walkoff_mrad, ("crystal", "wl_fund_nm", "pm_type"), "BIAXIAL XY-plane SHG spatial walk-off, mrad (KTP Type-II ~4; LBO Type-I ~7)"),
     "ar_coating_reflectance": (physics.ar_coating_reflectance, ("wl_nm", "design_wl_nm", "n1", "ns"), "single-layer quarter-wave AR reflectance R(lambda) -- the V-shaped ghost curve (min at design wl, e.g. MgF2/crown 1.26% at 550nm)"),
+    "lbo_ncpm_temperature_estimate": (physics.lbo_ncpm_temperature_estimate, ("wl_fund_nm",), "LBO Type-I NCPM temperature (X-axis, zero walk-off) from CONSTANT datasheet dn/dT, deg C. CAVEAT: model ~256C; the REAL value is 148C (constant dn/dT under-predict the slope; lambda-resolved Tang/Kato paywalled)"),
     "shg_walkoff_mm": (physics.shg_walkoff_mm, ("crystal", "wl_fund_nm", "L_mm"), "Sellmeier-derived SHG spatial walk-off offset L*tan(rho), mm (BBO 1064->532, 10mm ~0.50)"),
     "chi2_shg_efficiency": (physics.chi2_solve, ("deff_pm_V", "L_mm", "P_W", "dk_per_mm"), "SHG efficiency from the Manley-Rowe coupled-wave ODE (depletion+mismatch); tanh^2(sqrt(eta_lin)) at phase match"),
     "grating_resolving_power": (physics.grating_resolving_power, ("lines_per_mm", "illuminated_mm", "m"), "R = m*N"),

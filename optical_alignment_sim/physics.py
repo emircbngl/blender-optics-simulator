@@ -1015,6 +1015,58 @@ def biaxial_shg_walkoff_mrad(crystal, wl_fund_nm, pm_type='TYPE1'):
     return math.radians(uniaxial_walkoff_angle(n_y2, n_x2, phi)) * 1000.0
 
 
+# LBO thermo-optic coefficients dn/dT (1/K) -- LaserComponents / CASTECH datasheets (constants; n_z is
+# wavelength-dependent: (-6.3 - 2.1*lam_um)e-6). Reference T0 ~ 20 C ("room temperature").
+LBO_DNDT_T0_C = 20.0
+LBO_NCPM_TEMP_LIT_C = 148.0    # the REAL Type-I 1064->532 NCPM oven temperature (LaserComponents/CASTECH datasheets)
+
+
+def _lbo_dndt(axis, lam_um):
+    if axis == 'x':
+        return -9.3e-6
+    if axis == 'y':
+        return -13.6e-6
+    return (-6.3 - 2.1 * lam_um) * 1.0e-6                     # n_z (wavelength-dependent)
+
+
+def lbo_index_T(axis, wl_nm, T_C):
+    """LBO principal index n_axis(wavelength, temperature) in the CONSTANT-dn/dT Tier-1 model:
+    n = n_roomT(lambda) + dn/dT(lambda) * (T - 20 C), dn/dT from the LaserComponents/CASTECH datasheets.
+    axis in {'x','y','z'}. NOTE (honest): the constant dn/dT under-predict the true thermal tuning slope (see
+    lbo_ncpm_temperature_estimate)."""
+    idx = {'x': 0, 'y': 1, 'z': 2}[axis]
+    lam = wl_nm * 1.0e-3
+    return math.sqrt(_formula4_n2(BIAXIAL_SELLMEIER['LBO'][idx], lam)) + _lbo_dndt(axis, lam) * (T_C - LBO_DNDT_T0_C)
+
+
+def lbo_ncpm_temperature_estimate(wl_fund_nm=1064.0):
+    """Estimated LBO Type-I NON-CRITICAL phase-match temperature (propagation along X, theta=90 phi=0, ZERO
+    walk-off), where n_y(2w, T) = n_z(w, T), solved by bisection from the CONSTANT datasheet dn/dT.
+
+    *** HONEST LIMITATION -- READ THIS. *** The constant-dn/dT model lands near ~255 C, NOT the real value. The
+    TRUE LBO 1064->532 NCPM temperature is LBO_NCPM_TEMP_LIT_C = 148 C (LaserComponents/CASTECH datasheets). The
+    constant dn/dT UNDER-PREDICT the tuning slope (they give d[n_y(532)-n_z(1064)]/dT ~ -5.1e-6/K, but closing
+    the +0.0012 room-T mismatch over ~123 K needs ~ -9.8e-6/K): the real dn_y/dT near the 532 nm band edge is
+    much steeper, which only the WAVELENGTH-RESOLVED models (Tang JOSA B 1995; Kato IEEE JQE 1994 -- both
+    paywalled, NOT transcribed) capture. This estimate is the constant-model SHAPE only; use the 148 C literature
+    constant for the real oven set-point. Returns deg C (or None)."""
+    def _f(T):
+        return lbo_index_T('y', 0.5 * wl_fund_nm, T) - lbo_index_T('z', wl_fund_nm, T)
+
+    a, b = -100.0, 800.0
+    fa, fb = _f(a), _f(b)
+    if fa * fb > 0.0:
+        return None
+    for _ in range(80):
+        m = 0.5 * (a + b)
+        fm = _f(m)
+        if fa * fm <= 0.0:
+            b = m
+        else:
+            a, fa = m, fm
+    return 0.5 * (a + b)
+
+
 def shg_phase_match_angle(crystal, wl_fund_nm):
     """Type-I SHG critical phase-matching ANGLE theta_pm (degrees from the optic axis) of a negative-uniaxial
     crystal: the extraordinary index of the second harmonic is tuned by angle to equal the ordinary index of
@@ -2195,6 +2247,11 @@ if __name__ == "__main__":
         fails.append("AR(lambda) design != quarter-wave R")
     if not (ar_coating_reflectance(450.0, 550.0, 1.38, 1.52) > ar_coating_reflectance(550.0, 550.0, 1.38, 1.52)):
         fails.append("AR(lambda) not a V (off-design R not greater than design min)")
+    # LBO NCPM constant-dn/dT model: self-consistent (~256 C) but OVER-predicts vs the real 148 C (honest gap)
+    if not close(lbo_ncpm_temperature_estimate(1064.0), 256.3, 3.0):
+        fails.append("LBO NCPM model T %.1f != ~256" % lbo_ncpm_temperature_estimate(1064.0))
+    if lbo_ncpm_temperature_estimate(1064.0) - LBO_NCPM_TEMP_LIT_C < 80.0:
+        fails.append("LBO NCPM honest gap (model vs 148 C lit) not documented")
 
     if fails:
         print("PHYSICS SELFTEST FAILED:")

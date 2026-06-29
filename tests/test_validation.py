@@ -133,6 +133,15 @@ check("KTP Type-II XY-plane SHG phase-match azimuth phi = 23.5 deg", physics.bia
 check("LBO Type-I XY-plane SHG phase-match azimuth phi = 11.6 deg", physics.biaxial_shg_phase_match_phi('LBO', 1064.0, 'TYPE1'), 11.6, 0.3, "EKSMA datasheet; index ellipsoid")
 check("KTP Type-II XY SHG walk-off = 4 mrad (datasheet)", physics.biaxial_shg_walkoff_mrad('KTP', 1064.0, 'TYPE2'), 4.0, 0.6, "EKSMA; double refraction")
 check("LBO Type-I XY SHG walk-off = 7 mrad (datasheet)", physics.biaxial_shg_walkoff_mrad('LBO', 1064.0, 'TYPE1'), 7.0, 0.6, "EKSMA; double refraction")
+# LBO NON-critical phase matching (X axis, temperature-tuned). HONEST: the CONSTANT datasheet dn/dT model is
+# self-consistent (~256 C) but UNDER-predicts the tuning slope -> it does NOT reach the real 148 C NCPM point
+# (the wavelength-resolved dn/dT that do are paywalled). We validate the model's self-consistency + the honest gap.
+check("LBO NCPM: room-T index mismatch n_y(532)-n_z(1064) = +0.0012 (the temperature-tuned starting point)",
+      physics.lbo_index_T('y', 532.0, 20.0) - physics.lbo_index_T('z', 1064.0, 20.0), 0.0012, 5e-5, "Chen Sellmeier; oracle")
+check("LBO NCPM constant-dn/dT model is self-consistent (~256 C)", physics.lbo_ncpm_temperature_estimate(1064.0), 256.3, 2.0, "LaserComponents dn/dT; Tier-1 model")
+check("LBO NCPM literature constant = 148 C (the real oven set-point, cited not derived)", physics.LBO_NCPM_TEMP_LIT_C, 148.0, 1e-9, "LaserComponents/CASTECH datasheet")
+check("LBO NCPM: constant-dn/dT model OVER-predicts vs the 148 C literature (honest gap > 80 C)",
+      1.0 if (physics.lbo_ncpm_temperature_estimate(1064.0) - physics.LBO_NCPM_TEMP_LIT_C) > 80.0 else 0.0, 1.0, 1e-9, "documented Tier-1 limitation")
 
 # o/e SPATIAL double refraction geometry (physics.oe_split_geometry): composes the verified ellipsoid +
 # walk-off + vector geometry. Calcite cut 45 deg -> rho 6.224 deg; the o/e eigen-pols are orthogonal.
