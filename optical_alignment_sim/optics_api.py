@@ -396,6 +396,7 @@ _CALCULATORS = {
     "shg_phase_match_angle_type2": (physics.shg_phase_match_angle_type2, ("crystal", "wl_fund_nm"), "Type-II SHG phase-match angle, deg (o+e->e; e.g. BBO 1064->532 ~32.9)"),
     "biaxial_shg_phase_match_phi": (physics.biaxial_shg_phase_match_phi, ("crystal", "wl_fund_nm", "pm_type"), "BIAXIAL XY-plane (theta=90) SHG phase-match azimuth phi, deg (KTP Type-II ~23.5; LBO Type-I ~11.6)"),
     "biaxial_shg_walkoff_mrad": (physics.biaxial_shg_walkoff_mrad, ("crystal", "wl_fund_nm", "pm_type"), "BIAXIAL XY-plane SHG spatial walk-off, mrad (KTP Type-II ~4; LBO Type-I ~7)"),
+    "ir_material_index": (physics.ir_material_index, ("material", "wl_nm"), "refractive index of an IR/LWIR material (AS2S3, AGCL, ZNS) at wl_nm; e.g. AS2S3 @10um = 2.38"),
     "ar_coating_reflectance": (physics.ar_coating_reflectance, ("wl_nm", "design_wl_nm", "n1", "ns"), "single-layer quarter-wave AR reflectance R(lambda) -- the V-shaped ghost curve (min at design wl, e.g. MgF2/crown 1.26% at 550nm)"),
     "lbo_ncpm_temperature_estimate": (physics.lbo_ncpm_temperature_estimate, ("wl_fund_nm",), "LBO Type-I NCPM temperature (X-axis, zero walk-off) from CONSTANT datasheet dn/dT, deg C. CAVEAT: model ~256C; the REAL value is 148C (constant dn/dT under-predict the slope; lambda-resolved Tang/Kato paywalled)"),
     "shg_walkoff_mm": (physics.shg_walkoff_mm, ("crystal", "wl_fund_nm", "L_mm"), "Sellmeier-derived SHG spatial walk-off offset L*tan(rho), mm (BBO 1064->532, 10mm ~0.50)"),

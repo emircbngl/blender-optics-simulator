@@ -25,6 +25,8 @@ from, so a result is traceable to its source.
 | Optical-glass Sellmeier (N-BK7, N-SF11, F2, CaF2, fused silica, …) | SCHOTT / Corning datasheets; Malitson (fused silica, CaF2) | `physics.py` `SELLMEIER` |
 | IR materials (ZnSe, Ge, Si, BaF2) | refractiveindex.info (CC0): Connolly 1979, Burnett 2016, Salzberg 1957, Malitson 1964 | `physics.py` `SELLMEIER` |
 | Birefringent o/e (quartz, calcite, MgF2, sapphire) | Ghosh 1999, Dodge 1984, Malitson 1972 (via refractiveindex.info) | `physics.py` `SELLMEIER` |
+| More optical glasses (N-PK51, N-LASF9, N-SF66, S-FPL51) | SCHOTT Zemax 2017 / OHARA 2017 (via refractiveindex.info); validated by published n_d/V_d | `physics.py` `SELLMEIER` |
+| LWIR / IR materials (As2S3, AgCl, ZnS) | Rodney 1958, Tilton 1950, Debenham 1984 (via refractiveindex.info); validated by n at 10 µm | `physics.py` `IR_MATERIALS` |
 | Metal n,k (Ag, Al, Au) | Johnson & Christy; Rakić | `physics.py` `METAL_NK` |
 | Thermo-optic dn/dT | SCHOTT TIE-19; Corning 7980; LaserComponents/CASTECH (LBO) | `physics.py` `DNDT`, `LBO_DNDT` |
 
@@ -35,6 +37,8 @@ from, so a result is traceable to its source.
 | BBO (uniaxial) | Eimerl 1987 | `physics.py` `NL_CRYSTAL_SELLMEIER` |
 | KDP, ADP (uniaxial) | Zernike 1964 (refractiveindex.info) | `physics.py` `NL_CRYSTAL_SELLMEIER` |
 | LiIO3 (uniaxial) | Umegaki 1971 (refractiveindex.info) | `physics.py` `NL_CRYSTAL_SELLMEIER` |
+| CLBO (uniaxial, UV) | Sasaki 2003 (refractiveindex.info); 1064→532 ≈ 29.2°, 532→266 ≈ 61.4° | `physics.py` `NL_CRYSTAL_SELLMEIER` |
+| AgGaS2 (uniaxial, mid-IR) | Kato 1996/97 (refractiveindex.info); CO2-SHG ≈ 68.6° (dispersion-set-dependent) | `physics.py` `NL_CRYSTAL_SELLMEIER` |
 | KTP (biaxial) | Kato & Takaoka, Appl. Opt. 41, 5040 (2002) | `physics.py` `BIAXIAL_SELLMEIER` |
 | LBO (biaxial) | Chen 1989 / Hanson-Dick 1991 (refractiveindex.info) | `physics.py` `BIAXIAL_SELLMEIER` |
 | d_eff / phase-mismatch dk(T) | order-of-magnitude literature; honest Tier-1 placeholders (labeled in-code) | `physics.py` `NL_CRYSTALS` |

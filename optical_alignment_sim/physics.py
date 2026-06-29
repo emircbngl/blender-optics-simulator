@@ -267,6 +267,12 @@ GLASSES = {
     'N-SF6': (1.77931763, 0.338149866, 2.08734474, 0.0133714182, 0.0617533621, 174.01759),
     'N-LAK22': (1.14229781, 0.535138441, 1.04088385, 0.00585778594, 0.0198546147, 100.834017),
     'N-SF2': (1.47343127, 0.163681849, 1.36920899, 0.0109019098, 0.0585683687, 127.404933),
+    # SCHOTT Zemax 2017 + OHARA 2017 (via refractiveindex.info, CC0). Validated by n_d/V_d at the d-line:
+    # PK51 1.5286/V77, LASF9 1.8503/V32, SF66 1.9229/V21, FPL51 1.4970/V81.5 (low-disp fluorophosphate).
+    'N-PK51': (1.15610775, 0.153229344, 0.785618966, 0.00585597402, 0.0194072416, 140.537046),
+    'N-LASF9': (2.00029547, 0.298926886, 1.80691843, 0.0121426017, 0.0538736236, 156.530829),
+    'N-SF66': (2.0245976, 0.470187196, 2.59970433, 0.0147053225, 0.0692998276, 161.817601),
+    'S-FPL51': (1.17010505, 0.0475710783, 0.763832445, 0.00616203924, 0.0263372876, 141.882642),
     # --- IR / special materials (literature Sellmeier via refractiveindex.info, CC0) -------------------
     'ZnSe': (4.45813734, 0.467216334, 2.89566290, 0.0403446805, 0.15317139, 2221.82237),      # Connolly 1979, 0.54-18.2um
     'GE': (0.4886331, 14.5142535, 0.0091224, 1.393959, 0.1626427, 752.190),                   # Burnett 2016, 2-14um
@@ -302,6 +308,7 @@ GLASS_RANGE_UM = {
     'N-BK7': (0.30, 2.50), 'FUSED_SILICA': (0.21, 3.71), 'N-SF11': (0.37, 2.50), 'F2': (0.32, 2.50),
     'N-F2': (0.33, 2.50), 'CaF2': (0.23, 9.70), 'N-SF6': (0.37, 2.50), 'N-LAK22': (0.33, 2.50),
     'N-SF2': (0.37, 2.50), 'ZnSe': (0.54, 18.2), 'GE': (2.0, 14.0), 'SI': (1.36, 11.0), 'BaF2': (0.27, 10.3),
+    'N-PK51': (0.30, 2.50), 'N-LASF9': (0.365, 2.50), 'N-SF66': (0.39, 2.50), 'S-FPL51': (0.28, 2.40),
     'QUARTZ_O': (0.20, 2.05), 'QUARTZ_E': (0.20, 2.05), 'CALCITE_O': (0.20, 2.17), 'CALCITE_E': (0.20, 2.17),
     'MGF2_O': (0.20, 7.0), 'MGF2_E': (0.20, 7.0), 'SAPPHIRE_O': (0.20, 5.5), 'SAPPHIRE_E': (0.20, 5.5),
 }
@@ -929,13 +936,25 @@ NL_CRYSTAL_SELLMEIER = {
     # n_o(1064)=1.857, n_e(1064)=1.7165; Type-I 1064->532 angle 30.0 deg (textbook).
     'LIIO3': ((3.415716, 0.047031, 0.035306, 0.008801),
               (2.918692, 0.035145, 0.028224, 0.003641)),
+    # CLBO (CsLiB6O10), Sasaki 2003 via refractiveindex.info (0.19-2.75 um), RII 'formula 4' lists. UV NLO;
+    # negative uniaxial. Type-I 1064->532 angle 29.2 deg (lit ~29.6/30); 532->266 angle 61.4 deg (lit 62).
+    'CLBO': ([2.2104, 0.01018, 0, 0.01424, 1, 0, 0, 0, 1, -0.01258, 2],
+             [2.0588, 0.00838, 0, 0.01363, 1, 0, 0, 0, 1, -0.00607, 2]),
+    # AgGaS2 (silver thiogallate), Kato 1996/97 via refractiveindex.info (0.54-12.9 um), 'formula 4' with
+    # lam^2/4/6 terms. Mid-IR; negative uniaxial. Type-I 10.6->5.3 um (CO2 SHG) angle ~68.6 deg (Kato set;
+    # the angle is dispersion-set-dependent -- Boyd-Bhar gives ~72.8 -- so validate against THIS Kato set).
+    'AGGAS2': ([5.79419, 0.23114, 0, 0.06882, 1, 0, 0, 0, 1, -2.4534e-3, 2, 3.1814e-7, 4, -9.7051e-9, 6],
+               [5.54120, 0.22041, 0, 0.09824, 1, 0, 0, 0, 1, -2.5240e-3, 2, 3.6214e-7, 4, -8.3605e-9, 6]),
 }
 
 
 def _nl_n2(params, lam_um):
     """Squared index n^2(lambda_um) of a nonlinear crystal. A 4-tuple is the Eimerl form
     A + B/(lam^2-C) - D*lam^2; a 5-tuple is the Zernike double-resonance form A + B/(lam^2-C) + E*lam^2/(lam^2-F)
-    (a UV pole at C plus an IR pole at F)."""
+    (a UV pole at C plus an IR pole at F); a longer list (>=9) is the refractiveindex.info 'formula 4' form
+    (CLBO, AgGaS2 -- two poles + lam^2/4/6 polynomial terms), dispatched to _formula4_n2."""
+    if len(params) >= 9:
+        return _formula4_n2(params, lam_um)
     l2 = lam_um ** 2
     if len(params) == 5:
         A, B, C, E, F = params
@@ -960,6 +979,37 @@ def _formula4_n2(c, lam_um):
         n2 += c[i] * lam_um ** c[i + 1]
         i += 2
     return n2
+
+
+# IR / LWIR (8-14 um) optical materials -- a SEPARATE table from the glass Sellmeier (these use a 5-term
+# Sellmeier or the RII formula-4 form). Sourced from refractiveindex.info (CC0), validated by n at 10 um.
+IR_MATERIALS = {
+    # As2S3 (arsenic trisulfide), Rodney/Malitson/King JOSA 48,633 (1958): 5-term Sellmeier
+    # n^2 = 1 + sum B*lam^2/(lam^2 - C). 0.57-11.8 um; n(10um)=2.3815.
+    'AS2S3': ('sellmeier', [(1.8983678, 0.0225), (1.9222979, 0.0625), (0.8765134, 0.1225),
+                            (0.1188704, 0.2025), (0.9569903, 750.0)]),
+    # AgCl (silver chloride), Tilton/Plyler/Stephens JOSA 40,540 (1950): RII formula 4. 0.578-20.6 um; n(10)=1.9803.
+    'AGCL': ('formula4', [4.00804, 0.079086, 0, 0.04584, 1, 0, 0, 0, 1, -0.00085111, 2, -0.00000019762, 4]),
+    # ZnS (cubic multispectral), Debenham Appl.Opt. 23,2238 (1984): RII formula 4. 0.405-13 um; n(10)=2.2007.
+    'ZNS': ('formula4', [8.393, 0.14383, 0, 0.2421, 2, 4430.99, 0, 36.71, 2]),
+}
+
+
+def ir_material_index(material, wl_nm):
+    """Refractive index of an IR / LWIR (8-14 um) optical material at wl_nm: AS2S3 (5-term Sellmeier),
+    AGCL / ZNS (refractiveindex.info formula 4). Returns n, or None if the material is unknown. The thermal-
+    optics complement to the visible glass Sellmeier. e.g. AS2S3 @10um = 2.3815, AGCL = 1.9803, ZNS = 2.2007."""
+    entry = IR_MATERIALS.get((material or '').upper())
+    if entry is None:
+        return None
+    form, c = entry
+    lam = wl_nm * 1.0e-3
+    if form == 'sellmeier':
+        l2 = lam ** 2
+        n2 = 1.0 + sum(b * l2 / (l2 - cc) for b, cc in c)
+    else:
+        n2 = _formula4_n2(c, lam)
+    return math.sqrt(n2) if n2 > 0.0 else None
 
 
 # Principal-axis Sellmeier (n_x, n_y, n_z) for the common BIAXIAL nonlinear crystals, in RII 'formula 4' form
@@ -2279,6 +2329,13 @@ if __name__ == "__main__":
         fails.append("LBO Type-I phi %.2f != 11.6" % biaxial_shg_phase_match_phi('LBO', 1064.0, 'TYPE1'))
     if not close(biaxial_shg_walkoff_mrad('KTP', 1064.0, 'TYPE2'), 4.0, 0.6):
         fails.append("KTP walk-off %.2f mrad != 4" % biaxial_shg_walkoff_mrad('KTP', 1064.0, 'TYPE2'))
+    # catalog expansion: sourced glasses (n_d) + CLBO/AgGaS2 (phase-match) + IR materials (n@10um)
+    if not close(sellmeier_n(587.56, 'N-PK51'), 1.52855, 1e-4):
+        fails.append("N-PK51 n_d %.5f != 1.52855" % sellmeier_n(587.56, 'N-PK51'))
+    if not close(shg_phase_match_angle('CLBO', 1064.0), 29.2, 0.3):
+        fails.append("CLBO 1064 angle %.2f != 29.2" % shg_phase_match_angle('CLBO', 1064.0))
+    if not close(ir_material_index('AS2S3', 10000.0), 2.3815, 2e-3):
+        fails.append("As2S3 n@10um %.4f != 2.3815" % ir_material_index('AS2S3', 10000.0))
     # AR(lambda) ghost curve reduces to the verified quarter-wave R at the design wl; min there (V-shape)
     if not close(ar_coating_reflectance(550.0, 550.0, 1.38, 1.52), ar_quarter_wave_reflectance(1.0, 1.38, 1.52), 1e-9):
         fails.append("AR(lambda) design != quarter-wave R")

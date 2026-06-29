@@ -121,6 +121,16 @@ check("KDP Type-I SHG phase-match angle 1064->532 = 41.2 deg", physics.shg_phase
 check("LiIO3 n_o @1064nm = 1.857 (Umegaki Sellmeier)", math.sqrt(physics._nl_n2(physics.NL_CRYSTAL_SELLMEIER['LIIO3'][0], 1.064)), 1.857, 1e-3, "Umegaki1971 [datasheet]")
 check("LiIO3 Type-I SHG phase-match angle 1064->532 = 30.0 deg", physics.shg_phase_match_angle('LIIO3', 1064.0), 30.0, 0.2, "textbook; index ellipsoid")
 check("ADP Type-I SHG phase-match angle 1064->532 = 41.7 deg", physics.shg_phase_match_angle('ADP', 1064.0), 41.7, 0.3, "Zernike1964; index ellipsoid")
+# catalog expansion (sourced refractiveindex.info, self-validated by the published n_d / phase-match angle):
+check("N-PK51 n_d @587.56 = 1.52855 (low-dispersion, V77)", physics.sellmeier_n(587.56, 'N-PK51'), 1.52855, 1e-4, "SCHOTT [datasheet]")
+check("N-LASF9 n_d @587.56 = 1.85025 (high-index flint)", physics.sellmeier_n(587.56, 'N-LASF9'), 1.85025, 1e-4, "SCHOTT [datasheet]")
+check("CLBO Type-I SHG 1064->532 angle = 29.2 deg (UV NLO crystal)", physics.shg_phase_match_angle('CLBO', 1064.0), 29.2, 0.3, "Sasaki2003; index ellipsoid")
+check("CLBO Type-I SHG 532->266 angle = 61.4 deg (UV doubler)", physics.shg_phase_match_angle('CLBO', 532.0), 61.4, 0.4, "Sasaki2003; index ellipsoid")
+check("AgGaS2 Type-I SHG 10.6->5.3um (CO2) angle = 68.6 deg (mid-IR)", physics.shg_phase_match_angle('AGGAS2', 10600.0), 68.6, 0.5, "Kato1996; index ellipsoid")
+# IR / LWIR materials (separate table; n at 10 um from the sourced dispersion)
+check("As2S3 n @10um = 2.3815 (chalcogenide IR glass)", physics.ir_material_index('AS2S3', 10000.0), 2.3815, 2e-3, "Rodney1958 [datasheet]")
+check("ZnS (multispectral) n @10um = 2.2007 (LWIR window)", physics.ir_material_index('ZNS', 10000.0), 2.2007, 2e-3, "Debenham1984 [datasheet]")
+check("AgCl n @10um = 1.9803 (LWIR)", physics.ir_material_index('AGCL', 10000.0), 1.9803, 2e-3, "Tilton1950 [datasheet]")
 # Type-II phase matching (o+e->e): 2*n_e(2w,theta) = n_o(w) + n_e(w,theta). BBO ~32.9 deg (> the 22.78 Type-I).
 check("BBO Type-II SHG phase-match angle 1064->532 = 32.9 deg", physics.shg_phase_match_angle_type2('BBO', 1064.0), 32.9, 0.3, "Boyd; index ellipsoid")
 check("KDP Type-II SHG phase-match angle 1064->532 ~ 59 deg", physics.shg_phase_match_angle_type2('KDP', 1064.0), 59.1, 0.5, "textbook; index ellipsoid")
