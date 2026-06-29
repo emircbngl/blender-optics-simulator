@@ -46,7 +46,7 @@ def _trace(scene):
 _TOOL_GROUPS = {
     "read / inspect (the AI's eyes -- call these to SEE the bench, never guess)": [
         "capabilities", "get_state", "diagnose", "propose_corrections", "detect_phenomena", "produce_phenomenon",
-        "inspect_beam", "inspect_element", "beam_profile", "ao_measure", "get_wavefront", "sensor_capture",
+        "inspect_beam", "inspect_element", "inspect_all", "beam_profile", "ao_measure", "get_wavefront", "sensor_capture",
         "check_mechanics", "coupling_efficiency"],
     "build / scene": [
         "build_example", "add_component", "tag_element", "swap_part", "set_param", "set_mount", "import_glass",
@@ -1890,6 +1890,43 @@ def inspect_element(name):
             res["pol_camera"] = {k: round(v, 5) for k, v in dofp.items()}
             res["role"] = "polarization camera (DoFP): single-shot linear Stokes S0/S1/S2 + DoLP/AoLP"
     return res
+
+
+def inspect_all():
+    """The whole-bench INSPECTION DASHBOARD -- one call that chains inspect_beam (the beam state where it
+    arrives) + inspect_element (what the optic does to it) for EVERY optical element, instead of N separate
+    inspect calls. Each row: {name, type, role, in_power, throughput, w_mm, R_mm, curvature, m2,
+    divergence_mrad, polarization, n_beams, outputs}. Plus a bench summary {n_elements, worst_diagnostic,
+    issues}. The AI's single-glance numeric overview of the entire scene. READ-ONLY -- byte-identical."""
+    scene = _scene()
+    tracer.cached_segments = _trace(scene)
+    elems = [o for o in scene.objects if getattr(o, "optics", None) and getattr(o.optics, "is_optical", False)]
+    rows = []
+    for o in elems:
+        nm = o.name
+        be = inspect_beam(nm)
+        el = inspect_element(nm)
+        if not isinstance(be, dict):
+            be = {}
+        if not isinstance(el, dict):
+            el = {}
+        pol = be.get("polarization")
+        rows.append({
+            "name": nm, "type": el.get("type"), "role": el.get("role"),
+            "in_power": el.get("incoming_power"), "throughput": el.get("throughput"),
+            "w_mm": be.get("w_mm"), "R_mm": be.get("R_mm"), "curvature": be.get("curvature"),
+            "m2": be.get("m2"), "divergence_mrad": be.get("divergence_mrad"),
+            "polarization": pol.get("kind") if isinstance(pol, dict) else pol,
+            "n_beams": be.get("n_beams"), "outputs": el.get("outputs"),
+        })
+    diag = diagnose()
+    issues = diag.get("issues") if isinstance(diag, dict) else None
+    worst = None
+    if issues:
+        order = {"BAD": 3, "WARN": 2, "OK": 1}
+        worst = max(issues, key=lambda i: order.get(i.get("severity", i.get("state", "")), 0), default=None)
+    return {"ok": True, "n_elements": len(rows), "elements": rows,
+            "worst_diagnostic": worst, "issues": issues}
 
 
 def beam_profile(detector="", samples=24):

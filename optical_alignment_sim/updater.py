@@ -212,18 +212,21 @@ def draw_update_box(layout, context):
 
 
 class OPTICS_PT_update(Panel):
-    bl_label = "Update available"
+    # ALWAYS visible (was poll-gated on available/staged, so an up-to-date user never saw the "Check" button --
+    # the owner's "I never saw an update button despite many releases" bug). A neutral label + always-on draw:
+    # the widget itself shows "Up to date · Check" / "Update available · Install" / "Update downloaded · Restart".
+    bl_label = "Updates"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "Optics"
-    bl_order = 0
+    bl_order = 1000                              # bottom of the Optics tab: discoverable, never pushes the tools down
 
-    @classmethod
-    def poll(cls, context):
-        return bool(_state["available"] or _state["staged"])
+    def draw_header(self, context):
+        # a state icon in the header so it reads at a glance: green check = up to date, import = update waiting
+        self.layout.label(text="", icon='IMPORT' if (_state["available"] or _state["staged"]) else 'CHECKMARK')
 
     def draw(self, context):
-        draw_update_box(self.layout, context)
+        draw_update_box(self.layout, context)   # "Up to date · Check" / "Update available · Install" / "Restart"
 
 
 # --------------------------------------------------------------------------- operators

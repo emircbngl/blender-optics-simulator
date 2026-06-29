@@ -404,8 +404,8 @@ def align_all(scene):
 
 class OPTICS_OT_refresh_report(Operator):
     bl_idname = "optics.refresh_report"
-    bl_label = "Update Report"
-    bl_description = "Recompute alignment residuals for every optical element"
+    bl_label = "Refresh Report"            # was "Update Report" -- collided with the software-update feature
+    bl_description = "Re-trace and recompute the optical report (alignment residuals) for every element"
     bl_options = {'REGISTER'}
 
     def execute(self, context):

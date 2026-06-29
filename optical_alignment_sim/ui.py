@@ -290,7 +290,7 @@ class OPTICS_PT_sim(Panel):
 
 
 class OPTICS_PT_report(Panel):
-    bl_label = "Alignment Report"
+    bl_label = "Optical Report"            # the simulator's analysis hub: alignment + scans + profiles + outputs
     bl_idname = "OPTICS_PT_report"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'

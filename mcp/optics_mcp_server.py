@@ -130,6 +130,15 @@ def inspect_element(name: str) -> str:
 
 
 @mcp.tool()
+def inspect_all() -> str:
+    """The whole-bench INSPECTION DASHBOARD -- ONE call that chains inspect_beam + inspect_element for EVERY
+    optical element instead of N separate calls. Each row: {name, type, role, in_power, throughput, w_mm, R_mm,
+    curvature, m2, divergence_mrad, polarization, n_beams, outputs}, plus a bench summary {n_elements,
+    worst_diagnostic, issues}. The single-glance numeric overview of the entire scene. READ-ONLY; byte-identical."""
+    return _fmt(_call("inspect_all"))
+
+
+@mcp.tool()
 def detect_phenomena() -> str:
     """ADVISORY: the recognized optical PHENOMENA whose conditions the current trace MEETS -- two-beam
     interference, off-axis hologram recording (carrier fringe spacing Lambda = lambda/(2 sin(theta/2))),

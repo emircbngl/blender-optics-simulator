@@ -176,6 +176,16 @@ check("HOM: distinguishable photons -> classical coincidence 0.5", _q.hom_dip(0.
 check("Squeezing: 10 dB -> squeezed variance 0.1 (sub-shot-noise)", _q.squeezing_variance(10.0)["squeezed_var"], 0.1, 1e-9, "physics_verify ok")
 check("Squeezing: pure state is minimum-uncertainty (squeezed*antisqueezed = 1)", _q.squeezing_variance(7.3)["product"], 1.0, 1e-6, "Heisenberg bound")
 check("SPDC: heralded single photon g2(0) = 0 (antibunched)", _q.spdc_g2(True)["g2_zero"], 0.0, 1e-12, "heralded source; oracle")
+
+print("[Acousto-optics + Gaussian mode coupling -- shipped behaviors now oracle-gated (were pipeline-only)]")
+# AOM Bragg deflection theta = lambda*f/v_s (full angle = 2*Bragg). TeO2 cell, 633 nm, 80 MHz, v_s=4200 m/s
+check("AOM deflection theta = lambda*f/v_s (TeO2, 633nm, 80MHz) = 12.06 mrad", physics.aom_deflection(633.0, 80.0e6, 4200.0) * 1000.0, 12.057, 1e-2, "acousto-optic Bragg; oracle")
+check("AOM deflection scales linearly with acoustic frequency (2x f -> 2x theta)", physics.aom_deflection(633.0, 160.0e6, 4200.0) / physics.aom_deflection(633.0, 80.0e6, 4200.0), 2.0, 1e-9, "linear in f; oracle")
+# Gaussian->fiber/cavity mode coupling eta = [2 w_in w_t/(w_in^2+w_t^2)]^2 * exp(-2 d^2/(w_in^2+w_t^2))
+from optical_alignment_sim import design as _dsn
+check("Coupling eta: perfect mode match (w_in=w_t, d=0) = 1", _dsn.coupling_efficiency(1.0, 1.0, 0.0), 1.0, 1e-12, "mode overlap; oracle")
+check("Coupling eta: waist mismatch (1 vs 2) = (2*2/5)^2 = 0.64", _dsn.coupling_efficiency(1.0, 2.0, 0.0), 0.64, 1e-9, "mode overlap; oracle")
+check("Coupling eta: transverse offset 0.5 (w=1) = exp(-0.25) = 0.7788", _dsn.coupling_efficiency(1.0, 1.0, 0.5), 0.778801, 1e-5, "misalignment penalty; oracle")
 # Sellmeier-DERIVED SHG walk-off (replaces the lumped literal when the solver is on): BBO 1064->532 over 10 mm
 check("BBO Sellmeier SHG walk-off over 10 mm ~ 0.50 mm (rho ~ 2.87 deg)", physics.shg_walkoff_mm('BBO', 1064.0, 10.0), 0.502, 0.02, "index ellipsoid; oracle")
 

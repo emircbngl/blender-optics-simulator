@@ -3,6 +3,13 @@
 Imports the user's own vendor parts: STL/OBJ natively, STEP/IGES via FreeCAD.
 Library entries are metadata only (mesh referenced by filename, resolved against
 the user's local `mesh_dir`); no vendor meshes are bundled with the add-on.
+
+IP / TRADEMARK NOTE. The part numbers and vendor names below (Thorlabs, Edmund, ...) are PUBLIC catalog
+references used only so a user can reproduce a real part's published optical SPECS in simulation -- nominative
+reference, the same way a paper cites a part it used. This add-on is NOT affiliated with, endorsed by, or
+sponsored by any vendor, and it ships NO vendor CAD/mesh data (the `.stl`/`.obj`/`.step` files are the user's
+own, resolved from their local mesh folder; `add_component` falls back to a generic mesh-free element when the
+CAD is absent). Trademarks belong to their owners. See docs/DATASOURCES.md for full provenance.
 """
 from __future__ import annotations
 
