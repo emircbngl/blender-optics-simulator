@@ -55,7 +55,7 @@ _TOOL_GROUPS = {
         "design_telescope", "design_4f", "mode_match", "optics_calc", "wave_psf", "aberrated_psf",
         "propagate_field", "propagate_chain", "gerchberg_saxton", "fienup_phase_retrieval", "spatial_filter",
         "tem_mode", "newton_rings", "quantum_stats", "gpu_status", "propagate_pulse", "slit_diffraction",
-        "talbot_effect", "speckle_pattern"],
+        "talbot_effect", "speckle_pattern", "caustic_pattern"],
     "place / assemble (opto-mechanics)": [
         "place_relative", "make_cage", "make_tube", "make_rail", "place_on_grid", "place_on_rail",
         "set_grid", "dress_bench"],
@@ -115,6 +115,7 @@ _SCOPE = {
         "Talbot self-imaging of a periodic grating (z_T = 2 d^2/lambda)": "b: talbot_effect (angular-spectrum; self-image at z_T, d/2-shifted at z_T/2)",
         "free-space field propagation / multi-plane Fresnel / digital-hologram reconstruction": "b: propagate_field (angular spectrum)",
         "fully-developed laser speckle from a diffuser (contrast=1, exponential PDF, lambda*z/D grain)": "b: speckle_pattern (random-phase diffuser + angular spectrum; contrast + 1/sqrt(N) averaging oracle-verified)",
+        "geometric caustic / coffee-cup nephroid (ray-density envelope, cusp at the focus)": "b: caustic_pattern (catacaustic of a circle; nephroid envelope + cusp at R/2 oracle-verified; ray-density piles on it ~20x)",
         "full-wave FDTD/RCWA, metasurface/nanophotonics": "c: Meep / Lumerical / Tidy3D -- ORCHESTRATED via fdtd_derive_property (runs the engine if present, else a closed-form fallback: grating dir=grating_angle, stack=exact TMM, metaatom=low-conf EMT) cached as an effective property; live trace byte-identical. Still tier (c): a LIVE full-wave field is not shipped.",
         "split-step NLSE: soliton / dispersion / SPM (1D pulse)": "b: propagate_pulse (split-step Fourier; fundamental soliton is shape-invariant, oracle-verified)",
         "supercontinuum (higher-order dispersion + Raman + self-steepening)": "c: gnlse (the core NLSE is (b) propagate_pulse; the generalized-NLSE terms are not built)",
@@ -918,6 +919,24 @@ def speckle_pattern(diam_mm=1.0, dz_mm=300.0, wavelength_nm=632.8, n_grid=512, d
     png_path = os.path.join(tempfile.gettempdir(), "optics_speckle.png") if png else None
     metrics, _ = _speckle.speckle_metrics(int(n_grid), float(dx_mm), float(diam_mm), float(dz_mm),
                                           float(wavelength_nm), seed=int(seed), n_avg=int(n_avg),
+                                          png_path=png_path)
+    metrics["ok"] = True
+    return metrics
+
+
+def caustic_pattern(mirror_radius_mm=10.0, n_rays=1400, n_grid=400, png=False):
+    """The coffee-cup CAUSTIC: parallel rays reflecting off the concave inner wall of a circular mirror
+    (radius `mirror_radius_mm`) pile up on a NEPHROID -- the bright cusped curve seen in a coffee mug. Traced
+    from first principles (reflect a fan of rays, accumulate the ray-density) and reported against the exact
+    analytic envelope. Off-trace + byte-identical. Returns {ok, caustic_type ('nephroid'), cusp_distance_mm
+    (= R/2, the mirror paraxial focus), mirror_focal_mm, density_on_envelope_ratio (caustic brightness vs
+    background, >>1), brightest_point_mm (~the cusp), n_rays, oracle}. png=True saves the ray-density image with
+    the analytic nephroid + the mirror circle overlaid."""
+    if mirror_radius_mm <= 0:
+        return {"error": "mirror_radius_mm must be positive"}
+    from . import caustic as _caustic
+    png_path = os.path.join(tempfile.gettempdir(), "optics_caustic.png") if png else None
+    metrics, _ = _caustic.caustic_metrics(float(mirror_radius_mm), n_rays=int(n_rays), n_grid=int(n_grid),
                                           png_path=png_path)
     metrics["ok"] = True
     return metrics

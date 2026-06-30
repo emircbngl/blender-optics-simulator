@@ -326,6 +326,19 @@ def speckle_pattern(diam_mm: float = 1.0, dz_mm: float = 300.0, wavelength_nm: f
 
 
 @mcp.tool()
+def caustic_pattern(mirror_radius_mm: float = 10.0, n_rays: int = 1400, n_grid: int = 400,
+                    png: bool = False) -> str:
+    """The coffee-cup CAUSTIC: parallel rays reflecting off the concave inner wall of a circular mirror
+    (radius `mirror_radius_mm`) pile up on a NEPHROID -- the bright cusped curve seen in a coffee mug. Traced
+    from first principles (reflect a fan of rays, accumulate the ray-density) and reported against the exact
+    analytic envelope. Returns {ok, caustic_type ('nephroid'), cusp_distance_mm (= R/2, the mirror paraxial
+    focus), mirror_focal_mm, density_on_envelope_ratio (caustic brightness vs background, >>1),
+    brightest_point_mm (~the cusp), n_rays, oracle}. png=True saves the ray-density image with the analytic
+    nephroid + mirror circle overlaid. Off-trace; live trace byte-identical."""
+    return _fmt(_call("caustic_pattern", mirror_radius_mm=mirror_radius_mm, n_rays=n_rays, n_grid=n_grid, png=png))
+
+
+@mcp.tool()
 def gpu_status(enable: str = None) -> str:
     """Report (or set) the OPT-IN GPU backend for the off-trace FFT field engine. enable=None reports;
     'auto'/'cupy'/'mlx' turns it on (needs the library + hardware -- owner-run); 'off' reverts to NumPy.

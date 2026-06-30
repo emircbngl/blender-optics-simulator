@@ -6,6 +6,18 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Added — caustics (off-trace producer): the coffee-cup nephroid
+- `caustic_pattern()` (+ MCP, + `caustic.py`) produces the **coffee-cup CAUSTIC** — parallel rays
+  reflecting off the concave inner wall of a circular mirror (radius `R`) pile up on a **nephroid**, the
+  bright cusped curve seen in a coffee mug. Traced from first principles (reflect a fan of rays off the
+  inner circle, accumulate the geometric ray-density) and reported against the EXACT analytic envelope
+  `caustic(θ) = (R/4)(3cosθ−cos3θ, 3sinθ−sin3θ)`. The reflected direction `(−cos2θ,−sin2θ)`, the caustic
+  point lying on each ray at `t = −(R/2)cosθ`, and the **cusp at R/2** (the mirror's paraxial focus `f =
+  R/2`) are all **physics_verify ok=true**; the ray-density piles onto the nephroid ~20× (confirmed in the
+  module self-test, brightest point at the cusp). Off-trace; the live trace stays byte-identical. Closes the
+  last phenomenon-emergence catalog item (tier-(c)→(b) in the scope map). Validation 267→271, regression
+  393→397. (`docs/img/caustic-demo.png`.)
+
 ### Added — `optic_bypassed` diagnostic (warns when an optic is knocked off the beam)
 - `diagnose()` / `propose_corrections()` gained an **A3b `optic_bypassed`** gate: a mid-path optic
   (lens / mirror / beamsplitter / waveplate / prism / crystal / ...) that **no beam segment reaches** —

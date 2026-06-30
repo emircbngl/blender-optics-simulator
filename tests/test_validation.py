@@ -487,6 +487,16 @@ check("Mean speckle size ~ lambda z / D", _sp1["speckle_size_mm"], _sp1["predict
 _sp16, _ = _speckle.speckle_metrics(512, 0.02, 1.0, 300.0, 632.8, seed=100, n_avg=16)    # average 16 frames
 check("Averaging N=16 frames suppresses contrast to 1/sqrt(N) = 0.25", _sp16["contrast"], 0.25, 0.06, "Goodman; oracle (1/sqrt N)")
 
+print("[Caustics -- the coffee-cup catacaustic of a circle is a nephroid, cusp at the mirror focus R/2]")
+from optical_alignment_sim import caustic as _caustic
+_cau, _ = _caustic.caustic_metrics(10.0, n_rays=1400, n_grid=500)                         # mirror R=10 mm
+check("Catacaustic cusp sits at the mirror paraxial focus f = R/2", _cau["cusp_distance_mm"], 5.0, 1e-6, "envelope; oracle")
+check("Ray density piles onto the analytic nephroid (envelope brightness >> background)",
+      _cau["density_on_envelope_ratio"], 20.0, 14.0, "ray-density envelope (ratio ~20, asserts > 6)")
+check("Brightest point of the caustic is the cusp (R/2, 0)", _cau["brightest_point_mm"][0], 5.0, 0.5, "ray-density peak at focus")
+_cau2, _ = _caustic.caustic_metrics(24.0, n_rays=900, n_grid=400)                         # cusp scales with R
+check("Caustic cusp scales with the mirror radius (R=24 -> cusp 12)", _cau2["cusp_distance_mm"], 12.0, 1e-6, "f = R/2")
+
 print("[Fresnel diffraction + foci -- circular-aperture zones, knife-edge, zone-plate, lens, Newton's rings]")
 # Fabry-Perot Airy minimum transmission T_min = ((1-R)/(1+R))^2 (resonance dip; delta=pi)
 _fpR = 0.9
