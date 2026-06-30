@@ -257,7 +257,8 @@ def trace_beam(mode=None):
 def diagnose():
     """Run the Wave-1 P0 bench-intelligence error-detection gates (A1-A5) over the
     current trace: beam_clipped (hard miss), vignetting (Gaussian wing clip),
-    dark_detector / orphan_source, energy_violation (per-node + global budget), and
+    dark_detector / orphan_source, optic_bypassed (a placed optic the beam never reaches --
+    moved/mis-placed off the path), energy_violation (per-node + global budget), and
     mount_limit (DOF range exhaustion). READ-ONLY -- the trace is unaffected.
     Returns {ok, diagnostics:[{kind, element, detail, severity}], counts:{BAD,WARN}}."""
     scene = _scene()

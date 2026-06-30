@@ -6,6 +6,18 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Added — `optic_bypassed` diagnostic (warns when an optic is knocked off the beam)
+- `diagnose()` / `propose_corrections()` gained an **A3b `optic_bypassed`** gate: a mid-path optic
+  (lens / mirror / beamsplitter / waveplate / prism / crystal / ...) that **no beam segment reaches** —
+  it was moved or mis-placed off the path so the trace bypasses it entirely — now raises a **WARN**
+  (`"<optic> is in the scene but NO beam reaches it … (moved off the beam / mis-placed?)"`), with a
+  `propose_corrections` re-centre fix + a `maybe_intentional_if` judge hint. Previously the engine was
+  silent in this case: `beam_clipped` only fires on a near-miss *over* the aperture and `dark_detector`
+  only covers terminals, so an optic dragged clear of the beam produced no warning at all. Found via the
+  v0.23.0 rigid-mount render (a lens stepped aside left the beam but nothing flagged it). Regression
+  393→396 (fires on a bypassed lens, silent when the lens is on the beam — no false positives across the
+  18 example benches).
+
 ### Added — laser speckle (off-trace producer)
 - `speckle_pattern()` (+ MCP, + `speckle.py`) produces **fully-developed laser speckle** from a diffuse
   scatterer: a coherent beam illuminating a rough surface (diameter `D`) picks up a uniform random phase,

@@ -855,6 +855,32 @@ for _o in list(_a9c.objects):
     eg.drop_example_object(_o)
 bpy.data.collections.remove(_a9c)
 
+print("[A3b optic_bypassed: a placed optic the beam never reaches -> WARN (the owner's 'lens slid off the beam' case)]")
+for _o in list(sc.objects):
+    if getattr(_o, "optics", None) and _o.optics.is_optical:
+        bpy.data.objects.remove(_o, do_unlink=True)            # clean slate so no stray optic is itself bypassed
+_bypc = bpy.data.collections.new("BYP_test"); sc.collection.children.link(_bypc)
+eg.source("BYP_S", (-150, 0, 0), _PV((1, 0, 0)), _bypc)
+_byplens = eg.lens("BYP_L", (0, 0, 0), _PV((1, 0, 0)), coll=_bypc, focal=100.0)
+eg.detector("BYP_D", (150, 0, 0), _PV((1, 0, 0)), _bypc)
+bpy.context.view_layer.update()
+tracer.cached_segments = scan._trace(sc)
+_ob0 = [i for i in _a9diag.run_diagnostics(sc) if i.get("kind") == "optic_bypassed"]
+check("A3b optic_bypassed SILENT when the lens is on the beam (no false positive)", len(_ob0) == 0, str(_ob0)[:120])
+_byplens.location = _byplens.location + _PV((0, 60, 0))         # knock the lens 60 mm off-axis, way past its radius
+bpy.context.view_layer.update()
+tracer.cached_segments = scan._trace(sc)
+_ob1 = [i for i in _a9diag.run_diagnostics(sc) if i.get("kind") == "optic_bypassed"]
+check("A3b optic_bypassed FIRES on a placed lens the beam no longer reaches (the owner's case)",
+      len(_ob1) == 1 and _ob1[0]["element"] == "BYP_L" and _ob1[0]["severity"] == "WARN", str(_ob1)[:120])
+_obpc = optics_api.propose_corrections()
+check("A3b propose_corrections surfaces optic_bypassed with a re-centre fix + judge hint",
+      any(p.get("issue") == "optic_bypassed" and p.get("element") == "BYP_L" and bool(p.get("suggested_fix"))
+          and bool(p.get("maybe_intentional_if")) for p in _obpc.get("proposals", [])))
+for _o in list(_bypc.objects):
+    bpy.data.objects.remove(_o, do_unlink=True)
+bpy.data.collections.remove(_bypc)
+
 print("[1.3 propose_corrections: ADVISORY fixes the AI judges (refuse/partial/accept), never auto-applied]")
 # A deterministic fault (a normal-incidence window retro-reflects into the source -> back_reflection):
 # propose_corrections must SURFACE it as an advisory proposal with a structured fix + a

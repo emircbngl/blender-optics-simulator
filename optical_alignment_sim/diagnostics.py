@@ -28,6 +28,9 @@ Covered diagnostics:
                          (mirror / lens / BS): _clip_T < 0.99.
   A3  dark_detector    - a terminal receives no usable beam (measure() <= floor);
       orphan_source      a source whose power reaches no terminal.
+  A3b optic_bypassed   - a mid-path optic (lens/mirror/BS/waveplate/...) that NO beam
+                         segment touches: it was moved/mis-placed off the beam so the
+                         path bypasses it entirely (the "I knocked the lens off" case).
   A4  energy_violation - per-node children exceed parent power, or the global budget
                          (leaves + absorbed) does not match the source within eps.
   A5  mount_limit      - the steering a mirror/optic needs (~ang_err, x2 for a
@@ -280,6 +283,40 @@ def _dark_and_orphan(scene, segs):
                 "%s emits but its power reaches no terminal (light is lost / escapes)"
                 % src.name,
                 "WARN"))
+    return issues
+
+
+# ---------------------------------------------------------------------------
+# A3b - bypassed optic (a mid-path element the beam never reaches)
+# ---------------------------------------------------------------------------
+
+def _bypassed_optics(scene, segs):
+    """A3b: a mid-path OPTIC (lens / mirror / beamsplitter / waveplate / prism / crystal / ...) that no beam
+    segment touches -- it has been knocked OUT of the beam path (moved or mis-placed) so the trace bypasses it
+    entirely. Distinct from A1 beam_clipped (a near-miss OVER the aperture, the beam still grazes the plane) and
+    A3 dark_detector / orphan_source (a TERMINAL or a SOURCE with no light): this is an element the user PLACED to
+    act on the beam that the beam never reaches. A hit optic always appears as a segment `to`/`from`; one that is
+    bypassed appears in neither. WARN (an optic is occasionally parked off-axis on purpose)."""
+    issues = []
+    touched = set()
+    for s in segs:
+        if s.get("to") is not None:
+            touched.add(s["to"])
+        if s.get("from") is not None:
+            touched.add(s["from"])
+    for o in scene.objects:
+        op = getattr(o, "optics", None)
+        if op is None or not op.is_optical:
+            continue                                   # mounts / posts / non-optical meshes
+        if op.element_type in tracer.TERMINAL or op.is_source or op.element_type in ('SOURCE', 'FIBER_COLLIMATOR'):
+            continue                                   # terminals -> dark_detector; sources -> orphan_source (A3)
+        if o.name in touched:
+            continue                                   # the beam reaches it -> fine
+        issues.append(_issue(
+            "optic_bypassed", o.name,
+            "%s (%s) is in the scene but NO beam reaches it -- the path bypasses it entirely (moved off the "
+            "beam / mis-placed?)" % (o.name, op.element_type),
+            "WARN"))
     return issues
 
 
@@ -765,6 +802,7 @@ def run_diagnostics(scene):
     out += _beam_clipped(scene, segs)
     out += _vignetting(scene, segs)
     out += _dark_and_orphan(scene, segs)
+    out += _bypassed_optics(scene, segs)
     out += _energy_budget(scene, segs)
     out += _mount_limit(scene, segs)
     out += _relay_spacing(scene, segs)
@@ -807,6 +845,11 @@ _CORRECTION_SUGGESTIONS = {
         "tool": "align_element",
         "maybe_intentional_if": "the source was just added and the downstream path is not built yet.",
         "confidence": 0.65},
+    "optic_bypassed": {
+        "action": "Move the optic back onto the beam axis (place_relative / place_on_grid to re-centre it on the path), or align the upstream element so the beam hits it.",
+        "tool": "place_relative",
+        "maybe_intentional_if": "the optic was deliberately parked off the beam (staged for later, a spare in the scene, or a swappable component not currently in use).",
+        "confidence": 0.7},
     "energy_violation": {
         "action": "Check the offending element's energy params: a coating R+T+A must sum to 1, a beamsplitter split_ratio in [0,1], no passive element may create power.",
         "tool": "set_param",
