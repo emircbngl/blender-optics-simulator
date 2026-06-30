@@ -55,7 +55,7 @@ _TOOL_GROUPS = {
         "design_telescope", "design_4f", "mode_match", "optics_calc", "wave_psf", "aberrated_psf",
         "propagate_field", "propagate_chain", "gerchberg_saxton", "fienup_phase_retrieval", "spatial_filter",
         "tem_mode", "newton_rings", "quantum_stats", "gpu_status", "propagate_pulse", "slit_diffraction",
-        "talbot_effect"],
+        "talbot_effect", "speckle_pattern"],
     "place / assemble (opto-mechanics)": [
         "place_relative", "make_cage", "make_tube", "make_rail", "place_on_grid", "place_on_rail",
         "set_grid", "dress_bench"],
@@ -114,6 +114,7 @@ _SCOPE = {
         "single/double/N-slit Fraunhofer diffraction (sinc^2, Young fringes, grating orders)": "b: slit_diffraction (FFT vs analytic sinc^2 x cos^2, oracle-verified)",
         "Talbot self-imaging of a periodic grating (z_T = 2 d^2/lambda)": "b: talbot_effect (angular-spectrum; self-image at z_T, d/2-shifted at z_T/2)",
         "free-space field propagation / multi-plane Fresnel / digital-hologram reconstruction": "b: propagate_field (angular spectrum)",
+        "fully-developed laser speckle from a diffuser (contrast=1, exponential PDF, lambda*z/D grain)": "b: speckle_pattern (random-phase diffuser + angular spectrum; contrast + 1/sqrt(N) averaging oracle-verified)",
         "full-wave FDTD/RCWA, metasurface/nanophotonics": "c: Meep / Lumerical / Tidy3D -- ORCHESTRATED via fdtd_derive_property (runs the engine if present, else a closed-form fallback: grating dir=grating_angle, stack=exact TMM, metaatom=low-conf EMT) cached as an effective property; live trace byte-identical. Still tier (c): a LIVE full-wave field is not shipped.",
         "split-step NLSE: soliton / dispersion / SPM (1D pulse)": "b: propagate_pulse (split-step Fourier; fundamental soliton is shape-invariant, oracle-verified)",
         "supercontinuum (higher-order dispersion + Raman + self-steepening)": "c: gnlse (the core NLSE is (b) propagate_pulse; the generalized-NLSE terms are not built)",
@@ -899,6 +900,26 @@ def newton_rings(radius_of_curvature_mm=1000.0, wavelength_nm=589.3, n_rings=8, 
         except Exception as exc:
             out["png_error"] = str(exc)
     return out
+
+
+def speckle_pattern(diam_mm=1.0, dz_mm=300.0, wavelength_nm=632.8, n_grid=512, dx_mm=0.02,
+                    n_avg=1, seed=0, png=False):
+    """Fully-developed LASER SPECKLE from a diffuse scatterer: a coherent beam illuminating a rough surface
+    (diameter `diam_mm`) picks up a uniform random phase, and after `dz_mm` of propagation the intensity is a
+    grainy speckle pattern. Off-trace + byte-identical (the live geometric trace has no diffuser/speckle). Returns
+    {ok, contrast (sigma_I/<I> -> 1 for one frame), predicted_contrast (1/sqrt(n_avg)), var_over_mean2 (-> 1, the
+    exponential-PDF signature), frac_above_mean (-> e^-1=0.368), speckle_size_mm, predicted_speckle_size_mm
+    (lambda*z/D), n_avg, oracle}. `n_avg`>1 averages independent frames -> contrast falls as 1/sqrt(N) (the
+    speckle-suppression law). png=True saves the pattern + its intensity histogram vs the exponential PDF."""
+    if diam_mm <= 0 or dz_mm <= 0 or wavelength_nm <= 0:
+        return {"error": "diam_mm, dz_mm, wavelength_nm must be positive"}
+    from . import speckle as _speckle
+    png_path = os.path.join(tempfile.gettempdir(), "optics_speckle.png") if png else None
+    metrics, _ = _speckle.speckle_metrics(int(n_grid), float(dx_mm), float(diam_mm), float(dz_mm),
+                                          float(wavelength_nm), seed=int(seed), n_avg=int(n_avg),
+                                          png_path=png_path)
+    metrics["ok"] = True
+    return metrics
 
 
 def slit_diffraction(width_um=100.0, n_slits=1, sep_um=0.0, wavelength_nm=632.8, n_grid=4096, png=False):

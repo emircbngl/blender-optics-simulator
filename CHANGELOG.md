@@ -6,6 +6,18 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Added — laser speckle (off-trace producer)
+- `speckle_pattern()` (+ MCP, + `speckle.py`) produces **fully-developed laser speckle** from a diffuse
+  scatterer: a coherent beam illuminating a rough surface (diameter `D`) picks up a uniform random phase,
+  and after `z` of angular-spectrum propagation the intensity is a grainy speckle pattern. Reports the
+  textbook statistics (Goodman, *Speckle Phenomena in Optics*): contrast **C = σ_I/⟨I⟩ → 1**, the
+  **negative-exponential intensity PDF** `P(I) = e^{-I/⟨I⟩}/⟨I⟩` (so `var/⟨I⟩² → 1` and `P(I>⟨I⟩) → e⁻¹ =
+  0.368`), the mean speckle size `~ λz/D`, and — averaging `n_avg` independent frames — the
+  **speckle-suppression law C_N = 1/√N**. The contrast and 1/√N relations are **physics_verify ok=true**;
+  the exponential PDF / survival / size-scaling are confirmed numerically in the module self-test.
+  Off-trace; the live trace stays byte-identical. Moves the classic speckle case from tier-(c) to tier-(b)
+  in the scope map. Validation 262→267, regression 392→393. (`docs/img/speckle-demo.png`.)
+
 ## [0.23.0] — The mount rides the optic: rigid assemblies, inspection dashboards & post-audit hardening — 2026-06-30
 
 A post-release review pass. The headline is a real bug hit on the bench: dressed opto-mechanical

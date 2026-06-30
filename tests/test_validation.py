@@ -477,6 +477,16 @@ check("Talbot self-image at z_T (corr ~ 1)", _tb["self_image_corr"], 1.0, 0.15, 
 check("Half-Talbot at z_T/2 is the d/2-shifted grating (corr ~ 1)", _tb["half_talbot_shift_corr"], 1.0, 0.15, "Talbot; FFT")
 check("No self-image at z_T/4 (corr ~ 0)", abs(_tb["quarter_corr"]), 0.0, 0.3, "Talbot; FFT")
 
+print("[Laser speckle -- a random-phase diffuser produces fully-developed speckle (Goodman statistics)]")
+from optical_alignment_sim import speckle as _speckle
+_sp1, _ = _speckle.speckle_metrics(512, 0.02, 1.0, 300.0, 632.8, seed=1, n_avg=1)        # D=1mm, z=300mm
+check("Fully-developed speckle contrast sigma_I/<I> ~ 1", _sp1["contrast"], 1.0, 0.12, "Goodman; oracle (exp-PDF)")
+check("Exponential intensity PDF: var/<I>^2 ~ 1", _sp1["var_over_mean2"], 1.0, 0.12, "Goodman; negative-exponential")
+check("Survival at the mean P(I><I>) ~ e^-1", _sp1["frac_above_mean"], 0.3679, 0.04, "exp PDF; integral of (1/mu)e^{-I/mu}")
+check("Mean speckle size ~ lambda z / D", _sp1["speckle_size_mm"], _sp1["predicted_speckle_size_mm"], 0.03, "van Cittert-Zernike; autocorr FWHM")
+_sp16, _ = _speckle.speckle_metrics(512, 0.02, 1.0, 300.0, 632.8, seed=100, n_avg=16)    # average 16 frames
+check("Averaging N=16 frames suppresses contrast to 1/sqrt(N) = 0.25", _sp16["contrast"], 0.25, 0.06, "Goodman; oracle (1/sqrt N)")
+
 print("[Fresnel diffraction + foci -- circular-aperture zones, knife-edge, zone-plate, lens, Newton's rings]")
 # Fabry-Perot Airy minimum transmission T_min = ((1-R)/(1+R))^2 (resonance dip; delta=pi)
 _fpR = 0.9

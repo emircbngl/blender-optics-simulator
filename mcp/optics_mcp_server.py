@@ -311,6 +311,21 @@ def newton_rings(radius_of_curvature_mm: float = 1000.0, wavelength_nm: float = 
 
 
 @mcp.tool()
+def speckle_pattern(diam_mm: float = 1.0, dz_mm: float = 300.0, wavelength_nm: float = 632.8,
+                    n_grid: int = 512, dx_mm: float = 0.02, n_avg: int = 1, seed: int = 0,
+                    png: bool = False) -> str:
+    """Fully-developed LASER SPECKLE from a diffuse scatterer: a coherent beam illuminating a rough surface
+    (diameter `diam_mm`) picks up a uniform random phase, and after `dz_mm` of propagation the intensity is a
+    grainy speckle pattern. Returns {ok, contrast (sigma_I/<I> -> 1 for one frame), predicted_contrast
+    (1/sqrt(n_avg)), var_over_mean2 (-> 1, the exponential-PDF signature), frac_above_mean (-> e^-1=0.368),
+    speckle_size_mm, predicted_speckle_size_mm (lambda*z/D), n_avg, oracle}. n_avg>1 averages independent frames
+    -> contrast falls as 1/sqrt(N) (the speckle-suppression law). png=True saves the pattern + its intensity
+    histogram vs the exponential PDF. Off-trace; live trace byte-identical."""
+    return _fmt(_call("speckle_pattern", diam_mm=diam_mm, dz_mm=dz_mm, wavelength_nm=wavelength_nm,
+                      n_grid=n_grid, dx_mm=dx_mm, n_avg=n_avg, seed=seed, png=png))
+
+
+@mcp.tool()
 def gpu_status(enable: str = None) -> str:
     """Report (or set) the OPT-IN GPU backend for the off-trace FFT field engine. enable=None reports;
     'auto'/'cupy'/'mlx' turns it on (needs the library + hardware -- owner-run); 'off' reverts to NumPy.
