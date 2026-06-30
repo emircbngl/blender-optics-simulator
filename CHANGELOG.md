@@ -6,6 +6,60 @@ semantic versioning.
 
 ## [Unreleased]
 
+## [0.23.0] — The mount rides the optic: rigid assemblies, inspection dashboards & post-audit hardening — 2026-06-30
+
+A post-release review pass. The headline is a real bug hit on the bench: dressed opto-mechanical
+hardware (post, holder, mount) did not move with its optic — grab the lens in a Newton's-rings setup
+and it slid free of its mount. Alongside that fix, this release adds the "show me everything"
+inspection + report tooling, surfaces the in-add-on update button for up-to-date users, expands the
+glass / crystal / IR catalog, and tidies vendor-IP provenance + naming. All trace-affecting work
+stays byte-identical — verified: **regression 392/392, validation 262/262**.
+
+### Fixed — opto-mechanical hardware now rides its optic (rigid assemblies)
+- `dress_bench()` built each optic's post / holder / mount as **standalone** objects pinned to
+  absolute world coordinates, with no Blender parenting — so moving the optic (e.g. grabbing a lens to
+  tune a Newton's-rings gap) left the mount hardware behind. Now `_own_new` rigid-parents each
+  cluster's new hardware to a representative optic via `matrix_parent_inverse =
+  optic.matrix_world.inverted()`: the parenting causes **no visible jump**, leaves the optic's
+  `matrix_world` untouched (so the **trace stays byte-identical**), and Blender's depsgraph now moves
+  the **whole assembly rigidly** with the optic. Verified: an optic nudged 10 mm in z carries all of
+  its dressed hardware by exactly 10 mm.
+- Added a distinct **translation-stage** mount geometry (it previously fell through to the kinematic
+  mount), so a translation mount now reads as a flexure / translation stage.
+
+### Added — "show me everything" inspection & reporting
+- `inspect_all()` — a per-element dashboard chaining `inspect_beam` + `inspect_element` + `diagnose`
+  into one table (power, beam count, w, R, polarization, vignetting, diagnostics) for the whole bench.
+- `export_report(filepath, title, with_render)` — a spec-sheet bundler that assembles `get_state` +
+  `diagnose` + per-element inspection + plots (+ an optional render) into a single self-contained
+  **HTML** file with base64-embedded images. The "hand me the whole bench as a document" command.
+- Both exposed over MCP for the AI agent.
+
+### Added — material / crystal / IR catalog expansion (sourced)
+- Four more glasses — **N-PK51, N-LASF9, N-SF66, S-FPL51** (Sellmeier from refractiveindex.info).
+- Two more nonlinear crystals — **CLBO** and **AgGaS2** (uniaxial Sellmeier; self-validated against
+  published phase-match cuts).
+- Three **infrared** materials — **As2S3, AgCl, ZnS** — via a new refractiveindex.info `formula 4`
+  evaluator (`_formula4_n2`, handling the double-pole plus polynomial form) and `ir_material_index` /
+  `IR_MATERIALS`.
+- A new `docs/DATASOURCES.md` documents the full provenance of every material constant and component
+  spec (refractiveindex.info CC0; vendor public part-numbers for spec reproduction — no vendor CAD
+  ships).
+
+### Added — physics-validation coverage
+- New `test_validation.py` checks for **AOM deflection** and **Gaussian-to-fiber coupling
+  efficiency**, closing two un-oracled feature gaps surfaced by the audit.
+
+### Changed — update-button discoverability, naming & IP provenance
+- The in-add-on **Updates** panel previously rendered only when an update was available or staged
+  (`OPTICS_PT_update.poll()` returned `available or staged`), so up-to-date users never saw it — and
+  never saw the "Check for updates" button. The panel is now **always visible** with an "Up to date ·
+  Check" affordance and a state icon in its header.
+- Naming tidy toward "simulator": "Alignment Report" → "Optical Report" (panel); "Update Report" →
+  "Refresh Report" (operator).
+- `library.py` gained an IP / trademark clarifying note (public part-number references for spec
+  reproduction; no vendor CAD bundled; not affiliated with or endorsed by any vendor).
+
 ## [0.22.0] — Biaxial crystals, nonlinear-optics depth, interference & a GPU scaffold — 2026-06-29
 
 The last big-ticket crystal item: the Sellmeier-derived SHG phase matching covered only **uniaxial** crystals;
