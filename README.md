@@ -174,6 +174,22 @@ the Scan + Plot operator, the Detector Fringe Image, and the live sensor window 
   <img src="docs/img/feature-board.png" width="92%" alt="New in v0.10.0: the WFS reads the beam's own curvature defocus; a pyramid WFS slope read; a soft-edge dichroic (R+T=1); a die face read as a zonal wavefront">
 </p>
 
+### New in v0.23.0 — opto-mechanical hardware rides its optic (rigid assemblies)
+
+<p align="center">
+  <img src="docs/img/rigid-mount-fix.png" width="92%" alt="New in v0.23.0: before/after of the Newton's-rings bench — grabbing the lens steps its post, holder and mount aside with it as one rigid body; all 7 dressed hardware objects move by exactly the lens delta, and the live trace stays byte-identical">
+</p>
+
+Dressed hardware (post, holder, mount) used to be built as **standalone** objects at fixed world
+coordinates, so grabbing an optic — e.g. a lens in the `newton_rings` bench — left its mount behind.
+Now each cluster's hardware is **rigid-parented** to its optic via `matrix_parent_inverse`, so the
+whole assembly moves as one body: the parenting causes **no visible jump**, leaves the optic's
+`matrix_world` untouched, and the **live trace stays byte-identical** (regression 392/392). Also new:
+`inspect_all()` (a per-element dashboard) and `export_report()` (a self-contained HTML spec-sheet of
+the whole bench), the always-visible in-add-on **update button**, four more glasses + CLBO/AgGaS2 +
+the **As2S3/AgCl/ZnS** infrared materials (sourced, with a new `docs/DATASOURCES.md` provenance doc),
+and a distinct translation-stage mount.
+
 ### New in v0.22.0 — biaxial nonlinear crystals (KTP + LBO) + Newton's-rings 2D
 
 <p align="center">
