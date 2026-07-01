@@ -1,3 +1,5 @@
+<!-- mcp-name: io.github.emircbngl/blender-optics-simulator -->
+
 # Blender Optics — dedicated MCP server
 
 A standalone [MCP](https://modelcontextprotocol.io) server that lets an MCP client
