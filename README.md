@@ -1,6 +1,7 @@
 # Blender Optics Simulator
 
 [![CI](https://github.com/emircbngl/blender-optics-simulator/actions/workflows/ci.yml/badge.svg)](https://github.com/emircbngl/blender-optics-simulator/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/emircbngl/blender-optics-simulator?label=release&color=brightgreen)](https://github.com/emircbngl/blender-optics-simulator/releases/latest)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
 [![Blender 4.2+](https://img.shields.io/badge/Blender-4.2%2B%20%2F%205.x-orange)](https://www.blender.org/)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20778997.svg)](https://doi.org/10.5281/zenodo.20778997)
@@ -8,6 +9,15 @@
 **An optical bench an AI agent can build, inspect, align, and render — over MCP.**
 
 > *"See a need, fill a need."* — Bigweld, *Robots* (2005)
+
+> **60-second tour** — Lay out lasers, mirrors, beamsplitters, lenses, waveplates, gratings and
+> detectors in Blender; a **live beam engine** traces them (ray + Gaussian-q ABCD + Jones/Stokes
+> polarization + wave-optics overlays), all **physics-verified** against textbook answers in CI.
+> Everything mounts on **real opto-mechanics** and renders in **Cycles**. The whole optical state is
+> exposed over a localhost **MCP bridge**, so an AI agent reads ground-truth geometry and beam data
+> and **drives the bench** — aligning, closing an AO loop, nulling fringes. **Install:** drag the
+> one-click link from the [releases page](https://github.com/emircbngl/blender-optics-simulator/releases/latest)
+> into Blender 4.2+ (it also subscribes you to updates — see *[Install & stay updated](#install--stay-updated)*).
 
 Blender becomes a physics-checked optical bench: lasers, mirrors, beamsplitters, lenses, waveplates,
 polarizers, gratings, deformable mirrors, detectors — laid out in 3-D, traced by a live beam engine,
@@ -544,17 +554,30 @@ Extensions ▸ Install Available Updates*. You never download a zip by hand agai
 
 Then open the **Optics** tab in the 3D viewport sidebar (press `N`).
 
-### Manual — no auto-updates
+### From a GitHub zip — updates from inside the add-on
 
 Download **`optical_alignment_sim-<version>.zip`** from the
 [Releases](https://github.com/emircbngl/blender-optics-simulator/releases) page and use *Edit ▸
 Preferences ▸ Add-ons ▸ Install from Disk…*. *(Or build from source: `blender --command extension build
---source-dir optical_alignment_sim --output-dir .`)* Install-from-disk copies live in a **local**
-repository that Blender never updates — re-install once via the one-click link above to get on the
-update channel.
+--source-dir optical_alignment_sim --output-dir .`)*
 
-> **Already on v0.9.x, installed from disk?** Disk installs never update. Remove the old copy once and
-> re-install via the one-click link — then updates arrive automatically from then on.
+Blender's own "Install from Disk" copies live in a **local** repository it never auto-syncs — but you
+still get updates: the add-on's **Updates** panel (in the Optics sidebar) has an always-visible
+**"Up to date · Check"** control. Pressing **Check** registers the project's update channel for you and
+pulls the newest version through Blender's native extension system — **no manual re-download, no
+re-install.** (Needs *Allow Online Access* on.)
+
+<a name="install--stay-updated"></a>
+### Install & stay updated — every path is covered
+
+| How you installed | How you get updates |
+|---|---|
+| **One-click drag-link** (recommended) | Blender's native auto-update — new releases appear in *Get Extensions ▸ Install Available Updates* |
+| **GitHub zip / Install from Disk** | The in-add-on **Updates** panel → **Check** → **Install** → restart (self-subscribes to the channel on first check) |
+| **Built from source** | Same in-add-on **Updates** panel, or `git pull` + rebuild |
+
+Either way, the check runs at most **once a day** and only when *Allow Online Access* is enabled;
+nothing phones home otherwise.
 
 ---
 
@@ -596,13 +619,19 @@ wave-optics solver. It sits in a niche the standard tools don't cover:
 |---|---|:---:|:---:|:---:|
 | **Zemax / OpticStudio, CODE V** | sequential/non-sequential lens design + optimization (MTF, tolerancing) | full ray + diffraction | — | — |
 | **POPPY, diffractio, prysm** | physical / Fourier optics (PSFs, wavefront propagation) | full wave-optics | — | — |
+| **OptiCore** (Blender add-on) | generates precise optical-element *meshes* (lenses, mirrors) for rendering | element geometry only (no beam trace) | ✓ (meshes) | — |
 | **Blender** (alone) | gorgeous renders | none | ✓ | partial (geometry only) |
 | **This** | lay out → simulate → auto-align → render a real bench | single-ray + analytic overlays | ✓ | **✓ (full state as JSON)** |
 
 The unfair advantage is the last column. Need a diffraction PSF or a tolerancing run? Reach for
-Zemax/POPPY/prysm. Need to lay out, align, render, **or let an AI agent drive** a real bench with full
-visibility and closed-loop feedback? That's this — the **Blender × optics × MCP** intersection almost
-nobody occupies.
+Zemax/POPPY/prysm. Want physically precise lens/mirror *meshes* to render? [OptiCore][opticore] is
+excellent at exactly that. This tool is the other half: it doesn't just place accurate geometry — it
+runs a **live beam** through it (ray + Gaussian-q + Jones/Stokes polarization), **auto-aligns** the
+bench with influence-matrix solvers, flags problems with `diagnose()`, and exposes the whole state so
+an **AI agent can drive it over MCP** — the **Blender × optics × MCP** intersection almost nobody
+occupies.
+
+[opticore]: https://github.com/CodeFHD/OptiCore
 
 ---
 
@@ -617,16 +646,17 @@ ready-to-paste APA / BibTeX.
   author  = {Çobanoğlu, Muhammet Emir},
   title   = {Blender Optics Simulator},
   year    = {2026},
-  version = {0.10.0},
-  doi     = {10.5281/zenodo.20778998},
+  version = {0.24.0},
+  doi     = {10.5281/zenodo.20778997},
   license = {GPL-3.0-or-later},
   url     = {https://github.com/emircbngl/blender-optics-simulator}
 }
 ```
 
 This software is archived on **Zenodo** with a citable DOI:
-[**10.5281/zenodo.20778998**](https://doi.org/10.5281/zenodo.20778998) — the *concept* DOI, which always
-resolves to the latest version.
+[**10.5281/zenodo.20778997**](https://doi.org/10.5281/zenodo.20778997) — the *concept* DOI, which always
+resolves to the latest version. Each release also mints its own version DOI (see
+[`CITATION.cff`](CITATION.cff)).
 
 ---
 

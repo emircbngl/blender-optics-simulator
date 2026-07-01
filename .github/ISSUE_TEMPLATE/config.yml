@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Question / discussion
+    url: https://github.com/emircbngl/blender-optics-simulator/discussions
+    about: For usage questions, "how do I model X", or "how does this compare to Y".
+  - name: Security report
+    url: https://github.com/emircbngl/blender-optics-simulator/security/advisories/new
+    about: Please report vulnerabilities privately, not as a public issue.

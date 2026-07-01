@@ -1,0 +1,49 @@
+name: Bug report
+description: Something is wrong with the simulation, alignment, render, or MCP server
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report! For a **physics** discrepancy, please say what value you expected and
+        the source (textbook / paper), so it can be checked against the oracle.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you do, and what went wrong?
+      placeholder: "Built the michelson example, aligned it, but the dark port never goes dark…"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+      description: For a physics issue, include the expected number + its source.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnose
+    attributes:
+      label: diagnose() / propose_corrections() output
+      description: If it is an alignment/energy/placement issue, paste the output of `diagnose()` (or the "Optical Report" panel). The engine often already flags the problem.
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Add-on version
+      placeholder: "0.24.0"
+    validations:
+      required: true
+  - type: input
+    id: blender
+    attributes:
+      label: Blender version
+      placeholder: "4.2.3 LTS"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: "macOS 15 / Windows 11 / Ubuntu 24.04"

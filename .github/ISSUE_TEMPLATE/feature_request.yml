@@ -1,0 +1,33 @@
+name: Feature request
+description: Suggest a component, physics behaviour, or workflow to add
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The optical setup or workflow you want to model.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What should the add-on do?
+      description: A component, a physics effect, an output, an MCP tool…
+    validations:
+      required: true
+  - type: dropdown
+    id: tier
+    attributes:
+      label: Roughly what kind of physics is it?
+      description: Helps scope whether the current engine can reproduce it. See the `/optics-scope` skill.
+      options:
+        - Geometric / Gaussian-beam / ABCD (likely tier-a, reproducible now)
+        - Single-plane diffraction / PSF (likely tier-b, wave.py FFT)
+        - Full-wave / FDTD / Monte-Carlo / multi-plane (likely tier-c, needs an engine we may lack)
+        - Not sure
+  - type: textarea
+    id: reference
+    attributes:
+      label: Reference (optional)
+      description: A textbook, paper, or example with the expected result — invaluable for validating it.
