@@ -25,14 +25,18 @@ Only the add-on's whitelisted `optics_api` functions are reachable, and the sock
 
 ## 2. Run the MCP server
 
-Requires the [`mcp`](https://pypi.org/project/mcp/) Python SDK.
+The server is a packaged console app — `blender-optics-mcp`. Pick whichever you like:
 
 ```bash
-# with uv (recommended)
-uv run --with mcp python optics_mcp_server.py
+# zero-install, one line (recommended) — runs the packaged entry point
+uvx blender-optics-mcp                      # once published to PyPI
+uvx --from ./mcp blender-optics-mcp         # straight from this repo, no publish needed
 
-# or plain python
-pip install mcp
+# or install it
+pipx install blender-optics-mcp             # (PyPI)  /  pipx install ./mcp   (from source)
+pip install ./mcp && blender-optics-mcp     # into the current environment
+
+# or just run the single file (needs `pip install "mcp[cli]"`)
 OPTICS_BRIDGE_PORT=9765 python3 optics_mcp_server.py
 ```
 
@@ -42,23 +46,32 @@ Environment:
 
 ## 3. Wire it into an MCP client
 
-Claude Desktop / Claude Code config (`claude_desktop_config.json` or your `mcp` settings):
+With the packaged entry point the client config is a single command — no absolute script path:
 
 ```json
 {
   "mcpServers": {
     "blender-optics": {
-      "command": "uv",
-      "args": ["run", "--with", "mcp", "python",
-               "/absolute/path/to/mcp/optics_mcp_server.py"],
+      "command": "uvx",
+      "args": ["blender-optics-mcp"],
       "env": { "OPTICS_BRIDGE_PORT": "9765" }
     }
   }
 }
 ```
 
-(Plain `python3 /absolute/path/to/mcp/optics_mcp_server.py` works too if `mcp` is installed
-in that interpreter.)
+(`"command": "blender-optics-mcp"` works too once it's installed on your `PATH`; or, from a checkout,
+`"command": "uvx", "args": ["--from", "/absolute/path/to/mcp", "blender-optics-mcp"]`.)
+
+## Distribution (MCP Registry / PyPI)
+
+This folder is a self-contained Python distribution:
+- [`pyproject.toml`](pyproject.toml) — builds `blender-optics-mcp` (a single-module wheel; depends only
+  on `mcp[cli]`). `python -m build` → publish to PyPI with `twine`.
+- [`server.json`](server.json) — the [MCP Registry](https://github.com/modelcontextprotocol/registry)
+  manifest (namespace `io.github.emircbngl/...`, PyPI package, stdio transport). Publish/validate it
+  with the official `mcp-publisher` CLI (it authenticates via GitHub and checks the schema — confirm
+  the `$schema` version it expects at submission time, as the registry schema evolves).
 
 ## Tools
 

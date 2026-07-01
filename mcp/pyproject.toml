@@ -1,0 +1,37 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "blender-optics-mcp"
+version = "0.24.0"
+description = "MCP server for the Blender Optics Simulator — build, inspect, align, and render a real optical bench in Blender over MCP."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "GPL-3.0-or-later"
+authors = [{ name = "Muhammet Emir Çobanoğlu", email = "emircbngl@gmail.com" }]
+keywords = ["mcp", "optics", "blender", "simulation", "photonics", "ray-tracing", "ai-agent"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: GNU General Public License v3 or later (GPLv3+)",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering :: Physics",
+]
+dependencies = ["mcp[cli]>=1.2"]
+
+[project.urls]
+Homepage = "https://github.com/emircbngl/blender-optics-simulator"
+Repository = "https://github.com/emircbngl/blender-optics-simulator"
+Issues = "https://github.com/emircbngl/blender-optics-simulator/issues"
+
+# Single-module distribution: the server is one self-contained file (stdlib + mcp only).
+# NOTE: the distribution is `blender-optics-mcp`; the importable module stays `optics_mcp_server`
+# so it never shadows the real `mcp` dependency.
+[project.scripts]
+blender-optics-mcp = "optics_mcp_server:main"
+
+[tool.hatch.build.targets.wheel]
+include = ["optics_mcp_server.py"]
+
+[tool.hatch.build.targets.sdist]
+include = ["optics_mcp_server.py", "README.md", "AGENT_GUIDE.md", "server.json"]

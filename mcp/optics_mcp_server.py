@@ -863,5 +863,11 @@ def place_on_rail(name: str, s_mm: float) -> str:
     return _fmt(_call("place_on_rail", name=name, s_mm=s_mm))
 
 
-if __name__ == "__main__":
+def main():
+    """Console entry point (`blender-optics-mcp`). Runs the MCP server over stdio; it talks to the
+    add-on's localhost bridge on OPTICS_BRIDGE_HOST:OPTICS_BRIDGE_PORT (default 127.0.0.1:9765)."""
     mcp.run()
+
+
+if __name__ == "__main__":
+    main()

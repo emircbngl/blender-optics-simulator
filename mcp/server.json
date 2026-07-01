@@ -1,0 +1,33 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "io.github.emircbngl/blender-optics-simulator",
+  "description": "Build, inspect, align, and render a real optical bench in Blender over MCP — a physics-verified beam engine (ray + Gaussian-q + Jones/Stokes) an AI agent can drive.",
+  "status": "active",
+  "version": "0.24.0",
+  "repository": {
+    "url": "https://github.com/emircbngl/blender-optics-simulator",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "pypi",
+      "identifier": "blender-optics-mcp",
+      "version": "0.24.0",
+      "transport": { "type": "stdio" },
+      "environmentVariables": [
+        {
+          "name": "OPTICS_BRIDGE_PORT",
+          "description": "TCP port of the add-on's localhost bridge inside Blender (Optics > Simulation > Start MCP Bridge).",
+          "isRequired": false,
+          "default": "9765"
+        },
+        {
+          "name": "OPTICS_BRIDGE_HOST",
+          "description": "Host of the add-on bridge.",
+          "isRequired": false,
+          "default": "127.0.0.1"
+        }
+      ]
+    }
+  ]
+}
