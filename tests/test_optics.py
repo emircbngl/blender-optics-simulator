@@ -496,12 +496,12 @@ check("SPDC crystal emits degenerate down-converted light (405 -> 810 nm)",
 # TRUE o/e SPATIAL double refraction (opt-in; full physics in tests/_verify_birefringence.py). A calcite
 # crystal forks the ray into an ordinary + extraordinary beam, the e-beam displaced by L*tan(rho). Off the
 # default path (oe_split default OFF) so the baselines stay byte-identical.
-def _oe_split_scene(cut_deg, L_mm=10.0):
+def _oe_split_scene(cut_deg, L_mm=10.0, split=True):
     for _o in list(sc.objects):
         if getattr(_o, "optics", None) and _o.optics.is_optical:
             bpy.data.objects.remove(_o, do_unlink=True)
     _s = eg.source("OE_S", (-80, 0, 0), (1, 0, 0), coll=_nlc); _s.optics.pol_type = 'CIRCULAR'
-    eg.crystal("OE_X", (0, 0, 0), (1, 0, 0), coll=_nlc, oe_split=True, oe_material='CALCITE',
+    eg.crystal("OE_X", (0, 0, 0), (1, 0, 0), coll=_nlc, oe_split=split, oe_material='CALCITE',
                oe_axis_deg=cut_deg, oe_length_mm=L_mm)
     eg.detector("OE_D", (80, 0, 0), (1, 0, 0), coll=_nlc)
     bpy.context.view_layer.update()
@@ -526,6 +526,18 @@ if _oe_o and _oe_e:
     check("o/e split: energy conserved P_o + P_e = P_in",
           abs(_oe_o["power"] + _oe_e["power"] - 1.0) < 1e-4,
           "sum=%.6f" % (_oe_o["power"] + _oe_e["power"]))
+# NEGATIVE gate test: the SAME crystal with oe_split=False must NOT fork. With nl_process=NONE and the
+# gate off, eg.crystal is the LEGACY pump-dump TERMINAL (the Bell-example behavior the builder docstring
+# pins) -- the beam ends at the crystal: zero split kinds anywhere, nothing reaches the detector. This
+# asserts (not assumes) that the opt-in gate's default path is byte-identical legacy behavior.
+_oed_off = _oe_split_scene(45.0, 10.0, split=False)
+_off_all = scan._trace(sc)
+check("o/e split OFF: no SPLIT_O/SPLIT_E anywhere in the trace (gate default is inert)",
+      not any(s.get("kind") in ("SPLIT_O", "SPLIT_E") for s in _off_all),
+      "kinds=%s" % sorted(set(s.get("kind") for s in _off_all)))
+check("o/e split OFF: crystal stays the legacy pump-dump terminal (beam absorbed, none forked on)",
+      len(_oed_off) == 0 and any(s.get("to") == "OE_X" for s in _off_all),
+      "n_at_detector=%d" % len(_oed_off))
 
 # chi(2) TENSOR SOLVER (opt-in Manley-Rowe ODE; full physics in tests/_verify_chi2_tensor.py). An SHG crystal
 # with use_chi2_solver=ON converts MORE as the pump power rises (depletion), energy conserved. Off the default
@@ -1545,6 +1557,20 @@ for _nm, _kw in _otw:
         _ok = False
         _detail = "%s: %s" % (type(_exc).__name__, _exc)
     check("off-trace optics_api wrapper runs end-to-end: %s" % _nm, _ok, _detail)
+
+# Input-validation guards (the MCP-reachable surface): garbage args must come back as {error},
+# never raise (wavelength_nm=0 used to ZeroDivisionError) and never allocate (n_grid=1e6 used to OOM).
+for _gname, _gkw in [("propagate_field", dict(wavelength_nm=0.0, w0_mm=0.3)),
+                     ("wave_psf", dict(wavelength_nm=550.0, f_number=8.0, aperture_diam_mm=10.0, n_grid=10**6)),
+                     ("speckle_pattern", dict(n_grid=-256)),
+                     ("tem_mode", dict(w_mm=-1.0)),
+                     ("propagate_chain", dict(steps=[["prop", 10.0]], wavelength_nm=-5.0, w0_mm=0.5))]:
+    try:
+        _gr = getattr(optics_api, _gname)(**_gkw)
+        _gok = isinstance(_gr, dict) and "error" in _gr
+    except Exception as _gexc:
+        _gok, _gr = False, "%s: %s" % (type(_gexc).__name__, _gexc)
+    check("garbage-arg guard returns {error}: %s" % _gname, _gok, str(_gr)[:80])
 
 # SVG export: well-formed XML with a glyph per element and a line per beam
 import xml.dom.minidom as minidom

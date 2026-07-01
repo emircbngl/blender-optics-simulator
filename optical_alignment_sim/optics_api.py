@@ -452,12 +452,31 @@ def import_glass(name, coefficients, formula=2, ref_wl_nm=587.56, ref_n=None):
     return physics.import_glass(name, coefficients, formula=formula, ref_wl_nm=ref_wl_nm, ref_n=ref_n)
 
 
+def _wave_args_error(wavelength_nm=None, n_grid=None, n_grid_max=4096, **positives):
+    """Shared input validation for the off-trace field/wave producers. These are MCP-reachable, so an
+    agent can pass garbage: wavelength_nm=0 used to raise ZeroDivisionError, and an unbounded n_grid
+    allocates O(n^2) FFT arrays and OOM-kills Blender (verified: n_grid=1e6 -> exit 137). Returns an
+    {error} dict to hand straight back, or None when the args are fine. Extra keyword args are checked
+    strictly-positive when not None (pass e.g. w0_mm=w0_mm, f_number=f_number)."""
+    if wavelength_nm is not None and not (wavelength_nm > 0):
+        return {"error": "wavelength_nm must be positive (nm)"}
+    if n_grid is not None and not (8 <= int(n_grid) <= n_grid_max):
+        return {"error": "n_grid must be in 8..%d (large FFT grids exhaust memory)" % n_grid_max}
+    for name, val in positives.items():
+        if val is not None and not (val > 0):
+            return {"error": "%s must be positive" % name}
+    return None
+
+
 def wave_psf(wavelength_nm, f_number, aperture_diam_mm, defocus_waves=0.0, n_grid=512, png=False):
     """Fourier-optics diffraction PSF of a circular aperture (PSF = |FFT(pupil*exp(i*2*pi*W))|^2) -- the
     OPT-IN wave layer, separate from the live ray trace (which is geometric + Gaussian and cannot diffract).
     Returns {strehl, airy_radius_um, first_zero_um, fwhm_um, mtf_cutoff_cyc_per_mm, encircled_energy_airy,
     ...}. `defocus_waves` adds RMS Noll-Z4 defocus (a quick aberration knob; Strehl then matches Marechal
     exp(-(2*pi*rms)^2)). png=True saves a log-scaled PSF image and returns its path."""
+    bad = _wave_args_error(wavelength_nm, n_grid, f_number=f_number, aperture_diam_mm=aperture_diam_mm)
+    if bad:
+        return bad
     from . import wave
     diam_px = max(32, n_grid // 4)
     W = (defocus_waves * wave.zernike_defocus(n_grid, diam_px)) if defocus_waves else None
@@ -481,6 +500,9 @@ def aberrated_psf(mode="spherical", amplitude_waves=0.1, zernike_waves=None,
     piston). Returns {strehl, rms_wavefront_waves, airy_radius_um, first_zero_um, fwhm_um, ...}; for a SMALL
     aberration the Strehl follows Marechal exp(-(2*pi*rms)^2). png=True saves the PSF. Off-trace; byte-identical.
     E.g. aberrated_psf('astigmatism', 0.05) -> strehl ~ 0.906."""
+    bad = _wave_args_error(wavelength_nm, n_grid, f_number=f_number, aperture_diam_mm=aperture_diam_mm)
+    if bad:
+        return bad
     from . import wave
     if zernike_waves is not None:
         coeffs = [float(c) for c in zernike_waves]
@@ -637,6 +659,9 @@ def propagate_field(wavelength_nm, w0_mm=None, aperture_mm=None, dz_mm=0.0, n_gr
     form (compare w_2sigma_mm vs w_analytic_mm) and is reversible (+dz then -dz). On-demand analysis -- the live
     trace is untouched + byte-identical. This is the primitive behind digital-hologram reconstruction and
     multi-plane Fresnel; full-wave (FDTD) and split-step (NLSE) stay out of scope (see capabilities()['scope_map'])."""
+    bad = _wave_args_error(wavelength_nm, n_grid, w0_mm=w0_mm, aperture_mm=aperture_mm, dx_mm=dx_mm)
+    if bad:
+        return bad
     import math
     from . import field
     n_grid = int(n_grid)
@@ -681,6 +706,9 @@ def propagate_chain(steps, wavelength_nm=632.8, w0_mm=None, aperture_mm=None, n_
     (field_metrics of the last plane), z_total_mm, trace:[per-step z/w/peak/power]}. Off-trace / byte-identical.
     NEAR-field / moderate propagation only -- a tight focus or Fraunhofer far field is better via direct FFT
     (wave_psf / slit_diffraction): the anti-alias band-limit degrades far-field null spacing."""
+    bad = _wave_args_error(wavelength_nm, n_grid, w0_mm=w0_mm, aperture_mm=aperture_mm, dx_mm=dx_mm)
+    if bad:
+        return bad
     if not steps:
         return {"error": "give a non-empty steps list, e.g. [['aperture',3.0],['lens',200.0],['prop',200.0]]"}
     if not (w0_mm or aperture_mm):
@@ -709,6 +737,9 @@ def gerchberg_saxton(target="ring", n_grid=128, n_iter=60, seed=0, png=False):
     {ring, double, tophat, spot} (canonical beam-shaping / CGH patterns over a circular source). Returns {ok,
     target, correlation (achieved-vs-target, 0..1), final_error, initial_error, monotone, n_iter}. png=True
     saves the achieved far-field + the recovered phase mask. Off-trace; live trace byte-identical."""
+    bad = _wave_args_error(None, n_grid, n_iter=n_iter)
+    if bad:
+        return bad
     if target not in ("ring", "double", "tophat", "spot"):
         return {"error": "target must be one of: ring, double, tophat, spot"}
     from . import field
@@ -752,6 +783,9 @@ def fienup_phase_retrieval(obj="dots", n_grid=128, n_iter=300, beta=0.9, seed=0,
     (recovered-vs-truth, INVARIANT to the inherent translation + twin ambiguities, 0..1), final_error,
     initial_error, n_iter, support_frac}. png=True saves truth / recovered / Fourier-error curve. Off-trace;
     live trace byte-identical."""
+    bad = _wave_args_error(None, n_grid, n_iter=n_iter, beta=beta)
+    if bad:
+        return bad
     if obj not in ("dots", "ell", "tri"):
         return {"error": "obj must be one of: dots, ell, tri"}
     from . import field
@@ -796,6 +830,9 @@ def spatial_filter(obj="grating", kind="lowpass", cutoff_frac=0.15, n_grid=256, 
     phase_contrast (Zernike: a pi/2 dot on the zero order makes a PURE-PHASE object visible in intensity)}.
     Returns {ok, obj, kind, input_intensity_std, output_intensity_std, output_mean_amp, contrast_ratio};
     png=True saves the input vs filtered image. Off-trace; live trace byte-identical."""
+    bad = _wave_args_error(None, n_grid, cutoff_frac=cutoff_frac)
+    if bad:
+        return bad
     if obj not in ("grating", "edge", "phase"):
         return {"error": "obj must be one of: grating, edge, phase"}
     if kind not in ("lowpass", "highpass", "phase_contrast"):
@@ -837,6 +874,9 @@ def tem_mode(family="HG", i=1, j=0, w_mm=0.5, n_grid=256, png=False):
     l*hbar when l!=0)}. Returns {ok, family, indices, n_lobes, gouy_order (the mode's extra Gouy phase factor:
     i+j+1 for HG, 2p+|l|+1 for LG), on_axis_intensity_frac, x2_over_w2 (= (2i+1)/4 for HG_i0), oam_winding_turns
     (LG)}. png=True saves the intensity (+ the phase vortex for LG). Off-trace; live trace byte-identical."""
+    bad = _wave_args_error(None, n_grid, w_mm=w_mm)
+    if bad:
+        return bad
     if (family or "HG").upper() not in ("HG", "LG"):
         return {"error": "family must be HG (Hermite-Gaussian) or LG (Laguerre-Gaussian)"}
     from . import field
@@ -877,6 +917,9 @@ def newton_rings(radius_of_curvature_mm=1000.0, wavelength_nm=589.3, n_rings=8, 
     quadratic air gap makes the two reflections interfere as I(r)=sin^2(pi r^2/(lambda R)) -- a central DARK spot
     + dark rings at r_m = sqrt(m lambda R). Returns {ok, radius_of_curvature_mm, wavelength_nm, n_rings, field_mm,
     dark_ring_radii_mm, central_intensity (~0), oracle}. png=True saves the ring image. Off-trace; byte-identical."""
+    bad = _wave_args_error(wavelength_nm, n_grid, radius_of_curvature_mm=radius_of_curvature_mm)
+    if bad:
+        return bad
     out, raster = _diagnostics.newton_rings_2d(float(radius_of_curvature_mm), float(wavelength_nm),
                                                n_rings=int(n_rings), nx=int(n_grid))
     if png:
@@ -913,6 +956,9 @@ def speckle_pattern(diam_mm=1.0, dz_mm=300.0, wavelength_nm=632.8, n_grid=512, d
     exponential-PDF signature), frac_above_mean (-> e^-1=0.368), speckle_size_mm, predicted_speckle_size_mm
     (lambda*z/D), n_avg, oracle}. `n_avg`>1 averages independent frames -> contrast falls as 1/sqrt(N) (the
     speckle-suppression law). png=True saves the pattern + its intensity histogram vs the exponential PDF."""
+    bad = _wave_args_error(None, n_grid, dx_mm=dx_mm)
+    if bad:
+        return bad
     if diam_mm <= 0 or dz_mm <= 0 or wavelength_nm <= 0:
         return {"error": "diam_mm, dz_mm, wavelength_nm must be positive"}
     from . import speckle as _speckle
@@ -932,6 +978,9 @@ def caustic_pattern(mirror_radius_mm=10.0, n_rays=1400, n_grid=400, png=False):
     (= R/2, the mirror paraxial focus), mirror_focal_mm, density_on_envelope_ratio (caustic brightness vs
     background, >>1), brightest_point_mm (~the cusp), n_rays, oracle}. png=True saves the ray-density image with
     the analytic nephroid + the mirror circle overlaid."""
+    bad = _wave_args_error(None, n_grid, n_rays=n_rays)
+    if bad:
+        return bad
     if mirror_radius_mm <= 0:
         return {"error": "mirror_radius_mm must be positive"}
     from . import caustic as _caustic
@@ -951,6 +1000,9 @@ def slit_diffraction(width_um=100.0, n_slits=1, sep_um=0.0, wavelength_nm=632.8,
     fringe_spacing_theory (multi), ...}: the measured pattern matches the analytic sinc^2 (x cos^2) to
     rms_vs_analytic (~1e-3). Off-trace; the live trace is byte-identical. E.g.
     slit_diffraction(100, 2, sep_um=500) -> double slit, fringes at lambda/d under a lambda/a envelope."""
+    bad = _wave_args_error(wavelength_nm, n_grid, n_grid_max=8192, width_um=width_um)  # 1-D grid: higher cap
+    if bad:
+        return bad
     from . import field
     png_path = None
     if png:
@@ -967,6 +1019,9 @@ def talbot_effect(period_um=100.0, wavelength_nm=632.8, n_periods=16, n_grid=512
     z_T/2, and no image at z_T/4. Returns {talbot_distance_mm, self_image_corr (~1 at z_T),
     half_talbot_shift_corr (~1 at z_T/2 vs a d/2 shift), quarter_corr (~0)} -- the self-image proves
     z_T=2 d^2/lambda. png=True saves the Talbot carpet (intensity vs x,z). Off-trace; live trace byte-identical."""
+    bad = _wave_args_error(wavelength_nm, n_grid, period_um=period_um)
+    if bad:
+        return bad
     from . import field
     png_path = None
     if png:
@@ -1007,6 +1062,9 @@ def propagate_turbulent(aperture_mm=60.0, r0_mm=10.0, wavelength_nm=500.0, n_scr
     the propagation conserves energy. Off-trace, seed-pinned RNG; live trace byte-identical. NOTE: a finite FFT
     grid truncates the largest turbulence scales -> the long-exposure FWHM lands ~0.7x the ideal seeing
     lambda/r0 (a known FFT-phase-screen limitation, reduced by a bigger grid or a von-Karman outer scale)."""
+    bad = _wave_args_error(wavelength_nm, n_grid, aperture_mm=aperture_mm, r0_mm=r0_mm)
+    if bad:
+        return bad
     from . import turbulence
     png_path = None
     if png:
@@ -1027,6 +1085,9 @@ def propagate_pulse(t0_ps=1.0, p0_W=10.0, beta2_ps2_per_m=-0.02, gamma_per_W_per
     metrics {peak_power_W, energy_pJ, fwhm_ps, rms_bandwidth_THz, shape_invariance_err (~0 for a soliton),
     soliton_order_N, L_D_m, length_m}. On-demand analysis -- the live trace is untouched + byte-identical.
     Full supercontinuum (higher-order dispersion + Raman + self-steepening) is out of scope (scope_map)."""
+    bad = _wave_args_error(None, n_grid, n_grid_max=65536, t0_ps=t0_ps)  # 1-D temporal grid: higher cap
+    if bad:
+        return bad
     import math
     import numpy as np
     from . import nlse
@@ -1101,8 +1162,9 @@ def tolerance_scan(elements=None, target="", sigma_pos_mm=0.1, sigma_ang_deg=0.0
     POSE-ONLY (kinematic DOFs); NOT glass/coating/figure tolerancing (that needs the full-wave / lens-design
     tools -- see capabilities()['scope_map']). Uses a SEED-PINNED local RNG (np.random.default_rng, no global
     state) and RESTORES every pose + the nominal trace afterwards, so it is off-trace + off the byte-identical
-    digest. `tol_mm` adds a yield (fraction of samples landing within tol_mm). Returns {n, hit_rate,
-    pointing_rms_mm, pointing_mean_mm, pointing_p95_mm, pointing_max_mm, yield?}."""
+    digest. `tol_mm` adds a yield (fraction of samples landing within tol_mm). Returns {ok, n, hit_rate,
+    pointing_rms_mm, pointing_mean_mm, pointing_p95_mm, pointing_max_mm, yield?} plus the echoed context
+    (elements, target, sigma_pos_mm, sigma_ang_deg, seed)."""
     import math
     import numpy as np
     scene = _scene()

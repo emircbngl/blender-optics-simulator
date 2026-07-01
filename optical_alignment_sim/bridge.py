@@ -111,7 +111,14 @@ class _BridgeServer(threading.Thread):
                 if not line:
                     continue
                 resp = self._dispatch(line)
-                conn.sendall((json.dumps(resp) + "\n").encode("utf-8"))
+                try:
+                    payload = (json.dumps(resp) + "\n").encode("utf-8")
+                except (TypeError, ValueError) as e:
+                    # a non-JSON-serializable result must produce an ERROR REPLY, not kill the
+                    # connection via the outer except (which would leave the client hanging)
+                    payload = (json.dumps({"ok": False, "error": "non-serializable result: %s" % e})
+                               + "\n").encode("utf-8")
+                conn.sendall(payload)
         except Exception as e:
             print("[optics bridge] serve error:", e)
         finally:

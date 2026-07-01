@@ -42,9 +42,11 @@ don't silently "improve" the bench. This is the physics-honesty-gate pattern app
 ## Physics honesty
 Every shipped formula in this plugin is verified against the physicist oracle. When you state a result, it is
 backed by `physics_verify`-checked math — but **you** should still inspect outputs and report uncertainty
-honestly. The bench is a GEOMETRIC single-ray tracer with analytic Gaussian/Zernike/Fresnel overlays — it is
-not a full wave-diffraction solver (no Fresnel diffraction patterns, no real grating orders beyond layout, the
-WFS modal channel is a 15-Zernike low-pass). Say so when it matters.
+honestly. The LIVE bench is a GEOMETRIC single-ray tracer with analytic Gaussian/Zernike/Fresnel overlays;
+diffraction, sampled-field propagation, speckle, turbulence, pulses and photon transport live in the
+**opt-in, off-trace analysis layer** (the group below) — on-demand calculators that never touch the live
+trace. Full-wave Maxwell (FDTD/RCWA), vectorial high-NA focusing and many-mode quantum states remain out of
+scope (`capabilities()['scope_map']`). Say so when it matters.
 
 ## Tool groups (see `capabilities()` for the live list)
 - **read / inspect** — your eyes (above).
@@ -53,8 +55,15 @@ WFS modal channel is a 15-Zernike low-pass). Say so when it matters.
 - **place / assemble** — `place_relative`, `make_cage/tube/rail`, `place_on_grid/rail`, `set_grid`, `dress_bench`.
 - **trace / measure** — `trace_beam`, `scan`, `bake_beams`, `clear_beams`.
 - **align (mutates DOFs)** — `align_all`, `align_element`, `auto_align`, `tilt_null` — on demand only.
-- **adaptive optics + surface figure** — `ao_command`, `ao_close_loop(_recon)`, `ao_kolmogorov`, `zonal_render`.
-- **render / export** — `render`, `render_sequence`, `export_svg`.
+- **adaptive optics + surface figure** — `ao_command`, `ao_close_loop(_recon)`, `ao_kolmogorov`, `zonal_render`,
+  `pyramid_wfs`, `get_wavefront`, `ao_measure`, `sensor_capture`, `turbulence_screen`.
+- **analysis / phenomena (off-trace, on-demand — never touch the live trace)** — `wave_psf`, `aberrated_psf`,
+  `propagate_field`, `propagate_chain`, `slit_diffraction`, `talbot_effect`, `gerchberg_saxton`,
+  `fienup_phase_retrieval`, `spatial_filter`, `tem_mode`, `newton_rings`, `speckle_pattern`, `caustic_pattern`,
+  `propagate_turbulent`, `propagate_pulse`, `monte_carlo_tissue`, `detect_phenomena`, `produce_phenomenon`,
+  `quantum_stats`, `gpu_status`, `fdtd_derive_property`, `optics_calc`, `coupling_efficiency`, `tolerance_scan`.
+- **render / export / report** — `render`, `render_sequence`, `export_svg`, `export_report`, `inspect_all`,
+  `beam_profile`.
 
 ## Gotchas that bite (read these)
 1. `w_mm` and `clear_aperture` are both **radii** (a mirror's clear_aperture = size/2). Compare like-for-like.

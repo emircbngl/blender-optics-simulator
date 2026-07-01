@@ -149,7 +149,7 @@ For headless pipelines, `optics_api` is importable directly inside Blender
   glass materials + studio lighting, camera presets, transparent-PNG figures, turntable movies, and
   publication-ready SVG schematics.
 
-### 16 one-click example scenes
+### 26 one-click example scenes
 
 Each is a single `build_example(kind)` — built from portable, mesh-free generic components, fully
 agent-drivable:
@@ -172,6 +172,13 @@ agent-drivable:
 | **AOM** | TeO₂ Bragg cell, 0th + frequency-shifted +1 order, θ = λ·f_a/v_s |
 | **Surface figure** | oblique beam off a figured reflector → dense zonal wavefront a WFS reads |
 | **Die** | a die face (the 5-pip quincunx) read as a recognizable zonal wavefront |
+
+…plus ten more: **prism** (dispersing-prism spectrometer, white light fanned by n(λ)), **beam_router**
+(rhomboid parallel-displace + tilt-invariant penta steering), **beam_profiler** (knife-edge erf scan),
+**back_reflection** (a window's parasitic Fresnel retro-ghost), **green_doubler** (1064→532 nm SHG),
+**spdc_source** (degenerate 810 nm signal+idler pairs), **quad_tracker** (4-quadrant position error),
+**circulator** (non-reciprocal 3-port fiber router), and the **surface_figure_native /
+surface_figure_diverging** WFS variants.
 
 ---
 
@@ -585,7 +592,7 @@ nothing phones home otherwise.
 
 ### From the UI
 
-- **Examples ▸** pick *Michelson* (or any of the 14) to spawn a full setup with the live beam overlay.
+- **Examples ▸** pick *Michelson* (or any of the 26) to spawn a full setup with the live beam overlay.
 - **Element** — select an object, *Tag as Optical Element*, *Auto-Detect Ports*; per-type parameters
   appear (source polarization, waveplate angle, lens focal length, …).
 - **Mount & Adjustment** — *Apply Mount Preset* (e.g. KM100CP/M), *Set Coarse Pose*, drive the
