@@ -92,6 +92,20 @@ def _find_update_repo(prefs):
     return None
 
 
+def _platform_managed():
+    """True when this extension was installed from a REMOTE, platform-managed repo -- i.e. the official
+    Blender Extensions platform (extensions.blender.org, whose repo module is 'blender_org'). In that case
+    Blender itself delivers updates, so our self-hosted update channel MUST stay off: registering an external
+    repo and installing from it is disallowed by the platform's review guidelines and would only double up.
+
+    Disk installs, the one-click self-hosted channel, `Install from Disk`, and the test harness all have a
+    package like 'bl_ext.user_default.<id>' or a bare '<id>' -> not platform-managed -> the self-updater runs.
+    An extension's package is 'bl_ext.<repo_module>.<id>', so the middle field names its source repo. (If the
+    official repo module id ever changes, adjust the name below; it is the one platform assumption here.)"""
+    parts = (__package__ or "").split(".")
+    return len(parts) >= 3 and parts[0] == "bl_ext" and parts[1] == "blender_org"
+
+
 def _ensure_repo(prefs):
     """Return our remote repo, registering + enabling it (with startup checks) if missing."""
     repo = _find_update_repo(prefs)
@@ -192,6 +206,10 @@ def _timer_check():
 def draw_update_box(layout, context):
     """Shared update widget — used by the notification panel and the add-on preferences."""
     installed = _addon_version()
+    if _platform_managed():
+        # installed from the Blender Extensions platform -> Blender handles updates; don't offer our own
+        layout.label(text="v%s · updates via Blender Extensions" % installed, icon='CHECKMARK')
+        return
     if _state["staged"]:
         layout.label(text="Update downloaded — restart to finish.", icon='CHECKMARK')
         row = layout.row()
@@ -351,6 +369,8 @@ class OPTICS_OT_apply_update(Operator):
 def _on_exit(_interactive):
     """Best-effort: stage a detected-but-not-installed update on quit, so the next launch is
     current. Wrapped — any failure is harmless (the staged path / next check still cover it)."""
+    if _platform_managed():
+        return                              # the platform delivers updates; never self-install
     if _relaunching or _state.get("staged") or not _state.get("available"):
         return
     if not bpy.app.online_access:
@@ -379,6 +399,8 @@ def register():
     _load_state()
     for c in _classes:
         bpy.utils.register_class(c)
+    if _platform_managed():
+        return                              # Blender Extensions delivers updates -> no self-check timer / repo
     if not bpy.app.timers.is_registered(_timer_check):
         bpy.app.timers.register(_timer_check, first_interval=_FIRST_DELAY_S, persistent=True)
     # exit_pre arrived after Blender 4.2 LTS — the "apply on quit" hook is optional (the staged

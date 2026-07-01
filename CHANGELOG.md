@@ -6,6 +6,21 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Changed — distribution: platform-ready updater + a pip/uvx-installable MCP server
+- `updater.py` now gates its whole self-update behaviour on `_platform_managed()` (true when the
+  extension package is `bl_ext.blender_org.<id>`, i.e. installed from extensions.blender.org). On a
+  platform install it does **not** start the daily-check timer, register our external update repo, or show
+  a Check/Install button — Blender delivers updates itself; the panel reads *"updates via Blender
+  Extensions"*. GitHub / one-click / disk installs are unchanged. This lets the **same zip** be listed on
+  the platform without a second build, satisfying the rule against registering external repositories. See
+  `docs/EXTENSIONS_SUBMISSION.md`.
+- The MCP server is now a packaged, `pip`/`uvx`-installable console app — `blender-optics-mcp` (see
+  `mcp/pyproject.toml` + the `mcp/server.json` registry manifest). Client config is one command instead of
+  an absolute script path.
+- Repo hygiene: CONTRIBUTING / CODE_OF_CONDUCT / SECURITY / issue + PR templates / FUNDING.yml; README
+  citation block fixed (was a frozen v0.9.1 version DOI mislabeled as the concept DOI), OptiCore added to
+  "How this compares", a 60-second TL;DR + release badge, and an accurate per-install-path update table.
+
 ## [0.24.0] — Phenomena closed out: laser speckle + the coffee-cup caustic, and a bypassed-optic warning — 2026-07-01
 
 Two new off-trace phenomenon producers close the emergence catalog — **laser speckle** and the **coffee-cup
