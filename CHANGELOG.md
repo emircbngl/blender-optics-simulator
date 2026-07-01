@@ -6,6 +6,14 @@ semantic versioning.
 
 ## [Unreleased]
 
+## [0.24.2] — Extension display name → "Optics Simulator" (Blender Extensions naming policy) — 2026-07-01
+
+No physics or behaviour changes. The Blender Extensions platform's naming policy (rule 2.1) disallows
+"Blender" in an extension's name, so the manifest **display name** is now **"Optics Simulator"** (was
+"Blender Optics Simulator"). The extension **`id` (`optical_alignment_sim`) is unchanged**, so installs and
+the update channel are unaffected. The GitHub project / repository is still called *Blender Optics
+Simulator* — only the in-Blender / platform display name drops the word "Blender".
+
 ## [0.24.1] — Distribution & repo hygiene: platform-ready updater, packaged MCP server, product-name manifest — 2026-07-01
 
 No physics changes — a distribution and repo-hygiene pass so the add-on is discoverable and installable
