@@ -1,0 +1,25 @@
+name: Publish MCP server to PyPI
+
+# Manual, token-free publish of the `blender-optics-mcp` package via PyPI Trusted
+# Publishing (OIDC). Bump mcp/pyproject.toml (+ mcp/server.json) first, then run this
+# workflow from the Actions tab. No API token is stored anywhere.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write        # required for Trusted Publishing (OIDC)
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - name: Build sdist + wheel from mcp/
+        run: uv build mcp/ -o dist
+      - name: Publish to PyPI (Trusted Publishing — no token)
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
