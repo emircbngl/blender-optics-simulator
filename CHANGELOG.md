@@ -6,6 +6,12 @@ semantic versioning.
 
 ## [Unreleased]
 
+## [0.24.1] — Distribution & repo hygiene: platform-ready updater, packaged MCP server, product-name manifest — 2026-07-01
+
+No physics changes — a distribution and repo-hygiene pass so the add-on is discoverable and installable
+through every channel, and every install path can update. The manifest display name is now
+**Blender Optics Simulator** (the extension `id` is unchanged, so installs/updates are unaffected).
+
 ### Changed — distribution: platform-ready updater + a pip/uvx-installable MCP server
 - `updater.py` now gates its whole self-update behaviour on `_platform_managed()` (true when the
   extension package is `bl_ext.blender_org.<id>`, i.e. installed from extensions.blender.org). On a
