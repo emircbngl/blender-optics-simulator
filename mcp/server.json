@@ -1,7 +1,7 @@
 {
-  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.emircbngl/blender-optics-simulator",
-  "description": "Build, inspect, align, and render a real optical bench in Blender over MCP — a physics-verified beam engine (ray + Gaussian-q + Jones/Stokes) an AI agent can drive.",
+  "description": "Build, align & render a real optical bench in Blender; drivable by an AI agent over MCP.",
   "status": "active",
   "version": "0.24.2",
   "repository": {
@@ -13,7 +13,9 @@
       "registryType": "pypi",
       "identifier": "blender-optics-mcp",
       "version": "0.24.2",
-      "transport": { "type": "stdio" },
+      "transport": {
+        "type": "stdio"
+      },
       "environmentVariables": [
         {
           "name": "OPTICS_BRIDGE_PORT",
