@@ -174,6 +174,24 @@ the Scan + Plot operator, the Detector Fringe Image, and the live sensor window 
   <img src="docs/img/feature-board.png" width="92%" alt="New in v0.10.0: the WFS reads the beam's own curvature defocus; a pyramid WFS slope read; a soft-edge dichroic (R+T=1); a die face read as a zonal wavefront">
 </p>
 
+### New in v0.24.0 — laser speckle + the coffee-cup caustic (phenomena closed out)
+
+<p align="center">
+  <img src="docs/img/speckle-demo.png" width="49%" alt="New in v0.24.0: fully-developed laser speckle — the grainy pattern from a random-phase diffuser, with its intensity histogram matching the negative-exponential PDF">
+  <img src="docs/img/caustic-demo.png" width="49%" alt="New in v0.24.0: the coffee-cup caustic — parallel rays reflecting off a circular mirror pile onto a nephroid whose cusp sits at the mirror focus R/2">
+</p>
+
+Two off-trace phenomenon producers, each derived from first principles and checked against its exact
+textbook result. **`speckle_pattern()`** — a random-phase diffuser propagated to a screen gives
+fully-developed **laser speckle**: contrast `σ_I/⟨I⟩ → 1`, a negative-exponential intensity PDF, mean grain
+`~ λz/D`, and `1/√N` suppression when you average `N` frames (contrast + averaging law *physics_verify*
+`ok=true`). **`caustic_pattern()`** — parallel rays reflecting off a circular mirror's concave wall pile up
+on a **nephroid** (the coffee-cup caustic), the ray-density lighting up the analytic envelope ~20× with its
+cusp exactly at the mirror focus `R/2` (reflection geometry + cusp *physics_verify* `ok=true`). This closes
+the phenomenon-emergence catalog (hologram · interferogram · Fabry–Pérot · Talbot · Newton's-rings · speckle
+· caustic). Also new: **`diagnose()` warns when an optic is knocked off the beam** (`optic_bypassed`) — a mid-path
+lens/mirror/BS the beam no longer reaches now raises a WARN with a re-centre fix, closing a gap a render surfaced.
+
 ### New in v0.23.0 — opto-mechanical hardware rides its optic (rigid assemblies)
 
 <p align="center">

@@ -6,6 +6,13 @@ semantic versioning.
 
 ## [Unreleased]
 
+## [0.24.0] — Phenomena closed out: laser speckle + the coffee-cup caustic, and a bypassed-optic warning — 2026-07-01
+
+Two new off-trace phenomenon producers close the emergence catalog — **laser speckle** and the **coffee-cup
+caustic** — each derived from first principles and checked against its exact textbook statistics/geometry.
+Plus a diagnostic the owner's own eye surfaced: the engine now **warns when an optic is knocked off the
+beam**. All off-trace; the live trace stays byte-identical (validation 262→271, regression 392→397).
+
 ### Added — caustics (off-trace producer): the coffee-cup nephroid
 - `caustic_pattern()` (+ MCP, + `caustic.py`) produces the **coffee-cup CAUSTIC** — parallel rays
   reflecting off the concave inner wall of a circular mirror (radius `R`) pile up on a **nephroid**, the
