@@ -42,8 +42,8 @@ our self-hosted channel + in-add-on updater run as before. No second build to ma
 
 ## Listing metadata (draft)
 
-- **Name:** Blender Optics Simulator *(the manifest `name` is currently "Optical Alignment & Simulation" —
-  consider aligning it to the product name for the listing; see the naming note below).*
+- **Name:** Blender Optics Simulator (the manifest `name` now matches the product name; the `id`
+  `optical_alignment_sim` is unchanged so updates/installs are unaffected).
 - **Tagline:** Live ray tracing & auto-alignment for optical benches
 - **Tags:** `3D View`, `Render`, `Object`
 - **Description (long):** An optical bench you lay out in 3-D, trace with a live, physics-verified beam

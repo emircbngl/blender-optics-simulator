@@ -2,7 +2,7 @@ schema_version = "1.0.0"
 
 id = "optical_alignment_sim"
 version = "0.24.0"
-name = "Optical Alignment & Simulation"
+name = "Blender Optics Simulator"
 tagline = "Live ray tracing & auto-alignment for optical benches"
 maintainer = "Emir <emircbngl@gmail.com>"
 type = "add-on"

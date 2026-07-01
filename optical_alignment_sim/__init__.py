@@ -1,4 +1,4 @@
-"""Optical Alignment & Simulation - a Blender add-on for simulating and aligning
+"""Blender Optics Simulator - a Blender add-on for simulating and aligning
 optical setups (mirrors, lenses, beam splitters, lasers) with a live ray-trace
 overlay, kinematic-mount-aware auto-alignment, and a render helper.
 
