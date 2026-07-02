@@ -96,9 +96,13 @@ def caustic_metrics(R=1.0, n_rays=1400, n_grid=400, half=None, png_path=None):
 
 def _render_caustic(dens, half, R, metrics, png_path):
     try:
-        import matplotlib
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
+        try:
+            from . import plotting as _plotting
+        except ImportError:
+            import plotting as _plotting
+        plt = _plotting.pyplot()
+        if plt is None:
+            raise ImportError("matplotlib unavailable (plots need the GitHub build or a matplotlib install)")
     except Exception:
         return None
     nx, ny = nephroid_caustic(R, n=500)

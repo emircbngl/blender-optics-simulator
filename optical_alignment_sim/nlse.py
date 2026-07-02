@@ -97,9 +97,14 @@ def pulse_metrics(A, dt_ps, A0=None, png_path=None, t_ps=None):
 
 
 def _render_pulse(t_ps, power, A0, meta, png_path):
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+    try:
+        from . import plotting as _plotting
+    except ImportError:
+        import plotting as _plotting
+    plt = _plotting.pyplot()
+    if plt is None:
+        meta["png_error"] = "matplotlib unavailable (numbers are unaffected)"
+        return None
     fig, ax = plt.subplots(figsize=(6, 4))
     if A0 is not None:
         ax.plot(t_ps, np.abs(A0) ** 2, "--", color="#888", label="input |A0|^2")

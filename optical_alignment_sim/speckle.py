@@ -128,9 +128,13 @@ def speckle_metrics(n_grid=512, dx_mm=0.02, diam_mm=1.0, dz_mm=300.0, wavelength
 def _render_speckle(I, dx_mm, metrics, png_path):
     """A 2-panel figure: the speckle pattern + its intensity histogram against the exponential PDF."""
     try:
-        import matplotlib
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
+        try:
+            from . import plotting as _plotting
+        except ImportError:
+            import plotting as _plotting
+        plt = _plotting.pyplot()
+        if plt is None:
+            raise ImportError("matplotlib unavailable (plots need the GitHub build or a matplotlib install)")
     except Exception:
         return None
     w = _central(I, 0.5)

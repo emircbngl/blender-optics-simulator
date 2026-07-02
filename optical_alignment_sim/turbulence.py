@@ -209,9 +209,14 @@ def long_exposure_psf(aperture_mm, r0_mm, wavelength_nm, n_screens=1, spacing_m=
 
 
 def _render_long_exposure(psf_long, psf_diff, n, meta, png_path):
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+    try:
+        from . import plotting as _plotting
+    except ImportError:
+        import plotting as _plotting
+    plt = _plotting.pyplot()
+    if plt is None:
+        meta["png_error"] = "matplotlib unavailable (numbers are unaffected)"
+        return None
     c = n // 2
     h = max(12, int(3.0 * (meta["broadening"] or 4.0) * 8))
     h = min(h, c - 1)
@@ -231,9 +236,14 @@ def _render_long_exposure(psf_long, psf_diff, n, meta, png_path):
 
 
 def _render_screen(screen, meta, png_path):
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+    try:
+        from . import plotting as _plotting
+    except ImportError:
+        import plotting as _plotting
+    plt = _plotting.pyplot()
+    if plt is None:
+        meta["png_error"] = "matplotlib unavailable (numbers are unaffected)"
+        return None
     span = meta["dx_mm"] * screen.shape[0] / 2.0
     fig, ax = plt.subplots(figsize=(5, 5))
     im = ax.imshow(screen, cmap="twilight", extent=[-span, span, -span, span], interpolation="nearest")

@@ -754,9 +754,13 @@ def gerchberg_saxton(target="ring", n_grid=128, n_iter=60, seed=0, png=False):
         try:
             import os
             import tempfile
-            import matplotlib
-            matplotlib.use("Agg")
-            import matplotlib.pyplot as plt
+            try:
+                from . import plotting as _plotting
+            except ImportError:
+                import plotting as _plotting
+            plt = _plotting.pyplot()
+            if plt is None:
+                raise ImportError("matplotlib unavailable (plots need the GitHub build or a matplotlib install)")
             fig, ax = plt.subplots(1, 2, figsize=(7.2, 3.4))
             fig.patch.set_facecolor("#0d0d10")
             ax[0].imshow(r["achieved_amplitude"] ** 2, cmap="inferno", origin="lower")
@@ -797,9 +801,13 @@ def fienup_phase_retrieval(obj="dots", n_grid=128, n_iter=300, beta=0.9, seed=0,
             import os
             import tempfile
             import numpy as _np
-            import matplotlib
-            matplotlib.use("Agg")
-            import matplotlib.pyplot as plt
+            try:
+                from . import plotting as _plotting
+            except ImportError:
+                import plotting as _plotting
+            plt = _plotting.pyplot()
+            if plt is None:
+                raise ImportError("matplotlib unavailable (plots need the GitHub build or a matplotlib install)")
             truth, support = field._fienup_object(obj, int(n_grid))
             measured = _np.abs(field._fft2c(truth)) ** 2
             r = field.fienup_phase_retrieval(measured, support, n_iter=int(n_iter), beta=float(beta), seed=int(seed))
@@ -846,9 +854,13 @@ def spatial_filter(obj="grating", kind="lowpass", cutoff_frac=0.15, n_grid=256, 
             import os
             import tempfile
             import numpy as _np
-            import matplotlib
-            matplotlib.use("Agg")
-            import matplotlib.pyplot as plt
+            try:
+                from . import plotting as _plotting
+            except ImportError:
+                import plotting as _plotting
+            plt = _plotting.pyplot()
+            if plt is None:
+                raise ImportError("matplotlib unavailable (plots need the GitHub build or a matplotlib install)")
             U = field._filter_object(obj, int(n_grid))
             V = field.fourier_filter(U, kind, float(cutoff_frac))
             fig, ax = plt.subplots(1, 2, figsize=(7.0, 3.4))
@@ -888,9 +900,13 @@ def tem_mode(family="HG", i=1, j=0, w_mm=0.5, n_grid=256, png=False):
             import os
             import tempfile
             import numpy as _np
-            import matplotlib
-            matplotlib.use("Agg")
-            import matplotlib.pyplot as plt
+            try:
+                from . import plotting as _plotting
+            except ImportError:
+                import plotting as _plotting
+            plt = _plotting.pyplot()
+            if plt is None:
+                raise ImportError("matplotlib unavailable (plots need the GitHub build or a matplotlib install)")
             U = field.tem_mode(family, int(i), int(j), float(w_mm), n_grid=int(n_grid))
             fam = (family or "HG").upper()
             ncol = 2 if fam == "LG" else 1
@@ -928,9 +944,13 @@ def newton_rings(radius_of_curvature_mm=1000.0, wavelength_nm=589.3, n_rings=8, 
         try:
             import os
             import tempfile
-            import matplotlib
-            matplotlib.use("Agg")
-            import matplotlib.pyplot as plt
+            try:
+                from . import plotting as _plotting
+            except ImportError:
+                import plotting as _plotting
+            plt = _plotting.pyplot()
+            if plt is None:
+                raise ImportError("matplotlib unavailable (plots need the GitHub build or a matplotlib install)")
             fig, ax = plt.subplots(figsize=(4.0, 4.0))
             fig.patch.set_facecolor("#0d0d10")
             ext = 0.5 * out["field_mm"]
@@ -1136,9 +1156,13 @@ def monte_carlo_tissue(mu_a_per_mm=0.1, mu_s_per_mm=10.0, g=0.9, thickness_mm=10
             import os
             import tempfile
             import numpy as np
-            import matplotlib
-            matplotlib.use("Agg")
-            import matplotlib.pyplot as plt
+            try:
+                from . import plotting as _plotting
+            except ImportError:
+                import plotting as _plotting
+            plt = _plotting.pyplot()
+            if plt is None:
+                raise ImportError("matplotlib unavailable (plots need the GitHub build or a matplotlib install)")
             path = os.path.join(tempfile.gettempdir(), "optics_mc_tissue.png")
             d = np.asarray(res["depth_mm"]); fl = np.asarray(res["fluence"])
             fig, ax = plt.subplots(figsize=(6, 4))

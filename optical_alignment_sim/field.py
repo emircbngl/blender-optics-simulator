@@ -200,9 +200,14 @@ def talbot_metrics(period_mm, wavelength_nm, n_periods=16, n_grid=512, png_path=
 
 
 def _render_talbot(U0, dx_mm, z_t, period_mm, wavelength_nm, n, meta, png_path):
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+    try:
+        from . import plotting as _plotting
+    except ImportError:
+        import plotting as _plotting
+    plt = _plotting.pyplot()
+    if plt is None:
+        meta["png_error"] = "matplotlib unavailable (numbers are unaffected)"
+        return None
     nz = 240
     zz = np.linspace(0.0, 2.0 * z_t, nz)
     carpet = np.empty((nz, n))
@@ -225,9 +230,14 @@ def _render_talbot(U0, dx_mm, z_t, period_mm, wavelength_nm, n, meta, png_path):
 
 
 def _render_slit(sin_theta, I, analytic, meta, png_path):
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+    try:
+        from . import plotting as _plotting
+    except ImportError:
+        import plotting as _plotting
+    plt = _plotting.pyplot()
+    if plt is None:
+        meta["png_error"] = "matplotlib unavailable (numbers are unaffected)"
+        return None
     lim = 6.0 * (meta["first_min_theory"] or 0.01)
     m = np.abs(sin_theta) <= lim
     fig, ax = plt.subplots(figsize=(7, 4))
@@ -288,9 +298,14 @@ def field_metrics(U, dx_mm, wavelength_nm=None, png_path=None):
 
 
 def _render_field(intensity, meta, png_path):
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+    try:
+        from . import plotting as _plotting
+    except ImportError:
+        import plotting as _plotting
+    plt = _plotting.pyplot()
+    if plt is None:
+        meta["png_error"] = "matplotlib unavailable (numbers are unaffected)"
+        return None
     n = intensity.shape[0]
     half = n // 2
     span = meta["dx_mm"] * half

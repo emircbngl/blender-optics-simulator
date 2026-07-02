@@ -106,9 +106,14 @@ def psf_metrics(wavelength_nm, f_number, aperture_diam_mm, W=None, n_grid=512, d
 
 
 def _render_psf(psf_norm, meta, png_path):
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+    try:
+        from . import plotting as _plotting
+    except ImportError:
+        import plotting as _plotting
+    plt = _plotting.pyplot()
+    if plt is None:
+        meta["png_error"] = "matplotlib unavailable (numbers are unaffected)"
+        return None
     n = psf_norm.shape[0]
     c = n // 2
     half = max(10, int(3.0 * 1.22 * meta["n_grid"] / meta["diam_px"]))

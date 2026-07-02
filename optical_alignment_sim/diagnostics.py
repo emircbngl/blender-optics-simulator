@@ -1218,9 +1218,13 @@ def _render_emergence(kind, raster, meta, png_path):
     if not png_path or raster is None:
         return None
     try:
-        import matplotlib
-        matplotlib.use("Agg")
-        import matplotlib.pyplot as plt
+        try:
+            from . import plotting as _plotting
+        except ImportError:
+            import plotting as _plotting
+        plt = _plotting.pyplot()
+        if plt is None:
+            raise ImportError("matplotlib unavailable (plots need the GitHub build or a matplotlib install)")
         fig, ax = plt.subplots(figsize=(5.4, 3.4))
         fig.patch.set_facecolor("#0d0d10"); ax.set_facecolor("#0d0d10")
         if kind == "hologram":
