@@ -1704,17 +1704,37 @@ other = _mk("RT_anc_other", (8, 0, 0)); other.optics.is_optical = True
 mounts.set_anchor(elem, other)
 check("anchor cycle rejected", (not mounts.set_anchor(other, elem)) and mounts.anchor_would_cycle(other, elem))
 
-print("[bridge dispatch + cancelled-job guard]")
-import threading as _thr
-hc = {"event": _thr.Event(), "cancelled": True}      # a request the client already timed out on
-bridge._jobs.put(("get_state", {}, hc))
-bridge._drain()                                       # main thread: must SKIP it, not apply behind the client
-check("bridge skips cancelled job (no double-apply)", "result" not in hc and "error" not in hc)
-_srv = bridge._BridgeServer(0)                         # not started; exercise _dispatch directly
-check("bridge ping", _srv._dispatch(b'{"fn":"ping"}').get("result") == "pong")
-_rej = _srv._dispatch(b'{"fn":"__import__","args":{}}')
-check("bridge rejects non-allowlisted fn", not _rej.get("ok") and "not allowed" in _rej.get("error", ""))
-check("bridge rejects bad json", "bad json" in _srv._dispatch(b'not json').get("error", ""))
+print("[bridge: timer-driven thread-free pump -- e2e protocol over a REAL localhost socket]")
+# The timer architecture makes the pump a plain function, so headless tests drive the FULL socket
+# path single-threaded: start -> connect -> send -> _pump() (accept+read+dispatch+write) -> recv.
+# (The old queue's cancelled-job guard is obsolete: dispatch is synchronous on the main thread,
+# there is no deferred job a timed-out client could double-apply.)
+import socket as _sck
+import json as _json
+_tmp = _sck.socket(); _tmp.bind(("127.0.0.1", 0)); _free_port = _tmp.getsockname()[1]; _tmp.close()
+_bok, _bmsg = bridge.start(port=_free_port)
+check("bridge starts thread-free (non-blocking listener)", _bok and bridge.is_running(), _bmsg)
+_cli = _sck.create_connection(("127.0.0.1", _free_port), timeout=2.0)
+_cli.setblocking(False)
+_cli.sendall(b'{"fn":"ping"}\n{"fn":"list"}\n{"fn":"get_state"}\n{"fn":"__import__"}\nnot json\n')
+_bbuf = b""
+for _ in range(400):
+    bridge._pump()
+    try:
+        _bbuf += _cli.recv(1 << 20)
+    except (BlockingIOError, _sck.timeout):
+        pass
+    if _bbuf.count(b"\n") >= 5:
+        break
+_replies = [_json.loads(x) for x in _bbuf.decode("utf-8").strip().split("\n")[:5]]
+check("bridge e2e ping -> pong", _replies[0].get("result") == "pong")
+check("bridge e2e list includes get_state", "get_state" in (_replies[1].get("result") or []))
+check("bridge e2e real call get_state ok", _replies[2].get("ok") is True and "elements" in (_replies[2].get("result") or {}))
+check("bridge rejects non-allowlisted fn", not _replies[3].get("ok") and "not allowed" in _replies[3].get("error", ""))
+check("bridge rejects bad json", "bad json" in _replies[4].get("error", ""))
+_cli.close()
+bridge.stop()
+check("bridge stop is clean (listener closed, clients dropped)", not bridge.is_running() and not bridge._clients)
 
 print("[API error-shape: structured {error}, never a raw traceback]")
 check("add_component unknown -> error", "error" in optics_api.add_component("RT_NO_SUCH_KEY"))
