@@ -3,7 +3,7 @@
   "name": "io.github.emircbngl/blender-optics-simulator",
   "description": "Build, align & render a real optical bench in Blender; drivable by an AI agent over MCP.",
   "status": "active",
-  "version": "0.24.2",
+  "version": "0.24.4",
   "repository": {
     "url": "https://github.com/emircbngl/blender-optics-simulator",
     "source": "github"
@@ -12,7 +12,7 @@
     {
       "registryType": "pypi",
       "identifier": "blender-optics-mcp",
-      "version": "0.24.2",
+      "version": "0.24.4",
       "transport": {
         "type": "stdio"
       },

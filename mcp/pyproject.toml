@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "blender-optics-mcp"
-version = "0.24.2"
+version = "0.24.4"
 description = "MCP server for the Blender Optics Simulator — build, inspect, align, and render a real optical bench in Blender over MCP."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -31,7 +31,7 @@ Issues = "https://github.com/emircbngl/blender-optics-simulator/issues"
 blender-optics-mcp = "optics_mcp_server:main"
 
 [tool.hatch.build.targets.wheel]
-include = ["optics_mcp_server.py"]
+include = ["optics_mcp_server.py", "agent_patterns.py"]
 
 [tool.hatch.build.targets.sdist]
-include = ["optics_mcp_server.py", "README.md", "AGENT_GUIDE.md", "server.json"]
+include = ["optics_mcp_server.py", "agent_patterns.py", "README.md", "AGENT_GUIDE.md", "server.json"]

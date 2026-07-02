@@ -49,7 +49,7 @@ _TOOL_GROUPS = {
     "read / inspect (the AI's eyes -- call these to SEE the bench, never guess)": [
         "capabilities", "get_state", "diagnose", "propose_corrections", "detect_phenomena", "produce_phenomenon",
         "inspect_beam", "inspect_element", "inspect_all", "beam_profile", "ao_measure", "get_wavefront", "sensor_capture",
-        "check_mechanics", "coupling_efficiency"],
+        "check_mechanics", "coupling_efficiency", "material_tables"],
     "build / scene": [
         "build_example", "add_component", "tag_element", "swap_part", "set_param", "set_mount", "import_glass",
         "fdtd_derive_property"],
@@ -452,6 +452,42 @@ def import_glass(name, coefficients, formula=2, ref_wl_nm=587.56, ref_n=None):
     ref_n to validate the conversion against a known index. Persists so sellmeier_n and the glass enums
     then see the new name. Returns {ok, name, coeffs, n_at_ref, persisted} or {ok:False, error}."""
     return physics.import_glass(name, coefficients, formula=formula, ref_wl_nm=ref_wl_nm, ref_n=ref_n)
+
+
+def material_tables():
+    """Machine-readable MATERIAL/REFERENCE tables for agents (also served as the MCP resource
+    optics://tables/materials) -- so an agent stops re-deriving 'which glasses exist' or 'what does
+    Noll j=7 mean' from prose. Everything is computed LIVE from physics.py's sourced data (the same
+    oracle-checked Sellmeier code the tracer uses; provenance in docs/DATASOURCES.md):
+      glasses: {name: {n_d (at 587.56 nm), dndt_per_C?, range_um?}}
+      nl_crystals: {name: {deff_pm_per_V, dk_dT_per_mm_K, pm_temp_C, has_sellmeier_oe}}
+      biaxial / ir_materials / metals_nk / detector_qe: name lists (+ QE window for detectors)
+      zernike_noll: {j: name} for the modal wavefront channel (j=1..15).
+    READ-ONLY; no scene access."""
+    glasses = {}
+    for g in physics.glass_names():
+        entry = {"n_d": round(physics.sellmeier_n(587.56, g), 6)}
+        if g in physics.DNDT:
+            entry["dndt_per_C"] = physics.DNDT[g]
+        if g in physics.GLASS_RANGE_UM:
+            entry["range_um"] = list(physics.GLASS_RANGE_UM[g])
+        glasses[g] = entry
+    nl = {}
+    for name, (deff, dkdt, tpm) in physics.NL_CRYSTALS.items():
+        nl[name] = {"deff_pm_per_V": deff, "dk_dT_per_mm_K": dkdt, "pm_temp_C": tpm,
+                    "has_sellmeier_oe": name in physics.NL_CRYSTAL_SELLMEIER}
+    return {
+        "ok": True,
+        "glasses": glasses,
+        "nl_crystals": nl,
+        "biaxial_crystals": sorted(physics.BIAXIAL_SELLMEIER),
+        "ir_materials": sorted(physics.IR_MATERIALS),
+        "metals_nk": sorted(physics.METAL_NK),
+        "detector_qe": {k: {"window_nm": [v[0], v[3]], "peak_qe": v[4]}
+                        for k, v in physics.DETECTOR_QE.items()},
+        "zernike_noll": dict(physics.ZERNIKE_NAMES),
+        "provenance": "sourced constants; see docs/DATASOURCES.md (refractiveindex.info CC0 + cited datasheets)",
+    }
 
 
 def _wave_args_error(wavelength_nm=None, n_grid=None, n_grid_max=4096, **positives):

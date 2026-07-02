@@ -1590,6 +1590,28 @@ check("export_svg ok (elements+beams)", svgres.get("ok") and svgres["elements"] 
 check("SVG well-formed XML", wellformed)
 check("SVG has glyphs + beam lines", "<circle" in svgtext and svgtext.count("<line") >= 1)
 
+# MCP agent-pattern resources: the workflow patterns are pure data (mcp/agent_patterns.py) served as
+# optics://workflows/* resources; this DRIFT CHECK fails CI if a pattern references a tool that no longer
+# exists in optics_api, or a practice scene that is not a real example -- guidance must never rot.
+import importlib.util as _ilu
+_ap_spec = _ilu.spec_from_file_location("agent_patterns", os.path.join(REPO, "mcp", "agent_patterns.py"))
+_ap = _ilu.module_from_spec(_ap_spec); _ap_spec.loader.exec_module(_ap)
+from optical_alignment_sim import examples_builtin as _exb
+_missing_tools = sorted({t for p in _ap.PATTERNS.values() for t in p["tools_used"]
+                         if not callable(getattr(optics_api, t, None))})
+_missing_scenes = sorted({p["example_scene"] for p in _ap.PATTERNS.values()
+                          if p["example_scene"] not in _exb.EXAMPLES})
+check("agent-pattern resources reference only REAL optics_api tools (drift check)",
+      not _missing_tools, "missing: %s" % _missing_tools)
+check("agent-pattern practice scenes are real examples", not _missing_scenes, "missing: %s" % _missing_scenes)
+check("agent patterns render to markdown (index + each)",
+      _ap.render_index_md().startswith("#") and all(_ap.render_pattern_md(n).startswith("#") for n in _ap.PATTERNS))
+_mt = optics_api.material_tables()
+check("material_tables: live glasses/crystals/zernike tables for agents",
+      _mt.get("ok") and "N-BK7" in _mt["glasses"] and abs(_mt["glasses"]["N-BK7"]["n_d"] - 1.5168) < 1e-3
+      and "BBO" in _mt["nl_crystals"] and _mt["zernike_noll"][4] == "defocus",
+      str({k: len(v) if isinstance(v, dict) else v for k, v in list(_mt.items())[:5]})[:100])
+
 # inspect_all dashboard + export_report bundler (the new outputs) run end-to-end on a built example
 _ia = optics_api.inspect_all()
 check("inspect_all dashboard: per-element table for every optic", _ia.get("ok") and _ia["n_elements"] >= 4, str(_ia.get("n_elements")))

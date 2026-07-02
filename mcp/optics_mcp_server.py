@@ -339,6 +339,46 @@ def caustic_pattern(mirror_radius_mm: float = 10.0, n_rays: int = 1400, n_grid: 
 
 
 @mcp.tool()
+def material_tables() -> str:
+    """Machine-readable MATERIAL/REFERENCE tables (also the optics://tables/materials resource): glasses
+    {n_d, dndt, range_um}, NL crystals {deff, dk/dT, pm_temp, has_sellmeier_oe}, biaxial/IR/metal/detector-QE
+    lists, and the Noll Zernike j->name map. Computed LIVE from the add-on's sourced physics data -- use this
+    instead of guessing which materials exist. READ-ONLY."""
+    return _fmt(_call("material_tables"))
+
+
+# --------------------------------------------------------------------------- resources
+# Named optical-design WORKFLOW PATTERNS (agent_patterns.py, pure data; the Blender regression
+# suite imports the same dict and fails CI if a referenced tool disappears from optics_api).
+try:
+    from . import agent_patterns as _patterns          # package layout (pip wheel)
+except ImportError:
+    import agent_patterns as _patterns                 # flat layout (repo checkout)
+
+
+@mcp.resource("optics://workflows")
+def workflows_index() -> str:
+    """Index of the named optical-design workflow patterns (read the matching one before multi-step work)."""
+    return _patterns.render_index_md()
+
+
+@mcp.resource("optics://workflows/{name}")
+def workflow_pattern(name: str) -> str:
+    """One workflow pattern as markdown: intent, tool-by-tool steps, the gotchas that bite, a practice scene."""
+    if name not in _patterns.PATTERNS:
+        return "Unknown pattern '%s'. See optics://workflows for the index." % name
+    return _patterns.render_pattern_md(name)
+
+
+@mcp.resource("optics://tables/materials")
+def materials_resource() -> str:
+    """The material/reference tables, fetched LIVE from the running Blender over the bridge (JSON).
+    Falls back to an honest offline notice when no Blender bridge is up."""
+    res = _call("material_tables")
+    return json.dumps(res, indent=2)
+
+
+@mcp.tool()
 def gpu_status(enable: str = None) -> str:
     """Report (or set) the OPT-IN GPU backend for the off-trace FFT field engine. enable=None reports;
     'auto'/'cupy'/'mlx' turns it on (needs the library + hardware -- owner-run); 'off' reverts to NumPy.
