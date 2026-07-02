@@ -6,6 +6,48 @@ semantic versioning.
 
 ## [Unreleased]
 
+## [0.24.3] — Store-review hardening: thread-free MCP bridge, input guards, graceful plots — 2026-07-02
+
+The extensions.blender.org review pass. Every reviewer point is addressed — several turned out to be
+genuine engine improvements that land here for ALL builds; the store-only exclusions are produced by a
+new packager without touching this source. No physics changes. Regression 397→409, validation 271→303.
+
+### Changed — the MCP bridge is now thread-free (timer-driven)
+- `bridge.py` rewritten: a single `bpy.app.timers` pump over a **non-blocking** listener + client
+  sockets — accept, read, dispatch, write each tick, entirely on Blender's main thread. `threading`
+  and `queue` no longer appear anywhere in the add-on (they are crash-prone in Blender and disallowed
+  on the platform — the reviewer was right). The wire protocol is unchanged; existing MCP clients
+  connect exactly as before. The regression now drives the FULL socket path over a real localhost
+  socket, single-threaded.
+
+### Fixed — real crashes an agent could trigger
+- `speckle_pattern(png=True)`, `caustic_pattern(png=True)` and `produce_phenomenon(png=True)` used
+  `os`/`tempfile` without importing them → NameError (caught by the platform reviewer; the regression
+  only smoked `png=False`). Fixed + locked with png=True checks.
+- Input guards on 15 MCP-reachable field/wave producers: `wavelength_nm=0` used to raise
+  ZeroDivisionError and an unbounded `n_grid` OOM-killed Blender (verified: `n_grid=1e6` → exit 137).
+  Garbage args now return `{error}`; `n_grid` is capped (4096 2-D / 8192 1-D slit / 65536 1-D pulse).
+- The bridge now replies with an error instead of dropping the connection on a non-JSON-serializable
+  result.
+
+### Changed — plots degrade gracefully everywhere
+- All 17 matplotlib import sites now go through one access point, `plotting.pyplot()` (Agg pyplot or
+  `None`). In a matplotlib-less environment (bare python, CI Blender, the store build) PNG producers
+  return an honest `png_error` instead of crashing; **numeric results are never affected**.
+
+### Added — store packaging + tests
+- `tools/build_platform_zip.py` — produces the extensions.blender.org-compliant zip from an untouched
+  source tree (excludes the updater, the `sys.modules` dev alias, `__main__` self-tests, the
+  meep/tidy3d import probes and all FreeCAD access), with a strict 11-rule compliance self-check that
+  fails the build on any leftover forbidden token, per-file `py_compile`, and Blender's own
+  build+validate. Smoke-tested end-to-end (register, trace, diagnose, png degrade, STEP error,
+  bridge ping). The GitHub build keeps its full feature set.
+- +32 independent-oracle validation checks (coverage-gap audit): Fresnel T + R+T=1 energy
+  conservation, √M² radius scaling, ABCD surface elements, Mueller QWP@0 S2↔S3 swap, RCP/LCP
+  projector completeness, prism deviation + index inverse, S3 handedness, DoFP Stokes, coherence/
+  fringe boundaries, SFG/DFG child wavelength, biaxial index endpoints, Jones invariants.
+- Manifest tags reduced to `Render` (platform rule).
+
 ## [0.24.2] — Extension display name → "Optics Simulator" (Blender Extensions naming policy) — 2026-07-01
 
 No physics or behaviour changes. The Blender Extensions platform's naming policy (rule 2.1) disallows
