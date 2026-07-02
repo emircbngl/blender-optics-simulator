@@ -11,6 +11,8 @@ existing execute_blender_code socket:
 from __future__ import annotations
 
 import math
+import os
+import tempfile
 
 import bpy
 

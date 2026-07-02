@@ -1542,6 +1542,10 @@ _otw = [
     ("tem_mode", dict(family="LG", i=0, j=1, w_mm=0.5, n_grid=48)),
     ("newton_rings", dict(radius_of_curvature_mm=1000.0, wavelength_nm=589.3, n_grid=64)),
     ("speckle_pattern", dict(diam_mm=1.0, dz_mm=300.0, n_grid=96, n_avg=2)),
+    # png=True paths MUST run: speckle/caustic used os/tempfile without importing them -> NameError
+    # (caught by the extensions.blender.org reviewer; matplotlib-less envs degrade to png_error, no crash)
+    ("speckle_pattern", dict(diam_mm=1.0, dz_mm=300.0, n_grid=96, png=True)),
+    ("caustic_pattern", dict(mirror_radius_mm=10.0, n_rays=400, n_grid=96, png=True)),
     ("caustic_pattern", dict(mirror_radius_mm=10.0, n_rays=300, n_grid=96)),
     ("propagate_chain", dict(steps=[["aperture", 3.0], ["lens", 200.0], ["prop", 200.0]], w0_mm=0.5, n_grid=48)),
     ("propagate_field", dict(wavelength_nm=632.8, w0_mm=0.3, dz_mm=50.0, n_grid=48)),
