@@ -42,6 +42,14 @@ jobs:
       - name: Physics self-test (bare interpreter)
         run: python3 optical_alignment_sim/physics.py
 
+      - name: Store-build compliance audit (extensions.blender.org delist-guard)
+        # Transforms a COPY of the source into the store tree and runs the SYSTEMATIC AST
+        # import audit: every import must be stdlib / Blender-bundled / wheeled -- optional
+        # imports are not allowed on the platform (their words). Pure python, no network,
+        # no Blender. The platform warned that the first post-approval version with issues
+        # means a permanent delist, so this gate runs on every push, forever.
+        run: python3 tools/build_platform_zip.py --audit-only
+
       - name: Extension validate
         run: ~/blender/blender --command extension validate optical_alignment_sim
 
