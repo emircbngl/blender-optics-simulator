@@ -62,7 +62,8 @@ _TOOL_GROUPS = {
         "place_relative", "make_cage", "make_tube", "make_rail", "place_on_grid", "place_on_rail",
         "set_grid", "dress_bench"],
     "trace / measure": ["trace_beam", "scan", "bake_beams", "clear_beams", "tolerance_scan", "monte_carlo_tissue"],
-    "align (mutates DOFs -- on demand only)": ["align_all", "align_element", "auto_align", "tilt_null"],
+    "align (mutates DOFs -- on demand only)": ["align_all", "align_element", "auto_align", "tilt_null",
+                                               "reset_mount"],
     "adaptive optics + surface figure": [
         "ao_command", "ao_close_loop", "ao_close_loop_recon", "ao_kolmogorov", "zonal_render", "pyramid_wfs",
         "turbulence_screen", "propagate_turbulent"],
@@ -1348,6 +1349,33 @@ def set_mount(name, preset):
         return {"error": "object not found: %s" % name}
     ok, msg = mounts.apply_preset(obj, preset)
     return {"ok": ok, "msg": msg}
+
+
+def reset_mount(name):
+    """RE-HOME a mount: zero every adjustment DOF (tip/tilt/rotation/translation knobs back to their
+    home position) WITHOUT touching the stored base pose -- the lab move for a knob wound so far off
+    that the beam is lost and the fine-aligner is blind (a fully-dropped beam gives align_element no
+    gradient). The dark-port recovery pattern is: diagnose() names the dead mount -> reset_mount(it)
+    -> align_element(it). (set_mount re-APPLIES a preset, which re-captures the base from the CURRENT
+    -- possibly knocked -- pose; reset_mount is the one that returns to the true home.)
+    Returns {ok, name, zeroed (how many DOFs), segments}."""
+    scene = _scene()
+    obj = scene.objects.get(name)
+    if not obj:
+        return {"error": "object not found: %s" % name}
+    props = getattr(obj, "optics", None)
+    if props is None or not props.is_optical:
+        return {"error": "'%s' is not an optical element" % name}
+    if not len(props.dofs):
+        return {"error": "'%s' has no adjustment DOFs (no mount preset applied)" % name}
+    n = 0
+    for d in props.dofs:
+        if d.current != 0.0:
+            n += 1
+        d.current = 0.0
+    mounts.compose_pose(obj)
+    tracer.cached_segments = _trace(scene)
+    return {"ok": True, "name": name, "zeroed": n, "segments": len(tracer.cached_segments)}
 
 
 def align_element(name):

@@ -339,6 +339,15 @@ def caustic_pattern(mirror_radius_mm: float = 10.0, n_rays: int = 1400, n_grid: 
 
 
 @mcp.tool()
+def reset_mount(name: str) -> str:
+    """RE-HOME a mount: zero every adjustment DOF back to its home position WITHOUT touching the stored
+    base pose -- the lab move when a knob is wound so far off that the beam is lost and align_element is
+    blind (a fully-dropped beam gives it no gradient). Dark-port recovery: diagnose() names the dead
+    mount -> reset_mount(it) -> align_element(it). Returns {ok, name, zeroed, segments}."""
+    return _fmt(_call("reset_mount", name=name))
+
+
+@mcp.tool()
 def build_bench(spec: dict) -> str:
     """Compile a DECLARATIVE bench spec into a full built + traced + diagnosed bench in ONE call -- the
     alternative to hand-sequencing many add_component/place_relative calls. spec = {name, elements:

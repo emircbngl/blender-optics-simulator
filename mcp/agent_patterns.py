@@ -34,16 +34,20 @@ PATTERNS = {
             "diagnose() -- the dark_detector entry names the last element the beam reached (last_reached)",
             "inspect_element(last_reached) -- is it mis-aimed, absorbing, or a crossed polarizer?",
             "propose_corrections() -- read the suggested fix + maybe_intentional_if BEFORE acting",
-            "auto_align(target=detector) -- let the influence-matrix solver walk the whole chain if it is pointing",
-            "inspect_beam(detector) -- verify recovered power",
+            "reset_mount(last_reached) -- a FULLY-dropped beam gives the fine-aligner no gradient; re-home "
+            "the dead mount first (DOFs to 0, base pose untouched)",
+            "align_element(last_reached) -- fine-align from home; then inspect_beam(detector) to verify power",
         ],
         "gotchas": [
             "A dark port can be INTENTIONAL (interferometer dark fringe, unused reference port, beam dump) -- "
             "judge propose_corrections' fault_confidence before 'fixing'",
             "crossed_polarizer has LOW fault confidence (~0.3): usually an extinction measurement, not a bug",
+            "Do NOT re-home with set_mount: re-applying a preset re-captures the base from the CURRENT "
+            "(knocked) pose -- reset_mount is the one that returns to the true home",
         ],
         "example_scene": "mach_zehnder",
-        "tools_used": ["diagnose", "inspect_element", "propose_corrections", "auto_align", "inspect_beam"],
+        "tools_used": ["diagnose", "inspect_element", "propose_corrections", "reset_mount", "align_element",
+                       "inspect_beam"],
     },
     "null-interferometer-tilt": {
         "intent": "Interference fringes are a stripe pattern (tilt) and you want the flat-phase null "

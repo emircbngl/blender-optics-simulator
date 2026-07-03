@@ -1,0 +1,124 @@
+{
+  "results": [
+    {
+      "family": "steer",
+      "seed": 1,
+      "success": true,
+      "metric_name": "residual_mrad_after",
+      "metric": 0.0003,
+      "detail": "knock tip=-1.27 tilt=-0.72 deg; before=4.32 mrad"
+    },
+    {
+      "family": "steer",
+      "seed": 2,
+      "success": true,
+      "metric_name": "residual_mrad_after",
+      "metric": 0.0006,
+      "detail": "knock tip=0.89 tilt=1.72 deg; before=5.80 mrad"
+    },
+    {
+      "family": "steer",
+      "seed": 3,
+      "success": true,
+      "metric_name": "residual_mrad_after",
+      "metric": 0.0002,
+      "detail": "knock tip=0.63 tilt=-1.70 deg; before=7.03 mrad"
+    },
+    {
+      "family": "darkport",
+      "seed": 1,
+      "success": true,
+      "metric_name": "recovered_power_frac",
+      "metric": 1.0,
+      "detail": "truly_dark=True dark_detector fired=True; nominal=1.000 recovered=1.000"
+    },
+    {
+      "family": "darkport",
+      "seed": 2,
+      "success": true,
+      "metric_name": "recovered_power_frac",
+      "metric": 1.0,
+      "detail": "truly_dark=True dark_detector fired=True; nominal=1.000 recovered=1.000"
+    },
+    {
+      "family": "darkport",
+      "seed": 3,
+      "success": true,
+      "metric_name": "recovered_power_frac",
+      "metric": 1.0,
+      "detail": "truly_dark=True dark_detector fired=True; nominal=1.000 recovered=1.000"
+    },
+    {
+      "family": "ao",
+      "seed": 1,
+      "success": true,
+      "metric_name": "rms_modal_after_waves",
+      "metric": 0.0006,
+      "detail": "rms_modal 0.0779 -> 0.0006 waves"
+    },
+    {
+      "family": "ao",
+      "seed": 2,
+      "success": true,
+      "metric_name": "rms_modal_after_waves",
+      "metric": 0.0006,
+      "detail": "rms_modal 0.0779 -> 0.0006 waves"
+    },
+    {
+      "family": "ao",
+      "seed": 3,
+      "success": true,
+      "metric_name": "rms_modal_after_waves",
+      "metric": 0.0006,
+      "detail": "rms_modal 0.0779 -> 0.0006 waves"
+    },
+    {
+      "family": "modematch",
+      "seed": 1,
+      "success": true,
+      "metric_name": "coupling",
+      "metric": 1.0,
+      "detail": "target w0=0.0797 mm at z=162.9 -> f=142.16 achieved_w0=0.07972"
+    },
+    {
+      "family": "modematch",
+      "seed": 2,
+      "success": true,
+      "metric_name": "coupling",
+      "metric": 1.0,
+      "detail": "target w0=0.0604 mm at z=155.5 -> f=135.18 achieved_w0=0.06039"
+    },
+    {
+      "family": "modematch",
+      "seed": 3,
+      "success": true,
+      "metric_name": "coupling",
+      "metric": 1.0,
+      "detail": "target w0=0.0734 mm at z=147.5 -> f=130.24 achieved_w0=0.07343"
+    },
+    {
+      "family": "bypass",
+      "seed": 1,
+      "success": true,
+      "metric_name": "diagnosis_correct",
+      "metric": 1.0,
+      "detail": "knock dx=28.0 mm; fired-for-NR_Lens=True cleared-on-restore=True"
+    },
+    {
+      "family": "bypass",
+      "seed": 2,
+      "success": true,
+      "metric_name": "diagnosis_correct",
+      "metric": 1.0,
+      "detail": "knock dx=35.2 mm; fired-for-NR_Lens=True cleared-on-restore=True"
+    },
+    {
+      "family": "bypass",
+      "seed": 3,
+      "success": true,
+      "metric_name": "diagnosis_correct",
+      "metric": 1.0,
+      "detail": "knock dx=24.3 mm; fired-for-NR_Lens=True cleared-on-restore=True"
+    }
+  ]
+}
