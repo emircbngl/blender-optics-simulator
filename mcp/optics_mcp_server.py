@@ -339,6 +339,20 @@ def caustic_pattern(mirror_radius_mm: float = 10.0, n_rays: int = 1400, n_grid: 
 
 
 @mcp.tool()
+def build_bench(spec: dict) -> str:
+    """Compile a DECLARATIVE bench spec into a full built + traced + diagnosed bench in ONE call -- the
+    alternative to hand-sequencing many add_component/place_relative calls. spec = {name, elements:
+    [{name, type, at:[x,y,z] | after:{of, along?, distance}, direction:[..], out?:[..] (dual-port
+    mirror/beamsplitter/grating), params:{...}}], mounts?:{name: preset}}. 18 element types (source,
+    mirror, beamsplitter, grating, lens, window, waveplate, aperture, objective, prism, polarizer,
+    pinhole, slit, knife_edge, isolator, crystal, fiber_collimator, detector). Compilation is
+    ALL-OR-NOTHING: types/placement-references/params are validated against the real builder signatures
+    BEFORE anything is built (unknown entries fail with the valid list), so a bad spec never
+    half-mutates the scene. Returns {ok, built, collection, elements, segments, diagnostics_counts}."""
+    return _fmt(_call("build_bench", spec=spec))
+
+
+@mcp.tool()
 def material_tables() -> str:
     """Machine-readable MATERIAL/REFERENCE tables (also the optics://tables/materials resource): glasses
     {n_d, dndt, range_um}, NL crystals {deff, dk/dT, pm_temp, has_sellmeier_oe}, biaxial/IR/metal/detector-QE

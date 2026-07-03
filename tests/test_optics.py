@@ -1612,6 +1612,50 @@ check("material_tables: live glasses/crystals/zernike tables for agents",
       and "BBO" in _mt["nl_crystals"] and _mt["zernike_noll"][4] == "defocus",
       str({k: len(v) if isinstance(v, dict) else v for k, v in list(_mt.items())[:5]})[:100])
 
+# build_bench: the declarative bench compiler. FIDELITY oracle = the michelson example rebuilt from a
+# spec (incl. a relative `after` placement) must trace to the SAME segment count + detector power as the
+# hand-coded builder. Validation is all-or-nothing: a bad spec errors with the VALID options listed and
+# never half-mutates the scene.
+for _o in list(sc.objects):
+    if getattr(_o, "optics", None) and _o.optics.is_optical:
+        bpy.data.objects.remove(_o, do_unlink=True)
+optics_api.build_example("michelson")
+_bb_ref_segs = len(scan._trace(sc))
+_bb_ref_pow, _, _ = alignment.measure(scan._trace(sc), "MI_D", "NONE")
+for _o in list(sc.objects):
+    if getattr(_o, "optics", None) and _o.optics.is_optical:
+        bpy.data.objects.remove(_o, do_unlink=True)
+_bb_spec = {"name": "michelson_replica", "elements": [
+    {"name": "MI_Laser", "type": "source", "at": [-150, 0, 0], "direction": [1, 0, 0]},
+    {"name": "MI_BS", "type": "beamsplitter", "at": [0, 0, 0], "direction": [1, 0, 0], "out": [0, 1, 0]},
+    {"name": "MI_M_fixed", "type": "mirror", "at": [0, 180, 0], "direction": [0, 1, 0], "out": [0, -1, 0]},
+    {"name": "MI_M_stage", "type": "mirror", "after": {"of": "MI_BS", "along": [1, 0, 0], "distance": 180},
+     "direction": [1, 0, 0], "out": [-1, 0, 0]},
+    {"name": "MI_D", "type": "detector", "at": [0, -180, 0], "direction": [0, -1, 0]},
+]}
+_bb = optics_api.build_bench(_bb_spec)
+check("build_bench compiles + builds the declarative michelson", _bb.get("ok") and _bb["elements"] == 5, str(_bb)[:90])
+_bb_pow, _, _ = alignment.measure(scan._trace(sc), "MI_D", "NONE")
+check("build_bench FIDELITY: same segment count as the hand-coded example", _bb["segments"] == _bb_ref_segs,
+      "%s vs %s" % (_bb["segments"], _bb_ref_segs))
+check("build_bench FIDELITY: same detector power (relative `after` placement exact)",
+      abs(_bb_pow - _bb_ref_pow) < 1e-9, "%.9f vs %.9f" % (_bb_pow, _bb_ref_pow))
+_bb_n_before = len([o for o in sc.objects if getattr(o, "optics", None) and o.optics.is_optical])
+_bad1 = optics_api.build_bench({"elements": [{"name": "X", "type": "flux_capacitor", "at": [0, 0, 0],
+                                              "direction": [1, 0, 0]}]})
+check("build_bench rejects unknown type WITH the valid type list",
+      "error" in _bad1 and "valid types" in _bad1["error"] and "beamsplitter" in _bad1["error"])
+_bad2 = optics_api.build_bench({"elements": [{"name": "L", "type": "lens", "at": [0, 0, 0],
+                                              "direction": [1, 0, 0], "params": {"focal_lenght": 100}}]})
+check("build_bench rejects unknown param WITH the valid param list",
+      "error" in _bad2 and "valid params" in _bad2["error"] and "focal" in _bad2["error"])
+_bad3 = optics_api.build_bench({"elements": [{"name": "M", "type": "mirror",
+                                              "after": {"of": "NOPE", "distance": 10},
+                                              "direction": [1, 0, 0], "out": [0, 1, 0]}]})
+check("build_bench rejects a forward/unknown `after` reference", "error" in _bad3 and "EARLIER" in _bad3["error"])
+check("build_bench bad specs are all-or-nothing (scene untouched)",
+      len([o for o in sc.objects if getattr(o, "optics", None) and o.optics.is_optical]) == _bb_n_before)
+
 # inspect_all dashboard + export_report bundler (the new outputs) run end-to-end on a built example
 _ia = optics_api.inspect_all()
 check("inspect_all dashboard: per-element table for every optic", _ia.get("ok") and _ia["n_elements"] >= 4, str(_ia.get("n_elements")))

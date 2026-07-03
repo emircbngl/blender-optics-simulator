@@ -51,8 +51,8 @@ _TOOL_GROUPS = {
         "inspect_beam", "inspect_element", "inspect_all", "beam_profile", "ao_measure", "get_wavefront", "sensor_capture",
         "check_mechanics", "coupling_efficiency", "material_tables"],
     "build / scene": [
-        "build_example", "add_component", "tag_element", "swap_part", "set_param", "set_mount", "import_glass",
-        "fdtd_derive_property"],
+        "build_example", "build_bench", "add_component", "tag_element", "swap_part", "set_param", "set_mount",
+        "import_glass", "fdtd_derive_property"],
     "design (pure math, no scene change)": [
         "design_telescope", "design_4f", "mode_match", "optics_calc", "wave_psf", "aberrated_psf",
         "propagate_field", "propagate_chain", "gerchberg_saxton", "fienup_phase_retrieval", "spatial_filter",
@@ -1490,6 +1490,19 @@ def build_example(kind='mach_zehnder'):
     name = ex.build(kind, bpy.context)
     res = trace_beam()
     return {"built": kind, "collection": name, "segments": res["segments"]}
+
+
+def build_bench(spec):
+    """Compile a DECLARATIVE bench spec (dict; JSON string; YAML when PyYAML exists) into a full built +
+    traced + diagnosed bench -- the one-call alternative to hand-sequencing many add_component/
+    place_relative calls. Spec: {name, elements: [{name, type, at:[x,y,z] | after:{of, along?, distance},
+    direction:[..], out?:[..] (dual-port mirror/beamsplitter/grating), params:{...}}], mounts?:{name:preset}}.
+    Compilation is ALL-OR-NOTHING: the whole spec validates (types, placement references, params checked
+    against the real builder signatures -- unknown entries fail with the valid list) BEFORE anything is
+    built, so a bad spec never half-mutates the scene. 18 element types; see the optics://workflows
+    resources + capabilities(). Returns {ok, built, collection, elements, segments, diagnostics_counts}."""
+    from . import bench_compiler
+    return bench_compiler.build(spec)
 
 
 def add_component(key, location=(0.0, 0.0, 0.0)):
