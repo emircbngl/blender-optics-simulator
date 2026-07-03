@@ -60,3 +60,50 @@ jobs:
 
       - name: Textbook validation (closed forms vs known answers)
         run: xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_validation.py
+
+  store-build:
+    # FULL store-build smoke (finding: --audit-only alone never exercises the transform anchors,
+    # the pinned wheel fetch, or Blender's extension build/validate -- so a drift would only
+    # surface at release time). Builds the real 4 platform zips on every push.
+    runs-on: ubuntu-latest
+    env:
+      BLENDER_VERSION: "4.2.3"
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System libraries for headless Blender
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libxxf86vm1 libxfixes3 libxi6 libxkbcommon0 libsm6 libgl1 libxrender1 xkb-data
+
+      - name: Cache Blender
+        id: cache-blender
+        uses: actions/cache@v4
+        with:
+          path: ~/blender
+          key: blender-${{ env.BLENDER_VERSION }}-linux-x64
+
+      - name: Download Blender ${{ env.BLENDER_VERSION }}
+        if: steps.cache-blender.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/blender
+          MAJ=$(echo "$BLENDER_VERSION" | cut -d. -f1,2)
+          curl -fL -o /tmp/blender.tar.xz \
+            "https://download.blender.org/release/Blender${MAJ}/blender-${BLENDER_VERSION}-linux-x64.tar.xz"
+          tar -xf /tmp/blender.tar.xz -C ~/blender --strip-components=1
+
+      - name: Cache pip download cache (wheel fetch)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-wheels-${{ hashFiles('tools/build_platform_zip.py') }}
+
+      - name: Full store build (transform + pinned wheels + split-platform zips + validate)
+        run: OAS_BLENDER=~/blender/blender python3 tools/build_platform_zip.py
+
+      - name: Assert 4 platform zips
+        run: |
+          ls -l dist/platform/
+          test "$(ls dist/platform/*.zip | wc -l)" -eq 4

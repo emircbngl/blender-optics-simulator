@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import math
 
 from . import elements_generic as eg
 
@@ -63,10 +64,19 @@ def _err(msg):
     return {"ok": False, "error": msg}
 
 
-def _vec(v, what, elem):
+def _vec(v, what, elem, nonzero=False):
     if (not isinstance(v, (list, tuple))) or len(v) != 3:
         raise ValueError("%s of '%s' must be a 3-vector [x, y, z], got %r" % (what, elem, v))
-    return tuple(float(x) for x in v)
+    try:
+        out = tuple(float(x) for x in v)
+    except (TypeError, ValueError):
+        raise ValueError("%s of '%s' must contain numbers, got %r" % (what, elem, v))
+    if not all(math.isfinite(x) for x in out):
+        # JSON happily parses Infinity/NaN -- they must never reach the geometry
+        raise ValueError("%s of '%s' must be finite (no NaN/Infinity), got %r" % (what, elem, v))
+    if nonzero and (out[0] ** 2 + out[1] ** 2 + out[2] ** 2) < 1e-24:
+        raise ValueError("%s of '%s' must be a non-zero vector" % (what, elem))
+    return out
 
 
 def _valid_params(fn):
@@ -128,32 +138,42 @@ def compile_spec(spec):
             loc = _vec(e["at"], "'at'", name)
         else:
             a = e["after"]
+            if not isinstance(a, dict):
+                raise ValueError("element '%s': 'after' must be a dict {of, along?, distance?}, got %r"
+                                 % (name, a))
             ref = a.get("of")
-            if ref not in positions:
-                raise ValueError("element '%s': 'after.of' must reference an EARLIER element; '%s' is not "
+            if not isinstance(ref, str) or ref not in positions:
+                raise ValueError("element '%s': 'after.of' must name an EARLIER element; %r is not "
                                  "one of %s" % (name, ref, sorted(positions) or "(none yet)"))
             ref_loc, ref_dir = positions[ref]
-            along = _vec(a["along"], "'after.along'", name) if "along" in a else ref_dir
-            dist = float(a.get("distance", 0.0))
+            along = _vec(a["along"], "'after.along'", name, nonzero=True) if "along" in a else ref_dir
+            try:
+                dist = float(a.get("distance", 0.0))
+            except (TypeError, ValueError):
+                raise ValueError("element '%s': 'after.distance' must be a number, got %r"
+                                 % (name, a.get("distance")))
+            if not math.isfinite(dist):
+                raise ValueError("element '%s': 'after.distance' must be finite" % name)
             n = (along[0] ** 2 + along[1] ** 2 + along[2] ** 2) ** 0.5
-            if n < 1e-12:
-                raise ValueError("element '%s': 'after.along' must be non-zero" % name)
             loc = tuple(ref_loc[k] + dist * along[k] / n for k in range(3))
-        # --- directions
+        # --- directions (must be non-zero: a zero axis crashes the builders' basis math)
         if "direction" not in e:
             raise ValueError("element '%s' (%s): needs 'direction' (the beam/optical axis)" % (name, etype))
-        d_in = _vec(e["direction"], "'direction'", name)
+        d_in = _vec(e["direction"], "'direction'", name, nonzero=True)
         dir_kwargs = {dir_args[0]: d_in}
         if len(dir_args) == 2:
             if "out" not in e:
                 raise ValueError("element '%s' (%s): dual-port type needs 'out' (the reflected/outgoing "
                                  "direction) in addition to 'direction'" % (name, etype))
-            dir_kwargs[dir_args[1]] = _vec(e["out"], "'out'", name)
+            dir_kwargs[dir_args[1]] = _vec(e["out"], "'out'", name, nonzero=True)
         elif "out" in e:
             raise ValueError("element '%s' (%s): 'out' is only for dual-port types (mirror/beamsplitter/"
                              "grating)" % (name, etype))
         # --- params, validated against the real builder signature
         params = e.get("params") or {}
+        if not isinstance(params, dict):
+            raise ValueError("element '%s' (%s): 'params' must be a dict of keyword arguments, got %r"
+                             % (name, etype, params))
         valid = _valid_params(builder)
         unknown = sorted(set(params) - set(valid))
         if unknown:
@@ -161,32 +181,71 @@ def compile_spec(spec):
                              % (name, etype, unknown, etype, ", ".join(valid)))
         plan.append((builder, name, loc, dir_kwargs, dict(params)))
         positions[name] = (loc, d_in)
-    # --- mounts reference check
+    # --- mounts: reference check AND preset check, both at compile time -- a bad preset must
+    # fail here, not after half the bench has already been built
     mounts = spec.get("mounts") or {}
+    if not isinstance(mounts, dict):
+        raise ValueError("'mounts' must be a dict {element_name: preset}, got %r" % (mounts,))
     bad = sorted(set(mounts) - seen)
     if bad:
         raise ValueError("'mounts' references unknown element(s): %s" % bad)
+    from . import presets
+    valid_presets = set(presets.MOUNT_LIBRARY)
+    for mname, preset in mounts.items():
+        if preset not in valid_presets:
+            raise ValueError("mount for '%s': unknown preset %r; valid presets: %s"
+                             % (mname, preset, ", ".join(sorted(valid_presets))))
     return plan, mounts, spec.get("name") or "bench"
 
 
 def build(spec):
     """Compile + BUILD the spec into a new collection, then trace + diagnose. Returns
-    {ok, built, collection, elements, segments, diagnostics_counts} or {ok:False, error}."""
+    {ok, built, collection, elements, segments, diagnostics_counts} or {ok:False, error}.
+
+    NOTE (replace semantics, by design): building a spec whose ``name`` matches an existing
+    bench REMOVES that previous "Bench_<name>" collection first -- same contract as
+    ``build_example``. Re-submitting a spec therefore rebuilds the bench, it does not
+    duplicate it; use a different ``name`` to keep both.
+
+    If any builder or mount fails mid-build, everything created so far (objects + the new
+    collection) is removed before the error returns -- the scene is never left half-built.
+    The pre-existing same-name bench that was replaced is NOT restored (it was removed up
+    front); the error message says so when that applies."""
     try:
         plan, mounts, bench_name = compile_spec(spec)
     except ValueError as e:
         return _err(str(e))
     import bpy
     from . import scan, tracer, diagnostics
-    coll = eg.example_collection("Bench_%s" % bench_name)
+    coll_name = "Bench_%s" % bench_name
+    replaced = coll_name in bpy.data.collections
+    coll = eg.example_collection(coll_name)
     built = []
-    for builder, name, loc, dir_kwargs, params in plan:
-        builder(name, loc, coll=coll, **dir_kwargs, **params)
-        built.append(name)
-    if mounts:
-        from . import optics_api
-        for name, preset in mounts.items():
-            optics_api.set_mount(name, preset)
+    failing = "?"
+    try:
+        for builder, name, loc, dir_kwargs, params in plan:
+            failing = name
+            builder(name, loc, coll=coll, **dir_kwargs, **params)
+            built.append(name)
+        if mounts:
+            from . import optics_api
+            for name, preset in mounts.items():
+                failing = name
+                res = optics_api.set_mount(name, preset)
+                if isinstance(res, dict) and res.get("error"):
+                    raise RuntimeError("set_mount('%s', '%s'): %s" % (name, preset, res["error"]))
+    except Exception as e:
+        # all-or-nothing at build time too: tear down whatever this call created
+        try:
+            for obj in list(coll.all_objects):
+                bpy.data.objects.remove(obj, do_unlink=True)
+            bpy.data.collections.remove(coll)
+        except Exception:
+            pass
+        msg = "build failed at element '%s': %s: %s" % (failing, type(e).__name__, e)
+        if replaced:
+            msg += " (note: the previous '%s' collection was already replaced and is not restored)" % coll_name
+        return _err(msg)
     bpy.context.view_layer.update()
     segs = scan._trace(bpy.context.scene)
     tracer.cached_segments = segs

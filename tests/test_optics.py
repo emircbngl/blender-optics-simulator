@@ -1655,6 +1655,43 @@ _bad3 = optics_api.build_bench({"elements": [{"name": "M", "type": "mirror",
 check("build_bench rejects a forward/unknown `after` reference", "error" in _bad3 and "EARLIER" in _bad3["error"])
 check("build_bench bad specs are all-or-nothing (scene untouched)",
       len([o for o in sc.objects if getattr(o, "optics", None) and o.optics.is_optical]) == _bb_n_before)
+# review-hardening guards: zero/NaN vectors, non-dict params/after, unknown mount preset --
+# every one must fail at COMPILE time with an actionable message, scene untouched
+_bad4 = optics_api.build_bench({"elements": [{"name": "S", "type": "source", "at": [0, 0, 0],
+                                              "direction": [0, 0, 0]}]})
+check("build_bench rejects a zero direction vector", "error" in _bad4 and "non-zero" in _bad4["error"])
+_bad5 = optics_api.build_bench({"elements": [{"name": "S", "type": "source", "at": [0, float("nan"), 0],
+                                              "direction": [1, 0, 0]}]})
+check("build_bench rejects NaN coordinates", "error" in _bad5 and "finite" in _bad5["error"])
+_bad6 = optics_api.build_bench({"elements": [{"name": "S", "type": "source", "at": [0, 0, 0],
+                                              "direction": [1, 0, 0], "params": [632.8]}]})
+check("build_bench rejects non-dict params", "error" in _bad6 and "dict" in _bad6["error"])
+_bad7 = optics_api.build_bench({"elements": [{"name": "M", "type": "mirror", "after": "S",
+                                              "direction": [1, 0, 0], "out": [0, 1, 0]}]})
+check("build_bench rejects non-dict `after`", "error" in _bad7 and "dict" in _bad7["error"])
+_bad8 = optics_api.build_bench({"elements": [{"name": "S", "type": "source", "at": [0, 0, 0],
+                                              "direction": [1, 0, 0]}],
+                                "mounts": {"S": "HOVERBOARD"}})
+check("build_bench rejects unknown mount preset WITH the valid preset list",
+      "error" in _bad8 and "valid presets" in _bad8["error"])
+# mid-BUILD failure (a builder raising) must roll back everything this call created
+_atomic_before = len([o for o in sc.objects if getattr(o, "optics", None) and o.optics.is_optical])
+_orig_detector = elements_generic.detector
+def _rb_boom(*_a, **_k):
+    raise RuntimeError("regress boom")
+elements_generic.detector = _rb_boom
+try:
+    _ab = optics_api.build_bench({"name": "atomic_regress", "elements": [
+        {"name": "AR_S", "type": "source", "at": [400, 400, 0], "direction": [1, 0, 0]},
+        {"name": "AR_D", "type": "detector", "at": [500, 400, 0], "direction": [1, 0, 0]}]})
+finally:
+    elements_generic.detector = _orig_detector
+check("build_bench mid-build failure -> error naming the failing element",
+      "error" in _ab and "AR_D" in _ab["error"])
+check("build_bench mid-build failure leaves no half-built collection",
+      "Bench_atomic_regress" not in bpy.data.collections)
+check("build_bench mid-build failure leaves no orphan optics",
+      len([o for o in sc.objects if getattr(o, "optics", None) and o.optics.is_optical]) == _atomic_before)
 
 # inspect_all dashboard + export_report bundler (the new outputs) run end-to-end on a built example
 _ia = optics_api.inspect_all()
@@ -1802,9 +1839,74 @@ _cli.close()
 bridge.stop()
 check("bridge stop is clean (listener closed, clients dropped)", not bridge.is_running() and not bridge._clients)
 
+print("[bridge hardening: BaseException -> error reply; wbuf cap; newline-less flood drop]")
+_bok2, _bmsg2 = bridge.start(port=_free_port)
+check("bridge restarts for hardening tests", _bok2 and bridge.is_running(), _bmsg2)
+# 1. a dispatched call raising SystemExit must become an ERROR REPLY and the pump must survive
+# (if it escaped, Blender would silently unregister the timer -> bridge dead without a log)
+def _regress_systemexit():
+    raise SystemExit(3)
+optics_api.regress_systemexit = _regress_systemexit
+_cli = _sck.create_connection(("127.0.0.1", _free_port), timeout=2.0)
+_cli.setblocking(False)
+_cli.sendall(b'{"fn":"regress_systemexit"}\n{"fn":"ping"}\n')
+_bbuf = b""
+for _ in range(400):
+    bridge._pump()
+    try:
+        _bbuf += _cli.recv(1 << 20)
+    except (BlockingIOError, _sck.timeout):
+        pass
+    if _bbuf.count(b"\n") >= 2:
+        break
+_hr = [_json.loads(x) for x in _bbuf.decode("utf-8").strip().split("\n")[:2]]
+check("bridge converts a dispatched SystemExit into an error reply",
+      len(_hr) >= 1 and not _hr[0].get("ok") and "SystemExit" in _hr[0].get("error", ""))
+check("bridge pump SURVIVES SystemExit (next request still answered)",
+      len(_hr) == 2 and _hr[1].get("result") == "pong" and bridge.is_running())
+_cli.close()
+delattr(optics_api, "regress_systemexit")
+bridge._pump()                                    # let the pump notice the close
+# 2. a client that keeps requesting but never reads must be dropped at the wbuf cap
+_cap_orig = bridge._MAX_WBUF
+bridge._MAX_WBUF = 64
+_cli = _sck.create_connection(("127.0.0.1", _free_port), timeout=2.0)
+_cli.setblocking(False)
+_cli.sendall(b'{"fn":"ping"}\n' * 32)             # ~32 pending replies >> 64 bytes, never read
+for _ in range(100):
+    bridge._pump()
+    if not bridge._clients:
+        break
+check("bridge drops a never-reading client at the wbuf cap", not bridge._clients)
+bridge._MAX_WBUF = _cap_orig
+_cli.close()
+# 3. a >1MB newline-less flood must DROP the client (not just clear and let it flood forever)
+_cli = _sck.create_connection(("127.0.0.1", _free_port), timeout=2.0)
+_cli.setblocking(False)
+bridge._pump()                                    # accept
+_chunk = b"y" * 65536
+for _ in range(200):
+    try:
+        _cli.send(_chunk)
+    except (BlockingIOError, _sck.timeout):
+        pass
+    except OSError:
+        break                                     # server already closed on us
+    bridge._pump()
+    if not bridge._clients:
+        break
+check("bridge drops a >1MB newline-less flood client", not bridge._clients)
+_cli.close()
+bridge.stop()
+check("bridge hardening teardown clean", not bridge.is_running() and not bridge._clients)
+
 print("[API error-shape: structured {error}, never a raw traceback]")
 check("add_component unknown -> error", "error" in optics_api.add_component("RT_NO_SUCH_KEY"))
 check("trace_beam bad mode -> error", "error" in optics_api.trace_beam(mode="bogus"))
+check("wave producers reject non-numeric wavelength as {error} (no traceback)",
+      "error" in optics_api.wave_psf("abc", 8.0, 10.0))
+check("wave producers reject non-numeric n_grid as {error} (no traceback)",
+      "error" in optics_api.wave_psf(632.8, 8.0, 10.0, n_grid="huge"))
 _mk("RT_plain_a", (0, 0, 0)); _mk("RT_plain_b", (10, 0, 0))      # non-optical objects
 check("place_relative non-optical -> error", "error" in optics_api.place_relative("RT_plain_a", "RT_plain_b"))
 check("scan bad kind -> error", "error" in optics_api.scan(kind="bogus"))

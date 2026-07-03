@@ -30,6 +30,8 @@ _clients = {}               # client socket -> {"rbuf": bytearray, "wbuf": bytea
 _port = None
 _TIMER_DT = 0.05
 _MAX_LINE = 1 << 20         # cap a newline-less flood at 1 MB so rbuf can't grow unbounded
+_MAX_WBUF = 8 << 20         # cap per-client pending replies at 8 MB: a client that requests but
+                            # never reads must not grow our memory unboundedly -- it gets dropped
 
 
 def _api():
@@ -127,8 +129,14 @@ def _pump():
         if st is None:
             continue
         if len(st["rbuf"]) > _MAX_LINE and b"\n" not in st["rbuf"]:
-            st["wbuf"] += _encode({"ok": False, "error": "request line exceeds 1 MB"})
-            st["rbuf"].clear()
+            # a newline-less flood is a broken (or hostile) client: reply once, then DROP it --
+            # merely clearing the buffer would let it flood again for free, forever
+            try:
+                conn.send(_encode({"ok": False, "error": "request line exceeds 1 MB; closing"}))
+            except OSError:
+                pass
+            _drop(conn)
+            continue
         while True:
             nl = st["rbuf"].find(b"\n")
             if nl < 0:
@@ -136,7 +144,17 @@ def _pump():
             line = bytes(st["rbuf"][:nl]).strip()
             del st["rbuf"][:nl + 1]
             if line:
-                st["wbuf"] += _encode(_dispatch(line))
+                # BaseException, not Exception: a dispatched call that raises SystemExit /
+                # KeyboardInterrupt must become an ERROR REPLY -- if it escaped _pump, Blender
+                # would silently unregister the timer and the bridge would die without a log.
+                # (One bad line also must not eat the remaining lines of this batch.)
+                try:
+                    st["wbuf"] += _encode(_dispatch(line))
+                except BaseException as e:
+                    st["wbuf"] += _encode({"ok": False,
+                                           "error": "dispatch raised %s: %s" % (type(e).__name__, e)})
+        if len(st["wbuf"]) > _MAX_WBUF:
+            _drop(conn)                           # replies requested but never read: stop buffering
     # 3. flush pending writes (partial sends carry over to the next tick)
     for conn in list(_clients):
         st = _clients.get(conn)

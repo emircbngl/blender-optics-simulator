@@ -484,7 +484,7 @@ def material_tables():
         "biaxial_crystals": sorted(physics.BIAXIAL_SELLMEIER),
         "ir_materials": sorted(physics.IR_MATERIALS),
         "metals_nk": sorted(physics.METAL_NK),
-        "detector_qe": {k: {"window_nm": [v[0], v[3]], "peak_qe": v[4]}
+        "detector_qe": {k: ({"window_nm": [v[0], v[3]], "peak_qe": v[4]} if len(v) >= 5 else {})
                         for k, v in physics.DETECTOR_QE.items()},
         "zernike_noll": dict(physics.ZERNIKE_NAMES),
         "provenance": "sourced constants; see docs/DATASOURCES.md (refractiveindex.info CC0 + cited datasheets)",
@@ -497,13 +497,18 @@ def _wave_args_error(wavelength_nm=None, n_grid=None, n_grid_max=4096, **positiv
     allocates O(n^2) FFT arrays and OOM-kills Blender (verified: n_grid=1e6 -> exit 137). Returns an
     {error} dict to hand straight back, or None when the args are fine. Extra keyword args are checked
     strictly-positive when not None (pass e.g. w0_mm=w0_mm, f_number=f_number)."""
-    if wavelength_nm is not None and not (wavelength_nm > 0):
-        return {"error": "wavelength_nm must be positive (nm)"}
-    if n_grid is not None and not (8 <= int(n_grid) <= n_grid_max):
-        return {"error": "n_grid must be in 8..%d (large FFT grids exhaust memory)" % n_grid_max}
-    for name, val in positives.items():
-        if val is not None and not (val > 0):
-            return {"error": "%s must be positive" % name}
+    # every comparison/conversion below can itself raise on non-numeric garbage ("abc", [1,2],
+    # NaN-strings...) -- that must come back as an {error} dict too, never as an exception
+    try:
+        if wavelength_nm is not None and not (wavelength_nm > 0):
+            return {"error": "wavelength_nm must be positive (nm)"}
+        if n_grid is not None and not (8 <= int(n_grid) <= n_grid_max):
+            return {"error": "n_grid must be in 8..%d (large FFT grids exhaust memory)" % n_grid_max}
+        for name, val in positives.items():
+            if val is not None and not (val > 0):
+                return {"error": "%s must be positive" % name}
+    except (TypeError, ValueError) as e:
+        return {"error": "non-numeric argument: %s" % e}
     return None
 
 

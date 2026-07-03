@@ -6,6 +6,39 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Fixed — store-critical review findings (24 confirmed, all closed)
+A dedicated adversarial code review of the store-facing surface confirmed 24 findings; every one is
+fixed here (one cosmetic item intentionally skipped). Highlights:
+- **Bridge survives hostile/broken clients.** A dispatched call raising `SystemExit`/
+  `KeyboardInterrupt` now becomes an error reply instead of silently killing the timer (Blender
+  unregisters a timer whose callback raises). A client that requests but never reads is dropped at
+  an 8 MB write-buffer cap; a >1 MB newline-less flood now drops the client instead of merely
+  clearing the buffer (which let it flood again for free). One bad line no longer eats the rest of
+  its batch.
+- **`build_bench` validation + atomicity.** Zero/NaN/non-numeric vectors, non-dict `params`/`after`,
+  non-string `after.of` and non-finite `after.distance` are all rejected at compile time with
+  actionable messages; mount presets are validated against `presets.MOUNT_LIBRARY` (with the valid
+  list) BEFORE anything is built; a builder failing mid-build now rolls back everything the call
+  created — the scene is never left half-built. Replace semantics (same-name spec rebuilds the
+  bench) are now documented.
+- **Wave-producer guards harden against non-numeric garbage** (`wavelength_nm="abc"`,
+  `n_grid="huge"`) — `{error}` reply, never a traceback.
+- **MCP server:** a bridge that closes mid-reply now yields a clear "is Blender still running?"
+  error instead of a cryptic JSON parse error; a missing `agent_patterns.py` degrades the workflow
+  resources instead of killing the whole server.
+- **Store packager:** `gpu.py`'s `_try_import` (a `__import__` probe for cupy/mlx that dodged the
+  AST import audit) is now patched out of the store build, and the audit gained dynamic-import
+  tokens (`__import__`, `import_module`) plus a broader updater-reference rule. Wheel versions are
+  now PINNED (matplotlib 3.11.0 set) and the wheel cache is wiped before each fetch — every cached
+  wheel gets bundled, so a stale cache could ship two versions of the same package. Pinning also
+  exposed a REAL resolution skew: recent contourpy/pillow cp311 Linux wheels are manylinux_2_28-only,
+  so the old manylinux2014-only request silently resolved OLDER versions for py311-Linux than for
+  every other platform. Blender 4.2+ requires glibc ≥ 2.28, so the fetch now accepts manylinux_2_28
+  and the whole matrix unifies at the pinned versions.
+- **CI:** a new `store-build` job builds the real 4 split-platform zips (transform + pinned wheel
+  fetch + Blender `extension build`/`validate`) on every push — transform-anchor drift now fails CI
+  instead of surfacing at release time.
+
 ## [0.24.3] — Store-review hardening: thread-free MCP bridge, input guards, graceful plots — 2026-07-02
 
 The extensions.blender.org review pass. Every reviewer point is addressed — several turned out to be

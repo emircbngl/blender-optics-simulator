@@ -27,20 +27,28 @@ import tempfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EXT_ID = "optical_alignment_sim"
-BLENDER = "/Applications/Blender.app/Contents/MacOS/Blender"
+BLENDER = os.environ.get("OAS_BLENDER", "/Applications/Blender.app/Contents/MacOS/Blender")
 WHEEL_CACHE = os.path.join(ROOT, "dist", "wheel_cache")      # gitignored via dist/
 
 # --- wheel matrix -----------------------------------------------------------------
 # Blender 4.2 LTS-4.5 ship Python 3.11; Blender 5.x ships 3.13 (measured locally).
 PY_TAGS = ["311", "313"]
-PIP_PLATFORMS = {          # pip --platform  ->  blender manifest platform
-    "macosx_11_0_arm64": "macos-arm64",
-    "macosx_10_13_x86_64": "macos-x64",
-    "win_amd64": "windows-x64",
-    "manylinux2014_x86_64": "linux-x64",
+PIP_PLATFORMS = {          # blender manifest platform -> pip --platform tags accepted (any match wins).
+    # Linux accepts manylinux_2_28 alongside manylinux2014: Blender 4.2+ officially requires
+    # glibc >= 2.28, and recent contourpy/pillow cp311 wheels are published as 2_28-ONLY --
+    # requesting only manylinux2014 silently resolved OLDER versions for py311-linux.
+    "macos-arm64": ["macosx_11_0_arm64"],
+    "macos-x64": ["macosx_10_13_x86_64"],
+    "windows-x64": ["win_amd64"],
+    "linux-x64": ["manylinux2014_x86_64", "manylinux_2_28_x86_64"],
 }
-BINARY_PKGS = ["matplotlib", "contourpy", "kiwisolver", "pillow"]     # need per-(platform, py) wheels
-PURE_PKGS = ["cycler", "fonttools", "packaging", "pyparsing", "python-dateutil", "six"]
+# PINNED versions: an unpinned `pip download` re-resolves at every build, so two builds of the
+# SAME add-on version could bundle different dependency versions (and a polluted cache once held
+# both pillow 12.2.0 and 12.3.0 side by side). Bump these deliberately, with a test build.
+BINARY_PKGS = {"matplotlib": "3.11.0", "contourpy": "1.3.3",          # per-(platform, py) wheels
+               "kiwisolver": "1.5.0", "pillow": "12.3.0"}
+PURE_PKGS = {"cycler": "0.12.1", "fonttools": "4.63.0", "packaging": "26.2",
+             "pyparsing": "3.3.2", "python-dateutil": "2.9.0.post0", "six": "1.17.0"}
 WHEELED_MODULES = {"matplotlib"}          # import names satisfied by the bundled wheels
 
 # Imports that ship with Blender itself (beyond the stdlib).
@@ -90,6 +98,13 @@ def transform(tree):
          r'[ \t]*"re-run; the squeezed-quadrature VARIANCE is the verified closed form and is returned now\."',
          '"note": "the squeezed-quadrature VARIANCE is the verified closed form; the full state "\n'
          '                    "simulation lives in the GitHub build."')
+
+    # gpu backend probes OUT: _try_import dodges the AST import audit via __import__/importlib,
+    # but it is still an optional third-party import (cupy/mlx) -- not allowed on the store.
+    # The NumPy path IS the store feature; enable() then honestly reports 'numpy'.
+    _sub(j("gpu.py"), r'def _try_import\(name\):\n(    .*\n|\n)+?(?=def )',
+         'def _try_import(name):\n'
+         '    return None    # store build: no optional imports; the NumPy backend is the feature\n\n\n')
 
     # bench spec parsing: JSON-only (no optional yaml import)
     _sub(j("bench_compiler.py"), r'    if isinstance\(spec, str\):\n(.|\n)*?raise ValueError\("spec must be a dict or a JSON/YAML string"\)',
@@ -169,7 +184,10 @@ def audit(tree, wheels_present):
         for pat, why in [(r'sys\.modules\[', "sys.modules manipulation"),
                          (r'sys\.modules\.pop', "sys.modules manipulation"),
                          (r'(?m)^if __name__', "__main__ block"),
-                         (r'from \. import updater|\bupdater\.', "updater reference"),
+                         (r'__import__\s*\(', "dynamic import dodges the AST audit"),
+                         (r'importlib\.import_module|\bimport_module\s*\(', "dynamic import dodges the AST audit"),
+                         (r'(?m)from \.\s*import[^\n]*\bupdater\b|from \.updater\b|^\s*import updater\b|\bupdater\.',
+                          "updater reference"),
                          (r'(?i)freecad', "external software reference"),
                          (r'\bimport threading\b|\bimport queue\b', "threading/queue")]:
             for m in re.finditer(pat, src):
@@ -181,22 +199,39 @@ def audit(tree, wheels_present):
 
 
 def fetch_wheels():
-    """Download the matplotlib wheel set (cached in dist/wheel_cache). Pure-python deps once;
-    binary deps per (platform x python). numpy is NOT bundled -- Blender ships it."""
-    os.makedirs(WHEEL_CACHE, exist_ok=True)
+    """Download the PINNED matplotlib wheel set into a fresh dist/wheel_cache. Pure-python deps
+    once; binary deps per (platform x python). numpy is NOT bundled -- Blender ships it.
+    The cache is wiped first: the copy step bundles EVERY .whl in it, so one stale wheel from an
+    earlier (differently-resolved) run would ship two versions of the same package."""
+    shutil.rmtree(WHEEL_CACHE, ignore_errors=True)
+    os.makedirs(WHEEL_CACHE)
     def dl(args):
         subprocess.run([sys.executable, "-m", "pip", "download", "--no-deps", "-q",
                         "--only-binary=:all:", "-d", WHEEL_CACHE] + args, check=True)
-    for pkg in PURE_PKGS:
+    for pkg, ver in PURE_PKGS.items():
         # force the UNIVERSAL wheel: fonttools also publishes cp-specific binaries, and an unpinned
         # download grabs the local-env one -- which would strand Blender 4.2 (py311) without fonttools
-        dl([pkg, "--python-version", "311", "--implementation", "py", "--abi", "none", "--platform", "any"])
-    for plat in PIP_PLATFORMS:
+        dl(["%s==%s" % (pkg, ver),
+            "--python-version", "311", "--implementation", "py", "--abi", "none", "--platform", "any"])
+    for tags in PIP_PLATFORMS.values():
         for py in PY_TAGS:
-            for pkg in BINARY_PKGS:
-                dl([pkg, "--platform", plat, "--python-version", py, "--implementation", "cp"])
+            for pkg, ver in BINARY_PKGS.items():
+                plat_args = []
+                for t in tags:
+                    plat_args += ["--platform", t]
+                dl(["%s==%s" % (pkg, ver)] + plat_args + ["--python-version", py,
+                    "--implementation", "cp"])
     wheels = sorted(w for w in os.listdir(WHEEL_CACHE) if w.endswith(".whl"))
-    print("wheel cache: %d wheels" % len(wheels))
+    # every wheel must match a pinned (name, version) -- catches a pip fallback or cache pollution
+    pins = {("%s-%s" % (p, v)).replace("-", "_") for d in (PURE_PKGS, BINARY_PKGS) for p, v in d.items()}
+    stray = [w for w in wheels
+             if not any(w.replace("-", "_").startswith(pin + "_") for pin in pins)]
+    if stray:
+        sys.exit("WHEEL SET MISMATCH (not in the pinned matrix): %s" % stray)
+    expected = len(PURE_PKGS) + len(BINARY_PKGS) * len(PIP_PLATFORMS) * len(PY_TAGS)
+    print("wheel cache: %d wheels (expected %d)" % (len(wheels), expected))
+    if len(wheels) != expected:
+        sys.exit("WHEEL COUNT MISMATCH: got %d, expected %d" % (len(wheels), expected))
     return wheels
 
 
@@ -235,7 +270,7 @@ def build(audit_only=False):
     dotted = "".join("permissions.%s\n" % ln.strip() for ln in m.group(1).splitlines()
                      if ln.strip() and not ln.strip().startswith("#"))
     src = src[:m.start()] + dotted + src[m.end():]
-    block = ("platforms = [%s]\n" % ", ".join('"%s"' % p for p in sorted(set(PIP_PLATFORMS.values())))
+    block = ("platforms = [%s]\n" % ", ".join('"%s"' % p for p in sorted(PIP_PLATFORMS))
              + "wheels = [\n%s\n]\n" % ",\n".join('  "./wheels/%s"' % w for w in wheels))
     src = src.replace('type = "add-on"', 'type = "add-on"\n\n' + block, 1)
     open(manifest, "w", encoding="utf-8").write(src)

@@ -44,7 +44,10 @@ def _call(fn, _wait=60.0, **args):
             while not buf.endswith(b"\n"):
                 chunk = s.recv(65536)
                 if not chunk:
-                    break
+                    # bridge closed mid-reply (Blender quit, bridge stopped, or it dropped us).
+                    # Say THAT, instead of letting json.loads turn it into a cryptic parse error.
+                    return {"ok": False, "error": "bridge closed the connection before a complete "
+                            "reply (%d bytes received) - is Blender still running?" % len(buf)}
                 buf += chunk
         return json.loads(buf.decode("utf-8").strip())
     except ConnectionRefusedError:
@@ -376,18 +379,26 @@ def material_tables() -> str:
 try:
     from . import agent_patterns as _patterns          # package layout (pip wheel)
 except ImportError:
-    import agent_patterns as _patterns                 # flat layout (repo checkout)
+    try:
+        import agent_patterns as _patterns             # flat layout (repo checkout)
+    except ImportError:
+        _patterns = None                               # patterns missing: degrade, don't die
+                                                       # (tools still work; resources say so)
 
 
 @mcp.resource("optics://workflows")
 def workflows_index() -> str:
     """Index of the named optical-design workflow patterns (read the matching one before multi-step work)."""
+    if _patterns is None:
+        return "Workflow patterns unavailable: agent_patterns.py is missing from this install."
     return _patterns.render_index_md()
 
 
 @mcp.resource("optics://workflows/{name}")
 def workflow_pattern(name: str) -> str:
     """One workflow pattern as markdown: intent, tool-by-tool steps, the gotchas that bite, a practice scene."""
+    if _patterns is None:
+        return "Workflow patterns unavailable: agent_patterns.py is missing from this install."
     if name not in _patterns.PATTERNS:
         return "Unknown pattern '%s'. See optics://workflows for the index." % name
     return _patterns.render_pattern_md(name)
