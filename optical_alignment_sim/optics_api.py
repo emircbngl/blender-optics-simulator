@@ -1725,14 +1725,17 @@ def make_tube(members, thread='SM1', tube_id=None):
             "tubes": _optomech.tube_info(scene)}
 
 
-def make_rail(members, rail_id=None):
+def make_rail(members, rail_id=None, family='RLA'):
     """Put collinear elements on one dovetail rail: each rides a carrier on the shared rail (instead
     of a bare post on the board), so they translate along one straight track. `members` is a list of
     element names. Exposed in get_state()['rails'] (carrier positions in s_mm). Does NOT move the
-    optics, so the trace is unchanged. Use place_on_rail(name, s_mm) to slide one along the rail."""
+    optics, so the trace is unchanged. `family` is RLA (default) or X95. Use place_on_rail(name,
+    s_mm) to slide one along the rail."""
     scene = _scene()
     if not isinstance(members, (list, tuple)) or len(members) < 1:
         return {"error": "members must be a non-empty list of element names"}
+    if family not in ('RLA', 'X95'):
+        return {"error": "unknown rail family %r (use RLA or X95)" % family}
     objs = []
     for nm in members:
         o = scene.objects.get(nm)
@@ -1743,10 +1746,11 @@ def make_rail(members, rail_id=None):
     for o in objs:
         o.optics.support_system = 'RAIL'
         o.optics.rail_id = rid
+        o.optics.rail_family = family
     if _optomech.is_dressed(scene):
         _optomech.dress(scene)
     tracer.cached_segments = _trace(scene)
-    return {"ok": True, "rail_id": rid, "members": [o.name for o in objs],
+    return {"ok": True, "rail_id": rid, "family": family, "members": [o.name for o in objs],
             "rails": _optomech.rail_info(scene)}
 
 

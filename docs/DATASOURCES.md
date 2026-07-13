@@ -53,6 +53,10 @@ first-principles dn/dT; the LBO NCPM temperature from the *constant* datasheet d
   reference; no CAD bundled).
 - **Opto-mechanical standards** (`optomech.py`): functional dimensions (Ø12.7 mm posts, 25 mm hole grid, 30 mm
   cage spacing, beam-height datum) from public datasheets; the geometry is original and parameterized.
+- **New mount/rail references**: Thorlabs RSP1 product page (Ø1 in rotation mount and continuous rotation); Thorlabs
+  GM100 product family and Newport U100 product family (gimbal mechanism silhouette); Thorlabs VC1 product page
+  (V-clamp application). GM100 ±4°, TRF90 pivot/arm dimensions, VC1 generated dimensions, and X95 95 mm profile
+  dimensions are explicitly marked **ESTIMATE** in `presets.py`/`optomech.py` where no source dimension is shipped.
 
 ## Verification
 

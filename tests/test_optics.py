@@ -16,7 +16,7 @@ sys.path.insert(0, REPO)
 import optical_alignment_sim as oas
 oas.register()
 import optics_api
-from optical_alignment_sim import scan, alignment, ao, physics, render, handlers, operators, elements_generic, mounts, bridge, tracer, optomech
+from optical_alignment_sim import scan, alignment, ao, physics, render, handlers, operators, elements_generic, mounts, bridge, tracer, optomech, presets
 
 _checks = []
 
@@ -2218,6 +2218,39 @@ check("place_on_rail moves the part along the rail", _rp.get("ok") and (abs(_aft
 check("place_on_rail rejects a non-rail element", "error" in optics_api.place_on_rail("MI_D", 5.0))
 optomech.strip(sc)
 check("strip removes the rail too", not any(o.name.startswith("BENCH_Rail_") for o in sc.objects))
+
+print("[new mount presets + X95 rail]")
+_mp = sc.objects[_cmr[0]]
+for _key, _count in (("RSP1", 1), ("GM100", 2), ("TRF90", 1), ("VC1", 0)):
+    _ok, _msg = mounts.apply_preset(_mp, _key)
+    check("%s preset applies with expected DOFs" % _key,
+          _ok and _mp.optics.mount_type == presets.MOUNT_LIBRARY[_key]["mount_type"]
+          and len(_mp.optics.dofs) == _count, _msg)
+    if _count:
+        _d = _mp.optics.dofs[0]
+        _d.current = _d.max_val + 1000.0
+        check("%s DOF clamps at its maximum" % _key, abs(_d.current - _d.max_val) < 1e-6)
+_ok, _msg = mounts.apply_preset(_mp, "TRF90")
+_d = _mp.optics.dofs[0]
+_d.current = 0.0; _zero = abs(_d.current) < 1e-6
+_d.current = 90.0; _ninety = abs(_d.current - 90.0) < 1e-6
+check("TRF90 has exactly 0/90-degree detent endpoints", _ok and _zero and _ninety)
+mounts.apply_preset(_mp, "GM100")
+optomech.dress(sc)
+_gm_names = {o.name for o in sc.objects if o.name.startswith("BENCH_GM")}
+optomech.strip(sc)
+mounts.apply_preset(_mp, "KS1")
+optomech.dress(sc)
+_ks_names = {o.name for o in sc.objects if o.name.startswith("BENCH_KM") or o.name.startswith("BENCH_A")}
+check("GM100 geometry is structurally distinct from KS1", _gm_names and _ks_names and _gm_names.isdisjoint(_ks_names),
+      "%s / %s" % (sorted(_gm_names), sorted(_ks_names)))
+optomech.strip(sc)
+_xr = optics_api.make_rail([_cmr[0]], rail_id="test_x95", family="X95")
+optomech.dress(sc)
+_xri = optomech.rail_info(sc)
+check("X95 rail builds a heavy carrier", _xr.get("ok") and _xri and _xri[0]["family"] == "X95"
+      and _xri[0]["width_mm"] == optomech.X95_W and any(o.name.startswith("BENCH_RailX95_") for o in sc.objects), str(_xri))
+optomech.strip(sc)
 
 print("[C8 detector material/mode + readout: R(l)=qe*l/1239.8, APD F(M), quadrant erf (oracle-VERIFIED)]")
 check("C8 responsivity InGaAs@1550 == qe*l/1239.8 (~1 A/W)",

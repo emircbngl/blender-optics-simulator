@@ -346,6 +346,21 @@ def _build_mount(o, coll, idx):
     pre = BENCH_PREFIX
     nm = "%02d" % idx
 
+    if mt == 'GIMBAL':
+        # GM100/U100-class gimbal: outer yoke and inner optic ring share their two pivot axes at
+        # the optic centre. This dispatch is deliberately first: a gimbal preset must win even
+        # when applied to a MIRROR (or any other optical element type).
+        rad = ca * 1.45
+        _ring(pre + "GMouter_" + nm, rad, 2.6, mw @ Matrix.Translation((0, 0, -4.0)), coll)
+        _ring(pre + "GMinner_" + nm, ca * 1.08, 2.3, mw, coll)
+        for sx in (-1.0, 1.0):
+            _bevel(_ocyl(pre + "GMpivot_%s_%s" % ("L" if sx < 0 else "R", nm), 4.3, 6.0,
+                         mw, (sx * rad, 0, 0), coll, "steel", axis='X'), 0.5, 1)
+        _bevel(_ocyl(pre + "GMadjust_" + nm, 3.7, 11.0, mw, (0, -rad * 1.05, -4.0), coll,
+                     "steel", axis='Y'), 0.7, 2)
+        _bevel(_obox(pre + "GMbase_" + nm, (rad * 2.4, 8.0, 8.0), mw,
+                      (0, -rad * 1.35, -rad * 0.75), coll, "mount"), 0.7, 2)
+        return 6
     if et in {'DETECTOR', 'PHOTODIODE', 'POWER_METER', 'WAVEFRONT_SENSOR'}:
         # camera/detector: a cuboid body housing BEHIND the sensor (local -Z) + a C-mount barrel on
         # the FRONT (beam side, local +Z) + a vertical stem down to the post top (world-vertical), so
@@ -358,6 +373,38 @@ def _build_mount(o, coll, idx):
             _bevel(_cyl(pre + "CamStem_" + nm, 3.0, cam_bot - top_z,
                         (p.x, p.y, (top_z + cam_bot) * 0.5), coll, "mount"), 0.5, 1)
         return 3
+    if op.mount_preset == 'VC1':
+        # VC1-style fixed V-block: two supporting faces meet beneath the cylindrical body and a
+        # curved-looking (faceted) top strap closes onto it. Dimensions are ESTIMATE; this is an
+        # original silhouette, not vendor CAD.
+        r = max(ca * 0.78, 8.0)
+        _bevel(_obox(pre + "VCbase_" + nm, (r * 3.2, r * 2.8, 7.0), mw,
+                     (0, 0, -r - 8.0), coll, "clamp"), 0.7, 2)
+        for sx in (-1.0, 1.0):
+            jaw = _obox(pre + "VCjaw_%s_%s" % ("L" if sx < 0 else "R", nm),
+                         (r * 0.55, r * 2.2, r * 1.45), mw, (sx * r * 0.82, 0, -r * 0.55), coll, "mount")
+            jaw.rotation_euler.rotate_axis('Y', sx * math.radians(38.0))
+            _bevel(jaw, 0.6, 2)
+        strap = _ocyl(pre + "VCstrap_" + nm, r * 1.08, 4.0, mw, (0, 0, r * 0.72), coll, "clamp")
+        _bore_local(strap, mw, (0, 0, r * 0.72), r * 0.88, 10.0, axis='Z')
+        _bevel(strap, 0.5, 2)
+        _ocyl(pre + "VCbolt_" + nm, 2.2, r * 2.6, mw, (r * 1.2, 0, r * 0.72), coll, "steel", axis='X')
+        return 6
+    if op.mount_preset == 'TRF90':
+        # Flip arm is intentionally keyed to its one live ROT DOF: 0° holds the cell upright;
+        # 90° puts the arm horizontal. The actual optic pose is still composed by mounts.py.
+        angle = op.dofs[0].current if len(op.dofs) else 0.0
+        arm = _obox(pre + "TRFArm_" + nm, (8.0, ca * 2.0, ca * 2.1), mw,
+                    (0, -ca * 0.78, -ca * 0.62), coll, "mount")
+        arm.rotation_euler.rotate_axis('X', math.radians(angle))
+        _bevel(arm, 0.7, 2)
+        _bevel(_obox(pre + "TRFbase_" + nm, (ca * 2.5, ca * 1.25, 9.0), mw,
+                      (0, -ca * 1.3, -ca * 1.22), coll, "clamp"), 0.7, 2)
+        _ocyl(pre + "TRFpivot_" + nm, 4.5, ca * 2.15, mw, (0, -ca * 1.3, -ca * 0.62), coll, "steel", axis='X')
+        cell = _ocyl(pre + "TRFcell_" + nm, ca * 1.12, 7.0, mw, (0, 0, -1.0), coll, "mount")
+        _bore_local(cell, mw, (0, 0, -1.0), ca * 0.94, 16.0, axis='Z')
+        _bevel(cell, 0.5, 2)
+        return 4
     if et in _SOURCE_DET:
         # source/laser/collimator: a saddle clamp cradling the (often horizontal) body from BELOW + a
         # WORLD-vertical stem down to the post top -- so it is actually held by its post, not a bracket
@@ -415,7 +462,7 @@ def _build_mount(o, coll, idx):
         _ocyl(pre + "XSmic_" + nm, 2.4, ca * 1.6, mw, (ca * 1.5, 0.0, -6.0), coll, "steel", axis='X')   # micrometer barrel
         _bevel(_ocyl(pre + "XSknob_" + nm, 3.6, 5.0, mw, (ca * 2.4, 0.0, -6.0), coll, "steel", axis='X'), 0.8, 2)
         return 6
-    if mt in ('KINEMATIC_2AXIS', 'KINEMATIC_3AXIS', 'GIMBAL') or et == 'MIRROR':
+    if mt in ('KINEMATIC_2AXIS', 'KINEMATIC_3AXIS') or et == 'MIRROR':
         # KM100/KS1-style kinematic mount: TWIN same-outline plates floating on a visible air gap;
         # the round optic seats flush in the bored front plate; long fine adjuster screws project out
         # the BACK through bushings to a knurled knob; a fixed pivot ball sits at the third corner
@@ -430,7 +477,7 @@ def _build_mount(o, coll, idx):
         # diagonal. The 3-adjuster (KS1) variant adds a third on the remaining (left) edge.
         e = hp * 0.72
         adj = [("A0", (0.0, -e)), ("A1", (e, 0.0))]
-        if mt in ('KINEMATIC_3AXIS', 'GIMBAL'):
+        if mt == 'KINEMATIC_3AXIS':
             adj.append(("A2", (-e, 0.0)))
         pivot = (-hp * 0.6, hp * 0.6)        # top-left, opposite the bottom+right actuators
         for an, (sx, sy) in adj:
@@ -774,6 +821,7 @@ def tube_info(scene):
 # ---------------------------------------------------------------------------
 RAIL_W = 19.1   # RLA dovetail rail width (mm)
 RAIL_H = 13.0
+X95_W = 95.0    # ESTIMATE: X95 structural profile height/width class
 
 
 def rail_groups(scene):
@@ -812,22 +860,41 @@ def _build_rail(scene, members, board_top_z, coll, post_radius, tag):
     margin = 28.0
     half = 0.5 * (max(ts) - min(ts)) + margin
     mid = Vector((cxy.x, cxy.y, board_top_z)) + ax * (0.5 * (max(ts) + min(ts)))
+    family = getattr(members[0].optics, "rail_family", "RLA") or "RLA"
+    if family not in ('RLA', 'X95'):
+        raise ValueError("unknown rail family %r" % family)
     hw = RAIL_W * 0.5    # 9.55
+    if family == 'X95':
+        # Heavy X95-style structural extrusion: four broad mounting faces around a cross core.
+        hw = X95_W * 0.5
+        rail_prof = [(-hw, 0.0), (-hw, 16.0), (-18.0, 16.0), (-18.0, 38.0),
+                     (-hw, 38.0), (-hw, 57.0), (-18.0, 57.0), (-18.0, 95.0),
+                     (18.0, 95.0), (18.0, 57.0), (hw, 57.0), (hw, 38.0),
+                     (18.0, 38.0), (18.0, 16.0), (hw, 16.0), (hw, 0.0)]
+        rail = _extrude_profile(BENCH_PREFIX + "RailX95_" + tag, rail_prof,
+                                mid - ax * half, mid + ax * half, perp, coll, "holder")
+        _bevel(rail, 0.8, 1)
+        carrier_top = board_top_z + 108.0
+        cl = 22.0
+        car_prof = [(-hw - 8.0, 0.0), (-hw - 8.0, 112.0), (hw + 8.0, 112.0),
+                    (hw + 8.0, 0.0), (hw, 0.0), (hw, 18.0), (28.0, 18.0),
+                    (28.0, 76.0), (-28.0, 76.0), (-28.0, 18.0), (-hw, 18.0)]
+    else:
     # RLA-style dovetail bar: a narrow base neck flaring to a WIDER top (the overhang the carrier
     # hooks under) so a carrier can slide along but not lift off.
-    rail_prof = [(-7.0, 0.0), (7.0, 0.0), (7.0, 2.5), (hw, 4.5),
-                 (hw, 9.5), (-hw, 9.5), (-hw, 4.5), (-7.0, 2.5)]
-    rail = _extrude_profile(BENCH_PREFIX + "Rail_" + tag, rail_prof,
-                            mid - ax * half, mid + ax * half, perp, coll, "holder")
-    _bevel(rail, 0.5, 1)
+        rail_prof = [(-7.0, 0.0), (7.0, 0.0), (7.0, 2.5), (hw, 4.5),
+                     (hw, 9.5), (-hw, 9.5), (-hw, 4.5), (-7.0, 2.5)]
+        rail = _extrude_profile(BENCH_PREFIX + "Rail_" + tag, rail_prof,
+                                mid - ax * half, mid + ax * half, perp, coll, "holder")
+        _bevel(rail, 0.5, 1)
+        carrier_top = board_top_z + 18.0
+        cl = 12.0
+        car_prof = [(-13.0, 0.0), (-13.0, 18.0), (13.0, 18.0), (13.0, 0.0),
+                    (7.5, 0.0), (7.5, 2.0), (10.05, 4.0), (10.05, 10.0),
+                    (-10.05, 10.0), (-10.05, 4.0), (-7.5, 2.0), (-7.5, 0.0)]
     n = 1
-    carrier_top = board_top_z + 18.0
-    cl = 12.0   # carrier half-length along the rail axis
     # carrier: a chunky block that WRAPS the rail (a dovetail groove hooking under the overhang) with
     # a top post seat -- and a front locking thumbscrew that clamps it to the rail (the missing screw).
-    car_prof = [(-13.0, 0.0), (-13.0, 18.0), (13.0, 18.0), (13.0, 0.0),
-                (7.5, 0.0), (7.5, 2.0), (10.05, 4.0), (10.05, 10.0),
-                (-10.05, 10.0), (-10.05, 4.0), (-7.5, 2.0), (-7.5, 0.0)]
     for i, m in enumerate(members):
         c = m.matrix_world.translation
         t = (Vector((c.x, c.y, 0.0)) - cxy).dot(ax)
@@ -835,7 +902,7 @@ def _build_rail(scene, members, board_top_z, coll, post_radius, tag):
         _bevel(_extrude_profile(BENCH_PREFIX + "Carrier_%s_%d" % (tag, i), car_prof,
                                 cc - ax * cl, cc + ax * cl, perp, coll, "clamp"), 0.6, 1)
         # front locking thumbscrew (shaft + knurled knob) clamping the carrier to the rail
-        sp = Vector((cc.x, cc.y, board_top_z + 10.0)) + perp * 12.5
+        sp = Vector((cc.x, cc.y, board_top_z + (60.0 if family == 'X95' else 10.0))) + perp * (hw + 3.0)
         _rod(BENCH_PREFIX + "RailLocks_%s_%d" % (tag, i), sp, sp + perp * 6.0, 1.6, coll, "post")
         _bevel(_rod(BENCH_PREFIX + "RailLockh_%s_%d" % (tag, i), sp + perp * 6.0, sp + perp * 10.0,
                     3.4, coll, "mount", seg=20), 0.6, 1)
@@ -856,7 +923,8 @@ def rail_info(scene):
         ax, cxy, ts = rail_geom(members)
         tmin = min(ts)
         out.append({
-            "id": rid or "rail", "family": "RLA", "width_mm": RAIL_W,
+            "id": rid or "rail", "family": getattr(members[0].optics, "rail_family", "RLA") or "RLA",
+            "width_mm": X95_W if (getattr(members[0].optics, "rail_family", "RLA") == "X95") else RAIL_W,
             "length_mm": round((max(ts) - min(ts)) + 56.0, 2),
             "axis": [round(ax.x, 4), round(ax.y, 4), 0.0],
             "carriers": [{"element": m.name, "s_mm": round(t - tmin, 2)} for m, t in zip(members, ts)],

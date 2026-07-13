@@ -6,6 +6,28 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Added — opto-mechanics range expansion (Triad loop: Sol implemented, Gemini visual QA, Fable spec+review)
+- **Distinct GIMBAL geometry** (GM100/U100-class): outer yoke + inner optic ring + pivot bosses on
+  the horizontal axis through the optic center — previously `GIMBAL` rendered identically to the
+  KS1 twin-plate. Dispatch fixed so a gimbal preset wins for any element type (a structural
+  regression check asserts GM100 and KS1 share zero mount-object names).
+- **4 new mount presets** in `MOUNT_LIBRARY` (5→9): `RSP1` (Ø1" rotation, continuous 360° about the
+  optical axis), `GM100` (gimbal tip/tilt, ±4° marked ESTIMATE), `TRF90` (flip mount, one ROT DOF
+  with 0°/90° detent semantics — upright-in-beam / flipped-out), `VC1` (fixed V-clamp for
+  cylindrical bodies: V-jaws + contacting top strap). DOF values now CLAMP to the preset's
+  mechanical range at the property layer. Sources/ESTIMATEs recorded in `docs/DATASOURCES.md`.
+- **Rail family expansion**: `make_rail(..., family="X95")` builds a heavy structural rail with a
+  wrapping carrier next to the existing (default, unchanged) RLA mini dovetail; `rail_info()`
+  reports the family.
+- **`tools/render_optomech_showcase.py`**: a REAL traced bench (VC1 laser → RSP1 waveplate →
+  TRF90 filter → LMR lens in a 30 mm cage → RLA rail lens → KM100 90° fold → GM100 gimbal fold →
+  camera, plus flipped TRF90 / parked KS1 / X95 comparisons) that HARD-FAILS on any BAD
+  diagnostic or `validate_all` issue before rendering 4 deterministic Cycles views. The gate
+  proved itself during development: it caught a real gimbal↔rail-lock interpenetration and a
+  0.000°-parallel filter/mirror pair (parasitic etalon) in the first layout.
+- Regression 436→446 (all new presets, TRF90 detents, GM100-vs-KS1 structural difference, X95
+  carrier, DOF clamping); validation 303/303; store audit CLEAN; traces byte-identical.
+
 ### Fixed — store-critical review findings (24 confirmed, all closed)
 A dedicated adversarial code review of the store-facing surface confirmed 24 findings; every one is
 fixed here (one cosmetic item intentionally skipped). Highlights:

@@ -94,6 +94,12 @@ MECH_KINDS = [
 def _dof_update(self, context):
     """A knob slider changed -> recompose the owning object's pose.
     Deferred import keeps this safe before mounts.py exists (milestone 2)."""
+    # Property-group numeric fields do not have a dynamic range, so enforce each preset's
+    # published/mechanical limit here instead of allowing an API caller to drive past a stop.
+    clamped = min(max(self.current, self.min_val), self.max_val)
+    if clamped != self.current:
+        self.current = clamped
+        return
     try:
         from . import mounts
         obj = self.id_data                  # the Object owning this knob (not necessarily active)
@@ -237,6 +243,7 @@ class OpticalElementProps(PropertyGroup):
     cage_id: StringProperty(name="Cage group", default="")
     tube_id: StringProperty(name="Tube group", default="")
     rail_id: StringProperty(name="Rail group", default="")
+    rail_family: StringProperty(name="Rail family", default="RLA")
     base_pose: FloatVectorProperty(
         name="Base pose", size=16,
         default=(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,

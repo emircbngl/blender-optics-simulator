@@ -123,4 +123,43 @@ MOUNT_LIBRARY = {
         ],
         "note": "Thorlabs 1in kinematic mount; range is a spec value - confirm.",
     },
+    "RSP1": {
+        "mount_type": "ROTATION",
+        "pivot": "OPTIC_CENTER",
+        "optic_diameter_mm": 25.4,
+        "clear_aperture_mm": 22.9,
+        "dofs": [
+            {"kind": "ROT", "axis": "+Z", "min": 0.0, "max": 360.0},
+        ],
+        "note": "Thorlabs RSP1 Ø1in rotation mount; continuous 360 degree rotation.",
+    },
+    "GM100": {
+        "mount_type": "GIMBAL",
+        "pivot": "OPTIC_CENTER",
+        "optic_diameter_mm": 25.4,
+        "clear_aperture_mm": 22.9,
+        "dofs": [
+            {"kind": "TIP", "axis": "+X", "min": -4.0, "max": 4.0},  # ESTIMATE: conservative range
+            {"kind": "TILT", "axis": "+Y", "min": -4.0, "max": 4.0}, # ESTIMATE: conservative range
+        ],
+        "note": "Thorlabs GM100-class 1in gimbal; +/-4 degree range is ESTIMATE pending source.",
+    },
+    "TRF90": {
+        "mount_type": "ROTATION",
+        "pivot": [0.0, -12.7, 0.0],  # ESTIMATE: horizontal pivot below optic centre
+        "optic_diameter_mm": 25.4,
+        "clear_aperture_mm": 22.0,
+        "dofs": [
+            {"kind": "ROT", "axis": "+X", "min": 0.0, "max": 90.0},
+        ],
+        "note": "Flip mount with two usable detents only: 0 degrees upright/in-beam, 90 degrees flipped/out-of-beam. Pivot offset is ESTIMATE.",
+    },
+    "VC1": {
+        "mount_type": "FIXED",
+        "pivot": "OPTIC_CENTER",
+        "optic_diameter_mm": 25.4,
+        "clear_aperture_mm": 25.4,
+        "dofs": [],
+        "note": "Thorlabs VC1-style fixed V-clamp for cylindrical bodies; generated dimensions are ESTIMATE.",
+    },
 }
