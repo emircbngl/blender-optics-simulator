@@ -462,13 +462,16 @@ def _build_mount(o, coll, idx):
         pv = B @ piv_l                                 # world pivot point (base frame)
         Fb = _gravity_frame(pv, B.to_3x3() @ Vector((0.0, 0.0, 1.0)))
         top_z = pb.z - MOUNT_DROP
-        base_h = max(pv.z - 4.0 - top_z, 5.0)
-        _bevel(_box(pre + "TRFbase_" + nm, (20.0, 15.0, base_h),
-                    (pb.x, pb.y, top_z + base_h * 0.5), coll, "clamp"), 0.6, 1)
-        _ocyl(pre + "TRFpivot_" + nm, 4.0, 24.0, Fb, (0.0, 0.0, 0.0), coll, "steel", axis='X')
         mn_b, mx_b, _cb = geometry.local_bounds(o)
         r_mesh = max(mx_b.x - mn_b.x, mx_b.y - mn_b.y) * 0.5 or ca * 0.5
         r_cell = r_mesh + 4.5
+        # base = a LOW plate on the post top: its top must stay under the GLASS edge (a taller
+        # block reached centre-10 mm while the glass reaches centre-r_mesh -- the glass embedded
+        # 2 mm into the base, invisible from outside but a real intersection)
+        base_h = max(min(pv.z - 4.0 - top_z, (pb.z - r_mesh - 0.6) - top_z), 2.5)
+        _bevel(_box(pre + "TRFbase_" + nm, (20.0, 15.0, base_h),
+                    (pb.x, pb.y, top_z + base_h * 0.5), coll, "clamp"), 0.6, 1)
+        _ocyl(pre + "TRFpivot_" + nm, 4.0, 24.0, Fb, (0.0, 0.0, 0.0), coll, "steel", axis='X')
         v = p - pv
         # arm from the pivot to the cell RIM (never the centre -- an arm ending at the centre
         # crosses the clear aperture), tracking the CURRENT DOF-composed pose

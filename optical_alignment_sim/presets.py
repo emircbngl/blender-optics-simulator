@@ -146,7 +146,9 @@ MOUNT_LIBRARY = {
     },
     "TRF90": {
         "mount_type": "ROTATION",
-        "pivot": ["BELOW", 12.7],    # ESTIMATE distance; hinge sits BELOW the centre in WORLD terms
+        "pivot": ["BELOW", 21.0],    # ESTIMATE; hinge fully below the CELL BODY (12.7 put the
+                                     # hinge barrel inside the cell rim -> it showed through the
+                                     # aperture, and the 90-degree flip sank the cell into the base)
         "optic_diameter_mm": 25.4,
         "clear_aperture_mm": 22.0,
         "dofs": [
