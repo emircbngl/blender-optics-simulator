@@ -218,16 +218,40 @@ def apply_preset(obj, key):
     props.mount_type = data.get("mount_type", 'KINEMATIC_2AXIS')
     ca = data.get("clear_aperture_mm")
     if ca:
-        props.clear_aperture = ca
+        # the catalog value is a DIAMETER (vendor CA spec); props.clear_aperture is a RADIUS
+        # everywhere in the engine (sensor capture, dressing proportions). Storing the diameter
+        # here made every preset-dressed mount render twice too big and bored its housing away.
+        props.clear_aperture = ca * 0.5
     _, _, ctr = geometry.local_bounds(obj)
     piv = data.get("pivot", "OPTIC_CENTER")
-    pivot_local = ctr if piv == "OPTIC_CENTER" else Vector(piv)
+    if piv == "OPTIC_CENTER":
+        pivot_local = ctr
+    elif isinstance(piv, (list, tuple)) and len(piv) == 2 and piv[0] == "BELOW":
+        # WORLD-semantic pivot: d mm straight DOWN from the optic centre, whatever the element's
+        # local basis. Local bases come from a minimal rotation, so WHICH local axis points down
+        # depends on the beam direction -- a static local pivot cannot express "below" for every
+        # orientation, and a flip-mount hinge genuinely is "below" in gravity terms.
+        R = obj.matrix_world.to_3x3()
+        pivot_local = ctr + R.inverted() @ Vector((0.0, 0.0, -float(piv[1])))
+    else:
+        pivot_local = Vector(piv)
     props.dofs.clear()
     for d in data.get("dofs", []):
         nd = props.dofs.add()
         nd.kind = d.get("kind", 'TIP')
         nd.name = d.get("kind", "DOF")
-        nd.axis_local = geometry.axis_vector(d.get("axis", "+X"))
+        ax = d.get("axis", "+X")
+        if ax == "WORLD_HPERP":
+            # WORLD-semantic axis: horizontal and perpendicular to the beam (a flip-mount hinge),
+            # resolved into the element's local frame at preset-apply time.
+            R = obj.matrix_world.to_3x3()
+            beam = (R @ Vector((0.0, 0.0, 1.0))).normalized()
+            hax = Vector((0.0, 0.0, 1.0)).cross(beam)
+            if hax.length < 1e-6:
+                hax = Vector((1.0, 0.0, 0.0))
+            nd.axis_local = R.inverted() @ hax.normalized()
+        else:
+            nd.axis_local = geometry.axis_vector(ax)
         nd.pivot_local = pivot_local
         nd.min_val = d.get("min", -4.0)
         nd.max_val = d.get("max", 4.0)

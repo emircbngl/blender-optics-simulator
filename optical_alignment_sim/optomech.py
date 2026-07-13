@@ -333,6 +333,37 @@ def _bore_grid(board, x0, y0, nx, ny, pitch, top_z, hole_r, depth=2.6):
     return True
 
 
+def _gravity_frame(p, axis):
+    """Right-handed frame at ``p`` whose Z is ``axis``, X the WORLD-horizontal direction in the
+    optic plane, Y as skyward as that plane allows. Gravity-referenced mount parts (bases, pivot
+    studs, straps, yokes, feet) are built in THIS frame -- never in the optic's local frame,
+    where a 45-degree fold rotates a base plate into a floating diagonal plank (the exact bug
+    that motivated this helper)."""
+    n = Vector(axis).normalized()
+    h = Vector((0.0, 0.0, 1.0)).cross(n)
+    if h.length < 1e-6:                     # optic facing straight up/down: any horizontal works
+        h = Vector((1.0, 0.0, 0.0))
+    h.normalize()
+    u = n.cross(h).normalized()
+    if u.z < 0.0:
+        u, h = -u, -h                       # keep the in-plane Y pointing skyward
+    return Matrix(((h.x, u.x, n.x, p.x),
+                   (h.y, u.y, n.y, p.y),
+                   (h.z, u.z, n.z, p.z),
+                   (0.0, 0.0, 0.0, 1.0)))
+
+
+def _anchor_pt(o):
+    """Where the SUPPORT goes: the base-pose centre when the element has one. A post is bolted
+    under the knobs-at-zero pose and must not chase DOF excursions -- a flipped TRF90 displaces
+    its cell ~25 mm, but its post stays put on the table."""
+    op = getattr(o, "optics", None)
+    if op is not None and getattr(op, "base_pose_set", False):
+        from . import mounts
+        return mounts._effective_base(op).translation.copy()
+    return o.matrix_world.translation.copy()
+
+
 def _build_mount(o, coll, idx):
     """Build the mount silhouette that matches the element's mount/element type, oriented in the
     optic's local frame (local +Z is the optical axis for inline parts; the cube body for splitters).
@@ -347,20 +378,39 @@ def _build_mount(o, coll, idx):
     nm = "%02d" % idx
 
     if mt == 'GIMBAL':
-        # GM100/U100-class gimbal: outer yoke and inner optic ring share their two pivot axes at
-        # the optic centre. This dispatch is deliberately first: a gimbal preset must win even
-        # when applied to a MIRROR (or any other optical element type).
-        rad = ca * 1.45
-        _ring(pre + "GMouter_" + nm, rad, 2.6, mw @ Matrix.Translation((0, 0, -4.0)), coll)
-        _ring(pre + "GMinner_" + nm, ca * 1.08, 2.3, mw, coll)
-        for sx in (-1.0, 1.0):
-            _bevel(_ocyl(pre + "GMpivot_%s_%s" % ("L" if sx < 0 else "R", nm), 4.3, 6.0,
-                         mw, (sx * rad, 0, 0), coll, "steel", axis='X'), 0.5, 1)
-        _bevel(_ocyl(pre + "GMadjust_" + nm, 3.7, 11.0, mw, (0, -rad * 1.05, -4.0), coll,
-                     "steel", axis='Y'), 0.7, 2)
-        _bevel(_obox(pre + "GMbase_" + nm, (rad * 2.4, 8.0, 8.0), mw,
-                      (0, -rad * 1.35, -rad * 0.75), coll, "mount"), 0.7, 2)
-        return 6
+        # GM100/U100-class gimbal, built GRAVITY-AWARE: the flat machined cell + yoke rings lie
+        # in the optic plane, but the pivot studs sit on the WORLD-horizontAL ring diameter, the
+        # altitude adjuster hangs WORLD-down and the mounting boss drops toward the post top.
+        # The yoke is the bolted frame; only the inner cell is meant to move. Dispatch stays
+        # first: a gimbal preset wins for any element type. Sizes ESTIMATE (GM100 proportions,
+        # original silhouette, no vendor CAD).
+        from . import geometry
+        F = _gravity_frame(p, mw.to_3x3() @ Vector((0.0, 0.0, 1.0)))
+        mn_b, mx_b, _cb = geometry.local_bounds(o)
+        r_mesh = max(mx_b.x - mn_b.x, mx_b.y - mn_b.y) * 0.5 or ca * 0.5
+        r_cell = max(r_mesh + 3.0, ca * 0.62)          # moving inner cell (holds the glass)
+        r_yin = r_cell + 2.2                           # visible clearance: the cell moves in the yoke
+        r_yout = r_yin + 6.5
+        cell = _ocyl(pre + "GMcell_" + nm, r_cell, 8.0, F, (0.0, 0.0, 0.5), coll, "mount")
+        _bore_local(cell, F, (0.0, 0.0, 0.5), r_mesh + 0.35, 18.0, axis='Z')
+        _bevel(cell, 0.5, 2)
+        yoke = _ocyl(pre + "GMyoke_" + nm, r_yout, 6.0, F, (0.0, 0.0, -1.5), coll, "mount")
+        _bore_local(yoke, F, (0.0, 0.0, -1.5), r_yin, 14.0, axis='Z')
+        _bevel(yoke, 0.6, 2)
+        for sx in (-1.0, 1.0):                         # pivot studs on the WORLD-horizontal diameter
+            _ocyl(pre + ("GMpivot_L_" if sx < 0 else "GMpivot_R_") + nm, 2.6,
+                  (r_yout - r_cell) + 3.0, F, (sx * (r_cell + r_yout) * 0.5, 0.0, -0.5),
+                  coll, "steel", axis='X')
+        _bevel(_ocyl(pre + "GMadjust_" + nm, 3.4, 10.0, F, (0.0, -(r_yout + 4.0), -1.5),
+                     coll, "steel", axis='Y'), 0.8, 2)
+        top_z = p.z - MOUNT_DROP
+        boss_top = p.z - r_yout + 2.0
+        if boss_top <= top_z + 2.0:                    # big yoke reaches past the post top: clamp boss
+            _bevel(_box(pre + "GMfoot_" + nm, (16.0, 12.0, 8.0), (p.x, p.y, top_z + 4.0), coll, "mount"), 0.6, 1)
+        else:                                          # small yoke: world-vertical foot bridges down
+            _bevel(_box(pre + "GMfoot_" + nm, (14.0, 10.0, boss_top - top_z),
+                        (p.x, p.y, (boss_top + top_z) * 0.5), coll, "mount"), 0.6, 1)
+        return 7
     if et in {'DETECTOR', 'PHOTODIODE', 'POWER_METER', 'WAVEFRONT_SENSOR'}:
         # camera/detector: a cuboid body housing BEHIND the sensor (local -Z) + a C-mount barrel on
         # the FRONT (beam side, local +Z) + a vertical stem down to the post top (world-vertical), so
@@ -374,46 +424,84 @@ def _build_mount(o, coll, idx):
                         (p.x, p.y, (top_z + cam_bot) * 0.5), coll, "mount"), 0.5, 1)
         return 3
     if op.mount_preset == 'VC1':
-        # VC1-style fixed V-block: two supporting faces meet beneath the cylindrical body and a
-        # curved-looking (faceted) top strap closes onto it. Dimensions are ESTIMATE; this is an
-        # original silhouette, not vendor CAD.
-        r = max(ca * 0.78, 8.0)
-        _bevel(_obox(pre + "VCbase_" + nm, (r * 3.2, r * 2.8, 7.0), mw,
-                     (0, 0, -r - 8.0), coll, "clamp"), 0.7, 2)
-        for sx in (-1.0, 1.0):
-            jaw = _obox(pre + "VCjaw_%s_%s" % ("L" if sx < 0 else "R", nm),
-                         (r * 0.55, r * 2.2, r * 1.45), mw, (sx * r * 0.82, 0, -r * 0.55), coll, "mount")
-            jaw.rotation_euler.rotate_axis('Y', sx * math.radians(38.0))
-            _bevel(jaw, 0.6, 2)
-        strap = _ocyl(pre + "VCstrap_" + nm, r * 1.08, 4.0, mw, (0, 0, r * 0.72), coll, "clamp")
-        _bore_local(strap, mw, (0, 0, r * 0.72), r * 0.88, 10.0, axis='Z')
+        # V-clamp in the GRAVITY frame: groove axis = the (horizontal) body axis, V opening
+        # upward UNDER the barrel, base plate below, strap ring closing over the top. (The first
+        # cut built these in the optic's local frame, which hung the base BEHIND the laser --
+        # local -Z is the beam axis for a source, not 'down'.) Dimensions ESTIMATE, original
+        # silhouette, no vendor CAD.
+        from . import geometry
+        F = _gravity_frame(p, mw.to_3x3() @ Vector((0.0, 0.0, 1.0)))
+        mn_b, mx_b, _cb = geometry.local_bounds(o)
+        r_b = max(max(mx_b.x - mn_b.x, mx_b.y - mn_b.y) * 0.5, 6.0)
+        L = max((mx_b.z - mn_b.z) * 0.62, r_b * 1.6)
+        for sx in (-1.0, 1.0):                         # two jaw plates forming the V under the barrel
+            jaw = _obox(pre + ("VCjaw_L_" if sx < 0 else "VCjaw_R_") + nm,
+                        (r_b * 1.55, r_b * 0.62, L), F,
+                        (sx * r_b * 0.62, -r_b * 0.68, 0.0), coll, "mount")
+            jaw.matrix_world = jaw.matrix_world @ Matrix.Rotation(-sx * math.radians(42.0), 4, 'Z')
+            _bevel(jaw, 0.5, 2)
+        _bevel(_obox(pre + "VCbase_" + nm, (r_b * 3.0, 6.0, L * 1.12), F,
+                     (0.0, -(r_b * 1.3 + 3.0), 0.0), coll, "clamp"), 0.7, 2)
+        strap = _ocyl(pre + "VCstrap_" + nm, r_b * 1.22, 4.5, F, (0.0, 0.0, L * 0.16), coll, "clamp")
+        _bore_local(strap, F, (0.0, 0.0, L * 0.16), r_b + 0.25, 12.0, axis='Z')
         _bevel(strap, 0.5, 2)
-        _ocyl(pre + "VCbolt_" + nm, 2.2, r * 2.6, mw, (r * 1.2, 0, r * 0.72), coll, "steel", axis='X')
+        for sx in (-1.0, 1.0):                         # strap bolts run WORLD-vertical into the jaws
+            _ocyl(pre + ("VCbolt_L_" if sx < 0 else "VCbolt_R_") + nm, 2.0, r_b * 1.5, F,
+                  (sx * r_b * 1.02, -r_b * 0.35, L * 0.16), coll, "steel", axis='Y')
         return 6
     if op.mount_preset == 'TRF90':
-        # Flip arm is intentionally keyed to its one live ROT DOF: 0° holds the cell upright;
-        # 90° puts the arm horizontal. The actual optic pose is still composed by mounts.py.
-        angle = op.dofs[0].current if len(op.dofs) else 0.0
-        arm = _obox(pre + "TRFArm_" + nm, (8.0, ca * 2.0, ca * 2.1), mw,
-                    (0, -ca * 0.78, -ca * 0.62), coll, "mount")
-        arm.rotation_euler.rotate_axis('X', math.radians(angle))
-        _bevel(arm, 0.7, 2)
-        _bevel(_obox(pre + "TRFbase_" + nm, (ca * 2.5, ca * 1.25, 9.0), mw,
-                      (0, -ca * 1.3, -ca * 1.22), coll, "clamp"), 0.7, 2)
-        _ocyl(pre + "TRFpivot_" + nm, 4.5, ca * 2.15, mw, (0, -ca * 1.3, -ca * 0.62), coll, "steel", axis='X')
-        cell = _ocyl(pre + "TRFcell_" + nm, ca * 1.12, 7.0, mw, (0, 0, -1.0), coll, "mount")
-        _bore_local(cell, mw, (0, 0, -1.0), ca * 0.94, 16.0, axis='Z')
+        # Flip mount split across TWO frames: the base block + pivot barrel belong to the BOLTED
+        # base pose (they must not rotate with the flip DOF), while the arm + cell follow the
+        # optic's CURRENT DOF-composed pose -- so the decoration tracks mounts.py exactly at ANY
+        # flip angle, not just the 0/90 detents. Dimensions ESTIMATE, original silhouette.
+        from . import geometry
+        from . import mounts as _mts
+        B = _mts._effective_base(op) if getattr(op, "base_pose_set", False) else mw
+        pb = B.translation
+        piv_l = Vector(op.dofs[0].pivot_local) if len(op.dofs) else Vector((0.0, -12.7, 0.0))
+        pv = B @ piv_l                                 # world pivot point (base frame)
+        Fb = _gravity_frame(pv, B.to_3x3() @ Vector((0.0, 0.0, 1.0)))
+        top_z = pb.z - MOUNT_DROP
+        base_h = max(pv.z - 4.0 - top_z, 5.0)
+        _bevel(_box(pre + "TRFbase_" + nm, (20.0, 15.0, base_h),
+                    (pb.x, pb.y, top_z + base_h * 0.5), coll, "clamp"), 0.6, 1)
+        _ocyl(pre + "TRFpivot_" + nm, 4.0, 24.0, Fb, (0.0, 0.0, 0.0), coll, "steel", axis='X')
+        mn_b, mx_b, _cb = geometry.local_bounds(o)
+        r_mesh = max(mx_b.x - mn_b.x, mx_b.y - mn_b.y) * 0.5 or ca * 0.5
+        r_cell = r_mesh + 4.5
+        v = p - pv
+        # arm from the pivot to the cell RIM (never the centre -- an arm ending at the centre
+        # crosses the clear aperture), tracking the CURRENT DOF-composed pose
+        arm_len = v.length - (r_cell - 2.0)
+        if arm_len > 1.0:
+            vy = v.normalized()
+            vx = (Fb.to_3x3() @ Vector((1.0, 0.0, 0.0))).normalized()   # the pivot axis
+            vz = vx.cross(vy).normalized()
+            mid = pv + vy * arm_len * 0.5
+            Fa = Matrix(((vx.x, vy.x, vz.x, mid.x), (vx.y, vy.y, vz.y, mid.y),
+                         (vx.z, vy.z, vz.z, mid.z), (0.0, 0.0, 0.0, 1.0)))
+            _bevel(_obox(pre + "TRFarm_" + nm, (7.0, arm_len + 4.0, 6.0), Fa,
+                         (0.0, 0.0, 0.0), coll, "mount"), 0.5, 1)
+        cell = _ocyl(pre + "TRFcell_" + nm, r_cell, 7.0, mw, (0.0, 0.0, -0.5), coll, "mount")
+        _bore_local(cell, mw, (0.0, 0.0, -0.5), r_mesh + 0.3, 16.0, axis='Z')
         _bevel(cell, 0.5, 2)
-        return 4
+        return 5
     if et in _SOURCE_DET:
         # source/laser/collimator: a saddle clamp cradling the (often horizontal) body from BELOW + a
         # WORLD-vertical stem down to the post top -- so it is actually held by its post, not a bracket
         # floating beside it. (The old bracket sat at local -Z, which for a horizontal laser is BEHIND
         # the body.) The saddle top is keyed off the body's REAL world underside, not clear_aperture.
-        body_bottom = min((o.matrix_world @ Vector(c)).z for c in o.bound_box)
+        # radius of the body at its CENTRE section, from the mesh: the saddle sits under the
+        # centre, where the barrel may be narrower than a rear cap/bezel -- keying off the global
+        # bbox minimum left the saddle floating ~2 mm below the actual barrel surface
+        _vs = o.data.vertices
+        _zs = [v.co.z for v in _vs]
+        _zmid = 0.5 * (min(_zs) + max(_zs))
+        _span = (max(_zs) - min(_zs)) or 1.0
+        r_c = max((v.co.xy.length for v in _vs if abs(v.co.z - _zmid) < _span * 0.25), default=ca)
         top_z = p.z - MOUNT_DROP                          # the post top dress() leaves under the optic
         sh = 6.0
-        saddle_z = body_bottom + 1.0 - sh * 0.5            # saddle top ~1 mm into the body underside
+        saddle_z = (p.z - r_c) + 1.0 - sh * 0.5            # saddle top ~1 mm into the barrel underside
         _bevel(_box(pre + "Saddle_" + nm, (ca * 1.6, ca * 1.2, sh), (p.x, p.y, saddle_z), coll, "clamp"), 0.8, 2)
         sb = saddle_z - sh * 0.5
         if sb - top_z > 0.5:
@@ -437,41 +525,79 @@ def _build_mount(o, coll, idx):
         _bevel(body, 1.0, 2)
         return 1
     if mt == 'ROTATION' or et in {'WAVEPLATE', 'POLARIZER'}:
-        # RSP rotation mount: a squat fixed housing + a rotating inner ring nested in front with a
-        # visible SEAM between them (the "this rotates" cue), both bored for the optic, plus a small
-        # recessed top setscrew socket -- not a donut-on-a-tube with a proud nub.
-        body = _ocyl(pre + "RSPhousing_" + nm, max(ca * 1.05, 9.0), 13.0, mw, (0, 0, -1.0), coll, "mount")
-        _bore_local(body, mw, (0, 0, 0), ca * 1.0, 30.0, axis='Z')
+        # RSP-class rotation mount, MESH-sized: a closed fixed housing, a LARGER rotating front
+        # collar overhanging it (the real RSP cue) with a visible seam, 8 graduation studs on the
+        # collar rim, a recessed setscrew, and a WORLD-vertical foot toward the post top. (The old
+        # proportions bored the housing down to a ~1 mm C-shell once preset CAs arrived: bore was
+        # keyed to clear_aperture instead of the actual optic mesh.)
+        from . import geometry
+        mn_b, mx_b, _cb = geometry.local_bounds(o)
+        r_mesh = max(mx_b.x - mn_b.x, mx_b.y - mn_b.y) * 0.5 or ca
+        r_house = r_mesh + 7.0
+        body = _ocyl(pre + "RSPhousing_" + nm, r_house, 11.0, mw, (0, 0, -3.0), coll, "mount")
+        _bore_local(body, mw, (0, 0, -3.0), r_mesh + 0.35, 26.0, axis='Z')
         _bevel(body, 0.6, 2)
-        ring = _ocyl(pre + "RSPring_" + nm, ca * 0.92, 7.0, mw, (0, 0, 4.0), coll, "mount")    # rotating front ring
-        _bore_local(ring, mw, (0, 0, 4.0), ca * 0.78, 14.0, axis='Z')
-        _bevel(ring, 0.5, 2)
-        _ocyl(pre + "RSPset_" + nm, 1.3, 5.0, mw, (0.0, ca * 0.95, 4.0), coll, "hole", axis='Y')  # recessed setscrew
-        return 3
+        collar = _ocyl(pre + "RSPring_" + nm, r_house + 2.5, 6.0, mw, (0, 0, 5.0), coll, "mount")
+        _bore_local(collar, mw, (0, 0, 5.0), r_mesh + 0.3, 14.0, axis='Z')
+        _bevel(collar, 0.5, 2)
+        for k in range(8):                              # graduation studs around the collar rim
+            a = math.tau * k / 8.0
+            _obox(pre + "RSPtick%d_" % k + nm, (1.2, 3.4, 1.2), mw,
+                  ((r_house + 2.5) * math.cos(a), (r_house + 2.5) * math.sin(a), 5.0), coll, "steel")
+        _ocyl(pre + "RSPset_" + nm, 1.3, 5.0, mw, (0.0, r_house - 1.0, -3.0), coll, "hole", axis='Y')
+        top_z = p.z - MOUNT_DROP
+        foot_top = p.z - r_house + 2.0
+        if foot_top <= top_z + 2.0:                    # housing reaches past the post top: clamp boss
+            # hug the housing UNDERSIDE (never intrude into the bore opening above it)
+            _bevel(_box(pre + "RSPfoot_" + nm, (16.0, 12.0, 8.0),
+                        (p.x, p.y, p.z - r_house + 1.0), coll, "mount"), 0.6, 1)
+        else:                                          # world-vertical foot bridges down to the post
+            _bevel(_box(pre + "RSPfoot_" + nm, (14.0, 10.0, foot_top - top_z),
+                        (p.x, p.y, (foot_top + top_z) * 0.5), coll, "mount"), 0.6, 1)
+        return 12
     if mt == 'TRANSLATION':
-        # a linear TRANSLATION STAGE (was silently falling through to the kinematic mount): a base plinth + a
-        # sliding top platform (the dovetail carriage) holding the optic in a bored cell, with a micrometer
-        # barrel + knob projecting from one side -- the "this slides" cue. (The FIXED/kinematic defaults for
-        # mirrors are unchanged, so the example scenes' renders are unaffected.)
-        _bevel(_obox(pre + "XSbase_" + nm, (ca * 2.6, ca * 1.7, 7.0), mw, (0, 0, -13.0), coll, "mount"), 0.8, 2)
-        plat = _obox(pre + "XSslide_" + nm, (ca * 2.3, ca * 1.5, 6.0), mw, (0, 0, -6.0), coll, "mount")
-        _bevel(plat, 0.7, 2)
-        cell = _ocyl(pre + "XScell_" + nm, ca * 1.15, 8.0, mw, (0, 0, 0.5), coll, "mount")
-        _bore_local(cell, mw, (0, 0, 0.5), ca * 0.95, 20.0, axis='Z')
+        # a linear TRANSLATION STAGE in the GRAVITY frame: the plinth + sliding platform lie FLAT
+        # on the post top (the first cut stacked them along the optic's local -Z, which for a
+        # beam-along-X lens put them standing BEHIND the glass like wall plates). The bored cell
+        # cantilevers off the platform's FRONT edge -- shifted back along the beam so the ring
+        # never intersects the plates -- with a micrometer barrel + knob out one side.
+        from . import geometry
+        Fk = _gravity_frame(p, mw.to_3x3() @ Vector((0.0, 0.0, 1.0)))
+        mn_b, mx_b, _cb = geometry.local_bounds(o)
+        r_mesh = max(mx_b.x - mn_b.x, mx_b.y - mn_b.y) * 0.5 or ca
+        r_cell = r_mesh + 4.5
+        # plates sit on the post top: MOUNT_DROP below the axis, shifted BEHIND the cell plane
+        zoff = -(MOUNT_DROP - 3.5)                     # plate stack centre ~post-top + 3.5
+        back = -(6.0 + ca * 0.95)                      # stack centre behind the optic plane
+        _bevel(_obox(pre + "XSbase_" + nm, (ca * 2.8, 4.0, ca * 1.9), Fk,
+                     (0.0, zoff - 2.5, back), coll, "mount"), 0.6, 1)
+        plat = _obox(pre + "XSslide_" + nm, (ca * 2.5, 4.0, ca * 1.7), Fk,
+                     (0.0, zoff + 1.5, back), coll, "mount")
+        _bevel(plat, 0.6, 1)
+        # L-bracket: up from the platform, its front face MEETING the cell's back face (n=-4)
+        _bevel(_obox(pre + "XSriser_" + nm, (10.0, MOUNT_DROP - 4.0, 6.0), Fk,
+                     (0.0, zoff + 3.0 + (MOUNT_DROP - 4.0) * 0.5, -7.0), coll, "mount"), 0.5, 1)
+        cell = _ocyl(pre + "XScell_" + nm, r_cell, 8.0, mw, (0, 0, 0.0), coll, "mount")
+        _bore_local(cell, mw, (0, 0, 0.0), r_mesh + 0.3, 20.0, axis='Z')
         _bevel(cell, 0.5, 2)
-        _ocyl(pre + "XSmic_" + nm, 2.4, ca * 1.6, mw, (ca * 1.5, 0.0, -6.0), coll, "steel", axis='X')   # micrometer barrel
-        _bevel(_ocyl(pre + "XSknob_" + nm, 3.6, 5.0, mw, (ca * 2.4, 0.0, -6.0), coll, "steel", axis='X'), 0.8, 2)
-        return 6
+        # micrometer drives the platform ACROSS the beam (world-horizontal in the optic plane)
+        _ocyl(pre + "XSmic_" + nm, 2.4, ca * 1.4, Fk, (ca * 1.9, zoff + 1.5, back), coll, "steel", axis='X')
+        _bevel(_ocyl(pre + "XSknob_" + nm, 3.6, 5.0, Fk, (ca * 2.7, zoff + 1.5, back), coll, "steel", axis='X'), 0.8, 2)
+        return 7
     if mt in ('KINEMATIC_2AXIS', 'KINEMATIC_3AXIS') or et == 'MIRROR':
         # KM100/KS1-style kinematic mount: TWIN same-outline plates floating on a visible air gap;
         # the round optic seats flush in the bored front plate; long fine adjuster screws project out
         # the BACK through bushings to a knurled knob; a fixed pivot ball sits at the third corner
         # (the asymmetric 3-point that makes it "kinematic"); standoff springs bridge the gap.
+        # Built in the GRAVITY frame, not the optic's local frame: the square plate is bolted to a
+        # world-vertical post, so its edges stay horizontal/vertical for ANY beam yaw -- a 45-degree
+        # fold mirror must not render its plates as a diamond.
+        Fk = _gravity_frame(p, mw.to_3x3() @ Vector((0.0, 0.0, 1.0)))
         plate = ca * 2.6
         hp = plate * 0.5
         _bevel(_bored_plate(pre + "KMplate_" + nm, plate, 6.0, ca * 0.95,
-                            mw @ Matrix.Translation((0.0, 0.0, -1.0)), coll, "mount"), 0.7, 2)
-        _bevel(_obox(pre + "KMback_" + nm, (plate, plate, 7.0), mw, (0, 0, -14.0), coll, "mount"), 0.7, 2)
+                            Fk @ Matrix.Translation((0.0, 0.0, -1.0)), coll, "mount"), 0.7, 2)
+        _bevel(_obox(pre + "KMback_" + nm, (plate, plate, 7.0), Fk, (0, 0, -14.0), coll, "mount"), 0.7, 2)
         # the two actuators act on PERPENDICULAR edges (one drives tilt, one drives pan) -- bottom-
         # centre + right-centre -- pivoting about the OPPOSITE (top-left) corner. They are not on a
         # diagonal. The 3-adjuster (KS1) variant adds a third on the remaining (left) edge.
@@ -481,17 +607,17 @@ def _build_mount(o, coll, idx):
             adj.append(("A2", (-e, 0.0)))
         pivot = (-hp * 0.6, hp * 0.6)        # top-left, opposite the bottom+right actuators
         for an, (sx, sy) in adj:
-            _ocyl(pre + an + "s_" + nm, 1.5, 34.0, mw, (sx, sy, -16.0), coll, "steel")              # long shaft, out the back
-            _ocyl(pre + an + "b_" + nm, 3.2, 5.0, mw, (sx, sy, -14.0), coll, "mount")               # bushing at the rear plate
-            _bevel(_ocyl(pre + an + "k_" + nm, 4.2, 6.0, mw, (sx, sy, -33.0), coll, "steel"), 0.9, 2)  # rear knurled knob
+            _ocyl(pre + an + "s_" + nm, 1.5, 34.0, Fk, (sx, sy, -16.0), coll, "steel")              # long shaft, out the back
+            _ocyl(pre + an + "b_" + nm, 3.2, 5.0, Fk, (sx, sy, -14.0), coll, "mount")               # bushing at the rear plate
+            _bevel(_ocyl(pre + an + "k_" + nm, 4.2, 6.0, Fk, (sx, sy, -33.0), coll, "steel"), 0.9, 2)  # rear knurled knob
         bpy.ops.mesh.primitive_uv_sphere_add(radius=2.2, location=(0.0, 0.0, 0.0))
         _pv = bpy.context.active_object; _pv.name = pre + "KMpivot_" + nm
-        _pv.matrix_world = mw @ Matrix.Translation((pivot[0], pivot[1], -8.0))
+        _pv.matrix_world = Fk @ Matrix.Translation((pivot[0], pivot[1], -8.0))
         _pv.data.materials.clear(); _pv.data.materials.append(_MATS["steel"]())
         eg._link_only(_pv, coll)
         # two standoff springs bridging the gap, set in from the actuator edges
         for an, (sx, sy) in (("S0", (e * 0.5, -e * 0.5)), ("S1", (-e * 0.5, e * 0.5))):
-            _ocyl(pre + an + "_" + nm, 1.4, 8.0, mw, (sx, sy, -7.5), coll, "steel")
+            _ocyl(pre + an + "_" + nm, 1.4, 8.0, Fk, (sx, sy, -7.5), coll, "steel")
         return 5 + 3 * len(adj)
     # threaded lens mount (LMR): a substantial BARE-ALUMINIUM cell (the LMR signature is bright 6061,
     # not black anodize), bored for the optic, with a thin retaining ring near the front face.
@@ -634,14 +760,15 @@ def _rod(name, p0, p1, r, coll, matkey, seg=16):
     return o
 
 
-def _extrude_profile(name, prof, p0, p1, perp, coll, matkey):
+def _extrude_profile(name, prof, p0, p1, perp, coll, matkey, up=None):
     """Build a constant cross-section bar by extruding a 2-D profile along p0->p1. ``prof`` is a list
-    of (s, h): s = offset along ``perp`` (across the bar), h = height above p0's plane (world +Z).
-    Used for the dovetail rail (an undercut ridge) and its grooved carrier — real machined profiles,
-    not boxes."""
+    of (s, h): s = offset along ``perp`` (across the bar), h = height along ``up`` (default: world
+    +Z) above p0's plane. Pass an explicit ``up`` when the extrusion axis itself is vertical (a
+    column): the default world-Z height axis would then lie IN the extrusion direction and the
+    profile would degenerate. Used for the dovetail rail, its grooved carrier, and the X95 forms."""
     import bmesh
     p0 = Vector(p0); p1 = Vector(p1); perp = Vector(perp).normalized()
-    up = Vector((0.0, 0.0, 1.0))
+    up = Vector((0.0, 0.0, 1.0)) if up is None else Vector(up).normalized()
     axis = p1 - p0
     me = bpy.data.meshes.new(name)
     bm = bmesh.new()
@@ -865,21 +992,91 @@ def _build_rail(scene, members, board_top_z, coll, post_radius, tag):
         raise ValueError("unknown rail family %r" % family)
     hw = RAIL_W * 0.5    # 9.55
     if family == 'X95':
-        # Heavy X95-style structural extrusion: four broad mounting faces around a cross core.
-        hw = X95_W * 0.5
-        rail_prof = [(-hw, 0.0), (-hw, 16.0), (-18.0, 16.0), (-18.0, 38.0),
-                     (-hw, 38.0), (-hw, 57.0), (-18.0, 57.0), (-18.0, 95.0),
-                     (18.0, 95.0), (18.0, 57.0), (hw, 57.0), (hw, 38.0),
-                     (18.0, 38.0), (18.0, 16.0), (hw, 16.0), (hw, 0.0)]
-        rail = _extrude_profile(BENCH_PREFIX + "RailX95_" + tag, rail_prof,
-                                mid - ax * half, mid + ax * half, perp, coll, "holder")
-        _bevel(rail, 0.8, 1)
-        carrier_top = board_top_z + 108.0
-        cl = 22.0
-        car_prof = [(-hw - 8.0, 0.0), (-hw - 8.0, 112.0), (hw + 8.0, 112.0),
-                    (hw + 8.0, 0.0), (hw, 0.0), (hw, 18.0), (28.0, 18.0),
-                    (28.0, 76.0), (-28.0, 76.0), (-28.0, 18.0), (-hw, 18.0)]
-    else:
+        # X95-class structural rail, sized honestly: the profile is a 95 mm square with a dovetail
+        # slot in each face. TWO physical modes, because a 95 mm rail + saddle + mount body simply
+        # does not fit under a standard 4-inch beam:
+        #  - HORIZONTAL (optic high enough): profile lying along the members' line, a low saddle
+        #    carrier wrapping the top slot, a short post up to the mount.
+        #  - COLUMN (standard beam height): a vertical X95 column BESIDE the beam on a floor
+        #    flange, a carriage riding the column at optic height, and a horizontal platform arm
+        #    reaching under the optic -- the real lab use of X95 at low beam heights.
+        # (The first cut's carrier was a 111x112 mm closed shell that swallowed rail AND optic at
+        # standard beam height.) Profile dimensions ESTIMATE beyond the 95 mm class size.
+        xhw = X95_W * 0.5
+        sm, sh, sd = 14.0, 8.0, 12.0             # slot mouth half / throat half / depth
+        czz = X95_W * 0.5
+        x_prof = [(-xhw, 0.0), (-sm, 0.0), (-sh, sd), (sh, sd), (sm, 0.0), (xhw, 0.0),
+                  (xhw, czz - sm), (xhw - sd, czz - sh), (xhw - sd, czz + sh), (xhw, czz + sm),
+                  (xhw, X95_W), (sm, X95_W), (sh, X95_W - sd), (-sh, X95_W - sd), (-sm, X95_W),
+                  (-xhw, X95_W), (-xhw, czz + sm), (-xhw + sd, czz + sh),
+                  (-xhw + sd, czz - sh), (-xhw, czz - sm)]
+        n = 0
+        need = X95_W + 7.0 + MOUNT_DROP
+        if (members[0].matrix_world.translation.z - board_top_z) >= need:
+            rail = _extrude_profile(BENCH_PREFIX + "RailX95_" + tag, x_prof,
+                                    mid - ax * half, mid + ax * half, perp, coll, "holder")
+            _bevel(rail, 0.8, 1)
+            n += 1
+            sad = [(-58.0, X95_W - 12.0), (-58.0, X95_W + 7.0), (58.0, X95_W + 7.0),
+                   (58.0, X95_W - 12.0), (50.0, X95_W - 12.0), (50.0, X95_W),
+                   (-50.0, X95_W), (-50.0, X95_W - 12.0)]
+            for i, m in enumerate(members):
+                c = m.matrix_world.translation
+                t = (Vector((c.x, c.y, 0.0)) - cxy).dot(ax)
+                cc = Vector((cxy.x, cxy.y, board_top_z)) + ax * t
+                _bevel(_extrude_profile(BENCH_PREFIX + "Carrier_%s_%d" % (tag, i), sad,
+                                        cc - ax * 24.0, cc + ax * 24.0, perp, coll, "clamp"), 0.6, 1)
+                sp = Vector((cc.x, cc.y, board_top_z + X95_W - 5.0)) + perp * (58.0 - 8.0)
+                _rod(BENCH_PREFIX + "RailLocks_%s_%d" % (tag, i), sp, sp + perp * 14.0, 1.6, coll, "post")
+                _bevel(_rod(BENCH_PREFIX + "RailLockh_%s_%d" % (tag, i), sp + perp * 14.0,
+                            sp + perp * 18.0, 3.4, coll, "mount", seg=20), 0.6, 1)
+                post_top_z = c.z - MOUNT_DROP
+                sad_top = board_top_z + X95_W + 7.0
+                h = max(post_top_z - sad_top, 1.0)
+                _cyl(BENCH_PREFIX + "RailPost_%s_%d" % (tag, i), post_radius, h,
+                     (c.x, c.y, sad_top + h * 0.5), coll, "post")
+                n += 4 + _build_mount(m, coll, 100 + i)
+        else:
+            # rotation with columns (perp, world-up, ax): boxes sized (across-beam, vertical, along-beam)
+            Rr = Matrix(((perp.x, 0.0, ax.x, 0.0), (perp.y, 0.0, ax.y, 0.0),
+                         (0.0, 1.0, 0.0, 0.0), (0.0, 0.0, 0.0, 1.0)))
+            for i, m in enumerate(members):
+                c = m.matrix_world.translation
+                col_off = xhw + 55.0                     # column beam-face 55 mm off the optic axis
+                col_c = Vector((c.x, c.y, 0.0)) + perp * col_off
+                col_top = c.z + 30.0
+                # vertical column: profile spans s in +/-47.5 along the beam axis and h in 0..95
+                # along perp (explicit up= -- world-Z is the extrusion direction here)
+                col = _extrude_profile(BENCH_PREFIX + "RailX95_%s_%d" % (tag, i), x_prof,
+                                       Vector((col_c.x, col_c.y, board_top_z)) - perp * xhw,
+                                       Vector((col_c.x, col_c.y, col_top)) - perp * xhw,
+                                       ax, coll, "holder", up=perp)
+                _bevel(col, 0.8, 1)
+                _bevel(_box(BENCH_PREFIX + "RailFlange_%s_%d" % (tag, i), (120.0, 120.0, 8.0),
+                            (col_c.x, col_c.y, board_top_z + 4.0), coll, "clamp"), 0.8, 1)
+                # carriage hugging the beam-facing column face at optic height
+                car_c = Vector((c.x, c.y, 0.0)) + perp * (col_off - xhw - 12.0)
+                car = _obox(BENCH_PREFIX + "Carrier_%s_%d" % (tag, i), (24.0, 64.0, 56.0),
+                            Matrix.Translation(Vector((car_c.x, car_c.y, c.z - 6.0))) @ Rr,
+                            (0.0, 0.0, 0.0), coll, "clamp")
+                _bevel(car, 0.7, 1)
+                # horizontal platform arm from the carriage to under the optic; its TOP face is the
+                # post-top datum (c.z - MOUNT_DROP), so the mount body meets it exactly
+                a_far = col_off - xhw - 24.0             # carriage inner face
+                a_near = -12.0                           # reaches past the optic axis
+                arm_len = a_far - a_near
+                arm_c = Vector((c.x, c.y, 0.0)) + perp * ((a_far + a_near) * 0.5)
+                _bevel(_obox(BENCH_PREFIX + "RailArm_%s_%d" % (tag, i), (arm_len, 9.0, 30.0),
+                             Matrix.Translation(Vector((arm_c.x, arm_c.y,
+                                                        c.z - MOUNT_DROP - 4.5))) @ Rr,
+                             (0.0, 0.0, 0.0), coll, "mount"), 0.6, 1)
+                sp = Vector((car_c.x, car_c.y, c.z + 26.0))
+                _rod(BENCH_PREFIX + "RailLocks_%s_%d" % (tag, i), sp, sp + Vector((0, 0, 10.0)), 1.6, coll, "post")
+                _bevel(_rod(BENCH_PREFIX + "RailLockh_%s_%d" % (tag, i), sp + Vector((0, 0, 10.0)),
+                            sp + Vector((0, 0, 14.0)), 3.4, coll, "mount", seg=20), 0.6, 1)
+                n += 6 + _build_mount(m, coll, 100 + i)
+        return n
+    if family == 'RLA':
     # RLA-style dovetail bar: a narrow base neck flaring to a WIDER top (the overhang the carrier
     # hooks under) so a carrier can slide along but not lift off.
         rail_prof = [(-7.0, 0.0), (7.0, 0.0), (7.0, 2.5), (hw, 4.5),
@@ -1305,14 +1502,14 @@ def dress(scene, post_radius=POST_RADIUS):
     for i, o in enumerate(elems):
         if o.name in grouped:
             continue
-        p = o.matrix_world.translation
+        p = _anchor_pt(o)          # base pose, not the DOF-composed pose: posts don't chase knobs
         stacks.setdefault((round(p.x / 3.0), round(p.y / 3.0)), []).append((i, o))
     for members in stacks.values():
         before = set(coll.objects)                       # snapshot -> tag this cluster's new hardware below
-        members.sort(key=lambda io: io[1].matrix_world.translation.z)
+        members.sort(key=lambda io: _anchor_pt(io[1]).z)
         i_top, o_top = members[-1]                       # the highest optic sets the pillar height
-        pt = o_top.matrix_world.translation
-        zlo = members[0][1].matrix_world.translation.z
+        pt = _anchor_pt(o_top)
+        zlo = _anchor_pt(members[0][1]).z
         vfold = (pt.z - zlo) > VERTICAL_STACK_MM         # >1 deck at one xy => a vertical beam runs
         if vfold:
             # Vertical fold (periscope): a beam travels UP the shared xy between the decks. A post on

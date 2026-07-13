@@ -28,6 +28,38 @@ semantic versioning.
 - Regression 436→446 (all new presets, TRF90 detents, GM100-vs-KS1 structural difference, X95
   carrier, DOF clamping); validation 303/303; store audit CLEAN; traces byte-identical.
 
+### Fixed — mount-by-mount 3D structural audit (owner rejected the first cut; every mount re-judged alone)
+The owner's eye caught what wide renders + the vision reviewer missed. A new inspection tool
+(`tools/inspect_mounts.py`: every mount ALONE on a mini-bench, 5 close camera angles, per-part
+BVH-overlap contact analysis) drove a one-by-one rebuild:
+- **`_gravity_frame`**: gravity-referenced mount parts (bases, pivot studs, straps, yokes, stage
+  plates) are now built in a WORLD-aware frame, never the optic's local frame — a 45° fold mirror
+  used to rotate its "base plate" into a floating diagonal plank 26.5 mm from anything.
+- **GM100 rebuilt**: flat machined yoke + inner cell (glass actually seated, bore = mesh+0.35 mm),
+  pivot studs on the WORLD-horizontal diameter, altitude adjuster world-down, mounting boss to the
+  post — instead of two wire tori + the floating plank.
+- **RSP1 rebuilt**: closed housing + larger overhanging rotation collar with 8 graduation studs +
+  world foot; the old proportions bored the housing to a ~1 mm C-shell.
+- **TRF90**: hinge is now a WORLD-semantic axis/pivot (`["BELOW", d]` + `WORLD_HPERP`, resolved
+  per element at apply time — a literal local axis only flips correctly for ONE beam direction);
+  base+pivot stay on the bolted base pose, arm connects to the cell RIM (not across the aperture).
+- **VC1**: V-jaws/base/strap/bolts rebuilt in the gravity frame (the base used to hang BEHIND the
+  laser: local -Z is the beam, not "down"); saddle-class source clamps now key off the barrel's
+  CENTRE-section radius (they floated 2 mm under a wider rear cap).
+- **X95 rebuilt honestly in two modes**: horizontal X-profile rail + low saddle carrier when the
+  optic sits high enough; a vertical X95 column + carriage + platform arm at standard beam heights
+  (a 95 mm rail + 112 mm carrier shell used to swallow rail AND optic).
+- **KM100/KS1-class kinematics**: twin plates now stay world-upright for ANY beam yaw (a fold
+  mirror rendered them as a diamond); **unit fix** — preset `clear_aperture_mm` is a vendor
+  DIAMETER but `props.clear_aperture` is a RADIUS engine-wide, so every preset-dressed mount was
+  2× too big with the glass floating 1–2 mm loose in its bore.
+- **Translation stage rebuilt**: plinth + slide lie FLAT on the post top with a side micrometer
+  and a cantilevered cell (they used to stand BEHIND the lens like wall plates).
+- **dress()**: posts now anchor to the BASE pose (`_anchor_pt`) — a flipped TRF90 must not drag
+  its post 25 mm along the beam.
+- Final state: 17/17 single-mount inspection cases numerically clean (BVH contact + no floaters),
+  regression 446/446, validation 303/303, showcase gate bad=0/validate_issues=0.
+
 ### Fixed — store-critical review findings (24 confirmed, all closed)
 A dedicated adversarial code review of the store-facing surface confirmed 24 findings; every one is
 fixed here (one cosmetic item intentionally skipped). Highlights:

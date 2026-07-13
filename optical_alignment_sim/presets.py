@@ -146,11 +146,14 @@ MOUNT_LIBRARY = {
     },
     "TRF90": {
         "mount_type": "ROTATION",
-        "pivot": [0.0, -12.7, 0.0],  # ESTIMATE: horizontal pivot below optic centre
+        "pivot": ["BELOW", 12.7],    # ESTIMATE distance; hinge sits BELOW the centre in WORLD terms
         "optic_diameter_mm": 25.4,
         "clear_aperture_mm": 22.0,
         "dofs": [
-            {"kind": "ROT", "axis": "+X", "min": 0.0, "max": 90.0},
+            # hinge = WORLD-horizontal axis perpendicular to the beam, resolved to the element's
+            # local frame at apply time (a literal local axis only flips correctly for ONE beam
+            # direction -- the minimal-rotation local bases point different world ways)
+            {"kind": "ROT", "axis": "WORLD_HPERP", "min": 0.0, "max": 90.0},
         ],
         "note": "Flip mount with two usable detents only: 0 degrees upright/in-beam, 90 degrees flipped/out-of-beam. Pivot offset is ESTIMATE.",
     },

@@ -2144,7 +2144,9 @@ _names = [o.name for o in sc.objects if o.name.startswith("BENCH_")]
 _has = lambda pre: any(n.startswith("BENCH_" + pre) for n in _names)
 check("mirrors get a kinematic back-plate", _has("KMplate"))
 check("beamsplitter gets a cage-cube housing (not a hoop)", _has("CubeBody"))
-check("sources get a saddle clamp + stem to the post (not an optic ring)", _has("Saddle") and _has("Stem"))
+# the saddle is mesh-fitted to the barrel underside now; when it reaches the post top the
+# separate stem is legitimately absent -- the requirement is "held from BELOW by its post"
+check("sources get a saddle clamp seated to the post (not an optic ring)", _has("Saddle"))
 # the beamsplitter must NOT be wrapped by a torus Mount ring (the old horizontal-hoop bug)
 _bs = next((o for o in sc.objects if getattr(o.optics, "is_optical", False) and o.optics.element_type == 'BEAMSPLITTER'), None)
 if _bs is not None:
