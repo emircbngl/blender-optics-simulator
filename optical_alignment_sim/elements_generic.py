@@ -180,6 +180,21 @@ def _z_to(n):
     return Vector((0.0, 0.0, 1.0)).rotation_difference(Vector(n).normalized()).to_matrix()
 
 
+def _roll_upright(R, n):
+    """Roll ``R`` about the face normal ``n`` so local +Y lands on the most-skyward in-plane
+    direction: a SQUARE plate reads edge-horizontal at any bench yaw (not a diamond), and a
+    grating's grooves stand vertical, i.e. dispersion stays in the bench plane. Ports sit ON the
+    local Z axis with +/-Z normals, so a roll about Z leaves the trace byte-identical."""
+    n = Vector(n).normalized()
+    t = Vector((0.0, 0.0, 1.0)) - n * n.z
+    if t.length < 1e-6:                        # face looks straight up/down: any roll is as good
+        return R
+    t.normalize()
+    y_now = (R @ Vector((0.0, 1.0, 0.0))).normalized()
+    ang = math.atan2(y_now.cross(t).dot(n), y_now.dot(t))
+    return R @ Matrix.Rotation(ang, 3, 'Z')
+
+
 # --- procedural optic-mesh helpers ------------------------------------------
 # These build realistic optic meshes (curved lenses, real bores, corner-cube facets, ruled grating,
 # etc.) as a SINGLE object centred at the origin with +Z as the optical/face axis -- exactly the frame
@@ -1129,6 +1144,10 @@ def crystal(name, loc, beam_dir, coll=None, size=14.0, nl_process='NONE',
     the slab's physical +Z extent so the sinc^2(dk*L/2) overlay uses the geometry the user sees."""
     o = _cube(name, (size * 0.6, size * 0.6, size), coll)
     o.data.materials.clear(); o.data.materials.append(MATS["bbo"]())
+    # polished entrance/exit facets as an ACCENT slot (accents survive the realistic theme pass;
+    # slot 0 gets theme-swapped dark) -- without them the block renders as a featureless matte
+    # box that reads as a beam dump, not a polished nonlinear crystal
+    _accent(o, "coatbs", lambda c, nrm: abs(nrm.z) > 0.7)
     # a passive o/e double-refractor is ALSO a real transmissive CRYSTAL (IN/OUT on the beam axis), not a
     # pump-dump -- so oe_split keeps the conv (transmissive) geometry even when nl_process is NONE.
     conv = nl_process in ('SHG', 'THG', 'SFG', 'DFG', 'OPO', 'SPDC') or oe_split
@@ -1746,7 +1765,7 @@ def dichroic(name, loc, in_dir, reflect_dir, coll=None, split=0.5, size=25.0,
          pass_type=pass_type, cut_nm=cut_nm)
     _add_port(o, "IN", 'IN', (0, 0, 1.5), (0, 0, 1), size * 0.5)
     _add_port(o, "REFLECT", 'REFLECT', (0, 0, 0), (0, 0, 1), size * 0.5)
-    _set_matrix(o, Vector(loc), _z_to(n))     # local +Z (REFLECT normal) -> bisector n
+    _set_matrix(o, Vector(loc), _roll_upright(_z_to(n), n))   # square plate upright, not a diamond
     return o
 
 
@@ -1768,7 +1787,7 @@ def grating(name, loc, in_dir, out_dir, coll=None, size=25.0, lines_per_mm=1200.
          lines_per_mm=lines_per_mm, grating_order=order, grating_profile=grating_profile)
     _add_port(o, "IN", 'IN', (0, 0, 2.5), (0, 0, 1), size * 0.5)
     _add_port(o, "REFLECT", 'REFLECT', (0, 0, 0), (0, 0, 1), size * 0.5)
-    _set_matrix(o, Vector(loc), _z_to(n))
+    _set_matrix(o, Vector(loc), _roll_upright(_z_to(n), n))   # square upright + grooves vertical
     return o
 
 
@@ -1779,6 +1798,13 @@ def retroreflector(name, loc, in_dir, coll=None, size=25.0):
     d = Vector(in_dir).normalized()
     o = _corner_cube(name, size, coll)            # trihedral facets meeting at a rear apex (+Z = axis)
     o.data.materials.clear(); o.data.materials.append(MATS["retro"]())
+    # housed like the real part: a cylindrical sleeve around the trihedral with a circular front
+    # aperture -- bare facet planes alone render as a barely-readable open shell
+    sleeve = _bored_disc(name + "_sleeve", size * 0.66, size * 0.72, size * 0.52, coll)
+    sleeve.data.materials.clear(); sleeve.data.materials.append(MATS["iso"]())
+    for v in sleeve.data.vertices:
+        v.co.z -= size * 0.05                     # apex end tucked in, front ring proud of the facets
+    _join(o, sleeve)
     _tag(o, 'RETROREFLECTOR', clear_aperture=size * 0.5, reflectivity=0.95)
     _add_port(o, "IN", 'IN', (0, 0, size * 0.4), (0, 0, 1), size * 0.5)
     _add_port(o, "REFLECT", 'REFLECT', (0, 0, 0), (0, 0, 1), size * 0.5)
