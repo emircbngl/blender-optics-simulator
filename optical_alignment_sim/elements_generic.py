@@ -990,6 +990,14 @@ def waveplate(name, loc, axis, coll=None, kind='HWP', fast_axis=0.0, design_wl=N
     depth = {'ZERO': 2.0, 'MULTI': 5.0, 'ACHROMATIC': 5.0}.get(waveplate_order, 3.0)
     o = _disc(name, 12.0, depth, coll)
     o.data.materials.clear(); o.data.materials.append(MATS["wp"]())
+    # fast-axis MARK (real retarders carry an axis engraving/tick): ONE raised radial wedge at
+    # fast_axis_deg on the front rim -- the cue that says "waveplate" AND where its axis points.
+    # Decoration only: ports and the Jones interaction are untouched.
+    tick = _cube(name + "_fam", Vector((3.4, 1.3, 0.7)), coll)
+    tick.data.materials.clear(); tick.data.materials.append(MATS["bezel"]())
+    tick.matrix_world = (Matrix.Rotation(math.radians(fast_axis), 4, 'Z')
+                         @ Matrix.Translation((10.0, 0.0, depth * 0.5 + 0.2)))
+    _join(o, tick)
     _tag(o, 'WAVEPLATE', clear_aperture=12.0, retardance_deg=ret, fast_axis_deg=fast_axis,
          waveplate_order=waveplate_order)
     if design_wl is not None:                                # spec the retarder at its arm wavelength
@@ -1424,6 +1432,13 @@ def polarizer(name, loc, axis, coll=None, radius=12.5, polarizer_type='FILM'):
         o.data.materials.clear(); o.data.materials.append(MATS["pol"]())
         if pt == 'WIRE_GRID':
             _accent(o, "bezel", lambda c, nrm: nrm.z > 0.7)   # metallic wire-grid front face
+        # transmission-axis MARKS: a PAIR of rim ticks on the axis diameter. Two ticks =
+        # polarizer, one tick = waveplate -- without them the two discs are indistinguishable.
+        for sx in (1.0, -1.0):
+            tick = _cube(name + "_tam%d" % (sx > 0), Vector((3.0, 1.2, 0.7)), coll)
+            tick.data.materials.clear(); tick.data.materials.append(MATS["bezel"]())
+            tick.matrix_world = Matrix.Translation((sx * (radius - 1.8), 0.0, 1.5 + 0.2))
+            _join(o, tick)
     _tag(o, 'POLARIZER', clear_aperture=radius, polarizer_type=pt)
     _add_port(o, "IN", 'IN', (0, 0, -1.5), (0, 0, -1), radius)
     _add_port(o, "OUT", 'OUT', (0, 0, 1.5), (0, 0, 1), radius)
@@ -1527,9 +1542,13 @@ def slit(name, loc, axis, coll=None, width=2.0, angle=0.0, radius=14.0):
     jaw_x = radius * 1.05                                          # blade spans the bore; edge sits at +/-half on Y
     for sgn in (+1.0, -1.0):                                       # the two slit jaws (their facing edges define the gap)
         jb = bmesh.new(); bmesh.ops.create_cube(jb, size=1.0)
-        for v in jb.verts:                                        # a thin bar; inner edge at y = sgn*half
-            v.co = (Vector((v.co.x * jaw_x, v.co.y * (radius), v.co.z * 0.8))
-                    + Vector((0.0, sgn * (radius + half), 0.0)))
+        for v in jb.verts:
+            # unit-cube verts sit at +/-0.5: y-extent is +/-radius/2, so the bar's centre must be
+            # at half + radius/2 for its INNER EDGE to land exactly on +/-half. (The old offset
+            # used the FULL radius: the rendered gap was 8x the parameter -- a 2 mm slit drew a
+            # 16 mm mouth while the tracer clipped at 2 mm. Mesh must not contradict physics.)
+            v.co = (Vector((v.co.x * 2.1 * jaw_x, v.co.y * radius, v.co.z * 0.8))
+                    + Vector((0.0, sgn * (half + radius * 0.5), 0.0)))
         jaw = _bm_obj(name + "_jaw%d" % (sgn > 0), jb, coll)
         jaw.data.materials.append(MATS["blade"]())
         _join(o, jaw)
@@ -1819,6 +1838,27 @@ def deformable_mirror(name, loc, in_dir, out_dir, coll=None, size=25.0, command=
 def aberrator(name, loc, axis, coll=None, modes=None, radius=14.0):
     """An aberrator / 'turbulence' plate that injects a Zernike wavefront error (`modes`, waves)."""
     o = _inline(name, loc, axis, coll, 'ABERRATOR', "wp", radius=radius, depth=3.0)
+    # make the phase plate LOOK like one: triangulate + subdivide the front face and ripple it
+    # with a smooth low-order bump (exaggerated for visibility -- a flat disc reads as a window).
+    # Pure decoration: the injected aberration itself is aberr_spec; ports/trace untouched.
+    bm = bmesh.new(); bm.from_mesh(o.data)
+    front = [f for f in bm.faces if f.normal.z > 0.7]
+    if front:
+        bmesh.ops.triangulate(bm, faces=front)
+        edges = list({e for f in bm.faces if f.normal.z > 0.7 for e in f.edges})
+        bmesh.ops.subdivide_edges(bm, edges=edges, cuts=2, use_grid_fill=True)
+        zmax = max(v.co.z for v in bm.verts)
+        rim2 = (radius * 0.9) ** 2
+        for v in bm.verts:
+            r2 = v.co.x * v.co.x + v.co.y * v.co.y
+            if v.co.z > zmax - 0.3 and r2 < rim2:            # interior front verts only; rim stays true
+                v.co.z += (0.55 * (1.0 - r2 / rim2)
+                           * math.sin(2.4 * math.pi * v.co.x / radius)
+                           * math.cos(1.7 * math.pi * v.co.y / radius + 0.8))
+        bm.to_mesh(o.data)
+        for poly in o.data.polygons:
+            poly.use_smooth = True
+    bm.free()
     o.optics.aberr_spec = _pad15(modes)
     return o
 
