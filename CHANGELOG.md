@@ -4,7 +4,34 @@ All notable changes to the **Blender Optics Simulator** (`optical_alignment_sim`
 here. The format follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 semantic versioning.
 
-## [Unreleased]
+## [0.25.0] — Structural-audit release: every mount and element judged alone, in 3D — 2026-07-14
+
+### Fixed — element catalog close-up audit (30/30 builders judged bare, 10 fixed)
+Companion pass to the mount audit below, with its own tool (`tools/inspect_elements.py`: every
+element builder rendered ALONE, 5 close angles + mesh-health stats):
+- **Slit**: the rendered jaw gap now MATCHES the physics parameter (a 2 mm slit used to render
+  with a 16 mm opening — mesh/physics contradiction).
+- **Grating + dichroic**: square plates stay edge-horizontal for any fold direction
+  (`_roll_upright`) — no more diamond-orientation plates; ruled grooves stay vertical.
+- **Waveplate / polarizer**: a fast-axis tick on the waveplate bezel; a pair of transmission-axis
+  ticks on film/wire-grid polarizers — the orientation-critical elements now show their axes.
+- **Aberrator**: the front face is subdivided and rippled with a smooth low-order bump — a phase
+  plate no longer renders as a flat window.
+- **Crystal**: polished end-facet accents; **retroreflector**: housing sleeve + front ring so the
+  corner-cube reads as the real housed part.
+- **Sensors**: power-meter thermal absorber capped INSIDE the head face and proud of it (it used
+  to poke out of all four sides — and fully recessed it would be invisible); Shack-Hartmann
+  lenslet grid now spans the active window instead of spilling past it onto the frame;
+  photodiode verified correct (round chip seated, face toward the beam).
+
+### Added — mesh-health CI gate + release-consistency checklist
+- **`tests/test_mesh_health.py` in CI**: the numeric leg of the structural audit now runs on every
+  push — all 30 element builders (zero non-manifold edges / loose verts) + all 17 dressed mount
+  cases (no degenerate matrices, every hardware part in BVH contact or within 0.6 mm; bench
+  furniture exempt). Render-free by design; the eye pass stays a release-time step.
+- **`tools/check_release_consistency.py`**: one command proving manifest / CITATION / CHANGELOG /
+  pages index.json + index.html / README citation / MCP package versions all agree (`--post` also
+  checks the git tag + version DOI).
 
 ### Added — opto-mechanics range expansion (Triad loop: Sol implemented, Gemini visual QA, Fable spec+review)
 - **Distinct GIMBAL geometry** (GM100/U100-class): outer yoke + inner optic ring + pivot bosses on
