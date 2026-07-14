@@ -339,8 +339,8 @@ def _merge_glasses():
             for name, c in data.items():
                 if isinstance(c, (list, tuple)) and len(c) == 6:
                     merged[name] = tuple(float(x) for x in c)
-        except (OSError, ValueError, TypeError):
-            pass
+        except (OSError, ValueError, TypeError) as e:
+            print("WARNING: could not load glass catalog %s: %s" % (p, e))
     return merged
 
 
@@ -829,6 +829,8 @@ def chi2_shg_efficiency(eta_lin, dkL, n_steps=400):
     is S = sqrt(eta_lin); ``dkL`` = Delta_k * L (the phase slip over the crystal, = delta*S). Returns
     eta = |a2(S)|^2 in [0,1]. LIMITS (both oracle-checkable): dkL=0 -> tanh^2(sqrt(eta_lin)); eta_lin -> 0
     (undepleted) -> eta_lin * sinc^2(dkL/2). Numpy-free; deterministic."""
+    if int(n_steps) < 1:
+        raise ValueError("n_steps must be at least 1")
     S = math.sqrt(max(eta_lin, 0.0))                 # normalized crystal length L/L_NL
     if S <= 0.0:
         return 0.0
@@ -873,6 +875,8 @@ def chi2_shg_type2_efficiency(eta_lin, frac_o=0.5, n_steps=400):
     dimensionless equations da_o/ds = i a_e* a_2, da_e/ds = i a_o* a_2, da_2/ds = i a_o a_e (RK4) conserve photon
     number |a_o|^2+|a_2|^2 = frac_o and |a_e|^2+|a_2|^2 = 1-frac_o. Returns eta = 2|a_2(S)|^2 (harmonic power
     fraction) in [0,1]."""
+    if int(n_steps) < 1:
+        raise ValueError("n_steps must be at least 1")
     S = math.sqrt(max(eta_lin, 0.0))
     if S <= 0.0:
         return 0.0

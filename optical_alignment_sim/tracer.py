@@ -127,20 +127,20 @@ def _order_list(scene):
     return [n.strip() for n in raw.split(",") if n.strip()]
 
 
-def _find_next(elems, ray, mode, order):
+def _find_next(geometry_table, ray, mode, order, order_index, element_by_name):
     """Return (t, element, hit_point, surface_normal) for the nearest interaction
     ahead of the ray, or None."""
-    candidates = elems
+    candidates = geometry_table
     if mode == 'ORDER' and order:
-        if ray.from_obj is not None and ray.from_obj.name in order:
-            i = order.index(ray.from_obj.name)
+        if ray.from_obj is not None and ray.from_obj.name in order_index:
+            i = order_index[ray.from_obj.name]
             names = order[i + 1:i + 2]
         else:
             names = order[0:1]
-        candidates = [e for e in elems if e.name in names]
+        candidates = ([element_by_name[names[0]]] if names and names[0] in element_by_name else [])
 
     best = None
-    for E in candidates:
+    for E, surface, port_surfaces in candidates:
         if E is ray.from_obj:
             continue
         # A CIRCULATOR is an N-port router: a ray may ENTER via any of its port FACES, so every IN port is a
@@ -148,21 +148,18 @@ def _find_next(elems, ray, mode, order):
         # plane; the nearest one the ray crosses INTO (traveling against the port's outward normal) is the
         # entry. Reuses the same ray-plane + clear-aperture gate as every other element.
         if E.optics.element_type == 'CIRCULATOR':
-            for p in _circulator_ports(E.optics):
-                sp = geometry.world_port(E, p.local_position)
-                sn = geometry.world_normal(E, p.local_normal)
+            for sp, sn, ca in port_surfaces:
                 if ray.dir.dot(sn) >= 0.0:                 # outward normal: only faces the ray enters INTO count
                     continue
                 hit = _ray_plane(ray.p1, ray.dir, sp, sn)
                 if hit is None:
                     continue
                 H, t = hit
-                ca = p.clear_aperture or E.optics.clear_aperture
                 if (H - sp).length <= max(ca, 0.0) + 1e-3:
                     if best is None or t < best[0]:
                         best = (t, E, H, sn)
             continue
-        sp, sn, ca = interaction_surface(E)
+        sp, sn, ca = surface
         if sp is None:
             continue
         hit = _ray_plane(ray.p1, ray.dir, sp, sn)
@@ -992,6 +989,22 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
     elems = [o for o in scene.objects
              if getattr(o, "optics", None) and o.optics.is_optical]
     order = _order_list(scene)
+    order_index = {}
+    for i, name in enumerate(order):
+        order_index.setdefault(name, i)
+    element_by_name = {}
+    geometry_table = []
+    for E in elems:
+        surface = interaction_surface(E)
+        port_surfaces = []
+        if E.optics.element_type == 'CIRCULATOR':
+            for p in _circulator_ports(E.optics):
+                port_surfaces.append((geometry.world_port(E, p.local_position),
+                                      geometry.world_normal(E, p.local_normal),
+                                      p.clear_aperture or E.optics.clear_aperture))
+        record = (E, surface, port_surfaces)
+        geometry_table.append(record)
+        element_by_name.setdefault(E.name, record)
 
     # A9 ghost back-reflection config (OPT-IN). Default OFF -> gcfg[0] is False -> _spawn_ghost is a
     # no-op everywhere, so every existing scene traces BYTE-IDENTICAL. Only turned on explicitly.
@@ -1057,7 +1070,7 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
         if ray.depth > max_depth or ray.power < 1e-4:    # keep weak beams (e.g. polarizer extinction floor)
             continue
 
-        hit = _find_next(elems, ray, mode, order)
+        hit = _find_next(geometry_table, ray, mode, order, order_index, element_by_name)
         if hit is None:
             segments.append(_seg(ray, ray.p1 + ray.dir * EXTEND_MM, None))
             continue
@@ -1207,11 +1220,14 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             # from the NEXT port P(i+1) in the cycle (P1->P2->P3->...->P1). It is non-reciprocal: a ray into
             # P2 exits P3, NOT back to P1 -- the defining property. A small ISOLATION leak goes to the
             # PREVIOUS port P(i-1) at power T * 10^(-isolation_db/10) (physics.db_to_linear, the standard
-            # dB->linear). Pol-INDEPENDENT at the ray level: the Jones vector passes through UNCHANGED (a real
+            # dB->linear). Pol-INDEPENDENT at the ray level: the polarization state is unchanged while its
+            # amplitude tracks the power bookkeeping (a real
             # free-space circulator is PBS+Faraday+HWP, but the chief-ray topology just routes ports). This is
             # a pure ROUTING topology over the existing port machinery -- NO new optical formula but the
             # dimensionless isolation ratio. Each child leaves FROM its port's world position along that
             # port's OUTWARD normal (world_port / world_normal), so a rotated mount re-aims every leg.
+            # The internal port-to-port path is ideal routing: it adds zero OPL and no Gaussian propagation,
+            # so downstream interference ignores the device's internal length.
             ports = _circulator_ports(op)
             N = len(ports)
             if N >= 2:
@@ -1222,17 +1238,21 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 iso_lin = physics.db_to_linear(max(getattr(op, 'isolation_db', 20.0), 0.0))
                 nxt = ports[(entry + 1) % N]                # main path -> NEXT port (the cyclic route)
                 prv = ports[(entry - 1) % N]                # isolation leak -> PREVIOUS port (non-reciprocity is here)
-                # main child: full through power from P(i+1) along its outward normal. Jones carried UNCHANGED.
+                # main child: through power from P(i+1) along its outward normal; polarization state unchanged.
                 Pn = geometry.world_port(E, nxt.local_position)
                 Dn = geometry.world_normal(E, nxt.local_normal)
-                stack.append(_child(ray, E, Pn, Dn, ray.power * T_thru, 'CIRC_OUT', idx, t, jones=ray.jones))
+                jn = (ray.jones if T_thru == 1.0 else
+                      physics.scale(ray.jones, math.sqrt(T_thru)) if ray.jones else None)
+                stack.append(_child(ray, E, Pn, Dn, ray.power * T_thru, 'CIRC_OUT', idx, t, jones=jn))
                 # isolation child: the small directivity leak from P(i-1). Same energy bookkeeping as the
                 # through path scaled by the dB ratio; pol carried unchanged (sqrt for the field amplitude).
                 if prv is not nxt and ray.power * T_thru * iso_lin >= 1e-9:
                     Pp = geometry.world_port(E, prv.local_position)
                     Dp = geometry.world_normal(E, prv.local_normal)
+                    ji = (physics.scale(ray.jones, math.sqrt(iso_lin)) if T_thru == 1.0 and ray.jones else
+                          physics.scale(ray.jones, math.sqrt(T_thru * iso_lin)) if ray.jones else None)
                     stack.append(_child(ray, E, Pp, Dp, ray.power * T_thru * iso_lin, 'CIRC_ISO', idx, t,
-                                        jones=physics.scale(ray.jones, math.sqrt(iso_lin)) if ray.jones else None))
+                                        jones=ji))
             continue
 
         if et in TERMINAL:

@@ -325,7 +325,9 @@ def _tmm_reflection(layers, n_incident, n_substrate, wavelength_nm, angle_deg, p
 
     def _eta(n, cos_t):
         if pol.upper() == "TM":                              # p-polarization admittance
-            return n / cos_t if cos_t != 0 else complex(0.0)
+            if cos_t == 0:
+                raise ValueError("singular TM admittance at grazing incidence")
+            return n / cos_t
         return n * cos_t                                     # s-polarization admittance (TE)
 
     cos0 = math.cos(th0)
@@ -338,7 +340,9 @@ def _tmm_reflection(layers, n_incident, n_substrate, wavelength_nm, angle_deg, p
         eta = _eta(n, cos_t)
         delta = (2.0 * math.pi / lam_nm) * n * cos_t * t_nm  # phase thickness (nm units cancel)
         c, s = cmath.cos(delta), cmath.sin(delta)
-        Mj = ((c, 1j * s / eta if eta != 0 else complex(0.0)), (1j * eta * s, c))
+        if eta == 0:
+            raise ValueError("singular layer admittance in transfer-matrix stack")
+        Mj = ((c, 1j * s / eta), (1j * eta * s, c))
         M = ((M[0][0] * Mj[0][0] + M[0][1] * Mj[1][0], M[0][0] * Mj[0][1] + M[0][1] * Mj[1][1]),
              (M[1][0] * Mj[0][0] + M[1][1] * Mj[1][0], M[1][0] * Mj[0][1] + M[1][1] * Mj[1][1]))
 
@@ -346,7 +350,11 @@ def _tmm_reflection(layers, n_incident, n_substrate, wavelength_nm, angle_deg, p
     eta_s = _eta(n_substrate, cos_s)
     B = M[0][0] + M[0][1] * eta_s
     C = M[1][0] + M[1][1] * eta_s
-    Y = C / B if B != 0 else complex(0.0)                    # input optical admittance
+    if B == 0:
+        raise ValueError("singular input admittance in transfer-matrix stack")
+    Y = C / B                                                # input optical admittance
+    if eta0 + Y == 0:
+        raise ValueError("singular reflection denominator in transfer-matrix stack")
     r = (eta0 - Y) / (eta0 + Y)
     return r
 

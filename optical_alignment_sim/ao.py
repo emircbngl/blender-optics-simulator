@@ -519,8 +519,20 @@ def interaction_matrix(scene, sensor_name, dm_name, poke=0.2, n_modes=None):
     dm = scene.objects.get(dm_name)
     if dm is None:
         return None, None
-    n = physics.N_ZERNIKE if n_modes is None else min(n_modes, physics.N_ZERNIKE)
+    try:
+        poke = float(poke)
+    except (TypeError, ValueError):
+        return None, {"ok": False, "error": "poke must be a finite non-zero number"}
+    if not math.isfinite(poke) or poke == 0.0:
+        return None, {"ok": False, "error": "poke must be a finite non-zero number"}
     base_cmd = list(dm.optics.dm_command)
+    try:
+        n = physics.N_ZERNIKE if n_modes is None else int(n_modes)
+    except (TypeError, ValueError, OverflowError):
+        return None, {"ok": False, "error": "n_modes must be an integer between 0 and %d" % len(base_cmd)}
+    if n < 0 or n > len(base_cmd):
+        return None, {"ok": False, "error": "n_modes must be between 0 and %d" % len(base_cmd)}
+    n = min(n, physics.N_ZERNIKE)
     w0 = _wfs_response(scene, sensor_name)
     if w0 is None:
         return None, None
@@ -529,9 +541,11 @@ def interaction_matrix(scene, sensor_name, dm_name, poke=0.2, n_modes=None):
     for i in range(n):
         cmd = list(base_cmd)
         cmd[i] = cmd[i] + poke
-        dm.optics.dm_command = cmd
-        wp = _wfs_response(scene, sensor_name)
-        dm.optics.dm_command = list(base_cmd)                    # restore exactly
+        try:
+            dm.optics.dm_command = cmd
+            wp = _wfs_response(scene, sensor_name)
+        finally:
+            dm.optics.dm_command = list(base_cmd)                # restore exactly
         if wp is None:
             cols.append([0.0] * m)
             continue
@@ -553,8 +567,16 @@ def reconstructor(B, method='TSVD', rcond=1e-3, damping=None):
       it converges more SLOWLY than TSVD but cannot diverge on them.
 
     Returns R as a list of n rows x m cols (n DM modes, m WFS modes) so x = R w is an n-vector."""
-    m = len(B)
-    n = len(B[0]) if m else 0
+    try:
+        m = len(B)
+        n = len(B[0]) if m else 0
+        valid_shape = all(len(row) == n for row in B)
+        finite = all(math.isfinite(float(v)) for row in B for v in row)
+    except (TypeError, ValueError, OverflowError):
+        valid_shape = finite = False
+        m = n = 0
+    if not valid_shape or not finite:
+        return {"ok": False, "error": "interaction matrix must be rectangular and finite"}
     if m == 0 or n == 0:
         return [[0.0] * m for _ in range(n)]
     np = _np()
@@ -563,7 +585,10 @@ def reconstructor(B, method='TSVD', rcond=1e-3, damping=None):
         # c scales the transpose so the largest mode's loop gain is < 1 (no null-mode blow-up).
         if np is not None:
             Bm = np.array(B, dtype=float)
-            smax = float(np.linalg.svd(Bm, compute_uv=False)[0]) if min(m, n) else 1.0
+            try:
+                smax = float(np.linalg.svd(Bm, compute_uv=False)[0]) if min(m, n) else 1.0
+            except np.linalg.LinAlgError:
+                return {"ok": False, "error": "interaction-matrix SVD did not converge"}
         else:
             # power-iteration-free bound: largest column 2-norm >= sigma_max / sqrt(n) suffices as a scale
             smax = max((sum(B[k][i] ** 2 for k in range(m)) ** 0.5 for i in range(n)), default=1.0)
@@ -574,7 +599,10 @@ def reconstructor(B, method='TSVD', rcond=1e-3, damping=None):
     # --- TSVD pseudoinverse R = B+ (drop sigma < rcond*sigma_max) ---
     if np is not None:
         Bm = np.array(B, dtype=float)
-        U, s, Vt = np.linalg.svd(Bm, full_matrices=False)
+        try:
+            U, s, Vt = np.linalg.svd(Bm, full_matrices=False)
+        except np.linalg.LinAlgError:
+            return {"ok": False, "error": "interaction-matrix SVD did not converge"}
         smax = s[0] if s.size else 0.0
         cut = rcond * smax
         s_inv = np.array([(1.0 / si if si > cut else 0.0) for si in s])
@@ -585,7 +613,10 @@ def reconstructor(B, method='TSVD', rcond=1e-3, damping=None):
     R = []
     for k in range(m):
         ek = [1.0 if i == k else 0.0 for i in range(m)]
-        R.append(solvers._pinv_apply(B, ek, rcond=rcond))        # x solving B x ~= e_k  -> column k of B+
+        column = solvers._pinv_apply(B, ek, rcond=rcond)
+        if isinstance(column, dict):
+            return column
+        R.append(column)                                        # x solving B x ~= e_k  -> column k of B+
     # R built row-per-WFS-mode (m rows x n cols) -> transpose to n x m
     return [[R[k][i] for k in range(m)] for i in range(n)]
 
@@ -619,25 +650,32 @@ def close_loop_recon(scene, sensor_name, dm_name, gain=0.8, leak=0.99,
         return {"ok": False, "error": "need a wavefront sensor + deformable mirror"}
 
     if B is None:
-        B, _w0 = interaction_matrix(scene, sensor_name, dm_name, poke=poke)
+        B, calibration = interaction_matrix(scene, sensor_name, dm_name, poke=poke)
     if B is None:
-        return {"ok": False, "error": "no beam between the sensor and the deformable mirror"}
+        return calibration if isinstance(calibration, dict) else {
+            "ok": False, "error": "no beam between the sensor and the deformable mirror"}
     R = reconstructor(B, method=method)
+    if isinstance(R, dict):
+        return R
     n = len(R)
 
     # singular spectrum of B (diagnostic: TSVD drops the modes below the cutoff)
     singular = []
     np = _np()
     if np is not None and len(B):
-        singular = [float(s) for s in np.linalg.svd(np.array(B, dtype=float), compute_uv=False)]
+        try:
+            singular = [float(s) for s in np.linalg.svd(np.array(B, dtype=float), compute_uv=False)]
+        except np.linalg.LinAlgError:
+            return {"ok": False, "error": "interaction-matrix SVD did not converge"}
 
     x = list(dm.optics.dm_command)
     hist = []
     converged = False
+    signal_error = None
     for _ in range(max(1, int(iters))):
         w = _wfs_response(scene, sensor_name)
         if w is None:
-            converged = True
+            signal_error = "wavefront sensor signal lost during correction"
             break
         rms = physics.wavefront_rms(w)
         hist.append(rms)
@@ -653,12 +691,14 @@ def close_loop_recon(scene, sensor_name, dm_name, gain=0.8, leak=0.99,
         w = _wfs_response(scene, sensor_name)
         if w is not None:
             hist.append(physics.wavefront_rms(w))
+        else:
+            signal_error = "wavefront sensor signal lost during correction"
     if hist:
         wfs.optics.wf_rms = hist[-1]
     r_before = hist[0] if hist else 0.0
     r_after = hist[-1] if hist else 0.0
-    return {
-        "ok": True,
+    report = {
+        "ok": signal_error is None,
         "method": method,
         "rms_before": round(r_before, 6),
         "rms_after": round(r_after, 6),
@@ -671,6 +711,9 @@ def close_loop_recon(scene, sensor_name, dm_name, gain=0.8, leak=0.99,
         "gain": gain,
         "singular": [round(s, 6) for s in singular],
     }
+    if signal_error is not None:
+        report["error"] = signal_error
+    return report
 
 
 def close_loop(scene, sensor_name, dm_name, gain=0.5, iters=15, tol=1.0e-3):

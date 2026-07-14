@@ -96,12 +96,13 @@ def _state_for(scene, props, pos_err, ang_err):
     return 'BAD'
 
 
-def measure(segs, name, analyzer='NONE'):
+def measure(segs, name, analyzer='NONE', incoming=None):
     """Return (power, visibility, strongest_segment) at a detector from segments,
     without writing properties (so a scan can call it cheaply). Beams from the same
     source combine coherently; different sources add incoherently; an analyzer (if
     given) projects each field first. power = -1 when no beam reaches the detector."""
-    incoming = [s for s in segs if s["to"] == name]
+    if incoming is None:
+        incoming = [s for s in segs if s["to"] == name]
     if not incoming:
         return -1.0, -1.0, None
     M = physics.analyzer_matrix(analyzer)

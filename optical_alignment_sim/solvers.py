@@ -208,15 +208,27 @@ def _pinv_apply(A, b, rcond=1e-6):
     rank-tolerant for redundant sensors or surplus DOFs). Without numpy: the
     normal equations (A^T A) x = A^T b solved by Gaussian elimination, with a
     Tikhonov ridge for conditioning."""
-    m = len(A)
-    n = len(A[0]) if m else 0
+    try:
+        m = len(A)
+        n = len(A[0]) if m else 0
+        valid_shape = all(len(row) == n for row in A) and len(b) == m
+        finite = (all(math.isfinite(float(v)) for row in A for v in row)
+                  and all(math.isfinite(float(v)) for v in b))
+    except (TypeError, ValueError, OverflowError):
+        valid_shape = finite = False
+        m = n = 0
+    if not valid_shape or not finite:
+        return {"ok": False, "error": "solver matrix/vector must have compatible finite values"}
     if m == 0 or n == 0:
         return [0.0] * n
 
     if _np is not None:
         Am = _np.array(A, dtype=float)
         bm = _np.array(b, dtype=float)
-        U, s, Vt = _np.linalg.svd(Am, full_matrices=False)
+        try:
+            U, s, Vt = _np.linalg.svd(Am, full_matrices=False)
+        except _np.linalg.LinAlgError:
+            return {"ok": False, "error": "solver SVD did not converge"}
         smax = s[0] if s.size else 0.0
         cut = rcond * smax
         s_inv = _np.array([(1.0 / si if si > cut else 0.0) for si in s])
@@ -355,10 +367,12 @@ def calibrate_jacobian(scene, controls, apertures, y0, delta=0.5):
             cols.append([0.0] * m)
             continue
         c.value = probe
-        _apply(controls)
-        yp = measure_y(_retrace(scene), apertures)
-        c.value = old                               # restore exactly
-        _apply(controls)
+        try:
+            _apply(controls)
+            yp = measure_y(_retrace(scene), apertures)
+        finally:
+            c.value = old                           # restore exactly
+            _apply(controls)
         cols.append([(yp[i] - y0[i]) / step for i in range(m)])
     # transpose columns -> rows
     return [[cols[j][i] for j in range(len(controls))] for i in range(m)]
@@ -412,6 +426,8 @@ def influence_solve(scene, actuators, targets=None, y_target=None,
             A = calibrate_jacobian(scene, controls, apertures, y, delta=delta)
         err = [y[i] - y_target[i] for i in range(len(y))]
         du = _pinv_apply(A, err)
+        if isinstance(du, dict):
+            return du
         for c, step in zip(controls, du):
             c.value = c.value - gain * step
         _apply(controls)

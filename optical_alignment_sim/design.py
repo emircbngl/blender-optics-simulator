@@ -273,20 +273,22 @@ def mode_match_lens(w0_in, s_in, w0_t, z_t, wavelength_nm, m2=1.0):
     abcd_free(s_lens).abcd_lens(f) (so the result is self-checking), and ``coupling`` is
     ``coupling_efficiency(achieved_w0, w0_t)`` at the achieved waist (== 1.0 on a clean solve)."""
     # --- guard inputs (mirror coupling_efficiency / _bad_focal style) --------
-    for name, v in (("w0_in", w0_in), ("w0_t", w0_t), ("z_t", z_t),
-                    ("wavelength_nm", wavelength_nm)):
+    for name, v in (("w0_in", w0_in), ("s_in", s_in), ("w0_t", w0_t), ("z_t", z_t),
+                    ("wavelength_nm", wavelength_nm), ("m2", m2)):
         try:
             fv = float(v)
         except (TypeError, ValueError):
             return {"ok": False, "error": "%s must be a number (got %r)" % (name, v)}
         if fv != fv or abs(fv) == float("inf"):
             return {"ok": False, "error": "%s must be finite (got %r)" % (name, v)}
-    w0_in, w0_t = float(w0_in), float(w0_t)
+    w0_in, s_in, w0_t, m2 = float(w0_in), float(s_in), float(w0_t), float(m2)
     z_t, wl = float(z_t), float(wavelength_nm)
     if not (w0_in > 0.0 and w0_t > 0.0):
         return {"ok": False, "error": "w0_in and w0_t must be positive waists"}
     if wl <= 0.0:
         return {"ok": False, "error": "wavelength_nm must be positive"}
+    if m2 <= 0.0:
+        return {"ok": False, "error": "m2 must be positive"}
     if z_t == 0.0:
         return {"ok": False, "error": "z_t must be non-zero (the target waist cannot sit on the lens)"}
 

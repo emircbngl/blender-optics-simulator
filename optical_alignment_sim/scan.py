@@ -359,20 +359,35 @@ class OPTICS_OT_scan(Operator):
                 sweep_set(x)
                 context.view_layer.update()
                 segs = _trace(scene)
+                incoming_by_detector = {}
+                for seg in segs:
+                    incoming_by_detector.setdefault(seg.get("to"), []).append(seg)
                 xs.append(x)
                 for d in dets:
-                    p, _v, _s = alignment.measure(segs, d.name, d.optics.analyzer)
+                    p, _v, _s = alignment.measure(
+                        segs, d.name, d.optics.analyzer, incoming_by_detector.get(d.name, []))
                     series[d.name].append(p if p >= 0.0 else 0.0)
         except Exception as e:
             self.report({'ERROR'}, "Scan failed at step %d: %s" % (len(xs), e))
-            return {'CANCELLED'}
+            scan_failed = True
+        else:
+            scan_failed = False
         finally:
             # ALWAYS restore the swept parameter -- a mid-sweep exception must not leave
             # the scene at the sweep value (e.g. every source at the last wavelength)
-            for fn in restore:
-                fn()
-            context.view_layer.update()
-            tracer.cached_segments = _trace(scene)
+            try:
+                for fn in restore:
+                    fn()
+                context.view_layer.update()
+                tracer.cached_segments = _trace(scene)
+            except Exception as e:
+                level = {'WARNING'} if scan_failed else {'ERROR'}
+                self.report(level, "Could not restore scene after scan: %s" % e)
+                if not scan_failed:
+                    scan_failed = True
+
+        if scan_failed:
+            return {'CANCELLED'}
 
         # KNIFE scan: fit the strongest detector's swept erf curve back to the beam radius w (the headline
         # readout -- the 10-90% knife-edge width -> w). Reported in the operator message + the CSV header.

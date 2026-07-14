@@ -18,10 +18,13 @@ A Gaussian beam propagated by this method reproduces the closed-form w(z) = w0 s
 from __future__ import annotations
 
 import math
+from collections import OrderedDict
 
 import numpy as np
 
 NM_TO_MM = 1.0e-6
+_TRANSFER_CACHE = OrderedDict()
+_TRANSFER_CACHE_MAX = 8
 
 
 def gaussian_field(n_grid, dx_mm, w0_mm):
@@ -41,7 +44,7 @@ def circular_aperture(n_grid, dx_mm, diam_mm):
 
 
 def angular_spectrum(U0, dx_mm, dz_mm, wavelength_nm, band_limit=True):
-    """Propagate the sampled complex field U0 a distance dz_mm by the angular-spectrum method.
+    """Propagate a non-empty square 2-D sampled field U0 by the angular-spectrum method.
 
     H(fx,fy) = exp(i k dz sqrt(1 - (lam fx)^2 - (lam fy)^2)). Evanescent (arg<0) components DECAY
     (exp(-k|dz| sqrt(-arg)), the physical regularizing branch -- a naive sqrt of a negative would NaN/blow up,
@@ -49,8 +52,29 @@ def angular_spectrum(U0, dx_mm, dz_mm, wavelength_nm, band_limit=True):
     (Matsushima & Shimobaba 2009) H is rectangularly band-limited to f_lim = 1/(lam sqrt((2 dz df)^2+1)) per
     axis (df = 1/(N dx)) to suppress the aliasing that otherwise corrupts the result at large dz. NaNs in U0
     (e.g. a disc-masked zonal field) are zero-filled before the FFT. Returns the propagated complex field."""
-    U0 = np.nan_to_num(np.asarray(U0, dtype=complex), nan=0.0)
+    raw = np.asarray(U0)
+    if raw.ndim != 2 or not raw.size or raw.shape[0] != raw.shape[1]:
+        raise ValueError("U0 must be a non-empty square 2-D array")
+    U0 = np.nan_to_num(np.asarray(raw, dtype=complex), nan=0.0)
     n = U0.shape[0]
+    H = _cached_transfer_function(n, dx_mm, dz_mm, wavelength_nm, band_limit, U0.dtype.str)
+    return np.fft.ifft2(np.fft.fft2(U0) * H)
+
+
+def _cached_transfer_function(n, dx_mm, dz_mm, wavelength_nm, band_limit, dtype=np.dtype(complex).str):
+    key = ((n, n), dtype, dx_mm, dz_mm, wavelength_nm, bool(band_limit))
+    H = _TRANSFER_CACHE.get(key)
+    if H is None:
+        H = _transfer_function(n, dx_mm, dz_mm, wavelength_nm, band_limit)
+        H.setflags(write=False)
+        _TRANSFER_CACHE[key] = H
+        if len(_TRANSFER_CACHE) > _TRANSFER_CACHE_MAX:
+            _TRANSFER_CACHE.popitem(last=False)
+    return H
+
+
+def _transfer_function(n, dx_mm, dz_mm, wavelength_nm, band_limit):
+    """Build one immutable angular-spectrum transfer function for the bounded cache."""
     lam = wavelength_nm * NM_TO_MM                       # mm
     f = np.fft.fftfreq(n, d=dx_mm)                       # cyc/mm, fft order
     FX, FY = np.meshgrid(f, f)
@@ -64,7 +88,7 @@ def angular_spectrum(U0, dx_mm, dz_mm, wavelength_nm, band_limit=True):
         df = 1.0 / (n * dx_mm)
         f_lim = 1.0 / (lam * math.sqrt((2.0 * dz_mm * df) ** 2 + 1.0))
         H = H * ((np.abs(FX) <= f_lim) & (np.abs(FY) <= f_lim))
-    return np.fft.ifft2(np.fft.fft2(U0) * H)
+    return H
 
 
 def slit_aperture(n_grid, dx_mm, width_mm, n_slits=1, sep_mm=0.0):
@@ -169,6 +193,7 @@ def talbot_metrics(period_mm, wavelength_nm, n_periods=16, n_grid=512, png_path=
     n = int(n_grid)
     dx_mm = period_mm * n_periods / n                          # integer periods -> exact FFT periodicity
     U0 = talbot_grating(n, dx_mm, period_mm)
+    F0 = np.fft.fft2(U0)
     row0 = np.abs(U0[n // 2]) ** 2
     shift = int(round(0.5 * period_mm / dx_mm))
 
@@ -178,7 +203,8 @@ def talbot_metrics(period_mm, wavelength_nm, n_periods=16, n_grid=512, png_path=
         return float(np.sum(a * b) / den) if den > 0 else 0.0
 
     def _row(frac):
-        u = angular_spectrum(U0, dx_mm, frac * z_t, wavelength_nm, band_limit=False)
+        H = _cached_transfer_function(n, dx_mm, frac * z_t, wavelength_nm, False, U0.dtype.str)
+        u = np.fft.ifft2(F0 * H)
         return np.abs(u[n // 2]) ** 2
 
     out = {
@@ -211,8 +237,10 @@ def _render_talbot(U0, dx_mm, z_t, period_mm, wavelength_nm, n, meta, png_path):
     nz = 240
     zz = np.linspace(0.0, 2.0 * z_t, nz)
     carpet = np.empty((nz, n))
+    F0 = np.fft.fft2(U0)
     for i, z in enumerate(zz):
-        u = U0 if z == 0 else angular_spectrum(U0, dx_mm, z, wavelength_nm, band_limit=False)
+        u = U0 if z == 0 else np.fft.ifft2(
+            F0 * _cached_transfer_function(n, dx_mm, z, wavelength_nm, False))
         carpet[i] = np.abs(u[n // 2]) ** 2
     xspan = 0.5 * n * dx_mm
     fig, ax = plt.subplots(figsize=(6.5, 4.6))
@@ -238,7 +266,8 @@ def _render_slit(sin_theta, I, analytic, meta, png_path):
     if plt is None:
         meta["png_error"] = "matplotlib unavailable (numbers are unaffected)"
         return None
-    lim = 6.0 * (meta["first_min_theory"] or 0.01)
+    theory_key = "first_min_theory" if meta["n_slits"] == 1 else "envelope_first_min_theory"
+    lim = 6.0 * (meta[theory_key] or 0.01)
     m = np.abs(sin_theta) <= lim
     fig, ax = plt.subplots(figsize=(7, 4))
     ax.plot(sin_theta[m] * 1e3, analytic[m], "--", color="#888", lw=1.3, label="analytic sinc²(·cos²)")
