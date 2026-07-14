@@ -1,8 +1,8 @@
 """Mesh-health gate: every element mesh + every dressed mount cluster, render-free.
 
-Born from the 2026-07-14 mount audit: wide showcase renders (and a vision model) approved
-mounts whose bases floated 26 mm off the board. The numeric part of that audit lives here so
-it runs in CI on every push:
+Born from the 2026-07-14 mount audit: wide showcase renders can hide a mount whose base
+floats clear off the board. The numeric part of that audit lives here so it runs in CI on
+every push:
 
   * ELEMENTS -- all builder cases from tools/inspect_elements.py, built bare: zero
     non-manifold-edge REGRESSIONS and zero loose vertices per mesh.
@@ -10,7 +10,7 @@ it runs in CI on every push:
     and every hardware part in contact with its cluster (BVH face-overlap or a vertex gap
     below GAP_TOL). Bench furniture (Foot_*, Holes) legitimately sits apart and is exempt.
 
-No renders here (headless EEVEE aborts in CI; Cycles is minutes/frame) -- the EYE pass stays
+No renders here (headless EEVEE aborts in CI; Cycles is minutes/frame) -- close-up render inspection stays
 a release-time step with the two inspect tools. This gate only proves nothing REGRESSED
 structurally.
 

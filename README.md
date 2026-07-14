@@ -132,8 +132,7 @@ For headless pipelines, `optics_api` is importable directly inside Blender
   kinematics, GM100 gimbal, RSP1 rotation, TRF90 flip, VC1 V-clamp — real DOF ranges, detents and
   clamping), Ø12.7 mm posts + post-holders, **16/30/60 mm cage** systems, **SM05/SM1/SM2 lens
   tubes**, and **RLA dovetail + X95 structural rails** with carriers — all original GPL-clean
-  procedural geometry to true functional dimensions, every part held to a BVH-contact mesh-health
-  gate in CI.
+  procedural geometry to true functional dimensions, structurally checked in CI.
 - **Simulate** the light — a live beam tracer with analytic overlays: polarization (Jones/Stokes, plus a
   **per-pixel DoFP polarization camera**), interference & fringe visibility, Gaussian-beam propagation
   (ABCD `w(z)`, ROC, Gouy, M²), **modal *and* pyramid** wavefront sensing + closed-loop **adaptive
@@ -193,21 +192,21 @@ the Scan + Plot operator, the Detector Fringe Image, and the live sensor window 
   <img src="docs/img/feature-board.png" width="92%" alt="New in v0.10.0: the WFS reads the beam's own curvature defocus; a pyramid WFS slope read; a soft-edge dichroic (R+T=1); a die face read as a zonal wavefront">
 </p>
 
-### New in v0.25.0 — the structural-audit release: 9 mount presets, X95 rails, every part judged alone
+### New in v0.25.0 — expanded opto-mechanics: 9 mount presets, X95 rails, structural QA in CI
 
 <p align="center">
-  <img src="docs/img/optomech-showcase.png" width="49%" alt="New in v0.25.0: an 11-station traced bench exercising the expanded opto-mechanics — V-clamped laser, rotation-mounted waveplate, flip-mounted filter, caged lens, rail lens, kinematic fold, gimbal fold, camera">
-  <img src="docs/img/optomech-gimbal-flip.png" width="49%" alt="New in v0.25.0: close-up of the GM100-class gimbal fold and the TRF90 flip mount — yoke, pivot studs and hinge built in world-aware gravity frames so nothing floats, for any beam direction">
+  <img src="docs/img/optomech-showcase.png" width="49%" alt="New in v0.25.0: an 11-station traced bench on the expanded opto-mechanics — V-clamped laser, rotation-mounted waveplate, flip-mounted filter, caged lens, rail lens, kinematic fold, gimbal fold, camera">
+  <img src="docs/img/optomech-gimbal-flip.png" width="49%" alt="New in v0.25.0: close-up of the GM100-class gimbal fold and the TRF90 flip mount — yoke, pivot studs and hinge seat correctly for any beam direction">
 </p>
 
-The opto-mechanical catalog grew (**4 new mount presets** — RSP1 rotation, GM100 gimbal, TRF90 flip
-with real 0°/90° detents, VC1 V-clamp — plus the **X95 structural rail** family) and then the whole
-catalog went under a close-up, multi-angle 3D audit: every mount dressed alone on a mini-bench and
-every element builder rendered bare, judged by eye **and** by numbers (per-part BVH contact
-analysis). What wide showcase shots had hidden didn't survive it — bases built in the wrong frame,
-a vendor-diameter/engine-radius unit slip, hinges that only worked for one beam direction. The
-numeric half of that audit now runs in CI on every push (`tests/test_mesh_health.py`: 30 element
-meshes + ~300 dressed mount parts, render-free), so the catalog can't silently regress.
+**4 new mount presets** — RSP1 rotation, GM100 gimbal, TRF90 flip with real 0°/90° detent
+semantics, VC1 V-clamp for cylindrical bodies — plus the **X95 structural rail** family next to
+the RLA dovetail. The whole opto-mechanical catalog was rebuilt to true functional geometry:
+bases, hinges and clamps seat correctly for **any** beam direction (including folded and vertical
+paths), preset apertures use the vendors' real dimensions, and every optic sits in genuine contact
+with its hardware. A render-free structural check now runs in CI on every push
+(`tests/test_mesh_health.py`: mesh integrity per element, part-contact analysis per mount
+assembly), so the catalog cannot silently regress.
 
 ### New in v0.24.0 — laser speckle + the coffee-cup caustic (phenomena closed out)
 

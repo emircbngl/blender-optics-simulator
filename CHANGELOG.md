@@ -12,14 +12,13 @@ semantic versioning.
 power after the KTP), the render lied about it. Beam tubes now get a per-wavelength emission
 material (`wavelength_rgb`, Bruton-style visible-spectrum map; out-of-band light uses the standard
 figure convention — IR as dim deep crimson, UV as dim violet — because a truly invisible tube
-reads as "no beam"). 633 nm-class scenes keep the legacy look; the trace is untouched. Found by
-the promo pipeline's judge renders: the "IR in, green out" money shot rendered all-red.
+reads as "no beam"). 633 nm-class scenes keep the legacy look; the trace is untouched.
 
-## [0.25.0] — Structural-audit release: every mount and element judged alone, in 3D — 2026-07-14
+## [0.25.0] — Opto-mechanics overhaul: 9 mount presets, X95 rails, structural QA in CI — 2026-07-14
 
-### Fixed — element catalog close-up audit (30/30 builders judged bare, 10 fixed)
-Companion pass to the mount audit below, with its own tool (`tools/inspect_elements.py`: every
-element builder rendered ALONE, 5 close angles + mesh-health stats):
+### Fixed — element catalog structural pass (30 builders inspected, 10 fixed)
+A per-element structural pass with a new tool (`tools/inspect_elements.py`: close-up multi-angle
+renders + mesh-health stats per builder):
 - **Slit**: the rendered jaw gap now MATCHES the physics parameter (a 2 mm slit used to render
   with a 16 mm opening — mesh/physics contradiction).
 - **Grating + dichroic**: square plates stay edge-horizontal for any fold direction
@@ -39,12 +38,12 @@ element builder rendered ALONE, 5 close angles + mesh-health stats):
 - **`tests/test_mesh_health.py` in CI**: the numeric leg of the structural audit now runs on every
   push — all 30 element builders (zero non-manifold edges / loose verts) + all 17 dressed mount
   cases (no degenerate matrices, every hardware part in BVH contact or within 0.6 mm; bench
-  furniture exempt). Render-free by design; the eye pass stays a release-time step.
+  furniture exempt). Render-free by design; close-up render inspection stays a release-time step.
 - **`tools/check_release_consistency.py`**: one command proving manifest / CITATION / CHANGELOG /
   pages index.json + index.html / README citation / MCP package versions all agree (`--post` also
   checks the git tag + version DOI).
 
-### Added — opto-mechanics range expansion (Triad loop: Sol implemented, Gemini visual QA, Fable spec+review)
+### Added — opto-mechanics range expansion
 - **Distinct GIMBAL geometry** (GM100/U100-class): outer yoke + inner optic ring + pivot bosses on
   the horizontal axis through the optic center — previously `GIMBAL` rendered identically to the
   KS1 twin-plate. Dispatch fixed so a gimbal preset wins for any element type (a structural
@@ -66,10 +65,9 @@ element builder rendered ALONE, 5 close angles + mesh-health stats):
 - Regression 436→446 (all new presets, TRF90 detents, GM100-vs-KS1 structural difference, X95
   carrier, DOF clamping); validation 303/303; store audit CLEAN; traces byte-identical.
 
-### Fixed — mount-by-mount 3D structural audit (owner rejected the first cut; every mount re-judged alone)
-The owner's eye caught what wide renders + the vision reviewer missed. A new inspection tool
-(`tools/inspect_mounts.py`: every mount ALONE on a mini-bench, 5 close camera angles, per-part
-BVH-overlap contact analysis) drove a one-by-one rebuild:
+### Fixed — mount-by-mount structural rebuild
+A new inspection tool (`tools/inspect_mounts.py`: per-mount close-up renders on a mini-bench +
+per-part BVH-overlap contact analysis) drove a one-by-one rebuild:
 - **`_gravity_frame`**: gravity-referenced mount parts (bases, pivot studs, straps, yokes, stage
   plates) are now built in a WORLD-aware frame, never the optic's local frame — a 45° fold mirror
   used to rotate its "base plate" into a floating diagonal plank 26.5 mm from anything.
@@ -206,7 +204,7 @@ through every channel, and every install path can update. The manifest display n
 
 Two new off-trace phenomenon producers close the emergence catalog — **laser speckle** and the **coffee-cup
 caustic** — each derived from first principles and checked against its exact textbook statistics/geometry.
-Plus a diagnostic the owner's own eye surfaced: the engine now **warns when an optic is knocked off the
+Plus a diagnostic a review render surfaced: the engine now **warns when an optic is knocked off the
 beam**. All off-trace; the live trace stays byte-identical (validation 262→271, regression 392→397).
 
 ### Added — caustics (off-trace producer): the coffee-cup nephroid
@@ -339,7 +337,7 @@ Off-trace calculators; the live trace stays byte-identical.
   a single arm → 2 thermal — ties to the crystal down-conversion the tracer already emits). The closed-form core
   is **physics_verify ok=true** (Fock g2 = 1−1/n; squeezed variance e^(−2r)/4). The full many-mode / non-Gaussian
   state is a **QuTiP scaffold** (`quantum_state_observables`): present → QuTiP builds the squeezed vacuum and
-  measures g²; absent → the verified closed form + an honest "needs qutip" note (owner-run). `quantum_stats`
+  measures g²; absent → the verified closed form + an honest "needs qutip" note (opt-in). `quantum_stats`
   optics_api + MCP. Off-trace; byte-identical. Validation **240 → 249**.
 
 ### Added — opt-in GPU backend for the off-trace FFT field engine (scaffold)
@@ -351,7 +349,7 @@ Off-trace calculators; the live trace stays byte-identical.
 - **Numerical insight caught + fixed during the scaffold:** the transfer-function phase `k·dz·√(…)` reaches
   ~10⁶ rad, so computing it in float32 loses ~0.3 rad (catastrophic). The phase is now built in **float64
   always**, regardless of output dtype; with that, the `complex64` GPU fast path deviates only **~1e-6** (vs the
-  0.13 it would otherwise). Owner-run: install cupy/mlx + enable. `gpu_status` reports the backend. Validation
+  0.13 it would otherwise). Opt-in: install cupy/mlx + enable. `gpu_status` reports the backend. Validation
   **238 → 240**.
 
 ### Added — Type-II SHG coupled-wave efficiency (`chi2_shg_type2_efficiency`)
@@ -626,7 +624,7 @@ produced phenomenon self-checks against a textbook oracle. Validation **152 → 
 
 ### Added — phenomenon emergence (`produce_phenomenon`): conditions met → the phenomenon is produced
 - `detect_phenomena` only FLAGS when a phenomenon's conditions are met (read-only). The new
-  **`produce_phenomenon(phenomenon, where, nx, png, accept)`** (optics_api + MCP) closes the owner's loop —
+  **`produce_phenomenon(phenomenon, where, nx, png, accept)`** (optics_api + MCP) closes the loop —
   *"if the conditions for a hologram are met, a hologram should actually form"* — by PRODUCING the phenomenon
   off-trace, while staying **advisory + intent-judged** exactly like `propose_corrections`:
   - **`accept=False` (default) is a DRY-RUN** — it returns `{would_produce, what_it_would_compute,
@@ -1102,7 +1100,7 @@ scene traces byte-identical (the port-based data model: behavior reads element p
     rail-mounted analyzer train → camera.
 - Each dresses trace-identically and passes the geometric validator (regression 164 → 176).
 
-### Fixed — render polish (owner feedback)
+### Fixed — render polish
 - **Laser/source holder** rebuilt: a saddle clamp keyed to the body's real underside + a world-vertical
   stem to the post top — the source no longer floats beside a disconnected post (old bracket sat at
   local −Z = behind a horizontal laser).
@@ -1146,7 +1144,7 @@ scene traces byte-identical (the port-based data model: behavior reads element p
 
 ## [0.8.2]
 
-### Fixed — render polish (owner feedback)
+### Fixed — render polish
 - **Laser / fibre sources** now read as real heads: a dark anodized **housing** with only the front
   **exit aperture glowing** (slot 2), instead of a uniformly glowing can.
 - **PBS** is now clearly distinguishable from a 50/50 beamsplitter — its polarizing coating shows as a
@@ -1254,13 +1252,13 @@ scene traces byte-identical (the port-based data model: behavior reads element p
   always produced. EEVEE (fast) or Cycles (realistic). A render-only pipeline: it moves the camera
   and writes frames, never touching the optics/ports/tracer. (`render.set_camera_direction` factors
   the framing so every orbit frame stays fit.) The reusable base for the promo video + tutorial.
-- **Opto-mech realism pass (owner review).** Post-holders now carry a **side locking thumbscrew**
+- **Opto-mech realism pass.** Post-holders now carry a **side locking thumbscrew**
   and the base foot shows a **cap screw** fastening it to the table (was a bare floating cylinder);
   kinematic mirror mounts are rebuilt KM100-style with a back-plate and **two knurled actuator
   knobs** (shaft + knob) instead of two thin sticks; cage plates are **bored** so the optic shows
   through the aperture and the rods pass through the frame (was a solid slab). Decoration only;
   trace unaffected; regression stays 126/126.
-- **Optic seated in the mount + 3-adjuster mount + camera nose (owner review #2).** The round mirror
+- **Optic seated in the mount + 3-adjuster mount + camera nose.** The round mirror
   now sits **flush in the kinematic mount's bored aperture** (the optic is visibly held, not an empty
   holder face). New **`KINEMATIC_3AXIS`** mount type renders a KS1-style **three-adjuster** mount —
   the two KM100 tip/tilt screws keep their corners and a **third screw is added at a corner** (the

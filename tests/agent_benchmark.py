@@ -19,7 +19,7 @@ Families:
              correctable modal RMS before -> after.
   modematch  solve the single lens that hits a seeded target waist/plane (mode_match)
              and verify the solve by PROPAGATING the input q through it; score coupling.
-  bypass     knock a lens clear off the beam (the owner's Newton's-rings case) ->
+  bypass     knock a lens clear off the beam (the Newton's-rings case) ->
              diagnose must fire optic_bypassed for the right element; restoring the pose
              must clear it.
 

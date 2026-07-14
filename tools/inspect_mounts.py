@@ -2,8 +2,8 @@
 
 One mount per mini-bench, 5 CLOSE camera angles each, plus a report.json with per-part
 nearest-neighbour gaps (floating-part detector). Wide showcase shots hide per-mount structural
-errors (lesson learned twice now) -- this tool exists so every mount is judged ALONE, up close,
-from multiple directions, by a human eye plus numbers.
+errors -- this tool renders every mount ALONE, up close, from multiple directions, and pairs
+the renders with a numeric contact report.
 
 Run:  Blender --background --factory-startup --python tools/inspect_mounts.py -- <outdir> [case ...]
 With no case names, all cases render. Case list: see CASES below.

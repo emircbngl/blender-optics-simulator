@@ -1,6 +1,6 @@
 """Release-consistency checklist: every place a version string lives must agree.
 
-Born from the v0.25.0 release review (Sol's suggestion): the version is declared in SIX
+Born from the v0.25.0 release review: the version is declared in SIX
 files and a drift in any of them ships a broken pages-repo link, a stale citation, or a
 changelog hole. Pure python + stdlib, no Blender, no network.
 

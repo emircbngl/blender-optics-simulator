@@ -27,13 +27,13 @@ __pycache__/
 *.pyc
 .DS_Store
 
-
 # Allow library metadata + docs images explicitly
 !library/*.json
 !docs/*.png
 !docs/*.jpg
 dist/
 
+# Local development notes (not part of the released add-on)
 docs/ROADMAP_V2.md
 docs/BENCH_INTELLIGENCE.md
 docs/COMPONENT_CATALOG.md

@@ -1,7 +1,6 @@
 """DEFERRED hero renders for the v0.10.0 feature set — READY TO RUN, not executed in this cycle.
 
-The owner asked to PREPARE every visual option but hold the Cycles renders for now ("şimdilik render
-alma"). This script sets up three photorealistic hero benches for the new features and renders them with
+Every visual option is prepared here with the Cycles renders held for a later pass. This script sets up three photorealistic hero benches for the new features and renders them with
 the same studio look as docs/img/hero.png. Run it when you want the renders:
 
     blender --background --factory-startup --python tests/_render_v010_heroes.py
