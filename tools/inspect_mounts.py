@@ -185,12 +185,8 @@ def _render_case(tag, build, outdir):
     return rep
 
 
-def main():
-    outdir, only = _args()
-    import optical_alignment_sim as addon
-    addon.register()
-    from optical_alignment_sim import elements_generic as G, mounts, optics_api
-
+def mount_cases(G, mounts, optics_api):
+    """The full per-mount case table (shared with tests/test_mesh_health.py)."""
     X = Vector((1.0, 0.0, 0.0))
     Y = Vector((0.0, 1.0, 0.0))
     Z = 100.0
@@ -204,7 +200,7 @@ def main():
             raise RuntimeError("%s: %s" % (preset, msg))
         return ob
 
-    CASES = {
+    return {
         "KM100":      lambda: _preset(G.mirror("MI_M", (0, 0, Z), X, Y, _coll()), 'KM100'),
         "KM100CPM":   lambda: _preset(G.mirror("MI_M", (0, 0, Z), X, Y, _coll()), 'KM100CP/M'),
         "KS1":        lambda: _preset(G.mirror("MI_M", (0, 0, Z), X, Y, _coll()), 'KS1'),
@@ -231,6 +227,14 @@ def main():
                           G.lens("MI_XL", (0, 0, Z), X, _coll(), focal=250.0)),
     }
 
+
+def main():
+    outdir, only = _args()
+    import optical_alignment_sim as addon
+    addon.register()
+    from optical_alignment_sim import elements_generic as G, mounts, optics_api
+
+    CASES = mount_cases(G, mounts, optics_api)
     todo = only or list(CASES)
     unknown = [t for t in todo if t not in CASES]
     if unknown:
@@ -240,4 +244,5 @@ def main():
     print("ALL_CASES_DONE %d" % len(todo))
 
 
-main()
+if __name__ == "__main__":
+    main()

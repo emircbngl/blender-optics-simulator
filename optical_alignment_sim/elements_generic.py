@@ -777,8 +777,11 @@ def _sensor_box(name, size, depth, coll, active=0.55, lenslets=0, chip='inset'):
 
     if chip == 'round':
         _add_detail(_round_chip)
-    elif chip == 'thermal':                              # broad matte-black absorber disc, deeper recess
-        _add_detail(lambda: _round_chip(rad=a * 1.04, zh=0.8, zoff=zc - 0.4, tag="_therm"))
+    elif chip == 'thermal':                              # broad thermopile absorber disc
+        # the absorber must stay INSIDE the head face laterally (cap the radius below the box
+        # half-width) but its top must sit PROUD of the face -- fully recessed would be invisible
+        _add_detail(lambda: _round_chip(rad=min(a * 1.04, size * 0.5 - 1.4), zh=0.8,
+                                        zoff=zc + 0.05, tag="_therm"))
     elif chip == 'rect':
         _add_detail(_rect_chip)
     elif chip == 'quadrant':
@@ -792,8 +795,10 @@ def _sensor_box(name, size, depth, coll, active=0.55, lenslets=0, chip='inset'):
         _add_detail(_inset)
 
     if lenslets:
-        zc = depth * 0.5 + 0.7
-        step = (a * 1.6) / lenslets
+        # the micro-lens grid lives ON the recessed active window (full width a, top face at
+        # depth/2+0.3): span it inside the window and sink the bump bases into that plane
+        zc = depth * 0.5 + 0.4
+        step = (a * 0.94) / lenslets
         for ix in range(lenslets):
             for iy in range(lenslets):
                 cx = (ix - (lenslets - 1) / 2.0) * step

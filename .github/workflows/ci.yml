@@ -61,6 +61,12 @@ jobs:
       - name: Textbook validation (closed forms vs known answers)
         run: xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_validation.py
 
+      - name: Mesh health (elements bare + mounts dressed, render-free)
+        # numeric leg of the mount/element structural audit: non-manifold/loose-vert gate per
+        # element mesh, BVH contact gate per dressed mount part. No renders in CI by design --
+        # the eye pass (tools/inspect_*.py) stays a release-time step.
+        run: xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_mesh_health.py
+
   store-build:
     # FULL store-build smoke (finding: --audit-only alone never exercises the transform anchors,
     # the pinned wheel fetch, or Blender's extension build/validate -- so a drift would only

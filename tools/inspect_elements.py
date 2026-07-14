@@ -115,12 +115,8 @@ def _render_case(tag, build, outdir):
     return rep
 
 
-def main():
-    outdir, only = _args()
-    import optical_alignment_sim as addon
-    addon.register()
-    from optical_alignment_sim import elements_generic as G
-
+def element_cases(G):
+    """The full per-element case table (shared with tests/test_mesh_health.py)."""
     X = Vector((1.0, 0.0, 0.0))
     Y = Vector((0.0, 1.0, 0.0))
     P = (0.0, 0.0, 100.0)
@@ -128,7 +124,7 @@ def main():
     def _c():
         return G.example_collection("ElemInspect")
 
-    CASES = {
+    return {
         "source":           lambda: G.source("EL", P, X, _c()),
         "mirror":           lambda: G.mirror("EL", P, X, Y, _c()),
         "beamsplitter":     lambda: G.beamsplitter("EL", P, X, Y, _c()),
@@ -160,6 +156,15 @@ def main():
         "deformable_mirror": lambda: G.deformable_mirror("EL", P, X, Y, _c()),
         "aberrator":        lambda: G.aberrator("EL", P, X, _c()),
     }
+
+
+def main():
+    outdir, only = _args()
+    import optical_alignment_sim as addon
+    addon.register()
+    from optical_alignment_sim import elements_generic as G
+
+    CASES = element_cases(G)
     todo = only or list(CASES)
     unknown = [t for t in todo if t not in CASES]
     if unknown:
@@ -169,4 +174,5 @@ def main():
     print("ALL_CASES_DONE %d" % len(todo))
 
 
-main()
+if __name__ == "__main__":
+    main()
