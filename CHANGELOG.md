@@ -9,8 +9,12 @@ semantic versioning.
 ### Fixed — full-codebase review pass (24.4k lines, four subsystem sweeps)
 - **Circulator insertion loss now reaches detector reads**: the through-path Jones amplitude
   tracks the power bookkeeping (sqrt of the transmittance; the isolation leak includes it too).
-  Default lossless circulators are byte-identical. The zero-internal-OPL routing idealization is
-  now documented at the branch.
+  Default lossless circulators are byte-identical.
+- **Circulator internal path now carries OPL and Gaussian propagation**: children advance by the
+  geometric entry-face-to-exit-port distance (straight free-space path, n = 1) instead of
+  teleporting with zero internal length — downstream interference and beam size now see the
+  device's real port separation (verified numerically to float precision). Still an idealization
+  of the internal PBS/Faraday assembly: no dispersion.
 - **`inspect_all` diagnostics were silently dropped** (a wrong dict key left `issues` always
   empty); the dashboard now surfaces them.
 - **AO robustness**: a failed interaction-matrix calibration can no longer leave the deformable

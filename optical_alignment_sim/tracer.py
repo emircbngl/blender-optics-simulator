@@ -1226,8 +1226,9 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             # a pure ROUTING topology over the existing port machinery -- NO new optical formula but the
             # dimensionless isolation ratio. Each child leaves FROM its port's world position along that
             # port's OUTWARD normal (world_port / world_normal), so a rotated mount re-aims every leg.
-            # The internal port-to-port path is ideal routing: it adds zero OPL and no Gaussian propagation,
-            # so downstream interference ignores the device's internal length.
+            # Model the internal route as a straight free-space path of the geometric port-to-port length.
+            # It carries OPL and Gaussian propagation, while remaining an idealization of the real
+            # PBS/Faraday assembly: no dispersion and n = 1.
             ports = _circulator_ports(op)
             N = len(ports)
             if N >= 2:
@@ -1243,7 +1244,8 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 Dn = geometry.world_normal(E, nxt.local_normal)
                 jn = (ray.jones if T_thru == 1.0 else
                       physics.scale(ray.jones, math.sqrt(T_thru)) if ray.jones else None)
-                stack.append(_child(ray, E, Pn, Dn, ray.power * T_thru, 'CIRC_OUT', idx, t, jones=jn))
+                t_eff = t + (Pn - H).length
+                stack.append(_child(ray, E, Pn, Dn, ray.power * T_thru, 'CIRC_OUT', idx, t_eff, jones=jn))
                 # isolation child: the small directivity leak from P(i-1). Same energy bookkeeping as the
                 # through path scaled by the dB ratio; pol carried unchanged (sqrt for the field amplitude).
                 if prv is not nxt and ray.power * T_thru * iso_lin >= 1e-9:
@@ -1251,7 +1253,8 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                     Dp = geometry.world_normal(E, prv.local_normal)
                     ji = (physics.scale(ray.jones, math.sqrt(iso_lin)) if T_thru == 1.0 and ray.jones else
                           physics.scale(ray.jones, math.sqrt(T_thru * iso_lin)) if ray.jones else None)
-                    stack.append(_child(ray, E, Pp, Dp, ray.power * T_thru * iso_lin, 'CIRC_ISO', idx, t,
+                    t_eff = t + (Pp - H).length
+                    stack.append(_child(ray, E, Pp, Dp, ray.power * T_thru * iso_lin, 'CIRC_ISO', idx, t_eff,
                                         jones=ji))
             continue
 
