@@ -11,6 +11,9 @@ Built on demand (a render-prep step), re-runnable, fully reversible. GPL-clean o
 from __future__ import annotations
 
 import math
+import hashlib
+import json
+from collections import OrderedDict
 
 import bpy
 from mathutils import Vector, Matrix
@@ -19,6 +22,9 @@ from . import elements_generic as eg
 
 BENCH_COLL = "COL_BENCH"
 BENCH_PREFIX = "BENCH_"
+
+_BOARD_GRID_MESH_CACHE = OrderedDict()
+_BOARD_GRID_MESH_CACHE_MAX = 3
 
 
 def _bench_mat(name, color, metal, rough):
@@ -79,9 +85,10 @@ def _ring(name, major, minor, mw, coll, matkey="mount"):
 
 
 def _optical_objects(scene):
-    return [o for o in scene.objects
-            if getattr(o, "optics", None) and o.optics.is_optical
-            and o.optics.element_type not in ('NONE',)]
+    return sorted((o for o in scene.objects
+                   if getattr(o, "optics", None) and o.optics.is_optical
+                   and o.optics.element_type not in ('NONE',)),
+                  key=lambda o: o.name)
 
 
 def _world_zmin(o):
@@ -233,6 +240,38 @@ def _hole_grid(name, x0, y0, nx, ny, pitch, top_z, coll, hole_r=None):
     o.data.materials.append(_MATS["hole"]())
     eg._link_only(o, coll)
     return o
+
+
+def _cached_board_grid(key):
+    """Return valid cached board and hole meshes for this session, if available."""
+    cached = _BOARD_GRID_MESH_CACHE.get(key)
+    if cached is None:
+        return None
+    try:
+        board_mesh, hole_mesh, bored = cached
+        if (bpy.data.meshes.get(board_mesh.name) is not board_mesh
+                or bpy.data.meshes.get(hole_mesh.name) is not hole_mesh):
+            raise ReferenceError("cached mesh is no longer available")
+    except (ReferenceError, TypeError):
+        _BOARD_GRID_MESH_CACHE.pop(key, None)
+        return None
+    _BOARD_GRID_MESH_CACHE.move_to_end(key)
+    return board_mesh, hole_mesh, bored
+
+
+def _cache_board_grid(key, board_mesh, hole_mesh, bored):
+    old = _BOARD_GRID_MESH_CACHE.pop(key, None)
+    if old is not None:
+        for mesh in old[:2]:
+            if mesh.users == 0 and bpy.data.meshes.get(mesh.name) is mesh:
+                bpy.data.meshes.remove(mesh)
+    _BOARD_GRID_MESH_CACHE[key] = (board_mesh, hole_mesh, bored)
+    _BOARD_GRID_MESH_CACHE.move_to_end(key)
+    while len(_BOARD_GRID_MESH_CACHE) > _BOARD_GRID_MESH_CACHE_MAX:
+        _old_key, old = _BOARD_GRID_MESH_CACHE.popitem(last=False)
+        for mesh in old[:2]:
+            if mesh.users == 0 and bpy.data.meshes.get(mesh.name) is mesh:
+                bpy.data.meshes.remove(mesh)
 
 
 # ---------------------------------------------------------------------------
@@ -719,10 +758,10 @@ def _periscope_clamp(tag, ox, oy, pr, tx, ty, z, coll, optic_r=12.5):
 _CAGE_SPEC = {'CAGE_16': (2.0, 16.0), 'CAGE_30': (3.0, 30.0), 'CAGE_60': (3.0, 60.0)}
 
 
-def cage_groups(scene):
+def cage_groups(scene, elems=None):
     """Map (support_system, cage_id) -> [member optics] for every cage-mounted element."""
     groups = {}
-    for o in _optical_objects(scene):
+    for o in sorted(elems, key=lambda item: item.name) if elems is not None else _optical_objects(scene):
         ss = getattr(o.optics, "support_system", 'POST')
         if ss in _CAGE_SPEC:
             groups.setdefault((ss, getattr(o.optics, "cage_id", "") or ""), []).append(o)
@@ -821,8 +860,9 @@ def _cage_geom(members):
     return rod_r, sep, axis, u, v, centroid, min(ts) - margin, max(ts) + margin
 
 
-def _build_cage(scene, members, board_top_z, coll, post_radius, tag):
+def _build_cage(scene, members, board_top_z, coll, post_radius, tag, created=None):
     """Build one cage: 4 rods on the size-mm square + a plate per member + one centre post."""
+    before = set(coll.objects) if created is not None else None
     rod_r, sep, axis, u, v, centroid, t0, t1 = _cage_geom(members)
     half = sep * 0.5
     n = 0
@@ -849,6 +889,8 @@ def _build_cage(scene, members, board_top_z, coll, post_radius, tag):
     nh = _post_holder("cage_" + tag, centroid.x, centroid.y, board_top_z, post_radius, coll)
     _cyl("%sCagePost_%s" % (BENCH_PREFIX, tag), post_radius, h,
          (centroid.x, centroid.y, board_top_z + h * 0.5), coll, "post")
+    if created is not None:
+        created.extend(o for o in coll.objects if o not in before)
     return n + nh + 1
 
 
@@ -880,10 +922,10 @@ _TUBE_SPEC = {'TUBE_SM05': ('SM05', 13.59, 12.7), 'TUBE_SM1': ('SM1', 26.29, 25.
               'TUBE_SM2': ('SM2', 51.69, 50.8)}
 
 
-def tube_groups(scene):
+def tube_groups(scene, elems=None):
     """Map (support_system, tube_id) -> [member optics] for every tube-mounted element."""
     groups = {}
-    for o in _optical_objects(scene):
+    for o in sorted(elems, key=lambda item: item.name) if elems is not None else _optical_objects(scene):
         ss = getattr(o.optics, "support_system", 'POST')
         if ss in _TUBE_SPEC:
             groups.setdefault((ss, getattr(o.optics, "tube_id", "") or ""), []).append(o)
@@ -901,9 +943,10 @@ def _tube_geom(members):
     return name, major, bore, axis, centroid, min(ts) - margin, max(ts) + margin
 
 
-def _build_tube(scene, members, board_top_z, coll, post_radius, tag):
+def _build_tube(scene, members, board_top_z, coll, post_radius, tag, created=None):
     """One lens-tube barrel: a hollow black-anodized pipe spanning the members + a retaining ring at
     each end, on one post. Optics sit inside the bore and show at the open ends."""
+    before = set(coll.objects) if created is not None else None
     name, major, bore, axis, centroid, t0, t1 = _tube_geom(members)
     od = major + 4.0
     p0 = centroid + axis * t0
@@ -926,6 +969,8 @@ def _build_tube(scene, members, board_top_z, coll, post_radius, tag):
     nh = _post_holder("tube_" + tag, centroid.x, centroid.y, board_top_z, post_radius, coll)
     _cyl("%sTubePost_%s" % (BENCH_PREFIX, tag), post_radius, h,
          (centroid.x, centroid.y, board_top_z + h * 0.5), coll, "post")
+    if created is not None:
+        created.extend(o for o in coll.objects if o not in before)
     return 3 + nh + 1
 
 
@@ -954,10 +999,10 @@ RAIL_H = 13.0
 X95_W = 95.0    # ESTIMATE: X95 structural profile height/width class
 
 
-def rail_groups(scene):
+def rail_groups(scene, elems=None):
     """Map rail_id -> [member optics] for every rail-mounted element."""
     groups = {}
-    for o in _optical_objects(scene):
+    for o in sorted(elems, key=lambda item: item.name) if elems is not None else _optical_objects(scene):
         if getattr(o.optics, "support_system", 'POST') == 'RAIL':
             groups.setdefault(getattr(o.optics, "rail_id", "") or "", []).append(o)
     return groups
@@ -982,9 +1027,10 @@ def rail_geom(members):
     return ax, cxy, ts
 
 
-def _build_rail(scene, members, board_top_z, coll, post_radius, tag):
+def _build_rail(scene, members, board_top_z, coll, post_radius, tag, created=None):
     """A dovetail rail on the board along the members' line, a carrier under each member, and its
     post rising from the carrier to the optic + the member's mount silhouette."""
+    before = set(coll.objects) if created is not None else None
     ax, cxy, ts = rail_geom(members)
     perp = Vector((-ax.y, ax.x, 0.0))
     margin = 28.0
@@ -1078,6 +1124,8 @@ def _build_rail(scene, members, board_top_z, coll, post_radius, tag):
                 _bevel(_rod(BENCH_PREFIX + "RailLockh_%s_%d" % (tag, i), sp + Vector((0, 0, 10.0)),
                             sp + Vector((0, 0, 14.0)), 3.4, coll, "mount", seg=20), 0.6, 1)
                 n += 6 + _build_mount(m, coll, 100 + i)
+        if created is not None:
+            created.extend(o for o in coll.objects if o not in before)
         return n
     if family == 'RLA':
     # RLA-style dovetail bar: a narrow base neck flaring to a WIDER top (the overhang the carrier
@@ -1111,6 +1159,8 @@ def _build_rail(scene, members, board_top_z, coll, post_radius, tag):
         _cyl(BENCH_PREFIX + "RailPost_%s_%d" % (tag, i), post_radius, h,
              (c.x, c.y, carrier_top + h * 0.5), coll, "post")
         n += 4 + _build_mount(m, coll, 100 + i)   # 100+ avoids name clash with the free-loop indices
+    if created is not None:
+        created.extend(o for o in coll.objects if o not in before)
     return n
 
 
@@ -1369,8 +1419,8 @@ def validate_all(scene):
     return {"geometry": validate(scene), "beam": diagnostics.run_diagnostics(scene)}
 
 
-def _own_new(coll, before, owner, optics=()):
-    """Tag every bench object created since the `before` snapshot (and the given member optics) with a
+def _own_new(coll, new, owner, optics=(), before=None):
+    """Tag builder-reported bench objects (and the given member optics) with a
     support-cluster `owner` id. The interpenetration check treats one cluster's parts (a post + its
     holder + its mount; a periscope's shared pillar + both clamps; a cage's rods + plates + members) as
     designed-to-touch, and only flags collisions BETWEEN clusters. The shared breadboard / feet / holes
@@ -1383,7 +1433,12 @@ def _own_new(coll, before, owner, optics=()):
     byte-identical (the tracer keys off `is_optical` optics, not this decoration). The shared board/feet/holes
     are created before any snapshot, so they are never in `new` and stay world-anchored (one optic must not
     drag the table)."""
-    new = [o for o in coll.objects if o not in before]
+    new = sorted(new, key=lambda o: o.name)
+    optics = sorted(optics, key=lambda o: o.name)
+    if __debug__ and before is not None:
+        unreported = [o.name for o in coll.objects
+                      if o not in before and o.name.startswith(BENCH_PREFIX) and o not in new]
+        assert not unreported, "builder did not report new bench objects: %s" % ", ".join(unreported)
     for o in new:
         o["oa_owner"] = owner
     for o in optics:
@@ -1395,6 +1450,55 @@ def _own_new(coll, before, owner, optics=()):
             if o.parent is None:                         # don't re-parent anything already linked
                 o.parent = rep
                 o.matrix_parent_inverse = inv            # cancel the optic's transform -> no jump, no trace change
+
+
+def _q(v, digits=6):
+    """Quantize a signature float: parenting evaluates world matrices through a
+    parent @ inverse round-trip whose ~1e-7 float noise must NOT invalidate the
+    signature (a real move is orders of magnitude larger). +0.0 normalizes -0.0."""
+    return round(float(v), digits) + 0.0
+
+
+def _dress_signature(scene, elems, post_radius):
+    """Stable digest of every scene input that selects dressing geometry."""
+    element_rows = []
+    for o in sorted(elems, key=lambda item: item.name):
+        op = o.optics
+        dofs = []
+        for dof in getattr(op, "dofs", ()):
+            axis = getattr(dof, "axis_local", getattr(dof, "axis", (0.0, 0.0, 0.0)))
+            dofs.append(([_q(v) for v in axis], _q(getattr(dof, "current", 0.0))))
+        effective_base = None
+        if getattr(op, "base_pose_set", False):
+            from . import mounts
+            effective_base = [_q(v) for row in mounts._effective_base(op) for v in row]
+        anchor = getattr(op, "anchor", None)
+        element_rows.append({
+            "name": o.name,
+            "element_type": getattr(op, "element_type", ""),
+            "matrix_world": [_q(v) for row in o.matrix_world for v in row],
+            "bbox": [[_q(v) for v in corner] for corner in o.bound_box],
+            "clear_aperture": _q(getattr(op, "clear_aperture", 0.0)),
+            "mount_type": getattr(op, "mount_type", ""),
+            "mount_preset": getattr(op, "mount_preset", ""),
+            "support_system": getattr(op, "support_system", "POST"),
+            "cage_id": getattr(op, "cage_id", ""),
+            "tube_id": getattr(op, "tube_id", ""),
+            "rail_id": getattr(op, "rail_id", ""),
+            "rail_family": getattr(op, "rail_family", "RLA"),
+            "effective_base": effective_base,
+            "anchor": anchor.name if anchor is not None else "",
+            "dofs": dofs,
+        })
+    payload = {
+        "elements": element_rows,
+        "grid_pitch": float(bench_pitch(scene)),
+        "grid_origin": (0.0, 0.0),
+        "beam_height": float(beam_height(scene)),
+        "post_radius": float(post_radius),
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), allow_nan=False)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
 def _interpenetration_issues(scene, min_faces=2):
@@ -1451,10 +1555,21 @@ def dress(scene, post_radius=POST_RADIUS):
     The board datum is independent of the optics' bounding boxes, so it is stable under edits.
     Optics keep their exact positions, so dressing never perturbs the trace. Idempotent: strips any
     prior dressing first. Returns the object count."""
-    strip(scene)
     elems = _optical_objects(scene)
     if not elems:
+        strip(scene)
         return 0
+    signature = _dress_signature(scene, elems, post_radius)
+    coll_existing = bpy.data.collections.get(BENCH_COLL)
+    expected = scene.get("oa_dress_count")
+    if (scene.get("oa_dress_sig") == signature and isinstance(expected, int)
+            and coll_existing is not None):
+        scene_objects = set(scene.objects)
+        present = sum(1 for o in coll_existing.objects if o in scene_objects
+                      and o.name.startswith(BENCH_PREFIX))
+        if present == expected:
+            return int(scene.get("oa_dress_result", present))
+    strip(scene)
     for o in elems:                                  # clear any stale support-cluster tag from a prior dress
         if "oa_owner" in o:
             del o["oa_owner"]
@@ -1471,15 +1586,28 @@ def dress(scene, post_radius=POST_RADIUS):
     ny = min(int(round((y1 - y0) / pitch)) + 1, 80)
     th = BOARD_THICKNESS
     margin = pitch * 0.6  # board overhang past the outermost holes
-    board = _box(BENCH_PREFIX + "Breadboard",
-                 (x1 - x0 + 2 * margin, y1 - y0 + 2 * margin, th),
-                 ((x0 + x1) * 0.5, (y0 + y1) * 0.5, board_top_z - th * 0.5),
-                 coll, "board")
-    # bore real recessed holes into the board; the dark hole discs then sit at the pocket FLOOR so
-    # each hole reads as a shadowed recess, not a painted dot (falls back to flat discs above the cap)
-    bored = _bore_grid(board, x0, y0, nx, ny, pitch, board_top_z, _thread_hole_r(pitch))
-    _hole_grid(BENCH_PREFIX + "Holes", x0, y0, nx, ny, pitch,
-               board_top_z - 2.45 if bored else board_top_z, coll, hole_r=_thread_hole_r(pitch))
+    hole_r = _thread_hole_r(pitch)
+    board_size = (x1 - x0 + 2 * margin, y1 - y0 + 2 * margin, th)
+    board_loc = ((x0 + x1) * 0.5, (y0 + y1) * 0.5, board_top_z - th * 0.5)
+    grid_key = (x0, y0, x1, y1, nx, ny, pitch, board_top_z, th, margin, hole_r,
+                2.6, 2.0, 10, 900)
+    cached = _cached_board_grid(grid_key)
+    if cached is None:
+        board = _box(BENCH_PREFIX + "Breadboard", board_size, board_loc, coll, "board")
+        # The discs sit at the pocket floor so each hole reads as a shadowed recess.
+        bored = _bore_grid(board, x0, y0, nx, ny, pitch, board_top_z, hole_r)
+        holes = _hole_grid(BENCH_PREFIX + "Holes", x0, y0, nx, ny, pitch,
+                           board_top_z - 2.45 if bored else board_top_z, coll, hole_r=hole_r)
+        board_cached = board.data.copy(); board_cached.name = BENCH_PREFIX + "BreadboardCache"
+        holes_cached = holes.data.copy(); holes_cached.name = BENCH_PREFIX + "HolesCache"
+        _cache_board_grid(grid_key, board_cached, holes_cached, bored)
+    else:
+        board_mesh, holes_mesh, bored = cached
+        board = bpy.data.objects.new(BENCH_PREFIX + "Breadboard", board_mesh.copy())
+        board.location = board_loc
+        eg._link_only(board, coll)
+        holes = bpy.data.objects.new(BENCH_PREFIX + "Holes", holes_mesh.copy())
+        eg._link_only(holes, coll)
     # four feet so the breadboard sits on a surface instead of floating in the void
     cxb = (x0 + x1) * 0.5; cyb = (y0 + y1) * 0.5
     fx = (x1 - x0) * 0.5 + margin - pitch * 0.5
@@ -1493,9 +1621,9 @@ def dress(scene, post_radius=POST_RADIUS):
     n = 6
     # cage-mounted optics ride shared rods + one cage post; tube-mounted optics share one barrel +
     # one post; everything else gets its own post.
-    groups = cage_groups(scene)
-    tubes = tube_groups(scene)
-    rails = rail_groups(scene)
+    groups = cage_groups(scene, elems)
+    tubes = tube_groups(scene, elems)
+    rails = rail_groups(scene, elems)
     grouped = {m.name for members in groups.values() for m in members}
     grouped |= {m.name for members in tubes.values() for m in members}
     grouped |= {m.name for members in rails.values() for m in members}
@@ -1509,7 +1637,8 @@ def dress(scene, post_radius=POST_RADIUS):
         stacks.setdefault((round(p.x / 3.0), round(p.y / 3.0)), []).append((i, o))
     for members in stacks.values():
         before = set(coll.objects)                       # snapshot -> tag this cluster's new hardware below
-        members.sort(key=lambda io: _anchor_pt(io[1]).z)
+        created = []
+        members.sort(key=lambda io: (_anchor_pt(io[1]).z, io[1].name))
         i_top, o_top = members[-1]                       # the highest optic sets the pillar height
         pt = _anchor_pt(o_top)
         zlo = _anchor_pt(members[0][1]).z
@@ -1553,19 +1682,28 @@ def dress(scene, post_radius=POST_RADIUS):
             n += nh + 1
             for i, o in members:                         # each optic in the stack gets its own mount
                 n += _build_mount(o, coll, i)
-        _own_new(coll, before, "stk%02d" % i_top, [o for _i, o in members])
+        created.extend(o for o in coll.objects if o not in before)
+        _own_new(coll, created, "stk%02d" % i_top, [o for _i, o in members], before=before)
     for gi, members in enumerate(groups.values()):
         before = set(coll.objects)
-        n += _build_cage(scene, members, board_top_z, coll, post_radius, "%02d" % gi)
-        _own_new(coll, before, "cage%02d" % gi, members)
+        created = []
+        n += _build_cage(scene, members, board_top_z, coll, post_radius, "%02d" % gi, created)
+        _own_new(coll, created, "cage%02d" % gi, members, before=before)
     for ti, members in enumerate(tubes.values()):
         before = set(coll.objects)
-        n += _build_tube(scene, members, board_top_z, coll, post_radius, "%02d" % ti)
-        _own_new(coll, before, "tube%02d" % ti, members)
+        created = []
+        n += _build_tube(scene, members, board_top_z, coll, post_radius, "%02d" % ti, created)
+        _own_new(coll, created, "tube%02d" % ti, members, before=before)
     for ri, members in enumerate(rails.values()):
         before = set(coll.objects)
-        n += _build_rail(scene, members, board_top_z, coll, post_radius, "%02d" % ri)
-        _own_new(coll, before, "rail%02d" % ri, members)
+        created = []
+        n += _build_rail(scene, members, board_top_z, coll, post_radius, "%02d" % ri, created)
+        _own_new(coll, created, "rail%02d" % ri, members, before=before)
+    scene["oa_dress_sig"] = signature
+    scene_objects = set(scene.objects)
+    scene["oa_dress_count"] = sum(1 for o in coll.objects if o in scene_objects
+                                   and o.name.startswith(BENCH_PREFIX))
+    scene["oa_dress_result"] = n
     return n
 
 
@@ -1573,7 +1711,11 @@ def strip(scene):
     """Remove all bench-dressing objects (and free their meshes)."""
     n = 0
     c = bpy.data.collections.get(BENCH_COLL)
-    targets = list(c.objects) if c else []
+    for key in ("oa_dress_sig", "oa_dress_count", "oa_dress_result"):
+        if key in scene:
+            del scene[key]
+    scene_objects = set(scene.objects)
+    targets = [o for o in c.objects if o in scene_objects] if c else []
     targets += [o for o in scene.objects if o.name.startswith(BENCH_PREFIX) and o not in targets]
     for o in list(targets):
         if not o.name.startswith(BENCH_PREFIX):
@@ -1585,6 +1727,9 @@ def strip(scene):
         n += 1
     if c and not c.objects:
         bpy.data.collections.remove(c)
+    for o in _optical_objects(scene):
+        if "oa_owner" in o:
+            del o["oa_owner"]
     return n
 
 

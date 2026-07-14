@@ -258,6 +258,13 @@ def trace_beam(mode=None):
             "beam_path": _beam_path_json(tracer.cached_segments)}
 
 
+def _diagnose_from_segments(scene, segs):
+    diags = _diagnostics._run_diagnostics_from_segments(scene, segs)
+    bad = sum(1 for d in diags if d.get("severity") == 'BAD')
+    warn = sum(1 for d in diags if d.get("severity") == 'WARN')
+    return {"ok": True, "diagnostics": diags, "counts": {"BAD": bad, "WARN": warn}}
+
+
 def diagnose():
     """Run the Wave-1 P0 bench-intelligence error-detection gates (A1-A5) over the
     current trace: beam_clipped (hard miss), vignetting (Gaussian wing clip),
@@ -267,10 +274,7 @@ def diagnose():
     Returns {ok, diagnostics:[{kind, element, detail, severity}], counts:{BAD,WARN}}."""
     scene = _scene()
     tracer.cached_segments = _trace(scene)
-    diags = _diagnostics.run_diagnostics(scene)
-    bad = sum(1 for d in diags if d.get("severity") == 'BAD')
-    warn = sum(1 for d in diags if d.get("severity") == 'WARN')
-    return {"ok": True, "diagnostics": diags, "counts": {"BAD": bad, "WARN": warn}}
+    return _diagnose_from_segments(scene, tracer.cached_segments)
 
 
 def propose_corrections():
@@ -1235,6 +1239,25 @@ def tolerance_scan(elements=None, target="", sigma_pos_mm=0.1, sigma_ang_deg=0.0
     (elements, target, sigma_pos_mm, sigma_ang_deg, seed)."""
     import math
     import numpy as np
+    if not isinstance(n, int) or isinstance(n, bool) or n <= 0:
+        return {"error": "n must be a positive integer"}
+    if not isinstance(seed, int) or isinstance(seed, bool):
+        return {"error": "seed must be an integer"}
+    try:
+        sigma_pos_mm = float(sigma_pos_mm)
+        sigma_ang_deg = float(sigma_ang_deg)
+    except (TypeError, ValueError):
+        return {"error": "sigma_pos_mm and sigma_ang_deg must be finite and >= 0"}
+    if (not math.isfinite(sigma_pos_mm) or sigma_pos_mm < 0.0
+            or not math.isfinite(sigma_ang_deg) or sigma_ang_deg < 0.0):
+        return {"error": "sigma_pos_mm and sigma_ang_deg must be finite and >= 0"}
+    if tol_mm is not None:
+        try:
+            tol_mm = float(tol_mm)
+        except (TypeError, ValueError):
+            return {"error": "tol_mm must be finite and >= 0"}
+        if not math.isfinite(tol_mm) or tol_mm < 0.0:
+            return {"error": "tol_mm must be finite and >= 0"}
     scene = _scene()
     names = list(elements) if isinstance(elements, (list, tuple)) else ([elements] if elements else None)
     if not names:
@@ -2088,18 +2111,8 @@ _PARAMS_BY_TYPE = {
 }
 
 
-def inspect_beam(element=""):
-    """The full OPTICAL STATE of the beam where it reaches ``element`` (or the most-lit element if
-    blank) -- the AI's numeric 'eyes' on the beam, so you READ the physics instead of eyeballing a
-    render: power, wavelength, Gaussian radius w and wavefront curvature R(z) (collimated / diverging /
-    converging), beam quality M^2, far-field divergence + reconstructed waist, polarization (Stokes ->
-    kind / azimuth / ellipticity / DOP, all verified kernels), coherence length, and how many beams
-    arrive (multi-beam awareness). READ-ONLY -- the trace is byte-identical. {element, power, w_mm,
-    R_mm, curvature, m2, divergence_mrad, waist_w0_mm, dist_to_waist_mm, polarization, n_beams, ...}."""
+def _inspect_beam_from_segments(element, segs):
     from . import physics
-    scene = _scene()
-    tracer.cached_segments = _trace(scene)
-    segs = tracer.cached_segments
     target = element
     if not target:
         best0 = max((s for s in segs if s.get("to")), key=lambda s: s.get("power", 0.0), default=None)
@@ -2128,19 +2141,32 @@ def inspect_beam(element=""):
         out["curvature"] = ("collimated" if not math.isfinite(R) else ("diverging" if R > 0 else "converging"))
         zR = q.imag
         if zR > 1e-9:
-            w0 = math.sqrt(m2) * math.sqrt(zR * (wl * 1e-6) / math.pi)   # physical waist (M^2-broadened)
+            w0 = math.sqrt(m2) * math.sqrt(zR * (wl * 1e-6) / math.pi)
             out["waist_w0_mm"] = round(w0, 5)
-            out["dist_to_waist_mm"] = round(q.real, 2)                   # >0: past the waist (diverging)
+            out["dist_to_waist_mm"] = round(q.real, 2)
             out["divergence_mrad"] = round(1000.0 * physics.gaussian_divergence(w0, wl, m2), 5)
     coh = best.get("coh", float('inf'))
-    out["coherence_length_mm"] = round(coh, 4) if math.isfinite(coh) and coh < 1.0e12 else None  # None = monochromatic
-    j = best.get("jones")                       # stored as [Ex.re, Ex.im, Ey.re, Ey.im] (JSON has no complex)
+    out["coherence_length_mm"] = round(coh, 4) if math.isfinite(coh) and coh < 1.0e12 else None
+    j = best.get("jones")
     if j and len(j) >= 4:
         out["polarization"] = physics.polarization_state((complex(j[0], j[1]), complex(j[2], j[3])))
     return out
 
 
-def inspect_element(name):
+def inspect_beam(element=""):
+    """The full OPTICAL STATE of the beam where it reaches ``element`` (or the most-lit element if
+    blank) -- the AI's numeric 'eyes' on the beam, so you READ the physics instead of eyeballing a
+    render: power, wavelength, Gaussian radius w and wavefront curvature R(z) (collimated / diverging /
+    converging), beam quality M^2, far-field divergence + reconstructed waist, polarization (Stokes ->
+    kind / azimuth / ellipticity / DOP, all verified kernels), coherence length, and how many beams
+    arrive (multi-beam awareness). READ-ONLY -- the trace is byte-identical. {element, power, w_mm,
+    R_mm, curvature, m2, divergence_mrad, waist_w0_mm, dist_to_waist_mm, polarization, n_beams, ...}."""
+    scene = _scene()
+    tracer.cached_segments = _trace(scene)
+    return _inspect_beam_from_segments(element, tracer.cached_segments)
+
+
+def _inspect_element_from_segments(name, segs):
     """What an element DOES to the beam + what it is DOING right now -- the AI's numeric 'eyes' on an
     optic. Returns its optical role, the type-relevant params (focal_length, retardance, split_ratio,
     reflectivity, coating, nl_process, ...), and the LIVE trace: incoming power and the OUTGOING children
@@ -2163,9 +2189,6 @@ def inspect_element(name):
     if coating and coating != "NONE":                          # surface coating (A11): R / T / A budget
         params["coating"] = coating
         params["coating_reflectance"] = round(getattr(op, "coating_reflectance", 0.0), 4)
-    scene = _scene()
-    tracer.cached_segments = _trace(scene)
-    segs = tracer.cached_segments
     incoming = [s for s in segs if s.get("to") == name]
     outgoing = [s for s in segs if s.get("from") == name]
     in_p = sum(s.get("power", 0.0) or 0.0 for s in incoming)
@@ -2194,6 +2217,13 @@ def inspect_element(name):
     return res
 
 
+def inspect_element(name):
+    """Inspect one optical element using the current scene trace."""
+    scene = _scene()
+    tracer.cached_segments = _trace(scene)
+    return _inspect_element_from_segments(name, tracer.cached_segments)
+
+
 def inspect_all():
     """The whole-bench INSPECTION DASHBOARD -- one call that chains inspect_beam (the beam state where it
     arrives) + inspect_element (what the optic does to it) for EVERY optical element, instead of N separate
@@ -2206,8 +2236,8 @@ def inspect_all():
     rows = []
     for o in elems:
         nm = o.name
-        be = inspect_beam(nm)
-        el = inspect_element(nm)
+        be = _inspect_beam_from_segments(nm, tracer.cached_segments)
+        el = _inspect_element_from_segments(nm, tracer.cached_segments)
         if not isinstance(be, dict):
             be = {}
         if not isinstance(el, dict):
@@ -2221,8 +2251,8 @@ def inspect_all():
             "polarization": pol.get("kind") if isinstance(pol, dict) else pol,
             "n_beams": be.get("n_beams"), "outputs": el.get("outputs"),
         })
-    diag = diagnose()
-    issues = diag.get("issues") if isinstance(diag, dict) else None
+    diag = _diagnose_from_segments(scene, tracer.cached_segments)
+    issues = diag.get("diagnostics") if isinstance(diag, dict) else None
     worst = None
     if issues:
         order = {"BAD": 3, "WARN": 2, "OK": 1}

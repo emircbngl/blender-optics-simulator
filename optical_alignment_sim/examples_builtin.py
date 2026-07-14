@@ -642,7 +642,8 @@ EXAMPLES = {
 def _reset_examples():
     """Remove previously-built example collections + baked beams so each example
     is built in isolation (otherwise multiple setups share the trace)."""
-    from . import tracer, bake
+    from . import tracer, bake, optomech
+    optomech.strip(bpy.context.scene)
     for c in list(bpy.data.collections):
         if c.name.startswith("OpticsExample_"):
             for o in list(c.objects):

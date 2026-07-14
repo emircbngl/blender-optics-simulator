@@ -143,6 +143,8 @@ def _load_state():
         try:
             with open(f, encoding="utf-8") as fh:
                 data = json.load(fh)
+            if not isinstance(data, dict):
+                raise ValueError("update state must be a JSON object")
             _state["last_check"] = float(data.get("last_check", 0.0))
             _state["latest"] = data.get("latest", "")
         except (OSError, ValueError):
@@ -170,10 +172,15 @@ def _fetch_latest():
         req = urllib.request.Request(UPDATE_REPO_URL, headers={"User-Agent": EXT_ID})
         with urllib.request.urlopen(req, timeout=10) as resp:
             data = json.loads(resp.read().decode("utf-8"))
+        if not isinstance(data, dict):
+            return None
+        entries = data.get("data", [])
+        if not isinstance(entries, list) or not all(isinstance(entry, dict) for entry in entries):
+            return None
     except (urllib.error.URLError, OSError, ValueError):
         return None
     best = None
-    for entry in data.get("data", []):
+    for entry in entries:
         if entry.get("id") == EXT_ID:
             v = entry.get("version", "")
             if v and (best is None or _is_newer(v, best)):

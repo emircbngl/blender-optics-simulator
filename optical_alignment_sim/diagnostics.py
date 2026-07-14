@@ -762,7 +762,12 @@ def _beam_underfills_figure(scene, segs):
         if w <= 1e-6:
             continue
         try:
-            fig_r = 0.5 * max(E.dimensions)            # figure transverse extent ~ half the mesh bbox (radius)
+            _sp, sn, _ca = tracer.interaction_surface(E)
+            u, v = physics.transverse_basis(sn)
+            corners = [E.matrix_world @ Vector(c) for c in E.bound_box]
+            u_proj = [corner.dot(Vector(u)) for corner in corners]
+            v_proj = [corner.dot(Vector(v)) for corner in corners]
+            fig_r = 0.5 * max(max(u_proj) - min(u_proj), max(v_proj) - min(v_proj))
         except Exception:
             fig_r = 0.0
         if fig_r <= 1e-6:
@@ -789,15 +794,7 @@ def _beam_underfills_figure(scene, segs):
 # public entry point
 # ---------------------------------------------------------------------------
 
-def run_diagnostics(scene):
-    """Run the Wave-1 P0 error-detection gates (A1-A5) over the CURRENT trace and
-    return a flat list of {kind, element, detail, severity} dicts (empty == clean).
-
-    READ-ONLY: uses the cached trace if present, otherwise traces once; it never
-    mutates the trace, the ray path, or any element pose. The beam trace is
-    byte-identical before and after a call.
-    """
-    segs = tracer.cached_segments if tracer.cached_segments else alignment._trace(scene)
+def _run_diagnostics_from_segments(scene, segs):
     out = []
     out += _beam_clipped(scene, segs)
     out += _vignetting(scene, segs)
@@ -810,6 +807,18 @@ def run_diagnostics(scene):
     out += _fringe_disambiguation(scene, segs)
     out += _beam_underfills_figure(scene, segs)
     return out
+
+
+def run_diagnostics(scene):
+    """Run the Wave-1 P0 error-detection gates (A1-A5) over the CURRENT trace and
+    return a flat list of {kind, element, detail, severity} dicts (empty == clean).
+
+    READ-ONLY: uses the cached trace if present, otherwise traces once; it never
+    mutates the trace, the ray path, or any element pose. The beam trace is
+    byte-identical before and after a call.
+    """
+    segs = tracer.cached_segments if tracer.cached_segments else alignment._trace(scene)
+    return _run_diagnostics_from_segments(scene, segs)
 
 
 # --------------------------------------------------------------------------- #

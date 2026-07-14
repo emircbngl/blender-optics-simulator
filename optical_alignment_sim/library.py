@@ -125,9 +125,34 @@ def _user_json():
     return os.path.join(_cache_dir(), "components_user.json")
 
 
+_catalog_cache_key = None
+_catalog_cache = None
+
+
+def _catalog_metadata(path):
+    if not path:
+        return (path, False, None, None)
+    try:
+        stat = os.stat(path)
+        return (path, True, stat.st_mtime_ns, stat.st_size)
+    except OSError:
+        return (path, False, None, None)
+
+
+def _invalidate_catalog_cache():
+    global _catalog_cache_key, _catalog_cache
+    _catalog_cache_key = None
+    _catalog_cache = None
+
+
 def get_components():
+    global _catalog_cache_key, _catalog_cache
+    paths = (_bundled_json(), _user_json())
+    cache_key = tuple(_catalog_metadata(path) for path in paths)
+    if cache_key == _catalog_cache_key and _catalog_cache is not None:
+        return _catalog_cache
     comps = {k: dict(v) for k, v in BUILTIN.items()}
-    for path in (_bundled_json(), _user_json()):
+    for path in paths:
         if path and os.path.exists(path):
             try:
                 with open(path, "r") as f:
@@ -147,6 +172,8 @@ def get_components():
                         comps[k] = v
             except Exception:
                 pass
+    _catalog_cache_key = cache_key
+    _catalog_cache = comps
     return comps
 
 
@@ -362,6 +389,7 @@ def save_component(obj, key, label=""):
     data[key] = entry
     with open(path, "w") as f:
         json.dump(data, f, indent=2)
+    _invalidate_catalog_cache()
     return path
 
 

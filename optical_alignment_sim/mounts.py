@@ -167,9 +167,13 @@ def get_library():
     if os.path.exists(p):
         try:
             with open(p, "r") as f:
-                lib.update(json.load(f))
-        except Exception:
-            pass
+                user_lib = json.load(f)
+            if not isinstance(user_lib, dict):
+                raise TypeError("mount library root must be a JSON object")
+            lib.update(user_lib)
+        except Exception as exc:
+            detail = str(exc).replace("\r", " ").replace("\n", " ")
+            print("Optics Simulator: warning: could not load mount library %s: %s" % (p, detail))
     return lib
 
 
