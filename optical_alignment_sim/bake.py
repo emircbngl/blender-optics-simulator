@@ -59,7 +59,9 @@ def wavelength_rgb(wl_nm):
     elif w < 580.0:
         r, g, b = (w - 545.0) / 35.0, 1.0, 0.0
     elif w < 645.0:
-        r, g, b = 1.0, (645.0 - w) / 65.0, 0.0
+        # squared falloff: 633 nm must stay LASER-red under a bright emission (a linear ramp
+        # leaves g=0.19 there, which blooms yellow-orange); 589 nm still reads sodium-yellow
+        r, g, b = 1.0, ((645.0 - w) / 65.0) ** 2, 0.0
     elif w <= 780.0:
         r, g, b = 1.0, 0.0, 0.0
     else:
