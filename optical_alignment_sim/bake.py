@@ -38,17 +38,62 @@ def beam_collection(scene):
     return c
 
 
-def beam_material():
-    m = bpy.data.materials.get(BEAM_MAT)
+def wavelength_rgb(wl_nm):
+    """Visible-spectrum wavelength -> linear RGB (Bruton-style piecewise approximation).
+
+    VISUALIZATION convention, not radiometry: out-of-band light is invisible in reality, but a
+    black tube reads as "no beam", so IR (>780 nm) renders as a dim deep crimson and UV (<380 nm)
+    as a dim violet -- the standard optics-figure convention (e.g. a 1064 nm pump drawn dark red
+    next to its bright green 532 nm harmonic)."""
+    w = float(wl_nm)
+    if w < 380.0:
+        r, g, b = 0.35, 0.08, 0.55
+    elif w < 440.0:
+        r, g, b = (440.0 - w) / 60.0, 0.0, 1.0
+    elif w < 490.0:
+        r, g, b = 0.0, (w - 440.0) / 50.0, 1.0
+    elif w < 510.0:
+        r, g, b = 0.0, 1.0, (510.0 - w) / 20.0
+    elif w < 545.0:
+        r, g, b = 0.0, 1.0, 0.0                  # green plateau: 532 nm must READ laser-green
+    elif w < 580.0:
+        r, g, b = (w - 545.0) / 35.0, 1.0, 0.0
+    elif w < 645.0:
+        r, g, b = 1.0, (645.0 - w) / 65.0, 0.0
+    elif w <= 780.0:
+        r, g, b = 1.0, 0.0, 0.0
+    else:
+        r, g, b = 0.55, 0.02, 0.02
+    # gentle intensity roll-off at the band edges (keeps 633 nm at full brightness)
+    if 380.0 <= w < 420.0:
+        f = 0.3 + 0.7 * (w - 380.0) / 40.0
+        r, g, b = r * f, g * f, b * f
+    elif 700.0 < w <= 780.0:
+        f = 0.3 + 0.7 * (780.0 - w) / 80.0
+        r, g, b = r * f, g * f, b * f
+    return r, g, b
+
+
+def beam_material(wl_nm=None):
+    """Per-wavelength emission material (BEAM_MAT for the legacy default, BEAM_MAT_<nm> otherwise)
+    so a baked bench shows its real colors -- an SHG bench MUST read IR in / green out."""
+    if wl_nm is None:
+        name, color = BEAM_MAT, (1.0, 0.08, 0.04, 1.0)      # legacy default (633-class red)
+    else:
+        name = "%s_%d" % (BEAM_MAT, int(round(wl_nm)))
+        r, g, b = wavelength_rgb(wl_nm)
+        color = (r, g, b, 1.0)
+    m = bpy.data.materials.get(name)
     if m:
         return m
-    m = bpy.data.materials.new(BEAM_MAT)
+    m = bpy.data.materials.new(name)
     m.use_nodes = True
     nt = m.node_tree
     nt.nodes.clear()
     em = nt.nodes.new("ShaderNodeEmission")
-    em.inputs["Color"].default_value = (1.0, 0.08, 0.04, 1.0)
-    em.inputs["Strength"].default_value = 25.0
+    em.inputs["Color"].default_value = color
+    # out-of-band tubes glow dimmer: an IR pump should read as a dark ember next to its harmonic
+    em.inputs["Strength"].default_value = 25.0 if (wl_nm is None or 380.0 <= wl_nm <= 780.0) else 14.0
     out = nt.nodes.new("ShaderNodeOutputMaterial")
     nt.links.new(em.outputs["Emission"], out.inputs["Surface"])
     return m
@@ -146,9 +191,9 @@ def bake_beams(context, radius=0.6):
         bpy.ops.object.mode_set(mode='OBJECT')
     clear_baked(scene)
     coll = beam_collection(scene)
-    mat = beam_material()
     n = 0
     for i, s in enumerate(tracer.cached_segments):
+        mat = beam_material(s.get("wavelength"))     # per-segment color: SHG green != pump IR
         p1, p2 = Vector(s["p1"]), Vector(s["p2"])
         qd = s.get("qd")
         if qd is not None:                              # taper to the real Gaussian w(z) along the segment

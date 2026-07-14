@@ -4,6 +4,17 @@ All notable changes to the **Blender Optics Simulator** (`optical_alignment_sim`
 here. The format follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 semantic versioning.
 
+## [Unreleased]
+
+### Fixed — baked beams now carry their real wavelength color
+`bake_beams` used ONE fixed red emission material for every segment, so an SHG bench baked its
+1064 nm pump and its 532 nm harmonic the SAME color — the physics was in the trace (532 nm at 45%
+power after the KTP), the render lied about it. Beam tubes now get a per-wavelength emission
+material (`wavelength_rgb`, Bruton-style visible-spectrum map; out-of-band light uses the standard
+figure convention — IR as dim deep crimson, UV as dim violet — because a truly invisible tube
+reads as "no beam"). 633 nm-class scenes keep the legacy look; the trace is untouched. Found by
+the promo pipeline's judge renders: the "IR in, green out" money shot rendered all-red.
+
 ## [0.25.0] — Structural-audit release: every mount and element judged alone, in 3D — 2026-07-14
 
 ### Fixed — element catalog close-up audit (30/30 builders judged bare, 10 fixed)
