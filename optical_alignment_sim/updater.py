@@ -25,9 +25,11 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import tempfile
 import time
 import urllib.error
 import urllib.request
+from typing import NamedTuple
 
 import bpy
 from bpy.types import Operator, Panel
@@ -41,6 +43,9 @@ EXT_ID = "optical_alignment_sim"
 
 CHECK_INTERVAL_S = 24 * 3600        # throttle: check at most once a day
 _FIRST_DELAY_S = 20.0               # first check shortly after launch (don't block startup)
+FETCH_TIMEOUT_S = 5                 # synchronous by store policy; keep UI blocking bounded
+_MAX_STATE_AGE_S = 10 * 365 * 24 * 3600
+_ARCHIVE_URL_PREFIX = "https://github.com/emircbngl/blender-optics-simulator/releases/download/"
 
 _state = {
     "available": False,   # a newer version exists on the repo
@@ -49,6 +54,14 @@ _state = {
     "last_check": 0.0,    # epoch seconds of the last network check
 }
 _relaunching = False      # set while WE quit for a relaunch, so exit_pre stays out of the way
+_busy = False             # synchronous update operations must not overlap
+
+
+class FetchResult(NamedTuple):
+    ok: bool
+    latest: str = ""
+    error: str = ""
+    entry: dict | None = None
 
 
 # --------------------------------------------------------------------------- helpers
@@ -66,15 +79,20 @@ def _addon_version():
 
 
 def _ver_tuple(v):
-    out = []
-    for part in str(v).split("."):
-        digits = "".join(ch for ch in part if ch.isdigit())
-        out.append(int(digits) if digits else 0)
-    return tuple(out)
+    text = str(v)
+    parts = text.split(".")
+    if not parts or any(not part or not part.isascii() or not part.isdigit() for part in parts):
+        return None
+    values = [int(part) for part in parts]
+    while values and values[-1] == 0:
+        values.pop()
+    return tuple(values)
 
 
 def _is_newer(remote, local):
-    return _ver_tuple(remote) > _ver_tuple(local)
+    remote_tuple = _ver_tuple(remote)
+    local_tuple = _ver_tuple(local)
+    return remote_tuple is not None and local_tuple is not None and remote_tuple > local_tuple
 
 
 def _addon_prefs():
@@ -138,6 +156,7 @@ def _state_file():
 
 
 def _load_state():
+    _state.update(available=False, latest="", staged=False, last_check=0.0)
     f = _state_file()
     if f and os.path.exists(f):
         try:
@@ -145,9 +164,14 @@ def _load_state():
                 data = json.load(fh)
             if not isinstance(data, dict):
                 raise ValueError("update state must be a JSON object")
-            _state["last_check"] = float(data.get("last_check", 0.0))
-            _state["latest"] = data.get("latest", "")
-        except (OSError, ValueError):
+            last_check = float(data.get("last_check", 0.0))
+            now = time.time()
+            if now - _MAX_STATE_AGE_S <= last_check <= now:
+                _state["last_check"] = last_check
+            latest = data.get("latest", "")
+            if isinstance(latest, str) and _ver_tuple(latest) is not None:
+                _state["latest"] = latest
+        except (OSError, TypeError, ValueError):
             pass
     # self-heal: only "available" if the saved latest is still newer than what's installed
     _state["available"] = bool(_state["latest"]) and _is_newer(_state["latest"], _addon_version())
@@ -158,50 +182,79 @@ def _save_state():
     f = _state_file()
     if not f:
         return
+    tmp = None
     try:
-        with open(f, "w", encoding="utf-8") as fh:
+        os.makedirs(os.path.dirname(f), exist_ok=True)
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=os.path.dirname(f),
+                                         prefix=".update_state.", suffix=".tmp", delete=False) as fh:
+            tmp = fh.name
             json.dump({"last_check": _state["last_check"], "latest": _state["latest"]}, fh)
-    except OSError:
-        pass
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, f)
+    except OSError as exc:
+        print("Optics Simulator: could not save update state: %s" % exc)
+        if tmp:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
 
 
 # --------------------------------------------------------------------------- the check
 def _fetch_latest():
-    """Latest version string advertised on the repo, or None. Caller gates on online_access."""
+    """Fetch the latest valid release entry; the synchronous request is capped at five seconds."""
     try:
         req = urllib.request.Request(UPDATE_REPO_URL, headers={"User-Agent": EXT_ID})
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=FETCH_TIMEOUT_S) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         if not isinstance(data, dict):
-            return None
+            return FetchResult(False, error="repository index is not an object")
         entries = data.get("data", [])
         if not isinstance(entries, list) or not all(isinstance(entry, dict) for entry in entries):
-            return None
-    except (urllib.error.URLError, OSError, ValueError):
-        return None
-    best = None
+            return FetchResult(False, error="repository index has invalid data")
+    except (urllib.error.URLError, OSError, ValueError, UnicodeError) as exc:
+        return FetchResult(False, error=str(exc) or exc.__class__.__name__)
+    best_version = None
+    best_entry = None
     for entry in entries:
         if entry.get("id") == EXT_ID:
             v = entry.get("version", "")
-            if v and (best is None or _is_newer(v, best)):
-                best = v
-    return best
+            if _ver_tuple(v) is not None and (best_version is None or _is_newer(v, best_version)):
+                best_version = v
+                best_entry = entry
+    if best_version is None:
+        return FetchResult(False, error="repository has no valid %s release" % EXT_ID)
+    return FetchResult(True, latest=best_version, entry=best_entry)
 
 
 def _do_check(force=False):
     if not bpy.app.online_access:
-        return
+        return FetchResult(False, error="online access is disabled")
     now = time.time()
     if not force and (now - _state["last_check"] < CHECK_INTERVAL_S):
-        return
-    _state["last_check"] = now
-    latest = _fetch_latest()
-    if latest:
-        _state["latest"] = latest
+        return None
+    result = _fetch_latest()
+    if result.ok:
+        _state["last_check"] = now
+        _state["latest"] = result.latest
         if not _state["staged"]:
-            _state["available"] = _is_newer(latest, _addon_version())
-    _save_state()
+            _state["available"] = _is_newer(result.latest, _addon_version())
+        _save_state()
     _redraw()
+    return result
+
+
+def _validate_release_entry(entry):
+    if not isinstance(entry, dict):
+        return "repository release entry is missing"
+    archive_url = entry.get("archive_url")
+    if not isinstance(archive_url, str) or not archive_url.startswith(_ARCHIVE_URL_PREFIX):
+        return "release archive URL is not from the approved GitHub Releases path"
+    archive_hash = entry.get("archive_hash")
+    if not isinstance(archive_hash, str) or not archive_hash.startswith("sha256:"):
+        return "release archive hash is missing or is not sha256-prefixed"
+    return ""
 
 
 def _timer_check():
@@ -260,7 +313,18 @@ class OPTICS_OT_check_updates(Operator):
     bl_idname = "optics.check_updates"
     bl_label = "Check for Updates"
 
+    @classmethod
+    def poll(cls, context):
+        return not _platform_managed() and not _busy
+
     def execute(self, context):
+        global _busy
+        if _platform_managed():
+            self.report({'WARNING'}, "Updates are managed by Blender Extensions.")
+            return {'CANCELLED'}
+        if _busy:
+            self.report({'WARNING'}, "An update operation is already in progress.")
+            return {'CANCELLED'}
         if not bpy.app.online_access:
             self.report({'WARNING'}, "Turn on Allow Online Access (Preferences ▸ System ▸ Network).")
             try:
@@ -268,7 +332,15 @@ class OPTICS_OT_check_updates(Operator):
             except (RuntimeError, AttributeError):
                 pass
             return {'CANCELLED'}
-        _do_check(force=True)
+        _busy = True
+        try:
+            result = _do_check(force=True)
+        finally:
+            _busy = False
+        if not result or not result.ok:
+            reason = result.error if result else "unknown error"
+            self.report({'WARNING'}, "Update check failed: %s — will retry" % reason)
+            return {'CANCELLED'}
         if _state["available"]:
             self.report({'INFO'}, "Update available: v%s" % _state["latest"])
         else:
@@ -281,7 +353,18 @@ class OPTICS_OT_install_update(Operator):
     bl_idname = "optics.install_update"
     bl_label = "Install Update"
 
+    @classmethod
+    def poll(cls, context):
+        return not _platform_managed() and not _busy
+
     def execute(self, context):
+        global _busy
+        if _platform_managed():
+            self.report({'WARNING'}, "Updates are managed by Blender Extensions.")
+            return {'CANCELLED'}
+        if _busy:
+            self.report({'WARNING'}, "An update operation is already in progress.")
+            return {'CANCELLED'}
         if not bpy.app.online_access:
             self.report({'WARNING'}, "Turn on Allow Online Access (Preferences ▸ System ▸ Network).")
             try:
@@ -290,42 +373,54 @@ class OPTICS_OT_install_update(Operator):
                 pass
             return {'CANCELLED'}
 
-        prefs = context.preferences
+        _busy = True
         try:
-            repo = _ensure_repo(prefs)
-            repo_index = list(prefs.extensions.repos).index(repo)
-        except Exception as exc:     # repo API varies across Blender versions — never crash the click
-            self.report({'ERROR'}, "Could not add the update repository: %s" % exc)
-            return {'CANCELLED'}
+            result = _fetch_latest()
+            if not result.ok:
+                self.report({'ERROR'}, "Install failed during release check: %s" % result.error)
+                return {'CANCELLED'}
+            entry_error = _validate_release_entry(result.entry)
+            if entry_error:
+                self.report({'ERROR'}, "Install refused: %s" % entry_error)
+                return {'CANCELLED'}
 
-        try:
-            bpy.ops.extensions.repo_sync(repo_index=repo_index)
-        except Exception:
+            prefs = context.preferences
             try:
-                bpy.ops.extensions.repo_sync_all(use_active_only=False)
-            except Exception:
-                pass
+                repo = _ensure_repo(prefs)
+                repo_index = list(prefs.extensions.repos).index(repo)
+            except Exception as exc:
+                self.report({'ERROR'}, "Install failed while adding repository: %s" % exc)
+                return {'CANCELLED'}
 
-        try:
-            bpy.ops.extensions.package_install(
-                repo_index=repo_index, pkg_id=EXT_ID, enable_on_install=True)
-        except Exception as exc:
-            self.report({'ERROR'},
-                        "Install failed (%s). Opening Blender's update panel." % exc)
-            for op in ("userpref_show_for_update", "userpref_show_online"):
-                try:
-                    getattr(bpy.ops.extensions, op)('INVOKE_DEFAULT')
-                    break
-                except (RuntimeError, AttributeError):
-                    continue
-            return {'CANCELLED'}
+            try:
+                sync_result = bpy.ops.extensions.repo_sync(repo_index=repo_index)
+            except Exception as exc:
+                self.report({'ERROR'}, "Install failed during repository sync: %s" % exc)
+                return {'CANCELLED'}
+            if sync_result != {'FINISHED'}:
+                self.report({'ERROR'}, "Install failed during repository sync: operator returned %s" % sync_result)
+                return {'CANCELLED'}
 
-        _state["staged"] = True
-        _state["available"] = False
-        _save_state()
-        _redraw()
-        self.report({'INFO'}, "Update downloaded — click Update Now to apply.")
-        return {'FINISHED'}
+            try:
+                install_result = bpy.ops.extensions.package_install(
+                    repo_index=repo_index, pkg_id=EXT_ID, enable_on_install=True)
+            except Exception as exc:
+                self.report({'ERROR'}, "Install failed during package install: %s" % exc)
+                return {'CANCELLED'}
+            if install_result != {'FINISHED'}:
+                self.report({'ERROR'}, "Install failed during package install: operator returned %s" % install_result)
+                return {'CANCELLED'}
+
+            # Blender's native repository installer verifies archive_hash against downloaded bytes.
+            _state["staged"] = True
+            _state["available"] = False
+            _state["latest"] = result.latest
+            _save_state()
+            _redraw()
+            self.report({'INFO'}, "Update downloaded — click Update Now to apply.")
+            return {'FINISHED'}
+        finally:
+            _busy = False
 
 
 class OPTICS_OT_apply_update(Operator):

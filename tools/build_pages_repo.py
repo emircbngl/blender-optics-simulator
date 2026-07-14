@@ -23,6 +23,7 @@ Needs Blender (for the canonical `server-generate`) — path overridable via $BL
 """
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -46,6 +47,9 @@ def manifest_version():
 
 def main():
     version = sys.argv[1] if len(sys.argv) > 1 else manifest_version()
+    manifest = manifest_version()
+    if version != manifest:
+        sys.exit(f"requested version {version} does not match manifest version {manifest}")
     tag = "v" + version
     zip_name = f"{EXT_ID}-{version}.zip"
     zip_path = os.path.join(ROOT, "dist", zip_name)
@@ -55,9 +59,6 @@ def main():
                  f"--output-filepath dist/{zip_name}")
 
     asset_url = f"https://github.com/{REPO}/releases/download/{tag}/{zip_name}"
-    docs = os.path.join(ROOT, "docs")
-    os.makedirs(docs, exist_ok=True)
-
     # 1) canonical index.json via Blender, then repoint archive_url at the Release asset.
     tmp = tempfile.mkdtemp(prefix="oas_repo_")
     try:
@@ -67,8 +68,24 @@ def main():
         idx = json.load(open(os.path.join(tmp, "index.json")))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-    for e in idx.get("data", []):
-        e["archive_url"] = asset_url
+    entries = idx.get("data") if isinstance(idx, dict) else None
+    matching = [entry for entry in entries or []
+                if isinstance(entry, dict) and entry.get("id") == EXT_ID]
+    if len(matching) != 1:
+        sys.exit(f"generated index must contain exactly one {EXT_ID} entry; found {len(matching)}")
+    entry = matching[0]
+    if entry.get("version") != version:
+        sys.exit(f"generated index version {entry.get('version')!r} does not match {version}")
+    size = entry.get("archive_size")
+    if not isinstance(size, int) or isinstance(size, bool) or size <= 0:
+        sys.exit("generated index archive_size must be a positive integer")
+    archive_hash = entry.get("archive_hash")
+    if not isinstance(archive_hash, str) or not re.fullmatch(r"sha256:[0-9a-fA-F]{64}", archive_hash):
+        sys.exit("generated index archive_hash must be sha256 followed by 64 hexadecimal digits")
+    entry["archive_url"] = asset_url
+
+    docs = os.path.join(ROOT, "docs")
+    os.makedirs(docs, exist_ok=True)
     with open(os.path.join(docs, "index.json"), "w") as f:
         json.dump(idx, f, indent=1)
 
