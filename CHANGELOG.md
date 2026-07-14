@@ -6,6 +6,45 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Fixed — full-codebase review pass (24.4k lines, four subsystem sweeps)
+- **Circulator insertion loss now reaches detector reads**: the through-path Jones amplitude
+  tracks the power bookkeeping (sqrt of the transmittance; the isolation leak includes it too).
+  Default lossless circulators are byte-identical. The zero-internal-OPL routing idealization is
+  now documented at the branch.
+- **`inspect_all` diagnostics were silently dropped** (a wrong dict key left `issues` always
+  empty); the dashboard now surfaces them.
+- **AO robustness**: a failed interaction-matrix calibration can no longer leave the deformable
+  mirror in a poked state; losing the sensor signal mid-loop reports `ok: false` instead of
+  "converged"; non-finite matrices return an explicit solver error instead of a traceback;
+  a failed Jacobian calibration restores the actuator it was probing.
+- **Scan operator**: a failure while restoring the swept parameter can no longer mask the
+  primary error.
+- **Multi-slit PNG rendering** un-broken (a missing metadata key made it error every time).
+- **Input validation**: `tolerance_scan` and `mode_match_lens` reject bad numerics with the
+  documented `{error}`; the χ² solvers require `n_steps >= 1`; `angular_spectrum` documents and
+  enforces its square-grid contract; thin-film TMM raises on singular configurations instead of
+  fabricating values; the updater tolerates malformed index/state JSON shapes.
+- **Surface-figure diagnostic** measures the element's transverse footprint (a thick or
+  elongated mesh no longer triggers a false underfill WARN).
+- **Catalog visibility**: unreadable user glass/mount/component catalogs now print a warning
+  with the path instead of silently disappearing.
+
+### Changed — performance (measured on an 8-element bench, Apple-silicon CPU)
+- **`dress()` early-out**: re-dressing an unchanged bench costs ~0.3 ms instead of ~820 ms (a
+  quantized scene signature ignores float-level pose noise; any real change rebuilds); a full
+  rebuild itself dropped ~820 → ~556 ms (board/hole-grid mesh reuse, one scene scan,
+  builder-provided ownership lists).
+- **Deterministic dressing**: builders iterate in name order, so the same scene dresses to
+  bit-identical vertex positions across runs (Blender's boolean operator may still relabel
+  internal vertex indices of a few parts, which no render, trace or gate observes).
+- **Tracer**: element interaction surfaces are tabulated once per trace instead of recomputed
+  per ray; ORDER-mode lookups are O(1); scans index detector segments once per step.
+- **`inspect_all`**: one trace instead of 2N+2 (measured 2.8 → 0.4 ms).
+- **Field engine**: angular-spectrum transfer functions are cached (repeat propagation
+  35.1 → 24.6 ms at 1024²) and the Talbot carpet reuses one source FFT (238 fewer forward
+  FFTs on a 240-row carpet); component-catalog reads are cached with file-metadata
+  invalidation.
+
 ### Fixed — baked beams now carry their real wavelength color
 `bake_beams` used ONE fixed red emission material for every segment, so an SHG bench baked its
 1064 nm pump and its 532 nm harmonic the SAME color — the physics was in the trace (532 nm at 45%
