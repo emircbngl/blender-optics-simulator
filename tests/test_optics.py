@@ -167,16 +167,21 @@ for _nm in ("CG_L", "CG_M1", "CG_M2", "CG_D"):                         # clean u
 _cg = bpy.data.collections.get("CollisionGate")
 if _cg:
     bpy.data.collections.remove(_cg)
-# a raised mount (periscope upper deck) must ride the fat Ø1" pillar, not a long thin Ø1/2" stick
+# the periscope's vertical-fold assembly rides the fat Ø1" pillar; STANDARD single-deck mounts
+# keep the catalog Ø1/2" post at ANY height (the diameter is a standard, the length is not)
 optics_api.build_example("periscope"); optics_api.dress_bench(True)
 _pst = [o for o in sc.objects if o.name.startswith(optomech.BENCH_PREFIX + "Post_")]
 _tall = max(_pst, key=lambda o: o.dimensions.z) if _pst else None
-check("periscope produces a tall post (> pillar threshold)",
-      _tall is not None and _tall.dimensions.z > optomech.PILLAR_OVER_MM,
+check("periscope produces a tall vertical-fold post",
+      _tall is not None and _tall.dimensions.z > 130.0,
       "%.1f" % (_tall.dimensions.z if _tall else -1))
-check("the tall post is the fat Ø1\" pillar, not a thin stick",
+check("the vertical-fold post is the fat Ø1\" pillar, not a thin stick",
       _tall is not None and abs(_tall.dimensions.x * 0.5 - optomech.POST_RADIUS_TALL) < 1.5,
       "r=%.2f" % (_tall.dimensions.x * 0.5 if _tall else -1))
+_std = [o for o in _pst if o is not _tall]
+check("standard periscope-scene posts stay at the catalog Ø1/2\" diameter",
+      all(abs(o.dimensions.x * 0.5 - optomech.POST_RADIUS) < 1.0 for o in _std) if _std else True,
+      str([round(o.dimensions.x * 0.5, 2) for o in _std]))
 # the periscope's vertical-fold pillar must stand OFF the beam axis (the two fold mirrors share xy);
 # a coaxial pillar would block the beam. Confirm the pillar is offset, then prove the gate fires when
 # it is shoved back onto the axis.
