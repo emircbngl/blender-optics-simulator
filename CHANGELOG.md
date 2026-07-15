@@ -4,7 +4,61 @@ All notable changes to the **Blender Optics Simulator** (`optical_alignment_sim`
 here. The format follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 semantic versioning.
 
-## [Unreleased]
+## [0.26.0] — The human-usable bench: a five-group UI, placement dialogs, live diagnostics — 2026-07-15
+
+### Added — the N-panel is now built for people, not only for agents
+- **Five task-ordered top panels** — Setup / Place / Simulate / Inspect / Present — replace the
+  former nine flat panels. Setup and Simulate open by default; everything else is a closed
+  header until needed. Adaptive Optics lives in ONE place (Simulate), the MCP bridge moved to
+  Present ▸ Tools & Integration, and advanced fields sit behind a `show_advanced` preference,
+  leaving ten core element fields always visible with full-word, unit-labelled names
+  ("Focal Length (mm)", "Wavelength (nm)").
+- **Placement from the UI**: "Offset XYZ…" places the active element at an (x, y, z) mm offset
+  from any optical reference (reference/world frame, orientation matching, F9 fine-tune);
+  "Grid…" seats it on a breadboard hole (Column/Row, nearest-hole pre-fill); "Rail…" drives a
+  rail-mounted optic to a position in mm. All three go through the base-pose helper — nothing
+  writes raw object locations, so mount/DOF semantics survive. The two grid/rail API endpoints
+  were migrated to the same helper (their old direct-location writes bypassed base poses).
+- **Browse Examples…** — one button opens the full 26-example catalog (Michelson first);
+  the six fixed example buttons are gone.
+- **Live diagnostics in Inspect**: a Diagnose button caches BAD/WARN results (header badge),
+  every row carries a "Fix…" that opens the matching corrective operator pre-filled —
+  suggestions stay advisory (accept / refuse / partial), nothing auto-applies. Any scene edit
+  marks the cache stale ("Scene changed — re-run Diagnose"). Empty scenes, dark detectors and
+  disabled buttons all say WHY ("No beam reaches <detector> — run Diagnose.").
+- Relative placement now guides a fresh object: an untagged active object gets an actionable
+  message ("Tag this object as an optical element first…") and the reference dropdown lists
+  only optical elements.
+
+### Added — opto-mechanical realism: fastened bases, catalog post diameters
+- **Post-holder bases bolt to the table** like the real slotted-base family: a socket-head cap
+  screw seats in the counterbore (full-size 5 mm hex), and when the post axis misses a
+  breadboard hole the base grows a 9.5 mm slotted clamping ear reaching the nearest hole.
+  Posts now seat ON the holder floor above the screw — the screw-first, post-second assembly
+  is physically true (4.3 mm measured clearance). Optic positions and the trace are untouched.
+- **Standard posts keep the catalog Ø1/2" diameter at any length** — the old rule silently
+  swapped in a Ø1" pillar above 130 mm, fattening every post on a raised bench. The Ø1" pillar
+  now appears only where the real product uses it: the vertical-fold/periscope assembly.
+
+### Fixed — the updater tells the truth
+- A failed update check (offline, timeout, malformed index) now reports the failure and stays
+  retryable instead of claiming "you're on the latest version" and throttling for 24 h.
+- A cancelled download can no longer be reported as "update downloaded"; installs from the
+  Blender Extensions platform refuse the self-updater end to end; downloads are pre-checked
+  against the project's GitHub Releases path and a sha256-prefixed hash; strict version
+  compare; atomic state writes; a re-entrancy guard. Verified by 17 headless scenarios plus a
+  live-index end-to-end check.
+
+### Changed — physics on the trace
+- **Beam tubes carry their real wavelength color** — an SHG bench finally shows IR in, green
+  out (Bruton-style visible map; out-of-band light uses the standard figure convention).
+- **The circulator's internal path now carries OPL and Gaussian propagation** (straight
+  free-space path of the geometric port-to-port length; child-ray accounting verified to
+  3e-13 mm). Routing, port choices and powers are unchanged.
+- **+17 independent textbook checks** pin suite values to literature numbers instead of
+  code-vs-code comparisons (Gaussian aperture integrals, quadrant-detector fractions, Zernike
+  orthonormality, quarter-wave AR reflectance, Mueller/Stokes outputs, angular-spectrum
+  propagation) — validation 303 → 320.
 
 ### Fixed — full-codebase review pass (24.4k lines, four subsystem sweeps)
 - **Circulator insertion loss now reaches detector reads**: the through-path Jones amplitude
