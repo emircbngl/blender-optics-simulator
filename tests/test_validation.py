@@ -710,6 +710,55 @@ check("biaxial_index_xy polar index = n_z (phi-independent)", physics.biaxial_in
 check("with_phase preserves intensity (global phase unobservable)", physics.intensity(physics.with_phase(physics.jones_linear(45.0),math.pi/2.0))/physics.intensity(physics.jones_linear(45.0)), 1.0, 1e-12, "Dirac; global phase")
 check("scale(J,2) -> 4x intensity", physics.intensity(physics.scale((1+0j,0j),2.0))/physics.intensity((1+0j,0j)), 4.0, 1e-12, "amplitude^2")
 
+print("[Independent literature values -- direct public-helper checks]")
+# Gaussian aperture integrals, using the 1/e^2 intensity-radius convention (tolerance 1e-4).
+check("Gaussian slit b=w -> erf(sqrt(2)) = 0.9544997",
+      physics.slit_transmission(1.0, 1.0), 0.9544997, 1e-4, "Goodman; Gaussian aperture integral")
+check("Knife-edge through beam center -> half power",
+      physics.knife_transmission(0.0, 0.0, 1.0), 0.5, 1e-6, "Goodman; Gaussian half-plane integral")
+
+# Quadrant signals reduce independently to erf(sqrt(2)*xc/w); all four centered quadrants carry 1/4.
+_qdx, _qdy, _qpow = physics.quadrant_signals(1.0 / math.sqrt(2.0), 0.0, 1.0)
+check("Quadrant xc=w/sqrt(2) -> Sx=erf(1)=0.8427008", _qdx, 0.8427008, 1e-3, "Gaussian quadrant integral")
+_qcx, _qcy, _qcpow = physics.quadrant_signals(0.0, 0.0, 1.0)
+check("Centered quadrant -> Sx=0", _qcx, 0.0, 1e-9, "symmetry")
+check("Centered quadrant -> Sy=0", _qcy, 0.0, 1e-9, "symmetry")
+check("Centered quadrant total power = 1", sum(_qcpow), 1.0, 1e-9, "power partition")
+
+# Equal-area midpoint sampling of the unit disk: disk-average <Zj Zk> = delta_jk (tolerance 2e-2).
+def _zernike_disk_inner(j, k, n_r=48, n_theta=96):
+    total = 0.0
+    for ir in range(n_r):
+        rho = math.sqrt((ir + 0.5) / n_r)
+        for it in range(n_theta):
+            theta = 2.0 * math.pi * (it + 0.5) / n_theta
+            total += physics.zernike(j, rho, theta) * physics.zernike(k, rho, theta)
+    return total / (n_r * n_theta)
+
+check("Noll Z2 normalized: <Z2 Z2>disk = 1", _zernike_disk_inner(2, 2), 1.0, 2e-2, "Noll orthonormality")
+check("Noll Z4 normalized: <Z4 Z4>disk = 1", _zernike_disk_inner(4, 4), 1.0, 2e-2, "Noll orthonormality")
+check("Noll Z2 orthogonal to Z3: <Z2 Z3>=0", _zernike_disk_inner(2, 3), 0.0, 2e-2, "Noll orthonormality")
+check("Noll defocus Z4(rho=0) = -sqrt(3)", physics.zernike(4, 0.0, 0.37), -math.sqrt(3.0), 1e-9, "Z4=sqrt(3)(2rho^2-1)")
+check("Noll defocus Z4(rho=1/sqrt2) = 0", physics.zernike(4, 1.0 / math.sqrt(2.0), 1.21), 0.0, 1e-9, "Z4=sqrt(3)(2rho^2-1)")
+
+check("Quarter-wave AR (1,1.38,1.52) R = 0.012603",
+      physics.ar_quarter_wave_reflectance(1.0, 1.38, 1.52), 0.012603, 1e-4, "Born&Wolf; single-layer AR")
+
+_book_qwp = physics.stokes_through(physics.M_mueller_retarder(90.0, 45.0), (1.0, 1.0, 0.0, 0.0))
+check("Mueller QWP@45 on H -> S1=0", _book_qwp[1], 0.0, 1e-6, "independent Stokes transform")
+check("Mueller QWP@45 on H -> S2=0", _book_qwp[2], 0.0, 1e-6, "independent Stokes transform")
+check("Mueller QWP@45 on H -> S3=-1 (code handedness)", _book_qwp[3], -1.0, 1e-6, "circular Stokes; module convention")
+
+# Direct literature radius at the specified propagation point (1% tolerance), not a recomputed expected value.
+_book_U = field.gaussian_field(256, 8.0 * 0.30 / 256, 0.30)
+_book_w = field.field_metrics(field.angular_spectrum(_book_U, 8.0 * 0.30 / 256, 300.0, 632.8),
+                              8.0 * 0.30 / 256, 632.8)["w_2sigma_mm"]
+check("AngSpec Gaussian w0=0.30mm,z=300mm -> w=0.36149mm", _book_w, 0.36149, 0.0036149, "Goodman; zR=446.77mm")
+
+_book_ds = field.slit_metrics(0.1, n_slits=2, sep_mm=0.5, wavelength_nm=632.8, n_grid=8192)
+check("Double slit d=0.5mm -> Delta sin(theta)=0.0012656",
+      _book_ds["fringe_spacing_sin_theta"], 0.0012656, 1e-4, "Young; lambda/d")
+
 print("=" * 60)
 n_pass = sum(_checks)
 n_total = len(_checks)

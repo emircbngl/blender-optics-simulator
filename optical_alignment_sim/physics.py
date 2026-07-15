@@ -647,7 +647,9 @@ def fiber_num_modes(v):
 
 
 def aom_deflection(wl_nm, f_acoustic_hz, v_sound_mps):
-    """Acousto-optic full deflection angle theta = lambda*f/v_s (= 2*Bragg), in radians."""
+    """Small-angle acousto-optic full deflection theta = lambda*f/v_s (= 2*sin(theta_B)), in radians.
+    The exact large-angle full deflection is 2*asin(lambda*f/(2*v_s)); this helper keeps the standard
+    small-angle form used for practical AOM deflections."""
     return (wl_nm * 1.0e-9) * f_acoustic_hz / v_sound_mps
 
 
@@ -1858,7 +1860,8 @@ def db_to_linear(db):
 
 
 def cavity_finesse(R):
-    """Fabry-Perot finesse from mirror (intensity) reflectivity R."""
+    """Standard high-reflectivity Fabry-Perot finesse F = pi*sqrt(R)/(1-R).
+    The exact Airy-FWHM finesse converges to this expression as R -> 1."""
     R = max(0.0, min(R, 0.999999))
     return math.pi * math.sqrt(R) / (1.0 - R)
 
