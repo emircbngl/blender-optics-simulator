@@ -47,12 +47,16 @@ class OpticsAddonPrefs(AddonPreferences):
     bridge_autostart: BoolProperty(
         name="Auto-start bridge", default=False,
         description="Start the localhost MCP bridge automatically when the add-on loads")
+    show_advanced: BoolProperty(
+        name="Show Advanced Controls", default=False,
+        description="Show specialized optical, sensor, mechanical, and drawing controls (default off)")
 
     def draw(self, context):
         col = self.layout.column()
         col.prop(self, "mesh_dir")
         col.prop(self, "freecad_path")
         col.prop(self, "convert_tolerance_mm")
+        col.prop(self, "show_advanced")
         box = col.box()
         box.label(text="Meshes are loaded locally and are not shipped with the add-on", icon='INFO')
         box.label(text="(Thorlabs / Edmund CAD is their intellectual property).")

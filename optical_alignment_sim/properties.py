@@ -193,7 +193,9 @@ def _iris_regen_update(self, context):
 class OpticalPort(PropertyGroup):
     name: StringProperty(name="Name", default="IN")
     role: EnumProperty(name="Role", items=PORT_ROLES, default='IN')
-    local_position: FloatVectorProperty(name="Local Position", size=3, subtype='XYZ', unit='LENGTH')
+    local_position: FloatVectorProperty(
+        name="Local Position (mm)", size=3, subtype='XYZ',
+        description="Position relative to the element origin in millimeters (default 0, 0, 0)")
     local_normal: FloatVectorProperty(name="Local Normal", size=3, subtype='DIRECTION', default=(0.0, 0.0, 1.0))
     clear_aperture: FloatProperty(name="Clear Aperture", default=12.7, min=0.0)
 
@@ -205,7 +207,9 @@ class AdjustmentDOF(PropertyGroup):
     pivot_local: FloatVectorProperty(name="Pivot (local)", size=3, subtype='XYZ', default=(0.0, 0.0, 0.0))
     min_val: FloatProperty(name="Min", default=-4.0)
     max_val: FloatProperty(name="Max", default=4.0)
-    current: FloatProperty(name="Value", default=0.0, update=_dof_update)
+    current: FloatProperty(
+        name="Current", default=0.0, update=_dof_update,
+        description="Current adjustment in degrees for rotation or millimeters for translation (default 0)")
 
 
 class MechLink(PropertyGroup):
@@ -220,12 +224,16 @@ class MechLink(PropertyGroup):
 
 class OpticalElementProps(PropertyGroup):
     is_optical: BoolProperty(name="Optical element", default=False)
-    element_type: EnumProperty(name="Type", items=ELEMENT_TYPES, default='NONE')
+    element_type: EnumProperty(
+        name="Element Type", items=ELEMENT_TYPES, default='NONE',
+        description="Optical behavior assigned to the selected object (default None)")
 
     ports: CollectionProperty(type=OpticalPort)
     ports_index: IntProperty(default=0)
 
-    mount_type: EnumProperty(name="Mount", items=MOUNT_TYPES, default='FIXED')
+    mount_type: EnumProperty(
+        name="Mount Type", items=MOUNT_TYPES, default='FIXED',
+        description="Kinematic mount model used by the element (default Fixed)")
     mount_preset: StringProperty(name="Mount preset", default="")
     # which support SYSTEM holds the optic (distinct from mount_type, the adjuster kinematics):
     # a single post, a 16/30/60 mm cage train, or a rail carrier. Members sharing a cage system +
@@ -255,7 +263,9 @@ class OpticalElementProps(PropertyGroup):
     mech: CollectionProperty(type=MechLink)
 
     # optical parameters (geometric v1 uses a subset; rest reserved for Gaussian/ABCD)
-    focal_length: FloatProperty(name="Focal length (mm)", default=0.0)
+    focal_length: FloatProperty(
+        name="Focal Length (mm)", default=0.0,
+        description="Focal length of the element in millimeters (default 0)")
     # lens FORM (variant) -- shapes the mesh; the ABCD focal power is unchanged (set by focal_length).
     # AUTO = bi-convex/bi-concave by the sign of focal_length (the historic behavior).
     lens_type: EnumProperty(name="Lens form", default='AUTO',
@@ -278,14 +288,20 @@ class OpticalElementProps(PropertyGroup):
         items=[('CUBE', "Cube (cemented)", "Two cemented prisms, 45 deg coated hypotenuse"),
                ('PLATE', "Plate (wedged)", "A coated wedged plate at 45 deg"),
                ('PELLICLE', "Pellicle", "A thin membrane (negligible ghost / dispersion)")])
-    split_ratio: FloatProperty(name="Reflect fraction", default=0.5, min=0.0, max=1.0)
+    split_ratio: FloatProperty(
+        name="Split Ratio", default=0.5, min=0.0, max=1.0,
+        description="Fraction of incident power sent to the reflected path (default 0.5)")
     prism_angle: FloatProperty(name="Prism angle (deg)", default=45.0)
     # The clear aperture (the radius the tracer clips the beam to). On an iris/APERTURE element this is also the
     # LIVE opening: the update callback regenerates the multi-leaf blade mesh so the polygonal opening closes/
     # opens to the new radius (animatable). For every other element type the callback is an immediate no-op, so
     # only the mesh of an iris ever moves -- the optics (ports + this value) are read identically by the tracer.
-    clear_aperture: FloatProperty(name="Clear aperture (mm)", default=12.7, min=0.0, update=_iris_regen_update)
-    reflectivity: FloatProperty(name="Reflectivity", default=1.0, min=0.0, max=1.0)
+    clear_aperture: FloatProperty(
+        name="Clear Aperture (mm)", default=12.7, min=0.0, update=_iris_regen_update,
+        description="Clear aperture radius used for beam clipping in millimeters (default 12.7)")
+    reflectivity: FloatProperty(
+        name="Reflectivity", default=1.0, min=0.0, max=1.0,
+        description="Fraction of incident optical power reflected by the element (default 1.0)")
     # mirror CURVATURE (variant): a curved mirror focuses on reflection with f = R/2 (VERIFIED:
     # spherical-mirror-focal-length, physics_verify 4/4). FLAT = no focal power (the historic behavior).
     mirror_curve: EnumProperty(name="Mirror curvature", default='FLAT',
@@ -293,7 +309,9 @@ class OpticalElementProps(PropertyGroup):
                ('CONCAVE', "Concave", "Converging: f = +R/2"),
                ('CONVEX', "Convex", "Diverging: f = -R/2")])
     radius_curv: FloatProperty(name="Radius of curvature (mm)", default=0.0, min=0.0)  # |R|; f=R/2
-    wavelength: FloatProperty(name="Wavelength (nm)", default=632.8, min=1.0)   # 0 nm would divide-by-zero the Gaussian q
+    wavelength: FloatProperty(
+        name="Wavelength (nm)", default=632.8, min=1.0,
+        description="Vacuum wavelength of the source in nanometers (default 632.8)")
     refractive_index: FloatProperty(name="Refractive index", default=1.5168)
     # A9 ghost back-reflection: an AR-coated transmissive surface reflects ~0.25-0.5% instead of the
     # ~4% of an uncoated air<->glass face. The ghost reflectance is taken from refractive_index when
@@ -354,12 +372,16 @@ class OpticalElementProps(PropertyGroup):
     pol_type: EnumProperty(name="Source polarization",
         items=[('LINEAR', "Linear", ""), ('CIRCULAR', "Circular", ""), ('UNPOL', "Unpolarized", "")],
         default='LINEAR')
-    pol_angle: FloatProperty(name="Polarization angle (deg)", default=0.0)
+    pol_angle: FloatProperty(
+        name="Polarization Angle (deg)", default=0.0,
+        description="Linear polarization angle around the propagation axis in degrees (default 0)")
     handedness: EnumProperty(name="Handedness",
         items=[('RIGHT', "Right", ""), ('LEFT', "Left", "")], default='RIGHT')
     linewidth_nm: FloatProperty(name="Linewidth (nm)", default=0.0, min=0.0)   # 0 -> ideal coherence
     bandwidth_nm: FloatProperty(name="Bandwidth (nm)", default=0.0, min=0.0)   # >0 -> broadband / white-light
-    waist_um: FloatProperty(name="Beam waist (um)", default=500.0, min=0.0)
+    waist_um: FloatProperty(
+        name="Beam Waist (µm)", default=500.0, min=0.0,
+        description="Gaussian beam waist radius in micrometers (default 500)")
     # M^2 beam-quality ("times-diffraction-limit") factor (B1). Far-field divergence
     # theta = M2*lambda/(pi*w0), BPP = M2*lambda/pi (physics_verify ok=true). The real
     # waist w0 is kept; M2 scales the Rayleigh range zR -> zR/M2 so w(z) far-field
@@ -814,7 +836,19 @@ class OpticalSceneProps(PropertyGroup):
                     "so the trace stays bounded")
 
 
-_classes = (OpticalPort, AdjustmentDOF, MechLink, OpticalElementProps, OpticalSceneProps)
+class OpticalDiagnosisCacheItem(PropertyGroup):
+    issue: StringProperty(options={'SKIP_SAVE'})
+    element: StringProperty(options={'SKIP_SAVE'})
+    detail: StringProperty(options={'SKIP_SAVE'})
+    severity: StringProperty(options={'SKIP_SAVE'})
+    suggested_fix: StringProperty(options={'SKIP_SAVE'})
+    tool: StringProperty(options={'SKIP_SAVE'})
+    maybe_intentional_if: StringProperty(options={'SKIP_SAVE'})
+    fault_confidence: FloatProperty(options={'SKIP_SAVE'})
+
+
+_classes = (OpticalPort, AdjustmentDOF, MechLink, OpticalElementProps, OpticalSceneProps,
+            OpticalDiagnosisCacheItem)
 
 
 def register():
@@ -822,9 +856,19 @@ def register():
         bpy.utils.register_class(c)
     bpy.types.Object.optics = PointerProperty(type=OpticalElementProps)
     bpy.types.Scene.optics = PointerProperty(type=OpticalSceneProps)
+    bpy.types.WindowManager.optics_diagnosis_cache = CollectionProperty(
+        type=OpticalDiagnosisCacheItem, options={'SKIP_SAVE'})
+    bpy.types.WindowManager.optics_diagnosis_bad = IntProperty(options={'SKIP_SAVE'})
+    bpy.types.WindowManager.optics_diagnosis_warn = IntProperty(options={'SKIP_SAVE'})
+    bpy.types.WindowManager.optics_diagnosis_revision = IntProperty(default=-1, options={'SKIP_SAVE'})
+    bpy.types.WindowManager.optics_scene_revision = IntProperty(options={'SKIP_SAVE'})
 
 
 def unregister():
+    for name in ("optics_scene_revision", "optics_diagnosis_revision",
+                 "optics_diagnosis_warn", "optics_diagnosis_bad", "optics_diagnosis_cache"):
+        if hasattr(bpy.types.WindowManager, name):
+            delattr(bpy.types.WindowManager, name)
     if hasattr(bpy.types.Scene, "optics"):
         del bpy.types.Scene.optics
     if hasattr(bpy.types.Object, "optics"):

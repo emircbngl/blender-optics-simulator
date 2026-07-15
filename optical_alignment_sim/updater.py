@@ -32,7 +32,7 @@ import urllib.request
 from typing import NamedTuple
 
 import bpy
-from bpy.types import Operator, Panel
+from bpy.types import Operator
 from bpy.app.handlers import persistent
 
 # The self-hosted native update repository (see docs/ + tools/build_pages_repo.py).
@@ -289,24 +289,6 @@ def draw_update_box(layout, context):
         row.operator("optics.check_updates", icon='FILE_REFRESH', text="Check")
 
 
-class OPTICS_PT_update(Panel):
-    # ALWAYS visible (was poll-gated on available/staged, so an up-to-date user never saw the "Check" button --
-    # the owner's "I never saw an update button despite many releases" bug). A neutral label + always-on draw:
-    # the widget itself shows "Up to date · Check" / "Update available · Install" / "Update downloaded · Restart".
-    bl_label = "Updates"
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = "Optics"
-    bl_order = 1000                              # bottom of the Optics tab: discoverable, never pushes the tools down
-
-    def draw_header(self, context):
-        # a state icon in the header so it reads at a glance: green check = up to date, import = update waiting
-        self.layout.label(text="", icon='IMPORT' if (_state["available"] or _state["staged"]) else 'CHECKMARK')
-
-    def draw(self, context):
-        draw_update_box(self.layout, context)   # "Up to date · Check" / "Update available · Install" / "Restart"
-
-
 # --------------------------------------------------------------------------- operators
 class OPTICS_OT_check_updates(Operator):
     """Check the update repository now (online access required)"""
@@ -493,14 +475,19 @@ _classes = (
     OPTICS_OT_check_updates,
     OPTICS_OT_install_update,
     OPTICS_OT_apply_update,
-    OPTICS_PT_update,
 )
+
+
+def _draw_tools_update(self, context):
+    draw_update_box(self.layout, context)
 
 
 def register():
     _load_state()
     for c in _classes:
         bpy.utils.register_class(c)
+    from .ui import OPTICS_PT_tools_integration
+    OPTICS_PT_tools_integration.append(_draw_tools_update)
     if _platform_managed():
         return                              # Blender Extensions delivers updates -> no self-check timer / repo
     if not bpy.app.timers.is_registered(_timer_check):
@@ -513,6 +500,8 @@ def register():
 
 
 def unregister():
+    from .ui import OPTICS_PT_tools_integration
+    OPTICS_PT_tools_integration.remove(_draw_tools_update)
     exit_pre = getattr(bpy.app.handlers, "exit_pre", None)
     if exit_pre is not None and _on_exit in exit_pre:
         exit_pre.remove(_on_exit)
