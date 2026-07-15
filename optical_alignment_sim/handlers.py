@@ -134,6 +134,13 @@ def on_depsgraph_update(scene, depsgraph=None):
         bpy.app.timers.register(_deferred_trace, first_interval=0.03)   # debounce
 
 
+@persistent
+def on_diagnosis_revision_update(scene, depsgraph=None):
+    """Invalidate cached UI diagnostics without inspecting the dependency graph."""
+    for wm in bpy.data.window_managers:
+        wm.optics_scene_revision += 1
+
+
 def set_live(enabled):
     """Arm / disarm the live overlay + recompute handler."""
     global _last_sig
@@ -169,12 +176,16 @@ def on_load_post(*args):
 def register():
     if on_load_post not in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.append(on_load_post)
+    if on_diagnosis_revision_update not in bpy.app.handlers.depsgraph_update_post:
+        bpy.app.handlers.depsgraph_update_post.append(on_diagnosis_revision_update)
 
 
 def unregister():
     set_live(False)
     if on_load_post in bpy.app.handlers.load_post:
         bpy.app.handlers.load_post.remove(on_load_post)
+    if on_diagnosis_revision_update in bpy.app.handlers.depsgraph_update_post:
+        bpy.app.handlers.depsgraph_update_post.remove(on_diagnosis_revision_update)
     try:
         if bpy.app.timers.is_registered(_deferred_trace):
             bpy.app.timers.unregister(_deferred_trace)
