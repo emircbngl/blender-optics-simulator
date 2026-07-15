@@ -1675,9 +1675,11 @@ def place_on_grid(name, col, row, link_drop=True):
     if xy is None:
         gi = _optomech.grid_info(scene)
         return {"error": "hole (%d,%d) out of range 0..%d x 0..%d" % (col, row, gi["cols"] - 1, gi["rows"] - 1)}
-    # capture the element's mount base if it has one, then move XY (preserve z + orientation)
-    obj.location.x += xy[0] - obj.matrix_world.translation.x
-    obj.location.y += xy[1] - obj.matrix_world.translation.y
+    # Preserve the complete world pose except for the requested breadboard coordinates.
+    world = obj.matrix_world.copy()
+    world.translation.x = xy[0]
+    world.translation.y = xy[1]
+    mounts.apply_world_pose(obj, world)
     bpy.context.view_layer.update()
     if link_drop:
         _optomech.dress(scene)   # re-seat posts/pedestals under the moved part
@@ -1795,9 +1797,10 @@ def place_on_rail(name, s_mm):
     ax, cxy, ts = _optomech.rail_geom(members)
     start = cxy + ax * min(ts)                       # s = 0 reference
     target = start + ax * s
-    cur = o.matrix_world.translation
-    o.location.x += target.x - cur.x
-    o.location.y += target.y - cur.y
+    world = o.matrix_world.copy()
+    world.translation.x = target.x
+    world.translation.y = target.y
+    mounts.apply_world_pose(o, world)
     bpy.context.view_layer.update()
     if _optomech.is_dressed(scene):
         _optomech.dress(scene)

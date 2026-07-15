@@ -59,6 +59,18 @@ def store_world_base(props, world_matrix: Matrix):
     store_base_matrix(props, world_matrix)
 
 
+def apply_world_pose(obj, matrix_world: Matrix, link_anchor=None):
+    """Apply a world-space coarse pose and make it the element's stored mount base."""
+    props = obj.optics
+    props.anchor = None
+    obj.matrix_world = matrix_world
+    store_base_matrix(props, matrix_world)
+    if link_anchor is not None:
+        return set_anchor(obj, link_anchor)
+    compose_pose(obj)
+    return True
+
+
 def anchor_would_cycle(obj, anchor) -> bool:
     """True if anchoring obj -> anchor would create a cycle (anchor's chain reaches obj)."""
     cur, seen = anchor, set()

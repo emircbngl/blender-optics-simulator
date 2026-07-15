@@ -14,10 +14,11 @@ import os
 
 import bpy
 from bpy.types import Operator
-from bpy.props import EnumProperty, StringProperty, BoolProperty, FloatProperty
+from bpy.props import (EnumProperty, StringProperty, BoolProperty, FloatProperty,
+                       FloatVectorProperty, IntProperty)
 from mathutils import Vector, Matrix
 
-from . import library, mounts, presets, geometry, operators as _ops
+from . import library, mounts, presets, geometry, optomech, operators as _ops
 
 _ENUM_CACHE = []        # keep dynamic-enum item strings alive (Blender requirement)
 
@@ -304,6 +305,164 @@ class OPTICS_OT_place_relative(Operator):
         return {'FINISHED'}
 
 
+class OPTICS_OT_place_relative_xyz(Operator):
+    bl_idname = "optics.place_relative_xyz"
+    bl_label = "Place by XYZ Offset"
+    bl_description = "Place the active optical element at an XYZ offset in millimeters"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    reference: StringProperty(
+        name="Reference", description="Optical element used as the placement reference")
+    offset_mm: FloatVectorProperty(
+        name="Offset (mm)", description="XYZ offset from the reference in millimeters",
+        size=3, subtype='XYZ', default=(0.0, 0.0, 0.0))
+    frame: EnumProperty(
+        name="Frame", description="Coordinate frame used for the XYZ offset",
+        items=[('REFERENCE_LOCAL', "Reference Local", "Use the reference object's local axes"),
+               ('WORLD', "World", "Use world axes")], default='REFERENCE_LOCAL')
+    align_rotation: BoolProperty(
+        name="Match Orientation", description="Match the reference orientation (default on)",
+        default=True)
+    link: BoolProperty(
+        name="Link", description="Keep the element linked to the reference (default off)",
+        default=False)
+
+    @classmethod
+    def poll(cls, context):
+        obj = getattr(context, "object", None)
+        valid = obj is not None and getattr(obj, "optics", None) and obj.optics.is_optical
+        if not valid:
+            cls.poll_message_set("Select an optical element")
+        return valid
+
+    def invoke(self, context, event):
+        selected = [obj for obj in context.selected_objects if obj is not context.object
+                    and getattr(obj, "optics", None) and obj.optics.is_optical]
+        if selected:
+            self.reference = selected[0].name
+        return context.window_manager.invoke_props_dialog(self, width=380)
+
+    def draw(self, context):
+        col = self.layout.column()
+        col.prop_search(self, "reference", context.scene, "objects")
+        col.prop(self, "offset_mm")
+        col.prop(self, "frame")
+        col.prop(self, "align_rotation")
+        col.prop(self, "link")
+
+    def execute(self, context):
+        active = context.object
+        ref = context.scene.objects.get(self.reference)
+        if ref is None or ref is active or not (getattr(ref, "optics", None) and ref.optics.is_optical):
+            self.report({'ERROR'}, "Pick an optical reference other than the active element")
+            return {'CANCELLED'}
+        offset = Vector(self.offset_mm)
+        if self.frame == 'REFERENCE_LOCAL':
+            offset = ref.matrix_world.to_3x3() @ offset
+        target = ref.matrix_world.translation + offset
+        _, _, scale = active.matrix_world.decompose()
+        rotation = (ref.matrix_world.to_quaternion() if self.align_rotation
+                    else active.matrix_world.to_quaternion())
+        mounts.apply_world_pose(active, Matrix.LocRotScale(target, rotation, scale),
+                                ref if self.link else None)
+        _retrace(context)
+        return {'FINISHED'}
+
+
+class OPTICS_OT_place_on_grid_dialog(Operator):
+    bl_idname = "optics.place_on_grid_dialog"
+    bl_label = "Place on Grid"
+    bl_description = "Place the active optical element on a breadboard grid hole"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    col: IntProperty(name="Column", description="Zero-based breadboard grid column", min=0)
+    row: IntProperty(name="Row", description="Zero-based breadboard grid row", min=0)
+    link_drop: BoolProperty(
+        name="Link to Grid", description="Re-seat the mount on the dressed grid (default on)",
+        default=True)
+
+    @classmethod
+    def poll(cls, context):
+        obj = getattr(context, "object", None)
+        valid = obj is not None and getattr(obj, "optics", None) and obj.optics.is_optical
+        if not valid:
+            cls.poll_message_set("Select an optical element")
+        return valid
+
+    def invoke(self, context, event):
+        info = optomech.grid_info(context.scene)
+        if info is not None:
+            position = context.object.matrix_world.translation
+            self.col = max(0, min(info["cols"] - 1,
+                                 int(round((position.x - info["origin"][0]) / info["pitch_mm"]))))
+            self.row = max(0, min(info["rows"] - 1,
+                                 int(round((position.y - info["origin"][1]) / info["pitch_mm"]))))
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        scene = context.scene
+        if not optomech.is_dressed(scene):
+            self.report({'ERROR'}, "Dress the bench before placing an element on its grid")
+            return {'CANCELLED'}
+        xy = optomech.hole_world_xy(scene, self.col, self.row)
+        if xy is None:
+            self.report({'ERROR'}, "Grid hole is outside the dressed breadboard")
+            return {'CANCELLED'}
+        obj = context.object
+        world = obj.matrix_world.copy()
+        world.translation = Vector((xy[0], xy[1], world.translation.z))
+        mounts.apply_world_pose(obj, world)
+        if self.link_drop:
+            optomech.dress(scene)
+        _retrace(context)
+        return {'FINISHED'}
+
+
+class OPTICS_OT_place_on_rail_dialog(Operator):
+    bl_idname = "optics.place_on_rail_dialog"
+    bl_label = "Place on Rail"
+    bl_description = "Slide the active rail-mounted element to a position in millimeters"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    s_mm: FloatProperty(
+        name="Position (mm)", description="Position from the rail start in millimeters", min=0.0)
+
+    @classmethod
+    def poll(cls, context):
+        obj = getattr(context, "object", None)
+        valid = (obj is not None and getattr(obj, "optics", None) and obj.optics.is_optical
+                 and getattr(obj.optics, "support_system", 'POST') == 'RAIL')
+        if not valid:
+            cls.poll_message_set("Active element is not rail-mounted")
+        return valid
+
+    def invoke(self, context, event):
+        obj = context.object
+        members = optomech.rail_groups(context.scene).get(
+            getattr(obj.optics, "rail_id", "") or "", [obj])
+        _axis, _center, projections = optomech.rail_geom(members)
+        self.s_mm = projections[members.index(obj)] - min(projections)
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        scene = context.scene
+        obj = context.object
+        members = optomech.rail_groups(scene).get(getattr(obj.optics, "rail_id", "") or "", [obj])
+        axis, center, projections = optomech.rail_geom(members)
+        rail_length = max(projections) - min(projections) + 56.0
+        if self.s_mm > rail_length:
+            self.report({'ERROR'}, "Position is outside the rail length")
+            return {'CANCELLED'}
+        target = center + axis * (min(projections) + self.s_mm)
+        world = obj.matrix_world.copy()
+        world.translation = Vector((target.x, target.y, world.translation.z))
+        mounts.apply_world_pose(obj, world)
+        if optomech.is_dressed(scene):
+            optomech.dress(scene)
+        _retrace(context)
+        return {'FINISHED'}
+
+
 class OPTICS_OT_create_anchor(Operator):
     bl_idname = "optics.create_anchor"
     bl_label = "Create Assembly Anchor"
@@ -363,7 +522,8 @@ class OPTICS_OT_clear_anchor(Operator):
         return {'FINISHED'}
 
 
-_classes = (OPTICS_OT_swap_part, OPTICS_OT_place_relative,
+_classes = (OPTICS_OT_swap_part, OPTICS_OT_place_relative, OPTICS_OT_place_relative_xyz,
+            OPTICS_OT_place_on_grid_dialog, OPTICS_OT_place_on_rail_dialog,
             OPTICS_OT_create_anchor, OPTICS_OT_clear_anchor)
 
 
