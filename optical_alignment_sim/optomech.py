@@ -670,20 +670,53 @@ def _build_mount(o, coll, idx):
     return 2
 
 
-def _post_holder(tag, x, y, board_top_z, post_radius, coll):
+def _post_holder(tag, x, y, board_top_z, post_radius, coll, grid):
     """The vertical support under one optic: a base foot bolted to the board (a cap-screw head shows
     it is fastened, not floating) + a fixed-length post-holder body with a side locking thumbscrew
     (the post slides in and is clamped). The post itself is built by the caller. Returns the count."""
     hr = post_radius * 1.8
     foot, foot_h = 26.0, 12.0
+    x0, y0, nx, ny, pitch = grid
+    holes = [(math.hypot(x0 + col * pitch - x, y0 + row * pitch - y),
+              x0 + col * pitch, y0 + row * pitch)
+             for col in range(nx) for row in range(ny)]
+    bolt_dist, bolt_x, bolt_y = sorted(holes, key=lambda h: (h[0], h[1], h[2]))[0]
+    needs_tab = bolt_dist > 1.5
     # rectangular pedestal foot (real PH foot is a chunky block, not a thin disc), bolted DOWN
     # through a counterbored clearance hole (no proud bolt head)
     ft = eg._cube(BENCH_PREFIX + "Base_" + tag, Vector((foot, foot, foot_h)), coll)
     ft.location = (x, y, board_top_z + foot_h * 0.5)
     ft.data.materials.clear(); ft.data.materials.append(_MATS["clamp"]())
-    _bore(ft, (x, y, board_top_z + foot_h * 0.5), 3.4, foot_h * 2.5)                  # clearance through-hole
-    _bore(ft, (x, y, board_top_z + foot_h - 1.0), 5.6, 4.0)                           # counterbore on the top face
+    if needs_tab:
+        # A BA-series slotted tab reaches the grid without moving the post or its optic.
+        dx, dy = bolt_x - x, bolt_y - y
+        angle = math.atan2(dy, dx)
+        tab = eg._cube(BENCH_PREFIX + "BaseTab_" + tag,
+                       Vector((bolt_dist + foot * 0.5, 13.0, foot_h)), coll)
+        tab.location = (x + dx * 0.5, y + dy * 0.5, board_top_z + foot_h * 0.5)
+        tab.rotation_euler[2] = angle
+        tab.data.materials.clear(); tab.data.materials.append(_MATS["clamp"]())
+        # The lengthwise clearance channel terminates in the screw counterbore at the real hole.
+        slot_len = max(bolt_dist - foot * 0.25, 1.0)
+        slot = eg._cube(BENCH_PREFIX + "_baseslot_" + tag,
+                        Vector((slot_len, 6.8, foot_h * 2.5)), coll)
+        slot.location = (bolt_x - math.cos(angle) * slot_len * 0.5,
+                         bolt_y - math.sin(angle) * slot_len * 0.5,
+                         board_top_z + foot_h * 0.5)
+        slot.rotation_euler[2] = angle
+        _diff(tab, slot)
+        _bore(tab, (bolt_x, bolt_y, board_top_z + foot_h * 0.5), 3.4, foot_h * 2.5)
+        _bore(tab, (bolt_x, bolt_y, board_top_z + foot_h - 1.0), 5.6, 4.0)
+        _bevel(tab, 1.0, 2)
+    else:
+        _bore(ft, (bolt_x, bolt_y, board_top_z + foot_h * 0.5), 3.4, foot_h * 2.5)
+        _bore(ft, (bolt_x, bolt_y, board_top_z + foot_h - 1.0), 5.6, 4.0)
     _bevel(ft, 1.0, 2)
+    # The socket-head screw sits on the counterbore floor, slightly below the base top.
+    bolt = _cyl(BENCH_PREFIX + "BaseBolt_" + tag, 5.4, 3.0,
+                (bolt_x, bolt_y, board_top_z + foot_h - 1.8), coll, "steel")
+    _bore(bolt, (bolt_x, bolt_y, board_top_z + foot_h - 0.25), 1.8, 1.0, seg=6)
+    _bevel(bolt, 0.35, 1)
     # bored, slit post-holder tube (a split-tube clamp, not a solid peg): the post slides into the bore
     z_body = board_top_z + foot_h + HOLDER_H * 0.5
     body = _cyl(BENCH_PREFIX + "Holder_" + tag, hr, HOLDER_H, (x, y, z_body), coll, "holder")
@@ -698,7 +731,7 @@ def _post_holder(tag, x, y, board_top_z, post_radius, coll):
           mw, (hr + post_radius * 0.4, 0.0, 0.0), coll, "steel", axis='X')
     _bevel(_ocyl(BENCH_PREFIX + "Lockh_" + tag, post_radius * 0.7, post_radius * 0.7,
                  mw, (hr + post_radius * 1.05, 0.0, 0.0), coll, "steel", axis='X'), 0.45, 2)
-    return 4
+    return 6 if needs_tab else 5
 
 
 def _clamp_fork(tag, x, y, board_top_z, post_radius, coll, away):
@@ -860,7 +893,7 @@ def _cage_geom(members):
     return rod_r, sep, axis, u, v, centroid, min(ts) - margin, max(ts) + margin
 
 
-def _build_cage(scene, members, board_top_z, coll, post_radius, tag, created=None):
+def _build_cage(scene, members, board_top_z, coll, post_radius, tag, grid, created=None):
     """Build one cage: 4 rods on the size-mm square + a plate per member + one centre post."""
     before = set(coll.objects) if created is not None else None
     rod_r, sep, axis, u, v, centroid, t0, t1 = _cage_geom(members)
@@ -886,7 +919,7 @@ def _build_cage(scene, members, board_top_z, coll, post_radius, tag, created=Non
     # one post under the cage centroid, to beam height (foot + holder + thumbscrew + post)
     post_top_z = centroid.z - MOUNT_DROP
     h = max(post_top_z - board_top_z, 1.0)
-    nh = _post_holder("cage_" + tag, centroid.x, centroid.y, board_top_z, post_radius, coll)
+    nh = _post_holder("cage_" + tag, centroid.x, centroid.y, board_top_z, post_radius, coll, grid)
     _cyl("%sCagePost_%s" % (BENCH_PREFIX, tag), post_radius, h,
          (centroid.x, centroid.y, board_top_z + h * 0.5), coll, "post")
     if created is not None:
@@ -943,7 +976,7 @@ def _tube_geom(members):
     return name, major, bore, axis, centroid, min(ts) - margin, max(ts) + margin
 
 
-def _build_tube(scene, members, board_top_z, coll, post_radius, tag, created=None):
+def _build_tube(scene, members, board_top_z, coll, post_radius, tag, grid, created=None):
     """One lens-tube barrel: a hollow black-anodized pipe spanning the members + a retaining ring at
     each end, on one post. Optics sit inside the bore and show at the open ends."""
     before = set(coll.objects) if created is not None else None
@@ -966,7 +999,7 @@ def _build_tube(scene, members, board_top_z, coll, post_radius, tag, created=Non
     # one post under the barrel centroid, to beam height
     post_top_z = centroid.z - MOUNT_DROP
     h = max(post_top_z - board_top_z, 1.0)
-    nh = _post_holder("tube_" + tag, centroid.x, centroid.y, board_top_z, post_radius, coll)
+    nh = _post_holder("tube_" + tag, centroid.x, centroid.y, board_top_z, post_radius, coll, grid)
     _cyl("%sTubePost_%s" % (BENCH_PREFIX, tag), post_radius, h,
          (centroid.x, centroid.y, board_top_z + h * 0.5), coll, "post")
     if created is not None:
@@ -1587,6 +1620,7 @@ def dress(scene, post_radius=POST_RADIUS):
     th = BOARD_THICKNESS
     margin = pitch * 0.6  # board overhang past the outermost holes
     hole_r = _thread_hole_r(pitch)
+    grid = (x0, y0, nx, ny, pitch)
     board_size = (x1 - x0 + 2 * margin, y1 - y0 + 2 * margin, th)
     board_loc = ((x0 + x1) * 0.5, (y0 + y1) * 0.5, board_top_z - th * 0.5)
     grid_key = (x0, y0, x1, y1, nx, ny, pitch, board_top_z, th, margin, hole_r,
@@ -1676,7 +1710,7 @@ def dress(scene, post_radius=POST_RADIUS):
             # the real bench move for stiffness; short mounts keep the Ø1/2" post.
             pr = POST_RADIUS_TALL if h > PILLAR_OVER_MM else post_radius
             # one base foot + post-holder + pillar (post top under the optic)
-            nh = _post_holder("%02d" % i_top, pt.x, pt.y, board_top_z, pr, coll)
+            nh = _post_holder("%02d" % i_top, pt.x, pt.y, board_top_z, pr, coll, grid)
             _cyl(BENCH_PREFIX + "Post_%02d" % i_top, pr, h,
                  (pt.x, pt.y, board_top_z + h * 0.5), coll, "post")
             n += nh + 1
@@ -1687,12 +1721,12 @@ def dress(scene, post_radius=POST_RADIUS):
     for gi, members in enumerate(groups.values()):
         before = set(coll.objects)
         created = []
-        n += _build_cage(scene, members, board_top_z, coll, post_radius, "%02d" % gi, created)
+        n += _build_cage(scene, members, board_top_z, coll, post_radius, "%02d" % gi, grid, created)
         _own_new(coll, created, "cage%02d" % gi, members, before=before)
     for ti, members in enumerate(tubes.values()):
         before = set(coll.objects)
         created = []
-        n += _build_tube(scene, members, board_top_z, coll, post_radius, "%02d" % ti, created)
+        n += _build_tube(scene, members, board_top_z, coll, post_radius, "%02d" % ti, grid, created)
         _own_new(coll, created, "tube%02d" % ti, members, before=before)
     for ri, members in enumerate(rails.values()):
         before = set(coll.objects)
