@@ -1,5 +1,5 @@
 import bpy, sys, json, os
-REPO="/Users/emircbngl/Blender Alignment Plugin"; sys.path.insert(0,REPO)
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__))); sys.path.insert(0, REPO)
 import optical_alignment_sim as oas; oas.register()
 from optical_alignment_sim import scan, elements_generic as eg
 from mathutils import Vector

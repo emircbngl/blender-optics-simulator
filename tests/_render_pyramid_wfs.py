@@ -1,6 +1,6 @@
 import bpy, sys, os
 import numpy as np
-REPO="/Users/emircbngl/Blender Alignment Plugin"; sys.path.insert(0,REPO)
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__))); sys.path.insert(0, REPO)
 import optical_alignment_sim as oas; oas.register()
 from optical_alignment_sim import ao
 co=[0.0]*15; co[3]=0.8; co[5]=0.4; co[7]=0.25   # defocus + astig + coma
