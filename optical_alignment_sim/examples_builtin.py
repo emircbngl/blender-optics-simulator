@@ -607,8 +607,8 @@ def build_surface_figure(context, beam='collimated'):
 
 
 EXAMPLES = {
-    'mach_zehnder': ("Mach-Zehnder Interferometer", build_mach_zehnder),
     'michelson':    ("Michelson Interferometer", build_michelson),
+    'mach_zehnder': ("Mach-Zehnder Interferometer", build_mach_zehnder),
     'hong_ou_mandel': ("Hong-Ou-Mandel", build_hong_ou_mandel),
     'bell':         ("Bell / Entanglement Source", build_bell_entanglement),
     'adaptive_optics': ("Adaptive Optics (WFS + deformable mirror)", build_adaptive_optics),
@@ -717,15 +717,21 @@ def _show(context, coll_name):
 
 class OPTICS_OT_build_example(Operator):
     bl_idname = "optics.build_example"
-    bl_label = "Build Example Setup"
-    bl_description = "Build a canonical optical setup from generic components"
+    bl_label = "Browse Examples…"
+    bl_description = "Choose and build a canonical optical setup from generic components"
     bl_options = {'REGISTER', 'UNDO'}
 
     kind: EnumProperty(
         name="Setup",
-        items=[(k, v[0], v[0]) for k, v in EXAMPLES.items()],
-        default='mach_zehnder',
+        items=tuple((k, v[0], v[0]) for k, v in EXAMPLES.items()),
+        default='michelson',
     )
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self, width=520)
+
+    def draw(self, context):
+        self.layout.prop(self, "kind", expand=True)
 
     def execute(self, context):
         name = build(self.kind, context)

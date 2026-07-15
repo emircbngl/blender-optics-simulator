@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import bpy
 from bpy.types import Operator
-from bpy.props import EnumProperty, StringProperty, BoolProperty, FloatProperty
+from bpy.props import EnumProperty, StringProperty, BoolProperty, FloatProperty, IntProperty
 
 from . import geometry, presets
 from .properties import PORT_ROLES
@@ -18,6 +18,101 @@ from .properties import PORT_ROLES
 # reset to False on auto-detect and the elements drop out of get_state()'s source/detector lists.
 SOURCE_TYPES = {'SOURCE', 'FIBER_COLLIMATOR'}
 DETECTOR_TYPES = {'DETECTOR', 'PHOTODIODE', 'POWER_METER', 'WAVEFRONT_SENSOR'}
+
+
+def _store_diagnosis(wm, records):
+    cache = wm.optics_diagnosis_cache
+    cache.clear()
+    ordered = sorted(records, key=lambda item: 0 if item.get("severity") == 'BAD' else 1)
+    for record in ordered:
+        item = cache.add()
+        item.issue = str(record.get("issue", record.get("kind", "")) or "")
+        item.element = str(record.get("element", "") or "")
+        item.detail = str(record.get("detail", "") or "")
+        item.severity = str(record.get("severity", "WARN") or "WARN")
+        item.suggested_fix = str(record.get("suggested_fix", "") or "")
+        item.tool = str(record.get("tool", "") or "")
+        item.maybe_intentional_if = str(record.get("maybe_intentional_if", "") or "")
+        item.fault_confidence = float(record.get("fault_confidence", 1.0) or 0.0)
+    wm.optics_diagnosis_bad = sum(item.severity == 'BAD' for item in cache)
+    wm.optics_diagnosis_warn = sum(item.severity == 'WARN' for item in cache)
+    wm.optics_diagnosis_revision = wm.optics_scene_revision
+
+
+class OPTICS_OT_diagnose(Operator):
+    bl_idname = "optics.diagnose"
+    bl_label = "Diagnose"
+    bl_description = "Trace the scene and cache optical issues. May pause the UI for a few seconds."
+
+    def execute(self, context):
+        from . import optics_api
+        result = optics_api.diagnose()
+        if not result.get("ok"):
+            self.report({'ERROR'}, result.get("error", "Diagnosis failed"))
+            return {'CANCELLED'}
+        _store_diagnosis(context.window_manager, result.get("diagnostics", ()))
+        return {'FINISHED'}
+
+
+class OPTICS_OT_propose_corrections(Operator):
+    bl_idname = "optics.propose_corrections"
+    bl_label = "Propose Corrections"
+    bl_description = "Trace the scene and cache advisory corrections. May pause the UI for a few seconds."
+
+    def execute(self, context):
+        from . import optics_api
+        result = optics_api.propose_corrections()
+        if not result.get("ok"):
+            self.report({'ERROR'}, result.get("error", "Correction proposal failed"))
+            return {'CANCELLED'}
+        _store_diagnosis(context.window_manager, result.get("proposals", ()))
+        return {'FINISHED'}
+
+
+class OPTICS_OT_fix_diagnosis(Operator):
+    bl_idname = "optics.fix_diagnosis"
+    bl_label = "Fix…"
+    bl_description = "Open the suggested correction with the affected element selected"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    index: IntProperty(options={'SKIP_SAVE'})
+
+    @classmethod
+    def poll(cls, context):
+        wm = context.window_manager
+        if wm.optics_diagnosis_revision != wm.optics_scene_revision:
+            cls.poll_message_set("Scene changed — re-run Diagnose")
+            return False
+        return bool(wm.optics_diagnosis_cache)
+
+    def draw(self, context):
+        item = context.window_manager.optics_diagnosis_cache[self.index]
+        if item.fault_confidence < 0.5:
+            self.layout.label(text="Often intentional: %s" % item.maybe_intentional_if,
+                              icon='INFO')
+        self.layout.label(text=item.suggested_fix or "Review the affected element.")
+
+    def invoke(self, context, event):
+        if self.index < 0 or self.index >= len(context.window_manager.optics_diagnosis_cache):
+            return {'CANCELLED'}
+        return context.window_manager.invoke_props_dialog(self, width=520)
+
+    def execute(self, context):
+        item = context.window_manager.optics_diagnosis_cache[self.index]
+        obj = context.scene.objects.get(item.element)
+        if obj is not None:
+            for selected in context.selected_objects:
+                selected.select_set(False)
+            obj.select_set(True)
+            context.view_layer.objects.active = obj
+        if item.tool == 'align_element':
+            return bpy.ops.optics.align_element(name=item.element)
+        if item.tool == 'auto_align':
+            return bpy.ops.optics.auto_align()
+        if item.tool == 'place_relative':
+            return bpy.ops.optics.place_relative('INVOKE_DEFAULT')
+        self.report({'ERROR'}, "No interactive operator is available for tool: %s" % item.tool)
+        return {'CANCELLED'}
 
 
 # --- shared port helpers ----------------------------------------------------
@@ -252,6 +347,9 @@ class OPTICS_OT_normalize_import(Operator):
 
 
 _classes = (
+    OPTICS_OT_diagnose,
+    OPTICS_OT_propose_corrections,
+    OPTICS_OT_fix_diagnosis,
     OPTICS_OT_tag_element,
     OPTICS_OT_auto_detect_ports,
     OPTICS_OT_pick_port_from_face,
