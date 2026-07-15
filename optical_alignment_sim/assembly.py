@@ -21,6 +21,7 @@ from mathutils import Vector, Matrix
 from . import library, mounts, presets, geometry, optomech, operators as _ops
 
 _ENUM_CACHE = []        # keep dynamic-enum item strings alive (Blender requirement)
+_REFERENCE_ENUM_CACHE = []
 
 
 def _retrace(context):
@@ -34,6 +35,19 @@ def _retrace(context):
         tracer._tag_redraw()
     except Exception:
         pass
+
+
+def _optical_reference_items(self, context):
+    """Return optical reference objects other than the active element."""
+    _REFERENCE_ENUM_CACHE.clear()
+    scene = getattr(context, "scene", None)
+    active = getattr(context, "object", None)
+    if scene is not None:
+        for obj in scene.objects:
+            if (obj is not active and getattr(obj, "optics", None)
+                    and obj.optics.is_optical):
+                _REFERENCE_ENUM_CACHE.append((obj.name, obj.name, ""))
+    return _REFERENCE_ENUM_CACHE
 
 
 def _importable_path(source, key, filepath):
@@ -311,8 +325,9 @@ class OPTICS_OT_place_relative_xyz(Operator):
     bl_description = "Place the active optical element at an XYZ offset in millimeters"
     bl_options = {'REGISTER', 'UNDO'}
 
-    reference: StringProperty(
-        name="Reference", description="Optical element used as the placement reference")
+    reference: EnumProperty(
+        name="Reference", description="Optical element used as the placement reference",
+        items=_optical_reference_items)
     offset_mm: FloatVectorProperty(
         name="Offset (mm)", description="XYZ offset from the reference in millimeters",
         size=3, subtype='XYZ', default=(0.0, 0.0, 0.0))
@@ -332,7 +347,9 @@ class OPTICS_OT_place_relative_xyz(Operator):
         obj = getattr(context, "object", None)
         valid = obj is not None and getattr(obj, "optics", None) and obj.optics.is_optical
         if not valid:
-            cls.poll_message_set("Select an optical element")
+            cls.poll_message_set(
+                "Tag this object as an optical element first (Element panel > Optical element)"
+                if obj is not None else "Select an optical element")
         return valid
 
     def invoke(self, context, event):
@@ -344,7 +361,7 @@ class OPTICS_OT_place_relative_xyz(Operator):
 
     def draw(self, context):
         col = self.layout.column()
-        col.prop_search(self, "reference", context.scene, "objects")
+        col.prop(self, "reference")
         col.prop(self, "offset_mm")
         col.prop(self, "frame")
         col.prop(self, "align_rotation")
@@ -386,7 +403,9 @@ class OPTICS_OT_place_on_grid_dialog(Operator):
         obj = getattr(context, "object", None)
         valid = obj is not None and getattr(obj, "optics", None) and obj.optics.is_optical
         if not valid:
-            cls.poll_message_set("Select an optical element")
+            cls.poll_message_set(
+                "Tag this object as an optical element first (Element panel > Optical element)"
+                if obj is not None else "Select an optical element")
         return valid
 
     def invoke(self, context, event):
@@ -430,8 +449,14 @@ class OPTICS_OT_place_on_rail_dialog(Operator):
     @classmethod
     def poll(cls, context):
         obj = getattr(context, "object", None)
-        valid = (obj is not None and getattr(obj, "optics", None) and obj.optics.is_optical
-                 and getattr(obj.optics, "support_system", 'POST') == 'RAIL')
+        if obj is None:
+            cls.poll_message_set("Select an optical element")
+            return False
+        if not (getattr(obj, "optics", None) and obj.optics.is_optical):
+            cls.poll_message_set(
+                "Tag this object as an optical element first (Element panel > Optical element)")
+            return False
+        valid = getattr(obj.optics, "support_system", 'POST') == 'RAIL'
         if not valid:
             cls.poll_message_set("Active element is not rail-mounted")
         return valid
