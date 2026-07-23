@@ -110,6 +110,146 @@ for kind in ("cage_system", "tube_system", "rail_system", "hybrid_system"):
           str(optomech.validate(sc)))
     optics_api.dress_bench(False)
 
+print("[support scan: every canonical example dresses without unsupported elements]")
+for kind in ("mach_zehnder", "michelson", "hong_ou_mandel", "bell", "adaptive_optics", "newton_rings",
+             "periscope", "cage_system", "tube_system", "rail_system", "hybrid_system",
+             "microscope", "dhm", "aom", "die"):
+    optics_api.build_example(kind)
+    optomech.dress(sc)
+    _support_issues = [item for item in optomech.validate(sc) if item["kind"] == "element_unsupported"]
+    check("%s support scan finds no unsupported elements" % kind, _support_issues == [],
+          str(_support_issues))
+    optics_api.dress_bench(False)
+
+optics_api.build_example("die")
+optomech.dress(sc)
+_die_support = next(item for item in optomech.support_scan(sc)["elements"]
+                    if item["name"] == "DIE_Reflector")
+check("DIE reflector retaining contact is within GAP_TOL",
+      _die_support["gap_mm"] <= optomech.GAP_TOL, str(_die_support))
+optics_api.dress_bench(False)
+
+print("[catalog cage rods: snapped lengths and lone plates]")
+
+
+def _trace_close(a, b, tol=1e-9):
+    """Structural trace equality with a float tolerance. dress() re-parents hardware and
+    Blender recomposes matrix_world through the parent chain -- identical geometry, but
+    last-ulp float noise (measured 2.8e-15 absolute / 5.4e-15 relative on a PBS jones
+    term, reproduced on an unmodified tree too). The engine promises geometric identity
+    at the 1e-9 scale the older cage test pins, never bit-equality."""
+    def close(x, y):
+        if isinstance(x, float) and isinstance(y, float):
+            return abs(x - y) <= tol * max(1.0, abs(x), abs(y))
+        if isinstance(x, (list, tuple)) and isinstance(y, (list, tuple)):
+            return len(x) == len(y) and all(close(p, q) for p, q in zip(x, y))
+        if isinstance(x, dict) and isinstance(y, dict):
+            return x.keys() == y.keys() and all(close(x[k], y[k]) for k in x)
+        return x == y
+    return len(a) == len(b) and all(close(p, q) for p, q in zip(a, b))
+
+
+optics_api.build_example("cage_system")
+_cage_trace = scan._trace(sc)
+optomech.dress(sc)
+_catalog_cage = optomech.cage_info(sc)
+check("130 mm CAGE_30 train snaps to ER6", len(_catalog_cage) == 1 and
+      _catalog_cage[0]["rod_part"] == "ER6" and _catalog_cage[0]["rod_length_mm"] == 152.4,
+      str(_catalog_cage))
+check("catalog cage dressing leaves trace identical", _trace_close(scan._trace(sc), _cage_trace))
+_cage_members = next(iter(optomech.cage_groups(sc).values()))
+_cage_geom = optomech._cage_geom(_cage_members)
+_cage_support = optomech._cage_support_member(_cage_members, _cage_geom[5], _cage_geom[2])
+_cage_post = next(o for o in sc.objects if o.name.startswith("BENCH_CagePost_"))
+_cage_post_top = _cage_post.matrix_world.translation.z + _cage_post.dimensions.z * 0.5
+check("cage post selects CG_Collimate, the member nearest the centroid",
+      # members at x=-105/-55/-15/+25 -> centroid -37.5; Collimate is 17.5 mm away,
+      # CleanPol 22.5 -- nearest wins, no tie to break
+      _cage_support.name == "CG_Collimate", _cage_support.name)
+check("cage post is directly below its selected plate",
+      abs(_cage_post.matrix_world.translation.x - _cage_support.matrix_world.translation.x) < 1e-6 and
+      abs(_cage_post.matrix_world.translation.y - _cage_support.matrix_world.translation.y) < 1e-6)
+check("cage post top derives from the selected plate bottom",
+      # 1e-4 not 1e-6: Blender world matrices are float32 (measured 2e-6 noise on this z)
+      abs(_cage_post_top - (_cage_support.matrix_world.translation.z - _cage_geom[1] * 0.65 +
+                            optomech._CAGE_POST_BITE_MM)) < 1e-4,
+      "%.6f" % _cage_post_top)
+check("fixed cage post passes its plate-contact invariant",
+      not any(i["kind"] == "cage_post_detached" for i in optomech.validate(sc)),
+      str(optomech.validate(sc)))
+_support = optomech.support_scan(sc)
+check("cage support scan finds every element held",
+      all(item["ok"] for item in _support["elements"]), str(_support["elements"]))
+_defective_plate = bpy.data.objects.get("BENCH_CagePlate_00_0")
+_defective_plate.scale.x *= 1.8; _defective_plate.scale.y *= 1.8
+bpy.context.view_layer.update()
+optomech.support_scan_invalidate(sc)
+_defective_support = optomech.support_scan(sc)
+# CagePlate_00_0 belongs to the ALPHABETICALLY first member (the builder enumerates
+# cage_groups' name-sorted list), which is CG_CleanPol here -- not the fiber.
+check("support scan catches the defective oversized cage bore",
+      any(item["name"] == "CG_CleanPol" and not item["ok"] for item in _defective_support["elements"]),
+      str(_defective_support["elements"]))
+check("validator FIRES element_unsupported for the defective cage grip",
+      any(item["kind"] == "element_unsupported" and item["element"] == "CG_CleanPol"
+          for item in optomech.validate(sc)), str(optomech.validate(sc)))
+_defective_plate.scale.x /= 1.8; _defective_plate.scale.y /= 1.8
+bpy.context.view_layer.update()
+optomech.support_scan_invalidate(sc)
+_cage_support.location.x = 60.0
+bpy.context.view_layer.update()
+optomech.dress(sc)
+_moved_members = next(iter(optomech.cage_groups(sc).values()))
+_moved_geom = optomech._cage_geom(_moved_members)
+_moved_support = optomech._cage_support_member(_moved_members, _moved_geom[5], _moved_geom[2])
+_cage_post = next(o for o in sc.objects if o.name.startswith("BENCH_CagePost_"))
+check("moving a member changes the chosen plate and invalidates dress early-out",
+      # Collimate moved to x=60 -> members -105/-15/+25/+60, centroid -8.75; CleanPol
+      # (6.25 mm away) becomes nearest and the post must follow it
+      _moved_support.name == "CG_CleanPol" and
+      abs(_cage_post.matrix_world.translation.x - _moved_support.matrix_world.translation.x) < 1e-4,
+      _moved_support.name)
+_floated = _cage_post.matrix_world.copy(); _floated.translation.z -= 5.0
+_cage_post.matrix_world = _floated
+bpy.context.view_layer.update()
+check("validator FIRES cage_post_detached on a floated cage post",
+      any(i["kind"] == "cage_post_detached" for i in optomech.validate(sc)),
+      str(optomech.validate(sc)))
+optomech.strip(sc)
+optics_api.build_example("michelson")
+_single_name = next(e["name"] for e in optics_api.get_state()["elements"]
+                    if e["type"] not in ("SOURCE", "DETECTOR"))
+optomech.dress(sc)
+_single_trace = scan._trace(sc)
+_single = optics_api.make_cage([_single_name], 30)
+_single_cage = _single["cages"]
+check("single-member cage builds no orphan rods", len([o for o in sc.objects
+      if o.name.startswith("BENCH_CageRod_")]) == 0, str(_single_cage))
+check("single-member cage info honestly reports no rod", len(_single_cage) == 1 and
+      _single_cage[0]["rod_count"] == 0 and _single_cage[0]["rod_length_mm"] == 0.0 and
+      _single_cage[0]["rod_part"] is None, str(_single_cage))
+check("single-member cage dressing leaves trace identical", _trace_close(scan._trace(sc), _single_trace))
+optomech.strip(sc)
+
+print("[A10 spatial gate: separated same-source spots are not a fringe fault]")
+# calcite o/e double refraction: one circular source forks into two ORTHOGONAL beams that
+# land ~3.3 mm apart (spot radii ~0.5 mm) on one screen -- the classic two-spot demo. The
+# fringe diagnostics must stay silent: nothing overlaps, so nothing was supposed to fringe.
+_c2 = elements_generic.example_collection("A10Spatial")
+_s2 = elements_generic.source("A10_Laser", (-90, 0, 0), (1, 0, 0), coll=_c2, wavelength=532.0)
+_s2.optics.pol_type = 'CIRCULAR'
+elements_generic.crystal("A10_Calcite", (0, 0, 0), (1, 0, 0), coll=_c2, oe_split=True,
+                         oe_material='CALCITE', oe_axis_deg=45.0, oe_length_mm=30.0, size=20.0)
+elements_generic.detector("A10_Screen", (110, 0, 0), (1, 0, 0), coll=_c2, size=30.0)
+bpy.context.view_layer.update()
+_d2 = optics_api.diagnose()
+_a10k = [p["kind"] for p in _d2["diagnostics"]
+         if p["kind"] in ("pol_mismatch", "coherence_mismatch", "crossed_polarizer")]
+check("separated o/e spots emit no fringe diagnostic", _a10k == [], str(_d2["diagnostics"]))
+for _o in list(_c2.objects):
+    elements_generic.drop_example_object(_o)
+bpy.data.collections.remove(_c2)
+
 print("[periscope: out-of-plane vertical fold]")
 optics_api.build_example("periscope")
 _ps = scan._trace(sc)
@@ -2172,7 +2312,9 @@ check("make_cage groups two members @30 mm", _rc.get("ok") and _rc.get("size_mm"
 _segc2 = scan._trace(sc); _pc2, _vc2, _ = alignment.measure(_segc2, "MI_D", "NONE")
 check("cage does not move the optics (trace identical)", len(_segc2) == _nc and abs(_pc2 - _pc) < 1e-9 and abs(_vc2 - _vc) < 1e-9)
 _cg = optics_api.get_state()["cages"]
-check("get_state exposes the cage", isinstance(_cg, list) and len(_cg) == 1 and _cg[0]["rod_count"] == 4 and _cg[0]["rod_dia_mm"] == 6.0, str(_cg))
+check("two-member CAGE_30 span snaps to ER8", isinstance(_cg, list) and len(_cg) == 1 and
+      _cg[0]["rod_count"] == 4 and _cg[0]["rod_dia_mm"] == 6.0 and
+      _cg[0]["rod_part"] == "ER8" and _cg[0]["rod_length_mm"] == 203.2, str(_cg))
 check("four cage rods + a plate per member built",
       len([o for o in sc.objects if o.name.startswith("BENCH_CageRod_")]) == 4 and
       len([o for o in sc.objects if o.name.startswith("BENCH_CagePlate_")]) == 2)

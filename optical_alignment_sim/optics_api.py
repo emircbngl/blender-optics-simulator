@@ -274,7 +274,15 @@ def diagnose():
     Returns {ok, diagnostics:[{kind, element, detail, severity}], counts:{BAD,WARN}}."""
     scene = _scene()
     tracer.cached_segments = _trace(scene)
-    return _diagnose_from_segments(scene, tracer.cached_segments)
+    result = _diagnose_from_segments(scene, tracer.cached_segments)
+    # A run longer than the catalog permits is a bench-assembly limitation, not a trace fault, but
+    # it must be visible through the same inspection entry point as the other bench diagnostics.
+    for issue in _optomech.validate(scene):
+        if issue.get("kind") == "cage_rod_catalog":
+            result["diagnostics"].append(dict(issue, severity="WARN"))
+    result["counts"]["WARN"] = sum(1 for issue in result["diagnostics"]
+                                   if issue.get("severity") == 'WARN')
+    return result
 
 
 def propose_corrections():

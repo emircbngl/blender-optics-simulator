@@ -310,7 +310,12 @@ def check_object_mech(obj):
         else:  # CAGE_ROD
             d = (obj.matrix_world.translation - tgt.matrix_world.translation).length
             link.detail = "separation ~%.1fmm" % d
-            if d > link.insert_max:
+            # Shared cages have a fixed selected ER/SR rod, so do not leave their travel check on a
+            # stale manually entered span after dressing snaps the geometry to a catalog length.
+            from . import optomech
+            catalog_span = optomech.cage_rod_travel_limit(bpy.context.scene, obj, tgt)
+            limit = catalog_span if catalog_span is not None else link.insert_max
+            if d > limit:
                 link.state = 'BAD'
                 link.detail += " > rod span (rod out of bore)"
             elif d < link.insert_min:

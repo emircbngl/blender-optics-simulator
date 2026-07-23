@@ -31,14 +31,19 @@ geometry and animation. This is a physics-grounded digital twin of a real optica
 can *see* and *close the loop* on.
 
 <p align="center">
-  <img src="docs/img/agent-align.gif" width="90%" alt="A laser beam steered by a kinematic mirror misses the detector, then auto-alignment walks the mount until the beam locks onto the sensor — rendered live in Blender">
+  <picture>
+    <source media="(prefers-color-scheme: light)" srcset="docs/img/hero-bench-light.png">
+    <img src="docs/img/hero-bench-dark.png" width="92%" alt="A Michelson interferometer on a tapped breadboard, built and traced in Blender — kinematic mounts, posts and bases on real opto-mechanics, both arms' beams glowing, rendered in Cycles">
+  </picture>
 </p>
 
-<p align="center"><em><b>An agent drives a real bench.</b> A kinematic mirror is knocked out of alignment, so the beam misses the detector — then one <code>optics_api.align_element()</code> call solves the pointing residual (7.0 → 0.001 mrad) and the beam locks onto the sensor. Drivable from the UI, a script, or an AI agent over MCP — see <a href="examples/agent_align.py"><code>examples/agent_align.py</code></a>.</em></p>
+<p align="center"><em><b>A real bench, traced live.</b> Every mount, post, base and beam above is placed and computed by the add-on — then rendered in Cycles. Build it by hand in the UI, from a script, or let an AI agent drive it over MCP.</em></p>
 
 <p align="center">
-  <img src="docs/img/hero.png" width="82%" alt="A Michelson interferometer on a tapped breadboard, built and traced in Blender — kinematic mounts and posts, the two arms' beams baked to glowing emission tubes, rendered in Cycles">
+  <img src="docs/img/agent-align.gif" width="88%" alt="A laser beam steered by a kinematic mirror misses the detector, then auto-alignment walks the mount until the beam locks onto the sensor — rendered live in Blender">
 </p>
+
+<p align="center"><em><b>Alignment, solved.</b> A kinematic mirror is knocked out of alignment, so the beam misses the detector — then one <code>optics_api.align_element()</code> call solves the pointing residual (7.0 → 0.001 mrad) and the beam locks onto the sensor. See <a href="examples/agent_align.py"><code>examples/agent_align.py</code></a>.</em></p>
 
 ---
 
@@ -190,6 +195,26 @@ the Scan + Plot operator, the Detector Fringe Image, and the live sensor window 
 
 <p align="center">
   <img src="docs/img/feature-board.png" width="92%" alt="New in v0.10.0: the WFS reads the beam's own curvature defocus; a pyramid WFS slope read; a soft-edge dichroic (R+T=1); a die face read as a zonal wavefront">
+</p>
+
+### New — catalog-true cage hardware + a structural-support gate
+
+<p align="center">
+  <img src="docs/img/cage-er6-train.png" width="49%" alt="A 30 mm cage train on catalog rods: four ER6 rods end just past the outer plates, each optic gripped by its plate bore, the assembly post-mounted through one plate">
+  <img src="docs/img/cage-single-plate.png" width="49%" alt="A single-member cage: one bored cage plate on its post, no rods — exactly what a lone plate looks like on a real bench">
+</p>
+
+Cage assemblies now build from **real catalog parts**: rods snap to the vendors' fixed
+ER/SR lengths (a 130 mm train picks the **ER6 · 152.4 mm** rod and shows the true symmetric
+overhang; `cage_info()` reports the part), a single-member cage stands **rodless** on its
+plate, the assembly is post-mounted through one plate's bottom tap, plate bores close onto
+each optic's actual mesh, and lens tubes carry real retaining rings. Behind it sits a new
+**structural-support gate**: `support_scan()` measures the mesh-level gap between every
+optic and the hardware meant to hold it, and `validate()`/`diagnose()` flag anything
+unsupported — so floating hardware cannot ship silently, in any scene.
+
+<p align="center">
+  <img src="docs/img/base-tab-macro.png" width="62%" alt="When a post axis misses the breadboard's hole grid, the base grows a slotted clamping ear that reaches the nearest hole — with its screw seated in the slot">
 </p>
 
 ### New in v0.25.0 — expanded opto-mechanics: 9 mount presets, X95 rails, structural QA in CI

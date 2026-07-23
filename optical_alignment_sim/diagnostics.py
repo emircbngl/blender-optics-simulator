@@ -602,6 +602,7 @@ def _back_reflection_and_ghost_hits(scene, segs):
 _A10_OVERLAP_DEAD = 0.1      # |<Ja|Jb>| <= this -> arms ~orthogonally polarized (pol_mismatch)
 _A10_OVERLAP_LIVE = 0.5      # |<Ja|Jb>| >= this -> co-polarized enough that LOW envelope is the cause
 _A10_ENVELOPE_DEAD = 0.1     # fringe_envelope(OPD, Lc) < this -> OPD washed the fringes (coherence_mismatch)
+_A10_DESIGN_ORTH = {"SPLIT_O", "SPLIT_E", "SIGNAL", "IDLER"}   # orthogonal BY the element's design
 _A10_EXTINCT_FRAC = 0.02     # per-arm analyzed power / raw arriving power <= this -> Malus extinction
 
 
@@ -640,6 +641,10 @@ def _fringe_disambiguation(scene, segs):
                            arms is ~0 (orthogonally polarized): they cannot interfere.
                            This is the SAME overlap physics.interfere weights its cross
                            term by. Fix: a HWP to rotate one arm back parallel.
+                           Both fringe kinds are gated on SPATIAL overlap first: arms
+                           whose spots land farther apart than their summed 1/e^2 radii
+                           (calcite o/e double refraction, a pickoff pair) share no
+                           ground to fringe on and emit nothing.
       coherence_mismatch - the arms ARE co-polarized (overlap high) but the OPD exceeds
                            the coherence length, so physics.fringe_envelope(OPD, Lc) < 0.1
                            washes the fringes out. Fix: equalize the arm lengths.
@@ -699,6 +704,33 @@ def _fringe_disambiguation(scene, segs):
                         % (det.name, analyzed_p, 100.0 * _A10_EXTINCT_FRAC, raw_p),
                         "WARN"))
                     continue                          # the light is gone -> no fringe to classify further
+
+            # --- spatial gate: fringe diagnostics presuppose the two arms actually SHARE
+            # ground on the detector face. Two cleanly separated spots (calcite o/e double
+            # refraction, a pickoff pair) interfere nowhere, so "fringes dead -- insert a
+            # HWP" would prescribe a fix for a fault that does not exist. Gate on geometric
+            # spot overlap at the hit plane: beyond touching 1/e^2 circles the visibility is
+            # negligible. A recombined interferometer lands both arms on one spot (sep ~ 0)
+            # and passes through. Radii absent/zero -> gate off (geometric-only trace).
+            sep = (pair[0]["p2"] - pair[1]["p2"]).length
+            ra, rb = pair[0].get("w_mm", 0.0), pair[1].get("w_mm", 0.0)
+            if ra > 0.0 and rb > 0.0 and sep >= ra + rb:
+                continue
+
+            # --- wavelength gate: a static fringe needs EQUAL wavelengths. A leftover
+            # pump next to a downconverted daughter (405 vs 810 nm) can only beat, never
+            # hold a stationary pattern -- there is no fringe fault to report.
+            wla, wlb = pair[0].get("wavelength", 0.0), pair[1].get("wavelength", 0.0)
+            if wla > 0.0 and wlb > 0.0 and abs(wla - wlb) > 1e-6:
+                continue
+
+            # --- design-orthogonal births: SPLIT_O/SPLIT_E (double refraction) and
+            # SIGNAL/IDLER (Type-II SPDC) arrive orthogonal BY the splitting element's
+            # design -- the demo working, not an interferometer arm gone wrong. Kinds are
+            # per-segment: routed through further optics they arrive as TRANSMIT/REFLECT
+            # again and the check re-arms.
+            if pair[0].get("kind") in _A10_DESIGN_ORTH and pair[1].get("kind") in _A10_DESIGN_ORTH:
+                continue
 
             # --- normalized Jones overlap of the two arms: the SAME |<Ja|Jb>|/sqrt(Ia*Ib)
             # that physics.interfere weights its cross term by (0 = orthogonal, 1 = identical).

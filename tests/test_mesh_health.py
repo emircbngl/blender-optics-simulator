@@ -26,7 +26,6 @@ if REPO not in sys.path:
 
 import bpy
 
-GAP_TOL = 0.6      # mm; worst legitimate design clearance today: rail/carrier + stage slide 0.5
 FURNITURE = ("Foot_", "Holes")
 
 
@@ -93,9 +92,9 @@ for tag, build in IM.mount_cases(G, mounts, optics_api).items():
             continue                       # single-part cluster: nothing to be adjacent to
         if any(k in name for k in FURNITURE):
             continue                       # bench furniture legitimately sits apart
-        if gap > GAP_TOL:
+        if gap > optomech.GAP_TOL:
             fails.append("mount %s / %s: floating, min gap %.2f mm to %s (tol %.1f)"
-                         % (tag, name, gap, h.get("nearest"), GAP_TOL))
+                         % (tag, name, gap, h.get("nearest"), optomech.GAP_TOL))
 print("mounts: %d parts checked" % n_parts)
 
 if fails:

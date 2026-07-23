@@ -25,6 +25,7 @@ BENCH_PREFIX = "BENCH_"
 
 _BOARD_GRID_MESH_CACHE = OrderedDict()
 _BOARD_GRID_MESH_CACHE_MAX = 3
+_SUPPORT_SCAN_CACHE = {}
 
 
 def _bench_mat(name, color, metal, rough):
@@ -535,19 +536,32 @@ def _build_mount(o, coll, idx):
         # WORLD-vertical stem down to the post top -- so it is actually held by its post, not a bracket
         # floating beside it. (The old bracket sat at local -Z, which for a horizontal laser is BEHIND
         # the body.) The saddle top is keyed off the body's REAL world underside, not clear_aperture.
-        # radius of the body at its CENTRE section, from the mesh: the saddle sits under the
-        # centre, where the barrel may be narrower than a rear cap/bezel -- keying off the global
-        # bbox minimum left the saddle floating ~2 mm below the actual barrel surface
-        _vs = o.data.vertices
-        _zs = [v.co.z for v in _vs]
-        _zmid = 0.5 * (min(_zs) + max(_zs))
-        _span = (max(_zs) - min(_zs)) or 1.0
-        r_c = max((v.co.xy.length for v in _vs if abs(v.co.z - _zmid) < _span * 0.25), default=ca)
+        # Size the saddle from the actual mesh, never the tracer aperture.  A cylinder has only
+        # end-cap vertices, so a centre-slice vertex sample silently falls back to a too-small CA.
+        from . import geometry
+        mn_b, mx_b, ctr_b = geometry.local_bounds(o)
+        saddle_half = ca * 0.8
+        # A stepped barrel's global maximum may be a bezel far from the post.  Measure the
+        # radius at the short axial station the saddle actually occupies, otherwise its trough
+        # is correctly machined for the wrong (larger) section and the body still floats.
+        station = []
+        z0, z1 = ctr_b.z - saddle_half, ctr_b.z + saddle_half
+        for face in o.data.polygons:
+            verts = [o.data.vertices[index].co for index in face.vertices]
+            if min(v.z for v in verts) <= z1 and max(v.z for v in verts) >= z0:
+                station.extend(v.xy.length for v in verts)
+        r_c = max(station, default=max(mx_b.x - mn_b.x, mx_b.y - mn_b.y) * 0.5)
         top_z = p.z - MOUNT_DROP                          # the post top dress() leaves under the optic
         sh = 6.0
-        saddle_z = (p.z - r_c) + 1.0 - sh * 0.5            # saddle top ~1 mm into the barrel underside
-        _bevel(_box(pre + "Saddle_" + nm, (ca * 1.6, ca * 1.2, sh), (p.x, p.y, saddle_z), coll, "clamp"), 0.8, 2)
-        sb = saddle_z - sh * 0.5
+        # Cut the cradle with the SAME mesh radius.  Setting only its height leaves a solid block
+        # with an old, CA-sized trough, so the barrel still floats inside the oversized hollow.
+        F = _gravity_frame(p, mw.to_3x3() @ Vector((0.0, 0.0, 1.0)))
+        saddle_y = -r_c + 1.0 - sh * 0.5                  # top ~1 mm into the barrel underside
+        saddle = _obox(pre + "Saddle_" + nm, (2.0 * (r_c + 2.0), sh, ca * 1.6),
+                       F, (0.0, saddle_y, 0.0), coll, "clamp")
+        _bore_local(saddle, F, (0.0, 0.0, 0.0), r_c + 0.2, ca * 2.0, axis='Z')
+        _bevel(saddle, 0.8, 2)
+        sb = (F @ Vector((0.0, saddle_y, 0.0))).z - sh * 0.5
         if sb - top_z > 0.5:
             _bevel(_cyl(pre + "Stem_" + nm, 4.0, sb - top_z, (p.x, p.y, (top_z + sb) * 0.5), coll, "mount"), 0.5, 1)
         return 2
@@ -637,10 +651,19 @@ def _build_mount(o, coll, idx):
         # world-vertical post, so its edges stay horizontal/vertical for ANY beam yaw -- a 45-degree
         # fold mirror must not render its plates as a diamond.
         Fk = _gravity_frame(p, mw.to_3x3() @ Vector((0.0, 0.0, 1.0)))
-        plate = ca * 2.6
+        from . import geometry
+        mn_b, mx_b, _cb = geometry.local_bounds(o)
+        r_mesh = max(mx_b.x - mn_b.x, mx_b.y - mn_b.y) * 0.5
+        plate = max(ca * 2.6, r_mesh * 2.6)
         hp = plate * 0.5
-        _bevel(_bored_plate(pre + "KMplate_" + nm, plate, 6.0, ca * 0.95,
+        _bevel(_bored_plate(pre + "KMplate_" + nm, plate, 6.0, r_mesh + 0.35,
                             Fk @ Matrix.Translation((0.0, 0.0, -1.0)), coll, "mount"), 0.7, 2)
+        # The front retaining ring is the physical stop for the mirror edge; it also keeps a
+        # custom-size face such as DIE_Reflector from floating in a catalog-sized KM plate bore.
+        ring = _ocyl(pre + "KMretainer_" + nm, min(plate * 0.45, r_mesh + 2.0), 1.2,
+                     Fk, (0.0, 0.0, 3.6), coll, "mount")
+        _bore_local(ring, Fk, (0.0, 0.0, 3.6), r_mesh + 0.35, 4.0, axis='Z')
+        _bevel(ring, 0.25, 1)
         _bevel(_obox(pre + "KMback_" + nm, (plate, plate, 7.0), Fk, (0, 0, -14.0), coll, "mount"), 0.7, 2)
         # the two actuators act on PERPENDICULAR edges (one drives tilt, one drives pan) -- bottom-
         # centre + right-centre -- pivoting about the OPPOSITE (top-left) corner. They are not on a
@@ -662,7 +685,7 @@ def _build_mount(o, coll, idx):
         # two standoff springs bridging the gap, set in from the actuator edges
         for an, (sx, sy) in (("S0", (e * 0.5, -e * 0.5)), ("S1", (-e * 0.5, e * 0.5))):
             _ocyl(pre + an + "_" + nm, 1.4, 8.0, Fk, (sx, sy, -7.5), coll, "steel")
-        return 5 + 3 * len(adj)
+        return 6 + 3 * len(adj)
     # threaded lens mount (LMR): a substantial BARE-ALUMINIUM cell (the LMR signature is bright 6061,
     # not black anodize), bored for the optic, with a thin retaining ring near the front face.
     body = _ocyl(pre + "Cell_" + nm, ca * 1.5, 12.0, mw, (0, 0, 0), coll, "alu")
@@ -796,6 +819,33 @@ def _periscope_clamp(tag, ox, oy, pr, tx, ty, z, coll, optic_r=12.5):
 # (support_system, cage_id). Rod diameter and the square spacing are the published standards.
 _CAGE_SPEC = {'CAGE_16': (2.0, 16.0), 'CAGE_30': (3.0, 30.0), 'CAGE_60': (3.0, 60.0)}
 
+# Thorlabs' ER/SR construction-rod ladders (30/60 mm: https://www.thorlabs.com/
+# 30-and-60-mm-cage-system-construction-rods; 16 mm: https://www.thorlabs.com/
+# 16-mm-cage-system-construction-rods).  Values are catalog rod-body lengths in mm,
+# not a free-form render dimension.  Vendor-confirmed 2026-07-22: ER1/ER2/ER3/ER4/ER6
+# plus the published 1/4"-24" ER range, and SR2/SR3/SR4/SR6 at the same inch steps.
+# The remaining entries fill that inch ladder by pattern (both families share it);
+# they are interpolations of a confirmed range, not measured part listings.
+_CAGE_ROD_CATALOG = {
+    'CAGE_16': (('SR025', 6.35), ('SR05', 12.7), ('SR1', 25.4), ('SR1.5', 38.1),
+                ('SR2', 50.8), ('SR3', 76.2), ('SR4', 101.6), ('SR6', 152.4),
+                ('SR8', 203.2)),
+    'CAGE_30': (('ER025', 6.35), ('ER05', 12.7), ('ER1', 25.4), ('ER1.5', 38.1),
+                ('ER2', 50.8), ('ER3', 76.2), ('ER4', 101.6), ('ER6', 152.4),
+                ('ER8', 203.2), ('ER10', 254.0), ('ER12', 304.8), ('ER18', 457.2),
+                ('ER24', 609.6)),
+    'CAGE_60': (('ER025', 6.35), ('ER05', 12.7), ('ER1', 25.4), ('ER1.5', 38.1),
+                ('ER2', 50.8), ('ER3', 76.2), ('ER4', 101.6), ('ER6', 152.4),
+                ('ER8', 203.2), ('ER10', 254.0), ('ER12', 304.8), ('ER18', 457.2),
+                ('ER24', 609.6)),
+}
+_CAGE_PLATE_THICK_MM = 8.9
+# A 0.1 mm allowance leaves the rod just beyond each plate's full bore thickness while avoiding a
+# numerically exact flush fit; the plate, rather than a long exposed rod end, supplies the real grip.
+_CAGE_GRIP_MM = 0.1
+_CAGE_POST_BITE_MM = 0.1
+GAP_TOL = 0.6                    # mm; worst legitimate clearance: rail/carrier + stage slide 0.5
+
 
 def cage_groups(scene, elems=None):
     """Map (support_system, cage_id) -> [member optics] for every cage-mounted element."""
@@ -889,46 +939,71 @@ def _bored_plate(name, side, thick, bore_r, mw, coll, matkey):
 def _cage_geom(members):
     """Shared cage geometry (axis, transverse basis, centroid, member projections, rod span) so the
     builder and cage_info() agree."""
-    rod_r, sep = _CAGE_SPEC[members[0].optics.support_system]
+    support_system = members[0].optics.support_system
+    rod_r, sep = _CAGE_SPEC[support_system]
     axis = _cage_axis(members)
     u, v = _transverse_basis(axis)
     cs = [m.matrix_world.translation for m in members]
     centroid = sum(cs, Vector((0.0, 0.0, 0.0))) / len(cs)
     ts = [(c - centroid).dot(axis) for c in cs]
-    margin = sep * 0.9
-    return rod_r, sep, axis, u, v, centroid, min(ts) - margin, max(ts) + margin
+    tmin, tmax = min(ts), max(ts)
+    if len(members) == 1:
+        return rod_r, sep, axis, u, v, centroid, tmin, tmax, None, 0.0, True
+    need = (tmax - tmin) + _CAGE_PLATE_THICK_MM + 2.0 * _CAGE_GRIP_MM
+    part, length = next(((p, L) for p, L in _CAGE_ROD_CATALOG[support_system] if L >= need),
+                        (None, need))
+    # Centre the selected rod on the end-plate centres.  Its catalog excess therefore protrudes
+    # equally beyond the two outer plate faces instead of becoming an arbitrary one-sided margin.
+    mid = (tmin + tmax) * 0.5
+    return rod_r, sep, axis, u, v, centroid, mid - length * 0.5, mid + length * 0.5, part, length, part is not None
+
+
+def _cage_support_member(members, centroid, axis):
+    """Plate that carries the cage post: nearest along the cage axis, name-break ties."""
+    return min(members, key=lambda m: (abs((m.matrix_world.translation - centroid).dot(axis)), m.name))
 
 
 def _build_cage(scene, members, board_top_z, coll, post_radius, tag, grid, created=None):
-    """Build one cage: 4 rods on the size-mm square + a plate per member + one centre post."""
+    """Build one cage: 4 rods on the size-mm square + a plate per member + one plate-mounted post."""
     before = set(coll.objects) if created is not None else None
-    rod_r, sep, axis, u, v, centroid, t0, t1 = _cage_geom(members)
+    rod_r, sep, axis, u, v, centroid, t0, t1, rod_part, rod_length, catalog_ok = _cage_geom(members)
     half = sep * 0.5
     n = 0
-    for k, off in enumerate((u * half + v * half, u * half - v * half,
-                             -u * half + v * half, -u * half - v * half)):
-        base = centroid + off
-        _rod("%sCageRod_%s_%d" % (BENCH_PREFIX, tag, k),
-             base + axis * t0, base + axis * t1, rod_r, coll, "post")
-        n += 1
+    if rod_length > 0.0:
+        for k, off in enumerate((u * half + v * half, u * half - v * half,
+                                 -u * half + v * half, -u * half - v * half)):
+            base = centroid + off
+            _rod("%sCageRod_%s_%d" % (BENCH_PREFIX, tag, k),
+                 base + axis * t0, base + axis * t1, rod_r, coll, "post")
+            n += 1
     # a bored cage plate at each member: square frame transverse to the axis with a central
     # aperture so the optic shows through (a real cage plate, not a solid slab). Rods pass through
     # the frame material at the corners.
     rot = Matrix(((u.x, v.x, axis.x, 0.0), (u.y, v.y, axis.y, 0.0),
                   (u.z, v.z, axis.z, 0.0), (0.0, 0.0, 0.0, 1.0)))
+    plate_side = sep * 1.3
     for j, m in enumerate(members):
-        ca = max(getattr(m.optics, "clear_aperture", 10.0), 6.0)
+        # The plate must retain the actual mesh, not the tracer aperture (which can be much
+        # larger than a barrel).  Match the RSP housing's mesh-sized bore allowance.
+        from . import geometry
+        mn_b, mx_b, _cb = geometry.local_bounds(m)
+        r_mesh = max(mx_b.x - mn_b.x, mx_b.y - mn_b.y) * 0.5
+        bore_r = min(max(r_mesh + 0.35, 6.0), plate_side * 0.45)
         _bored_plate("%sCagePlate_%s_%d" % (BENCH_PREFIX, tag, j),
-                     sep * 1.3, 8.9, ca, Matrix.Translation(m.matrix_world.translation) @ rot,
+                     plate_side, 8.9, bore_r, Matrix.Translation(m.matrix_world.translation) @ rot,
                      coll, "mount")
         n += 1
-    # one post under the cage centroid, to beam height (foot + holder + thumbscrew + post)
-    post_top_z = centroid.z - MOUNT_DROP
+    # A cage is post-mounted through one plate's bottom tapped hole.  Pick the plate closest to
+    # the assembly centre, then let its actual square side set the support height.
+    support = _cage_support_member(members, centroid, axis)
+    post_top_z = support.matrix_world.translation.z - plate_side * 0.5 + _CAGE_POST_BITE_MM
     h = max(post_top_z - board_top_z, 1.0)
-    nh = _post_holder("cage_" + tag, centroid.x, centroid.y, board_top_z, post_radius, coll, grid)
+    nh = _post_holder("cage_" + tag, support.matrix_world.translation.x,
+                      support.matrix_world.translation.y, board_top_z, post_radius, coll, grid)
     hs = max(h - POST_SEAT_MM, 1.0)                      # bottom on the holder floor, top unchanged
     _cyl("%sCagePost_%s" % (BENCH_PREFIX, tag), post_radius, hs,
-         (centroid.x, centroid.y, board_top_z + POST_SEAT_MM + hs * 0.5), coll, "post")
+         (support.matrix_world.translation.x, support.matrix_world.translation.y,
+          board_top_z + POST_SEAT_MM + hs * 0.5), coll, "post")
     if created is not None:
         created.extend(o for o in coll.objects if o not in before)
     return n + nh + 1
@@ -941,15 +1016,29 @@ def cage_info(scene):
         return []
     out = []
     for (ss, cid), members in cage_groups(scene).items():
-        rod_r, sep, axis, u, v, centroid, t0, t1 = _cage_geom(members)
+        rod_r, sep, axis, u, v, centroid, t0, t1, rod_part, rod_length, catalog_ok = _cage_geom(members)
         out.append({
             "id": cid or ss.lower(),
-            "size_mm": int(sep), "rod_dia_mm": round(2.0 * rod_r, 3), "rod_count": 4,
-            "rod_length_mm": round(t1 - t0, 2),
+            "size_mm": int(sep), "rod_dia_mm": round(2.0 * rod_r, 3),
+            "rod_count": 4 if rod_length > 0.0 else 0,
+            "rod_length_mm": round(rod_length, 2), "rod_part": rod_part,
             "axis": [round(axis.x, 4), round(axis.y, 4), round(axis.z, 4)],
             "members": [m.name for m in members],
         })
     return out
+
+
+def cage_rod_travel_limit(scene, obj, target):
+    """Catalog rod span for a CAGE_ROD link between members of one assembly, else ``None``."""
+    op, tp = getattr(obj, "optics", None), getattr(target, "optics", None)
+    if not op or not tp or op.support_system not in _CAGE_SPEC:
+        return None
+    if (op.support_system, op.cage_id) != (tp.support_system, tp.cage_id):
+        return None
+    members = cage_groups(scene).get((op.support_system, op.cage_id), ())
+    if obj not in members or target not in members:
+        return None
+    return _cage_geom(members)[9]
 
 
 # ---------------------------------------------------------------------------
@@ -1001,8 +1090,18 @@ def _build_tube(scene, members, board_top_z, coll, post_radius, tag, grid, creat
     if _im.users == 0:
         bpy.data.meshes.remove(_im)
     _bevel(barrel, 0.6, 1)
-    # (no proud end ring: a real SM retaining ring seats flush *inside* the bore against the optic;
-    # a collar sticking out of the mouth just reads as a mystery part, so the barrel ends open.)
+    # A thin SMxxRR-style retaining ring at every member seats the optic against the tube bore.
+    # Without it, a lens can visibly float inside the nominal 0.7 mm radial tube clearance.
+    from . import geometry
+    ring_outer = bore * 0.5 - 0.15
+    for j, member in enumerate(members):
+        mn_b, mx_b, _cb = geometry.local_bounds(member)
+        r_mesh = max(mx_b.x - mn_b.x, mx_b.y - mn_b.y) * 0.5
+        mw = Matrix.Translation(member.matrix_world.translation) @ member.matrix_world.to_3x3().to_4x4()
+        ring = _ocyl("%sTubeRetainer_%s_%d" % (BENCH_PREFIX, tag, j), ring_outer, 2.0,
+                     mw, (0.0, 0.0, 0.0), coll, "mount")
+        _bore_local(ring, mw, (0.0, 0.0, 0.0), min(r_mesh + 0.35, ring_outer - 0.2), 6.0, axis='Z')
+        _bevel(ring, 0.25, 1)
     # one post under the barrel centroid, to beam height
     post_top_z = centroid.z - MOUNT_DROP
     h = max(post_top_z - board_top_z, 1.0)
@@ -1012,7 +1111,7 @@ def _build_tube(scene, members, board_top_z, coll, post_radius, tag, grid, creat
          (centroid.x, centroid.y, board_top_z + POST_SEAT_MM + hs * 0.5), coll, "post")
     if created is not None:
         created.extend(o for o in coll.objects if o not in before)
-    return 3 + nh + 1
+    return 3 + len(members) + nh + 1
 
 
 def tube_info(scene):
@@ -1231,6 +1330,7 @@ def validate(scene):
         BELOW the thing holding it -- absurd; caught the periscope lower-mirror bug)
       - post_overlap: two support posts/pillars collide (coaxial / overlapping supports)
       - beam_through_post: a support post sits on a vertical beam axis
+      - element_unsupported: an optical element has no holding part in contact in its support cluster
       - interpenetration: ANY two parts from different support clusters actually interpenetrate -- a real
         Blender mesh-overlap (BVHTree) check, so it catches mount/holder/base/optic collisions the cheap
         post-distance proxies above miss (e.g. two mounts placed too close so their bodies pass through).
@@ -1299,6 +1399,30 @@ def validate(scene):
                     break
     # 4. real mesh-level collision: any two parts from DIFFERENT support clusters that interpenetrate
     issues += _interpenetration_issues(scene)
+    # 4b. Every cage post must physically reach one of its own plates.  A post at the group centroid
+    # can sit between plates, so check the actual dressed meshes rather than its holder underneath.
+    for gi, members in enumerate(cage_groups(scene).values()):
+        tag = "%02d" % gi
+        post = scene.objects.get(BENCH_PREFIX + "CagePost_" + tag)
+        plates = [o for o in scene.objects if o.name.startswith(BENCH_PREFIX + "CagePlate_" + tag + "_")]
+        if post is None or not any(_mesh_bvh_gap(post, plate) <= GAP_TOL for plate in plates):
+            issues.append({"kind": "cage_post_detached", "element": tag,
+                           "detail": "cage post has no plate contact within %.1f mm" % GAP_TOL})
+    # 4c. An optic must be physically gripped by a part in its own support cluster.  This is
+    # deliberately separate from cage_post_detached: that focused invariant remains useful.
+    for item in support_scan(scene)["elements"]:
+        if not item["ok"]:
+            issues.append({"kind": "element_unsupported", "element": item["name"],
+                           "detail": "nearest holding part %s is %.1f mm away (limit %.1f mm)" %
+                                     (item["held_by"] or "none", item["gap_mm"], GAP_TOL)})
+    # A cage longer than its longest catalog rod is deliberately exposed instead of rendered as a
+    # plausible-looking made-up part.  get_state()['warnings'] makes this limitation diagnose-visible.
+    for (ss, cid), members in cage_groups(scene).items():
+        _geom = _cage_geom(members)
+        if len(members) > 1 and not _geom[10]:
+            issues.append({"kind": "cage_rod_catalog", "element": cid or ss.lower(),
+                           "detail": "requires %.1f mm; no %s catalog rod is long enough" %
+                                     (_geom[9], "SR" if ss == 'CAGE_16' else "ER")})
     # 5. penta-prism deflection invariant: a penta prism MUST deflect the beam by exactly 90 deg, and that
     #    deflection is INVARIANT under whole-prism tilt (its defining property -- two mirrors at a fixed 45 deg
     #    dihedral rotate any in-plane ray by 2*45 = 90 deg). If a penta in the scene is traced at anything but
@@ -1588,6 +1712,111 @@ def _interpenetration_issues(scene, min_faces=2):
     return issues
 
 
+def _mesh_bvh_gap(a, b):
+    """Nearest mesh-vertex distance between two dressed parts, in world-space millimetres."""
+    import bmesh
+    from mathutils.bvhtree import BVHTree
+    try:
+        deps = bpy.context.evaluated_depsgraph_get()
+        meshes = []
+        for o in (a, b):
+            bm = bmesh.new()
+            bm.from_object(o, deps)
+            bm.transform(o.matrix_world)
+            if not bm.faces:
+                bm.free()
+                return float("inf")
+            meshes.append(bm)
+        ta, tb = (BVHTree.FromBMesh(bm) for bm in meshes)
+        if ta.overlap(tb):
+            for bm in meshes:
+                bm.free()
+            return 0.0
+        gap = min((tb.find_nearest(v.co)[3] for v in meshes[0].verts), default=float("inf"))
+        gap = min(gap, min((ta.find_nearest(v.co)[3] for v in meshes[1].verts), default=float("inf")))
+        for bm in meshes:
+            bm.free()
+        return gap
+    except Exception:
+        for bm in locals().get("meshes", ()):
+            bm.free()
+        return float("inf")
+
+
+def support_scan(scene):
+    """Inspect physical support contacts in a dressed scene.
+
+    Each optical element is measured only against BENCH hardware in its ``oa_owner`` support
+    cluster.  Every BENCH mesh is also measured against the rest of that cluster and the board,
+    making this report suitable for structural inspection without a render.  The breadboard is
+    held by its feet; holes are intentionally measured against their board rather than exempted.
+    Call :func:`support_scan_invalidate` after editing a BENCH mesh in place, since its datablock
+    pointer and pose do not otherwise change.
+    """
+    elems = _optical_objects(scene)
+    # The normal diagnose path repeatedly inspects an unchanged dressed scene.  Rebuilding every
+    # pair BVH there is needlessly expensive; the cheap pose key retains the scan until an optic or
+    # bench object moves.  Mesh replacement also changes its datablock pointer.
+    key = (_dress_signature(scene, elems, POST_RADIUS), tuple(
+        (o.name, o.data.as_pointer(), tuple(_q(v) for row in o.matrix_world for v in row))
+        for o in sorted((item for item in scene.objects
+                         if item.type == 'MESH' and item.name.startswith(BENCH_PREFIX)), key=lambda item: item.name)))
+    cache_key = scene.as_pointer()
+    cached = _SUPPORT_SCAN_CACHE.get(cache_key)
+    if cached is not None and cached[0] == key:
+        return cached[1]
+    board = scene.objects.get(BENCH_PREFIX + "Breadboard")
+    bench = [o for o in scene.objects if o.type == 'MESH' and o.name.startswith(BENCH_PREFIX)]
+    hardware = [o for o in bench if o is not board]
+
+    def nearest(subject, candidates):
+        best_gap, best_name = float("inf"), None
+        for candidate in candidates:
+            if candidate is subject:
+                continue
+            gap = _mesh_bvh_gap(subject, candidate)
+            if gap < best_gap:
+                best_gap, best_name = gap, candidate.name
+        return best_gap, best_name
+
+    elements = []
+    for elem in elems:
+        owner = elem.get("oa_owner")
+        holders = [part for part in hardware if owner is not None and part.get("oa_owner") == owner]
+        gap, held_by = nearest(elem, holders)
+        elements.append({"name": elem.name, "held_by": held_by,
+                         "gap_mm": round(gap, 3), "ok": gap <= GAP_TOL})
+
+    parts = []
+    for part in bench:
+        if part is board:
+            candidates = [o for o in hardware if o.name.startswith(BENCH_PREFIX + "Foot_")]
+        else:
+            owner = part.get("oa_owner")
+            candidates = [o for o in scene.objects if o.type == 'MESH' and o is not part
+                          and owner is not None and o.get("oa_owner") == owner]
+            if board is not None:
+                candidates.append(board)
+        gap, held_by = nearest(part, candidates)
+        board_gap = None if board is None or part is board else _mesh_bvh_gap(part, board)
+        parts.append({"name": part.name, "held_by": held_by, "gap_mm": round(gap, 3),
+                      "board_gap_mm": None if board_gap is None else round(board_gap, 3),
+                      "ok": gap <= GAP_TOL})
+
+    all_rows = [("element", row) for row in elements] + [("part", row) for row in parts]
+    kind, row = max(all_rows, key=lambda item: item[1]["gap_mm"], default=(None, None))
+    worst = None if row is None else {"kind": kind, "name": row["name"],
+                                      "gap_mm": row["gap_mm"], "held_by": row["held_by"]}
+    report = {"elements": elements, "parts": parts, "worst": worst}
+    _SUPPORT_SCAN_CACHE[cache_key] = (key, report)
+    return report
+
+
+def support_scan_invalidate(scene):
+    """Discard the cached support report after an in-place BENCH mesh edit."""
+    _SUPPORT_SCAN_CACHE.pop(scene.as_pointer(), None)
+
+
 def dress(scene, post_radius=POST_RADIUS):
     """Spawn a hole-grid breadboard under the optics, then a beam-height-driven post + post-holder
     base under each element and a mount ring framing the optic. The board top sits one beam height
@@ -1755,6 +1984,7 @@ def dress(scene, post_radius=POST_RADIUS):
 def strip(scene):
     """Remove all bench-dressing objects (and free their meshes)."""
     n = 0
+    _SUPPORT_SCAN_CACHE.pop(scene.as_pointer(), None)
     c = bpy.data.collections.get(BENCH_COLL)
     for key in ("oa_dress_sig", "oa_dress_count", "oa_dress_result"):
         if key in scene:
