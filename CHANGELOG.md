@@ -4,6 +4,61 @@ All notable changes to the **Blender Optics Simulator** (`optical_alignment_sim`
 here. The format follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 semantic versioning.
 
+## [0.27.0] — Nothing floats: catalog-true cage hardware and a structural-support gate — 2026-07-28
+
+### Fixed — hardware that only *looked* mounted
+- **Cage rods are catalog parts now.** Rod length came from an arbitrary `size * 0.9` margin, so
+  a 130 mm train grew 184 mm rods — a part no vendor sells, with 27 mm of bare overhang past
+  both end plates. Rods snap UP to the nearest real ER/SR length (that train builds on
+  **ER6 = 152.4 mm**, its catalog excess split symmetrically past the two outer plates) and
+  `cage_info()` reports the chosen `rod_part`. A span exceeding the longest catalog rod is
+  surfaced as a `cage_rod_catalog` warning instead of being rendered as an invented part.
+- **A single-member cage stands rodless.** One optic flagged `CAGE_30` used to sprout four 54 mm
+  rod stubs attached to nothing. A lone bored plate on its post is what a real bench shows, and
+  that is what dresses now (`rod_count: 0`).
+- **The cage post holds a plate, not air.** The post was planted under the group *centroid*,
+  which for an even member count sits in the gap between plates. It now rises under the plate
+  nearest that centre, its height derived from that plate's own underside.
+- **Mounts grip the optic's real mesh.** Cage-plate bores, source saddles and kinematic plates
+  were cut from `clear_aperture`, leaving annular gaps around barrels and lenses — a laser
+  visibly floating inside its own plate. All three are sized from the optic's actual mesh
+  bounds; a saddle uses the barrel radius **at the saddle's own axial station**, so a stepped
+  barrel is cradled where it really sits. Lens tubes gained SM-style retaining rings, so their
+  lenses are held rather than merely surrounded.
+
+### Added — `support_scan()`: structural inspection without a render
+- **A code-level answer to "is this actually held?"** The existing BVH gate asks whether parts
+  *interpenetrate*; it stays silent when a part touches its holder at one corner while the rest
+  holds air. `support_scan(scene)` measures the world-space mesh gap between every optical
+  element and the bench hardware in its own support cluster — and every bench part against its
+  cluster and the board — returning `{elements, parts}` rows of `{name, held_by, gap_mm, ok}`.
+- **Two new invariants** feed `validate()` and `diagnose()`: `element_unsupported` (an optic with
+  no holding part within `GAP_TOL = 0.6 mm`) and `cage_post_detached` (a cage post reaching none
+  of its own plates). Both ship with a fires-on-broken / silent-on-fixed test pair.
+- The scan is memoized on the dress signature plus each part's pose and mesh identity, so
+  `diagnose()` stays near 5 ms. Editing a bench mesh in place is invisible to that key —
+  `support_scan_invalidate(scene)` drops the cache.
+- `check_mechanics` CAGE_ROD travel derives its limit from the same catalog rod span rather than
+  a manually entered one (`cage_rod_travel_limit()`).
+
+### Fixed — three physics gates for the fringe diagnostics
+The A10 family (`pol_mismatch` / `coherence_mismatch` / `crossed_polarizer`) treated any two
+same-source beams reaching one detector as interferometer arms. Three gates now precede it:
+- **Spatial** — arms whose spots land farther apart than their summed 1/e² radii share no ground
+  to fringe on. Calcite o/e double refraction lands two clean spots; that demo working is not a
+  fault to report.
+- **Wavelength** — a leftover pump beside a downconverted daughter (405 vs 810 nm) can beat, but
+  never hold a static fringe.
+- **Design-orthogonal births** — `SPLIT_O`/`SPLIT_E` and `SIGNAL`/`IDLER` arrive orthogonal by
+  the splitting element's design. Routed through further optics they arrive as
+  `TRANSMIT`/`REFLECT` again and the check re-arms.
+
+### Changed
+- Test suites: headless regression **478** checks (from 446), textbook validation **320**, mesh
+  health **311** dressed parts across 30 element meshes and 17 mount cases.
+- README leads with a real Cycles hero rendered from the shipping builders (a light/dark
+  `<picture>` pair) and documents the catalog cage hardware plus the support gate.
+
 ## [0.26.0] — The human-usable bench: a five-group UI, placement dialogs, live diagnostics — 2026-07-15
 
 ### Added — the N-panel is now built for people, not only for agents
