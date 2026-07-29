@@ -1,5 +1,6 @@
 # Adds a "Sponsor" button to the repo. The GitHub Sponsors entry only appears once
 # GitHub Sponsors is enabled for the account; uncomment/replace the others as needed.
+patreon: emircbngl
 github: [emircbngl]
 # ko_fi: your_handle
 # custom: ["https://..."]
