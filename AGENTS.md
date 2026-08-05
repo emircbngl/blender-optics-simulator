@@ -67,3 +67,18 @@ python3 tools/check_release_consistency.py
 It keeps the add-on manifest, CITATION, changelog and MCP package aligned. The
 MCP package under `mcp/` is versioned **independently** of the add-on (0.24.x vs
 0.27.x) and that is intentional — the checker says so. Do not "fix" it.
+
+## Do not add GPU/MLX here
+
+Two measured reasons:
+
+- Blender ships its **own** Python (5.1.1 -> 3.13.9, numpy 2.3.4) and MLX is not
+  in it. A Blender extension cannot ship a native wheel through the platform zip
+  the release flow builds and `extension validate` checks, so users would have
+  to pip into Blender's interpreter by hand.
+- The dominant grid size in this repo is **512** (12 call sites, against 3 at
+  2048/4096), and at 512 MLX is *slower* than scipy on an M4 (0.8 ms vs 0.5 ms)
+  because transfer overhead dominates.
+
+So the cost is packaging fragility and the benefit is negative at the size that
+actually runs. Re-measure only if the working grid size moves to 2048+.
