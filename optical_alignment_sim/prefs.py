@@ -47,6 +47,10 @@ class OpticsAddonPrefs(AddonPreferences):
     bridge_autostart: BoolProperty(
         name="Auto-start bridge", default=False,
         description="Start the localhost MCP bridge automatically when the add-on loads")
+    bridge_token: StringProperty(
+        name="MCP bridge token", default="",
+        description=("Secret capability required by an external MCP client. Leave blank once to "
+                     "generate a strong token, then set OPTICS_BRIDGE_TOKEN to the same value."))
     show_advanced: BoolProperty(
         name="Show Advanced Controls", default=False,
         description="Show specialized optical, sensor, mechanical, and drawing controls (default off)")
@@ -65,6 +69,8 @@ class OpticsAddonPrefs(AddonPreferences):
         row = bb.row(align=True)
         row.prop(self, "bridge_port")
         row.prop(self, "bridge_autostart")
+        bb.prop(self, "bridge_token")
+        bb.label(text="Set the same value in OPTICS_BRIDGE_TOKEN for the MCP client.", icon='LOCKED')
         up = col.box()
         up.label(text="Updates", icon='FILE_REFRESH')
         from . import updater

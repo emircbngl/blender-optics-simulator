@@ -39,12 +39,14 @@ pipx install blender-optics-mcp             # (PyPI)  /  pipx install ./mcp   (f
 pip install ./mcp && blender-optics-mcp     # into the current environment
 
 # or just run the single file (needs `pip install "mcp[cli]"`)
-OPTICS_BRIDGE_PORT=9765 python3 optics_mcp_server.py
+OPTICS_BRIDGE_PORT=9765 OPTICS_BRIDGE_TOKEN='<token from Blender preferences>' python3 optics_mcp_server.py
 ```
 
 Environment:
 - `OPTICS_BRIDGE_PORT` — bridge port (default `9765`, must match the add-on preference).
 - `OPTICS_BRIDGE_HOST` — default `127.0.0.1`.
+- `OPTICS_BRIDGE_TOKEN` — required capability token. Blender generates one on the
+  first bridge start; copy it from Add-on Preferences → MCP bridge. Do not share it.
 
 ## 3. Wire it into an MCP client
 
@@ -56,7 +58,10 @@ With the packaged entry point the client config is a single command — no absol
     "blender-optics": {
       "command": "uvx",
       "args": ["blender-optics-mcp"],
-      "env": { "OPTICS_BRIDGE_PORT": "9765" }
+      "env": {
+        "OPTICS_BRIDGE_PORT": "9765",
+        "OPTICS_BRIDGE_TOKEN": "<copy from Blender Add-on Preferences>"
+      }
     }
   }
 }

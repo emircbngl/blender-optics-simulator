@@ -1960,11 +1960,15 @@ print("[bridge: timer-driven thread-free pump -- e2e protocol over a REAL localh
 import socket as _sck
 import json as _json
 _tmp = _sck.socket(); _tmp.bind(("127.0.0.1", 0)); _free_port = _tmp.getsockname()[1]; _tmp.close()
-_bok, _bmsg = bridge.start(port=_free_port)
+_bridge_token = "bridge-regression-token-2026"
+def _bridge_request(fn, **args):
+    return (_json.dumps({"token": _bridge_token, "fn": fn, "args": args}) + "\n").encode("utf-8")
+_bok, _bmsg = bridge.start(port=_free_port, token=_bridge_token)
 check("bridge starts thread-free (non-blocking listener)", _bok and bridge.is_running(), _bmsg)
 _cli = _sck.create_connection(("127.0.0.1", _free_port), timeout=2.0)
 _cli.setblocking(False)
-_cli.sendall(b'{"fn":"ping"}\n{"fn":"list"}\n{"fn":"get_state"}\n{"fn":"__import__"}\nnot json\n')
+_cli.sendall(_bridge_request("ping") + _bridge_request("list") + _bridge_request("get_state")
+             + _bridge_request("__import__") + b"not json\n[]\n")
 _bbuf = b""
 for _ in range(400):
     bridge._pump()
@@ -1972,20 +1976,38 @@ for _ in range(400):
         _bbuf += _cli.recv(1 << 20)
     except (BlockingIOError, _sck.timeout):
         pass
-    if _bbuf.count(b"\n") >= 5:
+    if _bbuf.count(b"\n") >= 6:
         break
-_replies = [_json.loads(x) for x in _bbuf.decode("utf-8").strip().split("\n")[:5]]
+_replies = [_json.loads(x) for x in _bbuf.decode("utf-8").strip().split("\n")[:6]]
 check("bridge e2e ping -> pong", _replies[0].get("result") == "pong")
 check("bridge e2e list includes get_state", "get_state" in (_replies[1].get("result") or []))
 check("bridge e2e real call get_state ok", _replies[2].get("ok") is True and "elements" in (_replies[2].get("result") or {}))
 check("bridge rejects non-allowlisted fn", not _replies[3].get("ok") and "not allowed" in _replies[3].get("error", ""))
 check("bridge rejects bad json", "bad json" in _replies[4].get("error", ""))
+check("bridge rejects non-object JSON without losing the pump",
+      not _replies[5].get("ok") and "JSON object" in _replies[5].get("error", ""))
 _cli.close()
+_unauth = _sck.create_connection(("127.0.0.1", _free_port), timeout=2.0)
+_unauth.setblocking(False)
+_unauth.sendall(b'{"fn":"ping"}\n')
+_ubuf = b""
+for _ in range(100):
+    bridge._pump()
+    try:
+        _ubuf += _unauth.recv(4096)
+    except (BlockingIOError, _sck.timeout):
+        pass
+    if b"\n" in _ubuf:
+        break
+_ureply = _json.loads(_ubuf.decode("utf-8").strip())
+check("bridge rejects a request without its capability token",
+      not _ureply.get("ok") and "unauthorized" in _ureply.get("error", ""))
+_unauth.close()
 bridge.stop()
 check("bridge stop is clean (listener closed, clients dropped)", not bridge.is_running() and not bridge._clients)
 
 print("[bridge hardening: BaseException -> error reply; wbuf cap; newline-less flood drop]")
-_bok2, _bmsg2 = bridge.start(port=_free_port)
+_bok2, _bmsg2 = bridge.start(port=_free_port, token=_bridge_token)
 check("bridge restarts for hardening tests", _bok2 and bridge.is_running(), _bmsg2)
 # 1. a dispatched call raising SystemExit must become an ERROR REPLY and the pump must survive
 # (if it escaped, Blender would silently unregister the timer -> bridge dead without a log)
@@ -1994,7 +2016,7 @@ def _regress_systemexit():
 optics_api.regress_systemexit = _regress_systemexit
 _cli = _sck.create_connection(("127.0.0.1", _free_port), timeout=2.0)
 _cli.setblocking(False)
-_cli.sendall(b'{"fn":"regress_systemexit"}\n{"fn":"ping"}\n')
+_cli.sendall(_bridge_request("regress_systemexit") + _bridge_request("ping"))
 _bbuf = b""
 for _ in range(400):
     bridge._pump()
@@ -2017,7 +2039,7 @@ _cap_orig = bridge._MAX_WBUF
 bridge._MAX_WBUF = 64
 _cli = _sck.create_connection(("127.0.0.1", _free_port), timeout=2.0)
 _cli.setblocking(False)
-_cli.sendall(b'{"fn":"ping"}\n' * 32)             # ~32 pending replies >> 64 bytes, never read
+_cli.sendall(_bridge_request("ping") * 32)           # ~32 pending replies >> 64 bytes, never read
 for _ in range(100):
     bridge._pump()
     if not bridge._clients:

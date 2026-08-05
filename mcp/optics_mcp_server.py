@@ -26,6 +26,7 @@ from mcp.server.fastmcp import FastMCP
 
 HOST = os.environ.get("OPTICS_BRIDGE_HOST", "127.0.0.1")
 PORT = int(os.environ.get("OPTICS_BRIDGE_PORT", "9765"))
+TOKEN = os.environ.get("OPTICS_BRIDGE_TOKEN", "")
 
 mcp = FastMCP("blender-optics")
 
@@ -34,8 +35,11 @@ def _call(fn, _wait=60.0, **args):
     """Send one request to the bridge and return its JSON reply (or an error dict).
     `_wait` raises the socket timeout AND asks the bridge to hold the main-thread job
     that long (long operations: a final Cycles render, a large scan)."""
+    if not TOKEN:
+        return {"ok": False, "error": "OPTICS_BRIDGE_TOKEN is required; copy the token from "
+                "Blender Add-on Preferences > MCP bridge"}
     try:
-        req = {"fn": fn, "args": args}
+        req = {"token": TOKEN, "fn": fn, "args": args}
         if _wait > 60.0:
             req["timeout"] = _wait - 10.0
         with socket.create_connection((HOST, PORT), timeout=_wait) as s:

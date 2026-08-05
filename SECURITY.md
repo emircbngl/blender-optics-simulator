@@ -29,8 +29,9 @@ release and be credited (unless you prefer to remain anonymous).
 This is a Blender add-on and an MCP server. The most relevant surfaces are:
 
 - **The MCP server** (`mcp/optics_mcp_server.py`) — it bridges an AI agent to a running Blender.
-  Only run it against a Blender instance you control, and be mindful that any client you connect can
-  drive the scene.
+  It binds on localhost and requires a capability token configured in Blender Add-on Preferences and
+  passed as `OPTICS_BRIDGE_TOKEN` to the MCP process. Treat that token like a local password: any
+  client that has it can drive the scene.
 - **`swap_part` / mesh import** — importing untrusted STL/OBJ/STEP files runs mesh code; treat
   third-party mesh files as you would any untrusted input.
 - The add-on executes only local `bpy`/NumPy code; it does not phone home except the once-a-day

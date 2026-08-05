@@ -3,7 +3,7 @@
   "name": "io.github.emircbngl/blender-optics-simulator",
   "description": "Build, align & render a real optical bench in Blender; drivable by an AI agent over MCP.",
   "status": "active",
-  "version": "0.24.4",
+  "version": "0.24.5",
   "repository": {
     "url": "https://github.com/emircbngl/blender-optics-simulator",
     "source": "github"
@@ -12,7 +12,7 @@
     {
       "registryType": "pypi",
       "identifier": "blender-optics-mcp",
-      "version": "0.24.4",
+      "version": "0.24.5",
       "transport": {
         "type": "stdio"
       },
@@ -28,6 +28,11 @@
           "description": "Host of the add-on bridge.",
           "isRequired": false,
           "default": "127.0.0.1"
+        },
+        {
+          "name": "OPTICS_BRIDGE_TOKEN",
+          "description": "Required capability token from Blender Add-on Preferences > MCP bridge.",
+          "isRequired": true
         }
       ]
     }

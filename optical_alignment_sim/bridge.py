@@ -1,4 +1,4 @@
-"""Localhost socket bridge (timer-driven, thread-free).
+"""Authenticated localhost socket bridge (timer-driven, thread-free).
 
 Lets an external process - a dedicated MCP server (see ../mcp/) - drive the add-on's
 `optics_api` over TCP with newline-delimited JSON requests ``{"fn": <name>, "args": {...}}``,
@@ -15,12 +15,15 @@ optional ``timeout`` field is accepted for compatibility (dispatch is synchronou
 the main-thread wait it used to bound no longer exists).
 
 Only optics_api's public functions are callable (the allow-list is derived in
-``_allowed()`` - never arbitrary code) and the socket binds to 127.0.0.1 only, so
-nothing off the local machine can reach it.
+``_allowed()`` - never arbitrary code). The socket binds to 127.0.0.1 only and
+every request carries a capability token, so another local process cannot take
+control merely by knowing the default port.
 """
 from __future__ import annotations
 
+import hmac
 import json
+import secrets
 import socket
 
 import bpy
@@ -28,6 +31,7 @@ import bpy
 _listener = None            # non-blocking listening socket (None = bridge down)
 _clients = {}               # client socket -> {"rbuf": bytearray, "wbuf": bytearray}
 _port = None
+_token = None               # capability shared with the external MCP process; never returned
 _TIMER_DT = 0.05
 _MAX_LINE = 1 << 20         # cap a newline-less flood at 1 MB so rbuf can't grow unbounded
 _MAX_WBUF = 8 << 20         # cap per-client pending replies at 8 MB: a client that requests but
@@ -55,6 +59,12 @@ def _dispatch(line):
         req = json.loads(line.decode("utf-8"))
     except Exception as e:
         return {"ok": False, "error": "bad json: %s" % e}
+    if not isinstance(req, dict):
+        return {"ok": False, "error": "request must be a JSON object"}
+    supplied_token = req.get("token")
+    if not isinstance(supplied_token, str) or _token is None \
+            or not hmac.compare_digest(supplied_token, _token):
+        return {"ok": False, "error": "unauthorized bridge request"}
     fn = req.get("fn")
     args = req.get("args") or {}
     if fn == "ping":
@@ -172,14 +182,25 @@ def _pump():
 
 # --- public control ---------------------------------------------------------
 
-def start(port=None):
-    global _listener, _port
+def start(port=None, token=None):
+    global _listener, _port, _token
     if is_running():
         return False, "bridge already running on %d" % _port
     if port is None:
         from .prefs import get_prefs
         p = get_prefs()
         port = int(getattr(p, "bridge_port", 9765)) if p else 9765
+    if token is None:
+        from .prefs import get_prefs
+        p = get_prefs()
+        token = str(getattr(p, "bridge_token", "") or "") if p else ""
+        if not token and p is not None:
+            # Make the safe path convenient for a new install. Blender saves
+            # this preference through its normal user-preference flow.
+            token = secrets.token_urlsafe(32)
+            p.bridge_token = token
+    if not isinstance(token, str) or len(token) < 16:
+        return False, "bridge requires a token of at least 16 characters (set it in Add-on Preferences)"
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -189,7 +210,7 @@ def start(port=None):
     except Exception as e:
         print("[optics bridge] bind failed:", e)
         return False, "bridge failed: %s" % e
-    _listener, _port = s, port
+    _listener, _port, _token = s, port, token
     if not bpy.app.timers.is_registered(_pump):
         bpy.app.timers.register(_pump, first_interval=0.0, persistent=True)
     print("[optics bridge] listening on 127.0.0.1:%d" % port)
@@ -197,7 +218,7 @@ def start(port=None):
 
 
 def stop():
-    global _listener, _port
+    global _listener, _port, _token
     for conn in list(_clients):
         _drop(conn)
     if _listener is not None:
@@ -207,6 +228,7 @@ def stop():
             pass
         _listener = None
         _port = None
+        _token = None
         print("[optics bridge] stopped")
     try:
         if bpy.app.timers.is_registered(_pump):
