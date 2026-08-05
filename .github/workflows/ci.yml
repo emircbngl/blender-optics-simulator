@@ -42,6 +42,11 @@ jobs:
       - name: Physics self-test (bare interpreter)
         run: python3 optical_alignment_sim/physics.py
 
+      - name: Release metadata consistency
+        # Keep the add-on manifest, citation, changelog, Pages metadata and
+        # MCP package declarations aligned before a release artifact is made.
+        run: python3 tools/check_release_consistency.py
+
       - name: Store-build compliance audit (extensions.blender.org delist-guard)
         # Transforms a COPY of the source into the store tree and runs the SYSTEMATIC AST
         # import audit: every import must be stdlib / Blender-bundled / wheeled -- optional
