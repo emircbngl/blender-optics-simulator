@@ -11,31 +11,7 @@ import bpy
 from bpy.types import Operator
 from bpy.props import StringProperty
 
-
-def wavelength_rgb(nm):
-    """Approximate visible-spectrum colour (Bruton) for nm in ~[380, 780]; grey outside."""
-    nm = float(nm)
-    if nm < 380.0 or nm > 780.0:
-        return (180, 180, 180)
-    if nm < 440.0:
-        r, g, b = -(nm - 440.0) / 60.0, 0.0, 1.0
-    elif nm < 490.0:
-        r, g, b = 0.0, (nm - 440.0) / 50.0, 1.0
-    elif nm < 510.0:
-        r, g, b = 0.0, 1.0, -(nm - 510.0) / 20.0
-    elif nm < 580.0:
-        r, g, b = (nm - 510.0) / 70.0, 1.0, 0.0
-    elif nm < 645.0:
-        r, g, b = 1.0, -(nm - 645.0) / 65.0, 0.0
-    else:
-        r, g, b = 1.0, 0.0, 0.0
-    if nm < 420.0:
-        f = 0.3 + 0.7 * (nm - 380.0) / 40.0
-    elif nm > 700.0:
-        f = 0.3 + 0.7 * (780.0 - nm) / 80.0
-    else:
-        f = 1.0
-    return (int(255 * r * f), int(255 * g * f), int(255 * b * f))
+from . import beamcolor
 
 
 # per-type glyph fill (loosely mirrors the viewport material families)
@@ -56,8 +32,11 @@ def _esc(s):
     return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
-def build_svg(state, width=900, margin=64):
-    """Return an SVG document string for the optical state (optics_api.get_state() shape)."""
+def build_svg(state, width=900, margin=64, oob='FALSE_COLOR'):
+    """Return an SVG document string for the optical state (optics_api.get_state() shape).
+
+    `oob` is the scene's invisible-beam mode (see `beamcolor`): it decides how IR/UV beams are
+    coloured here, identically to the viewport and the bake. Under 'HIDE' they are omitted."""
     elems = state.get("elements", [])
     beams = state.get("beam_path", [])
     pts = [(e["world_center"][0], e["world_center"][1]) for e in elems]
@@ -89,8 +68,11 @@ def build_svg(state, width=900, margin=64):
            'font-family="sans-serif">' % (width, height, width, height),
            '<rect width="100%%" height="100%%" fill="#0d0e12"/>']
     for s in beams:                                          # beam path
+        rgb = beamcolor.wavelength_rgb255(s.get("wavelength", 632.8), oob)
+        if rgb is None:                                      # hidden by the invisible-beam mode
+            continue
         x1, y1, x2, y2 = X(s["p1"][0]), Y(s["p1"][1]), X(s["p2"][0]), Y(s["p2"][1])
-        r, g, b = wavelength_rgb(s.get("wavelength", 632.8))
+        r, g, b = rgb
         p = max(min(float(s.get("power", 1.0)), 1.0), 0.0)
         dash = ' stroke-dasharray="5,4"' if s.get("kind") == 'SPLIT_T' else ''
         out.append('<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" stroke="rgb(%d,%d,%d)" '
@@ -117,9 +99,10 @@ def export_svg(filepath):
     """Write a top-view SVG schematic of the current scene to filepath. {ok, path, elements, beams}."""
     from . import optics_api
     state = optics_api.get_state()
+    oob = getattr(bpy.context.scene.optics, "oob_display", 'FALSE_COLOR')
     path = bpy.path.abspath(filepath) if str(filepath).startswith("//") else filepath
     with open(path, "w") as f:
-        f.write(build_svg(state))
+        f.write(build_svg(state, oob=oob))
     return {"ok": True, "path": path, "elements": len(state.get("elements", [])),
             "beams": len(state.get("beam_path", []))}
 

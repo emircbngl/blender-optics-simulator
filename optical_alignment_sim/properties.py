@@ -773,6 +773,21 @@ class OpticalSceneProps(PropertyGroup):
     max_depth: IntProperty(default=12, min=1, max=64)
     line_width: FloatProperty(name="Beam width", default=3.0, min=0.5, max=10.0)
     show_ports: BoolProperty(name="Show ports", default=True)
+    # How IR / UV beams are DRAWN (viewport, bake and SVG alike). Display only -- the trace is
+    # untouched, so switching this never changes a power, a Jones vector or a segment count.
+    oob_display: EnumProperty(
+        name="Invisible beams",
+        description=("How to draw light the eye cannot see (IR above 780 nm, UV below 380 nm). "
+                     "Affects the viewport, the baked beams and the SVG export identically"),
+        items=[('FALSE_COLOR', "False colour",
+                "Dim IR/UV ramp: visible and distinguishable (1064 vs 1550 nm differ), but still "
+                "reads as invisible light"),
+               ('HIDE',        "Hide",
+                "Do not draw them at all -- watch only the 532 nm harmonic without the pump crossing it"),
+               ('VIVID',       "Vivid",
+                "Full-brightness false colour for figures where the invisible beam is the subject "
+                "(explicitly non-physical)")],
+        default='FALSE_COLOR')
     auto_color: BoolProperty(name="Auto color by alignment", default=True)
     bg_preset: EnumProperty(
         name="Background",

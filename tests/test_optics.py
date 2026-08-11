@@ -2103,6 +2103,69 @@ bake.clear_baked(sc)
 check("no BEAM_ objects after clear", not any(o.name.startswith("BEAM_") for o in sc.objects))
 check("clear_baked frees beam meshes (no orphan leak)", len(bpy.data.meshes) <= m0)
 
+print("[invisible-beam display mode: one colour convention, DISPLAY-only (trace untouched)]")
+from optical_alignment_sim import beamcolor, svg_export, overlay
+# the green doubler carries 1064 nm in and 532 nm out -- the case the mode exists for
+optics_api.build_example("green_doubler")
+bpy.context.view_layer.update()
+_segs_before = [dict(s) for s in tracer.trace_scene(sc, mode=sc.optics.trace_mode,
+                                                    max_segments=sc.optics.max_segments,
+                                                    max_depth=sc.optics.max_depth)]
+_wls = {round(s.get("wavelength", 0.0)) for s in _segs_before}
+check("SHG bench carries both an out-of-band and an in-band line (the case under test)",
+      any(beamcolor.is_out_of_band(w) for w in _wls) and any(not beamcolor.is_out_of_band(w) for w in _wls))
+
+# the mode must NEVER reach the tracer: same segment count, same per-field power/wavelength/opl
+_same = True
+for _mode in beamcolor.OOB_MODES:
+    sc.optics.oob_display = _mode
+    _segs = tracer.trace_scene(sc, mode=sc.optics.trace_mode, max_segments=sc.optics.max_segments,
+                               max_depth=sc.optics.max_depth)
+    if len(_segs) != len(_segs_before):
+        _same = False
+        break
+    for _a, _b in zip(_segs, _segs_before):
+        if (_a.get("power") != _b.get("power") or _a.get("wavelength") != _b.get("wavelength")
+                or _a.get("opl") != _b.get("opl")):
+            _same = False
+            break
+check("oob_display is display-only: the trace is byte-identical in all three modes", _same)
+
+# HIDE drops exactly the invisible tubes and keeps the visible ones
+sc.optics.oob_display = 'HIDE'
+bake.bake_beams(bpy.context)
+_n_hidden = sum(1 for o in sc.objects if o.name.startswith("BEAM_"))
+bake.clear_baked(sc)
+sc.optics.oob_display = 'FALSE_COLOR'
+bake.bake_beams(bpy.context)
+_n_shown = sum(1 for o in sc.objects if o.name.startswith("BEAM_"))
+bake.clear_baked(sc)
+check("HIDE bakes fewer beam tubes than FALSE_COLOR (the IR ones are dropped)",
+      0 < _n_hidden < _n_shown)
+
+# the three surfaces agree: bake material colour == overlay colour == SVG colour, per wavelength
+sc.optics.oob_display = 'FALSE_COLOR'
+_mat = bake.beam_material(1064.0, 'FALSE_COLOR')
+_mat_rgb = tuple(_mat.node_tree.nodes["Emission"].inputs["Color"].default_value)[:3]
+_ovl_rgb = overlay._color_for('TRANSMIT', 1064.0, 'FALSE_COLOR')[:3]
+_svg_rgb = beamcolor.wavelength_rgb255(1064.0, 'FALSE_COLOR')
+check("bake and overlay draw 1064 nm the same colour",
+      all(abs(a - b) < 1e-6 for a, b in zip(_mat_rgb, _ovl_rgb)))
+check("the SVG export quantizes that same colour (no second convention)",
+      _svg_rgb == tuple(int(255 * v) for v in _ovl_rgb))
+
+# and the reason the ramp exists: an OPO's three IR lines must not collapse to one colour
+check("1064 / 1550 / 3394 nm are three DISTINCT colours (a constant would merge them)",
+      len({beamcolor.wavelength_rgb255(w) for w in (1064.0, 1550.0, 3393.4)}) == 3)
+
+# HIDE removes the beam lines from the SVG too, without emptying the document
+_state = optics_api.get_state()
+_svg_all = svg_export.build_svg(_state, oob='FALSE_COLOR')
+_svg_hidden = svg_export.build_svg(_state, oob='HIDE')
+check("HIDE drops SVG beam lines but keeps the element glyphs",
+      _svg_hidden.count("<line") < _svg_all.count("<line") and "<svg" in _svg_hidden)
+sc.optics.oob_display = 'FALSE_COLOR'
+
 print("[medium-severity tail]")
 # SVG: a Y-dominant (vertical) beamline must not explode the canvas height
 from optical_alignment_sim import svg_export

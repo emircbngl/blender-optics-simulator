@@ -395,6 +395,7 @@ class OPTICS_PT_trace_settings(_OpticsPanel, Panel):
             col = layout.column(align=True)
             col.prop(props, "line_width")
             col.prop(props, "show_ports")
+            col.prop(props, "oob_display")
             col.prop(props, "auto_color")
             col.prop(props, "max_segments")
             col.prop(props, "max_depth")
