@@ -29,6 +29,7 @@ ELEMENT_TYPES = [
     ('POLARIZER',    "Polarizer",                  "Linear polarizer (pass-through)"),
     ('FILTER',       "Optical Filter",             "Longpass / shortpass / bandpass / ND (pass-through)"),
     ('ATTENUATOR',   "Attenuator",                 "Pass-through attenuator"),
+    ('SHUTTER',      "Shutter / Optical Switch",   "Binary in-line switch: open transmits, closed blocks"),
     ('ISOLATOR',     "Optical Isolator",           "One-way pass-through (Faraday isolator)"),
     ('CIRCULATOR',   "Optical Circulator",         "Non-reciprocal N-port cyclic router: Pi -> P(i+1), with a small isolation leak to P(i-1)"),
     ('APERTURE',     "Aperture",                   "Beam stop / aperture"),
@@ -652,6 +653,8 @@ class OpticalElementProps(PropertyGroup):
     slit_width: FloatProperty(name="Slit width (mm)", default=2.0, min=0.0,
         description="FULL slit opening (blade gap); the half-width b = slit_width/2. T = erf(sqrt2 * b / w_x) "
                     "clips the Gaussian along the slit axis. 0 -> closed (blocks), large -> fully open")
+    shutter_open: BoolProperty(name="Open", default=True,
+        description="Binary shutter state: open transmits the ray unchanged; closed absorbs it")
     slit_angle: FloatProperty(name="Slit angle (deg)", default=0.0,
         description="Roll of the slit's clipped axis about the optical axis (0 = blades clip along local X, "
                     "so the slit is vertical; 90 = clip along local Y)")

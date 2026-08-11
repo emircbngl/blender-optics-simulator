@@ -16,7 +16,7 @@ import tempfile
 
 import bpy
 
-from . import tracer, alignment, mounts, geometry, solvers, design, physics
+from . import tracer, alignment, mounts, geometry, solvers, design, physics, pathstats
 from . import diagnostics as _diagnostics
 from . import optomech as _optomech
 from . import operators as _ops
@@ -61,7 +61,8 @@ _TOOL_GROUPS = {
     "place / assemble (opto-mechanics)": [
         "place_relative", "make_cage", "make_tube", "make_rail", "place_on_grid", "place_on_rail",
         "set_grid", "dress_bench"],
-    "trace / measure": ["trace_beam", "scan", "bake_beams", "clear_beams", "tolerance_scan", "monte_carlo_tissue"],
+    "trace / measure": ["trace_beam", "path_statistics", "scan", "bake_beams", "clear_beams",
+                        "tolerance_scan", "monte_carlo_tissue"],
     "align (mutates DOFs -- on demand only)": ["align_all", "align_element", "auto_align", "tilt_null",
                                                "reset_mount"],
     "adaptive optics + surface figure": [
@@ -227,6 +228,11 @@ def get_state():
         "engine_eevee_id": _render.resolve_eevee_id(),
         "elements": elements, "sources": sources, "detectors": detectors,
         "beam_path": _beam_path_json(tracer.cached_segments), "report": report,
+        "path_statistics": pathstats.detector_path_statistics(
+            tracer.cached_segments,
+            [o.name for o in scene.objects
+             if getattr(o, "optics", None) and o.optics.element_type in tracer.TERMINAL
+             and o.optics.element_type != 'BEAM_DUMP']),
         # Bench breadboard grid (pitch/origin/extent + occupied holes) so an MCP agent or a
         # human knows exactly where parts seat. None when the bench is not dressed.
         "bench": _optomech.grid_info(scene),
@@ -256,6 +262,26 @@ def trace_beam(mode=None):
     tracer.cached_segments = _trace(scene)
     return {"segments": len(tracer.cached_segments),
             "beam_path": _beam_path_json(tracer.cached_segments)}
+
+
+def path_statistics(detector=""):
+    """Cumulative source-to-detector route lengths for every traced arrival.
+
+    ``phase_opl_mm`` is the phase-index optical path already accumulated by the
+    tracer (including its modeled in-glass legs); ``geometric_length_mm`` is the
+    parent-chain distance. Multiple branches remain separate. This is NOT an
+    ultrafast group-delay result: group index and GDD are not modeled.
+    """
+    scene = _scene()
+    terminals = [o.name for o in scene.objects
+                 if getattr(o, "optics", None) and o.optics.element_type in tracer.TERMINAL
+                 and o.optics.element_type != 'BEAM_DUMP']
+    if detector:
+        if detector not in terminals:
+            return {"error": "detector not found or not a detector terminal: %s" % detector}
+        terminals = [detector]
+    tracer.cached_segments = _trace(scene)
+    return pathstats.detector_path_statistics(tracer.cached_segments, terminals)
 
 
 def _diagnose_from_segments(scene, segs):
@@ -2088,6 +2114,7 @@ _ELEMENT_ROLE = {
     'BEAMSPLITTER': "splits into reflected + transmitted (PBS = by polarization)",
     'WAVEPLATE': "retards one axis (HWP rotates, QWP circularizes)",
     'POLARIZER': "transmits one linear polarization (Malus), blocks the orthogonal",
+    'SHUTTER': "binary in-line switch: open transmits, closed absorbs",
     'DETECTOR': "absorbs + reports power (terminal)",
     'WAVEFRONT_SENSOR': "reads the incoming wavefront's Zernike modes (terminal)",
     'APERTURE': "clips the beam to a clear aperture (iris / pinhole / slit)",
@@ -2110,6 +2137,7 @@ _PARAMS_BY_TYPE = {
     'BEAMSPLITTER': ["split_ratio", "is_pbs", "bs_form"],
     'WAVEPLATE': ["retardance_deg", "fast_axis_deg", "design_wl", "waveplate_crystal", "waveplate_order"],
     'POLARIZER': ["pol_axis_deg", "polarizer_type"],
+    'SHUTTER': ["shutter_open", "clear_aperture"],
     'APERTURE': ["clear_aperture"],
     'PRISM': ["refractive_index", "prism_design_wl", "split_angle_deg"],
     'CRYSTAL': ["nl_process", "nl_efficiency", "poling_period_um", "nl_walkoff_mm"],

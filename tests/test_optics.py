@@ -16,7 +16,7 @@ sys.path.insert(0, REPO)
 import optical_alignment_sim as oas
 oas.register()
 import optics_api
-from optical_alignment_sim import scan, alignment, ao, physics, render, handlers, operators, elements_generic, mounts, bridge, tracer, optomech, presets
+from optical_alignment_sim import scan, alignment, ao, physics, render, handlers, operators, elements_generic, mounts, bridge, tracer, optomech, presets, pathstats
 
 _checks = []
 
@@ -954,6 +954,71 @@ check("BEAM_DUMP terminates the ray + A4 budget balances (no leaving seg, 0 ener
 for _o in list(_c5.objects):
     eg.drop_example_object(_o)
 bpy.data.collections.remove(_c5)
+
+print("[Issue #1: phase-OPL path statistics + binary SHUTTER]")
+# The public catalog entry must be self-contained: adding SHUTTER may not depend on
+# a vendor mesh that is absent from a fresh installation.
+_ps_catalog = optics_api.add_component("SHUTTER", location=(0, 0, 0))
+_ps_catalog_obj = bpy.data.objects.get(_ps_catalog.get("name", ""))
+check("SHUTTER catalog entry builds its generic component",
+      _ps_catalog_obj is not None and _ps_catalog_obj.optics.element_type == "SHUTTER"
+      and len(_ps_catalog_obj.optics.ports) == 2
+      and _ps_catalog_obj.optics.shutter_open is True
+      and _ps_catalog.get("msg") == "ok (generic)", str(_ps_catalog))
+if _ps_catalog_obj is not None:
+    eg.drop_example_object(_ps_catalog_obj)
+# The parent-tree helper must preserve every arrival separately and must label the tracer's
+# stored quantity as PHASE OPL, never as ultrafast group delay.
+_ps_synthetic = [
+    {"p1": (0, 0, 0), "p2": (10, 0, 0), "from": "PS_Laser", "to": "PS_Mirror",
+     "parent": -1, "opl": 10.0, "wavelength": 800.0, "power": 1.0},
+    {"p1": (10, 0, 0), "p2": (10, 12, 0), "from": "PS_Mirror", "to": "PS_Detector",
+     "parent": 0, "opl": 25.0, "wavelength": 800.0, "power": 1.0},
+]
+_ps_syn = pathstats.detector_path_statistics(_ps_synthetic, ["PS_Detector", "PS_Dark"])
+_ps_arr = next(d for d in _ps_syn["detectors"] if d["detector"] == "PS_Detector")["arrivals"][0]
+check("path stats rebuild source->detector route + geometric length",
+      _ps_arr["route"] == ["PS_Laser", "PS_Mirror", "PS_Detector"]
+      and abs(_ps_arr["geometric_length_mm"] - 22.0) < 1e-12)
+check("path stats exposes stored phase OPL and refuses group-delay overclaim",
+      abs(_ps_arr["phase_opl_mm"] - 25.0) < 1e-12
+      and _ps_syn["group_delay_available"] is False and "Group index" in _ps_syn["caveat"])
+
+_c5_clear()
+_ps_coll = bpy.data.collections.new("PATH_SHUTTER_TEST"); sc.collection.children.link(_ps_coll)
+eg.source("PS_S", (-150, 0, 0), _PV((1, 0, 0)), _ps_coll)
+_ps_sh = eg.shutter("PS_SH", (0, 0, 0), _PV((1, 0, 0)), _ps_coll, is_open=True)
+eg.detector("PS_D", (150, 0, 0), _PV((1, 0, 0)), _ps_coll)
+bpy.context.view_layer.update()
+_ps_open = scan._trace(sc)
+_ps_into_shutter = next((s for s in _ps_open if s.get("to") == "PS_SH"), None)
+_ps_out_of_shutter = next((s for s in _ps_open if s.get("from") == "PS_SH"), None)
+check("SHUTTER open transmits to detector",
+      any(s.get("to") == "PS_D" for s in _ps_open)
+      and _ps_into_shutter is not None and _ps_out_of_shutter is not None
+      and _ps_into_shutter["power"] == _ps_out_of_shutter["power"])
+tracer.cached_segments = _ps_open
+_ps_live = optics_api.path_statistics("PS_D")
+_ps_hit = next((s for s in tracer.cached_segments if s.get("to") == "PS_D"), None)
+_ps_api_arr = _ps_live["detectors"][0]["arrivals"][0] if _ps_live.get("detectors") else None
+check("path_statistics API reports the detector segment's cumulative phase OPL",
+      _ps_hit is not None and _ps_api_arr is not None
+      and abs(_ps_api_arr["phase_opl_mm"] - round(_ps_hit["opl"], 6)) < 1e-12
+      and _ps_api_arr["route"] == ["PS_S", "PS_SH", "PS_D"])
+_ps_sh.optics.shutter_open = False
+bpy.context.view_layer.update()
+_ps_closed = scan._trace(sc)
+check("SHUTTER closed terminates at shutter (detector dark)",
+      any(s.get("to") == "PS_SH" for s in _ps_closed)
+      and not any(s.get("from") == "PS_SH" or s.get("to") == "PS_D" for s in _ps_closed))
+tracer.cached_segments = _ps_closed
+_ps_energy = [item for item in _diag.run_diagnostics(sc) if item.get("kind") == "energy_violation"]
+check("SHUTTER closed is an intentional termination, not an energy violation", _ps_energy == [], str(_ps_energy))
+_ps_sh.optics.shutter_open = True
+check("SHUTTER property is included in the live-trace signature",
+      "shutter_open" in handlers._SIG_PROPS)
+_c5_clear()
+bpy.data.collections.remove(_ps_coll)
 
 print("[A9 back-reflection / ghost beams: 4% Fresnel ghost, R+T=1, isolator clears back_reflection]")
 import optical_alignment_sim.diagnostics as _a9diag

@@ -26,6 +26,8 @@ code). Every shipped formula is verified against the physicist oracle. Regressio
 - **Place / assemble:** `place_relative`, `make_cage`, `make_tube`, `make_rail`, `place_on_grid`, `place_on_rail`,
   `set_grid`, `dress_bench`.
 - **Trace / measure:** `trace_beam`, `scan`, `bake_beams`, `clear_beams`.
+- **Path statistics:** `path_statistics` returns each detector arrival's route, geometric length and phase OPL.
+  Group delay/GDD are explicitly not modeled.
 - **Align (mutates DOFs, on demand):** `align_all`, `align_element`, `auto_align`, `tilt_null`.
 - **Adaptive optics + surface figure:** `ao_command`, `ao_close_loop`, `ao_close_loop_recon`, `ao_kolmogorov`,
   `zonal_render`.
@@ -37,11 +39,11 @@ align_*, scan, fringe_image, power_budget, beam_profile, ao_close_loop, wfs_zona
 bridge_toggle, …). Panels: Element, Mount & Adjustment, Simulation, Alignment Report, Render, Library,
 Assembly, Adaptive Optics, Examples.
 
-## 3. Element types (32) — `properties.py` `element_type`
+## 3. Element types (34) — `properties.py` `element_type`
 - **Sources:** SOURCE, FIBER_COLLIMATOR.
 - **Reflective:** MIRROR, PRISM_MIRROR, BEAMSPLITTER, DICHROIC, GRATING, RETROREFLECTOR, DEFORMABLE_MIRROR.
 - **Transmissive:** LENS, WAVEPLATE, POLARIZER, FILTER, ATTENUATOR, ISOLATOR, PASSTHROUGH, CAVITY, OBJECTIVE,
-  PRISM, CRYSTAL, AOM.
+  PRISM, CRYSTAL, AOM, SHUTTER (binary open/closed switch).
 - **Apertures / stops:** APERTURE, PINHOLE, SLIT, KNIFE_EDGE, BEAM_DUMP.
 - **Detectors / sensing:** DETECTOR, PHOTODIODE, POWER_METER, WAVEFRONT_SENSOR, ABERRATOR, CIRCULATOR.
 Catalog (`library.py`): ~60 real vendor parts (Thorlabs HeNe/mirrors/BS/waveplates/filters/iris/PD/mounts);

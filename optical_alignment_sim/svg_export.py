@@ -21,6 +21,7 @@ _TYPE_FILL = {
     'BEAMSPLITTER': '#5b9bf0', 'DICHROIC': '#cc5bb0', 'LENS': '#73cdf2',
     'WAVEPLATE': '#f2cc4d', 'ABERRATOR': '#f2cc4d', 'POLARIZER': '#33b389',
     'CAVITY': '#5b9bf0', 'FILTER': '#f27330', 'ATTENUATOR': '#8f9298',
+    'SHUTTER': '#34343a',
     'SOURCE': '#e21810', 'FIBER_COLLIMATOR': '#6a6f78',
     'DETECTOR': '#26282e', 'PHOTODIODE': '#26282e', 'POWER_METER': '#26282e',
     'WAVEFRONT_SENSOR': '#26282e', 'ISOLATOR': '#4d4d55',

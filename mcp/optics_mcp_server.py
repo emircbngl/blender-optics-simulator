@@ -95,6 +95,14 @@ def trace_beam(mode: str = "") -> str:
 
 
 @mcp.tool()
+def path_statistics(detector: str = "") -> str:
+    """Read cumulative source-to-detector route lengths for each arrival. Returns
+    geometric_length_mm and the tracer's phase_opl_mm separately. Phase OPL is not
+    group delay: group index and GDD are not modeled. Empty detector = all terminals."""
+    return _fmt(_call("path_statistics", **({"detector": detector} if detector else {})))
+
+
+@mcp.tool()
 def diagnose() -> str:
     """Run the bench-intelligence error-detection gates over the current trace:
     beam_clipped (hard miss), vignetting (Gaussian wing clip), dark_detector /

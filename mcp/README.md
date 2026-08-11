@@ -90,6 +90,7 @@ from `optics_api`'s public functions, so every tool below maps 1:1 to a core API
 | `get_state` | Full optical state: elements, ports (world pos + normal), mounts/DOFs, beam path, detector report |
 | `build_example` | Build `mach_zehnder` / `michelson` / `hong_ou_mandel` / `bell` / `adaptive_optics` / `newton_rings` |
 | `trace_beam` | Re-trace the beam path |
+| `path_statistics` | Report every detector arrival's route, geometric length and phase OPL (not group delay/GDD) |
 | `tag_element` | Mark an object as an optical element (set type) + auto-detect ports |
 | `set_mount` | Apply a kinematic-mount preset to an element |
 | `set_param` | Set an optical parameter (reflectivity, wavelength, pol_angle, …) |

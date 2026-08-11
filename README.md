@@ -113,7 +113,7 @@ optics_api.render(preset="final", camera="HERO", filepath="/tmp/michelson.png")
 The full surface (each also an MCP tool): `capabilities`, `get_state`, `diagnose`,
 `propose_corrections`, `detect_phenomena`, `inspect_beam`, `inspect_element`, `beam_profile`,
 `sensor_capture`, `ao_measure`, `get_wavefront`, `pyramid_wfs`, `zonal_render`, `coupling_efficiency`,
-`check_mechanics`, `build_example`, `trace_beam`, `tag_element`, `add_component`, `swap_part`,
+`check_mechanics`, `build_example`, `trace_beam`, `path_statistics`, `tag_element`, `add_component`, `swap_part`,
 `place_relative`, `set_mount`, `set_param`, `align_element`, `align_all`, `auto_align`, `tilt_null`,
 `design_telescope`, `design_4f`, `mode_match`, `scan`, `render`, `render_sequence`, `bake_beams`,
 `clear_beams`, `export_svg`, `dress_bench`, `set_grid`, `place_on_grid`, `make_cage`, `make_tube`,
@@ -128,11 +128,40 @@ disciplines (inspect-first, byte-identical, advisory-corrections-you-judge).
 For headless pipelines, `optics_api` is importable directly inside Blender
 (`blender --background --python your_script.py`).
 
+### Detector path length, shutters, and custom meshes
+
+`path_statistics()` reports every source-to-detector arrival separately. It reconstructs the
+parent-indexed route and returns both its geometric length and the tracer's accumulated **phase OPL**:
+
+```python
+stats = optics_api.path_statistics()                 # all detector terminals
+one = optics_api.path_statistics("MyDetector")      # one detector
+```
+
+The result deliberately says `group_delay_available: false`. The current tracer carries phase-index OPL;
+it does **not** model group index, group delay, or GDD, so the number must not be presented as an ultrafast
+time-of-flight result. In the UI the same phase OPL/geometric range appears under **Inspect → Optical Report**.
+
+A binary shutter is available from the component library under the key `SHUTTER`:
+
+```python
+created = optics_api.add_component("SHUTTER", location=(0, 0, 0))
+optics_api.set_param(created["name"], "shutter_open", False)  # block
+optics_api.set_param(created["name"], "shutter_open", True)   # transmit
+```
+
+For a custom CAD/mesh component, import the STL/OBJ in Blender, select it, then use **Optics → Setup →
+Element**: enable *Optical element*, choose an existing *Element Type*, click **Tag Element**, then **Detect
+Ports**. Advanced mode lets you pick/edit the IN/OUT/REFLECT faces. The API equivalent is
+`tag_element("MyMesh", "SHUTTER")`; `swap_part()` can also put custom CAD onto a generic component while
+retaining its ports and optical behaviour. Mesh appearance and optical behaviour are intentionally separate:
+new behaviour beyond the shipped element types still requires a tracer implementation, not only a mesh.
+
 ---
 
 ## What you can do
 
-- **Design** a real bench — **26 optical element types** on real opto-mechanics: tapped-hole
+- **Design** a real bench — optical element types on real opto-mechanics: tapped-hole
   breadboards (metric 25 mm / imperial 1″), **9 real mount presets** (KM100/KS1/POLARIS-class
   kinematics, GM100 gimbal, RSP1 rotation, TRF90 flip, VC1 V-clamp — real DOF ranges, detents and
   clamping), Ø12.7 mm posts + post-holders, **16/30/60 mm cage** systems, **SM05/SM1/SM2 lens

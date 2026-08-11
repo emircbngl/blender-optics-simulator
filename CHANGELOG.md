@@ -6,6 +6,18 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Added — detector path statistics and a binary shutter
+- **Source-to-detector path readout.** `path_statistics()` reconstructs every parent-indexed arrival route and
+  reports geometric length and the tracer's accumulated phase OPL. The same range is visible in Inspect →
+  Optical Report. It explicitly reports that group delay/GDD are unavailable,
+  so phase OPL is not mislabeled as an ultrafast time-of-flight result.
+- **`SHUTTER` element.** A generic library component and user-mesh tag now expose an animatable `shutter_open`
+  state. Open transmits unchanged; closed terminates the ray. API/MCP users can add it with
+  `add_component("SHUTTER")` and switch it through `set_param`.
+- **Custom-component guidance.** README documents how to tag an imported mesh, detect or edit its ports, reuse
+  shipped optical behaviours, and replace a generic component's CAD without pretending that a mesh alone adds
+  new tracer physics.
+
 ### Fixed — three beam-colour conventions where there should have been one
 - **One colour convention, shared.** `bake.py`, `overlay.py` and `svg_export.py` each carried their
   own wavelength→RGB curve and they had drifted: the viewport ignored wavelength entirely (every

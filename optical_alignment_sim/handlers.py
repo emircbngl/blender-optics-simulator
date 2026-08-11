@@ -27,7 +27,7 @@ _SIG_PROPS = (
     "bandwidth_nm", "waist_um", "retardance_deg", "fast_axis_deg", "pol_axis_deg",
     "extinction", "design_wl", "pass_type", "cut_nm", "filt_type", "cut_lo_nm",
     "cut_hi_nm", "od", "lines_per_mm", "grating_order", "coating", "cavity_spacing_mm",
-    "analyzer",
+    "analyzer", "shutter_open",
 )
 
 

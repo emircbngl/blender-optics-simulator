@@ -19,6 +19,8 @@ The bench has eyes — use them. Never assert what the beam is doing; **read it*
 - `ao_measure(sensor)` / `get_wavefront(sensor)` — the wavefront RMS + Zernike vector at a sensor.
 - `sensor_capture(sensor)` — what a sensor ACTUALLY captures: beam radius vs aperture, captured power & figure
   fraction, whether the aperture clip applied. (A finite sensor does NOT swallow the whole beam.)
+- `path_statistics(detector)` — every source-to-detector arrival with its route, geometric length and phase OPL.
+  It explicitly does not claim group delay/GDD.
 - `zonal_render(sensor=…)` — a dense raw surface-figure wavefront map (the honest companion to the modal WFS).
 
 The loop is: **`get_state()` → decide → act (`set_param`/`place_relative`/`align_*`/…) → the beam re-traces →
@@ -53,7 +55,7 @@ scope (`capabilities()['scope_map']`). Say so when it matters.
 - **build / scene** — `build_example`, `add_component`, `tag_element`, `swap_part`, `set_param`, `set_mount`.
 - **design (pure math)** — `design_telescope`, `design_4f`, `mode_match` (no scene change).
 - **place / assemble** — `place_relative`, `make_cage/tube/rail`, `place_on_grid/rail`, `set_grid`, `dress_bench`.
-- **trace / measure** — `trace_beam`, `scan`, `bake_beams`, `clear_beams`.
+- **trace / measure** — `trace_beam`, `path_statistics`, `scan`, `bake_beams`, `clear_beams`.
 - **align (mutates DOFs)** — `align_all`, `align_element`, `auto_align`, `tilt_null` — on demand only.
 - **adaptive optics + surface figure** — `ao_command`, `ao_close_loop(_recon)`, `ao_kolmogorov`, `zonal_render`,
   `pyramid_wfs`, `get_wavefront`, `ao_measure`, `sensor_capture`, `turbulence_screen`.
@@ -74,6 +76,8 @@ scope (`capabilities()['scope_map']`). Say so when it matters.
 4. Physics is **property-driven** — change an element's glass/coating/focal and behaviour changes; no per-scene code.
 5. The WFS image is the **modal** 15-Zernike channel (low-pass); for high-frequency figure use the **zonal** render.
 6. `swap_part` normalizes mesh orientation — solve the right orientation empirically through the actual swap path.
+7. `phase_opl_mm` is phase-index OPL. The live tracer has no group-index/GDD model, so do not report it as
+   ultrafast time of flight.
 
 ## API conventions (so the surface is predictable)
 Every tool follows these — rely on them, and keep them if you add a tool:

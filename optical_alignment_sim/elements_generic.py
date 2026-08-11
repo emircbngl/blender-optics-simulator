@@ -1587,6 +1587,22 @@ def slit(name, loc, axis, coll=None, width=2.0, angle=0.0, radius=14.0):
     return o
 
 
+def shutter(name, loc, axis, coll=None, is_open=True, radius=12.5):
+    """A binary mechanical shutter / optical switch.
+
+    The annular housing is intentionally state-neutral; the live beam path is the state
+    cue.  ``shutter_open`` is animatable and the tracer reads it directly: OPEN passes
+    the ray unchanged, CLOSED emits no continuation.
+    """
+    o = _bored_disc(name, radius + 4.0, 4.0, radius, coll)
+    o.data.materials.clear(); o.data.materials.append(MATS["ap"]())
+    _tag(o, 'SHUTTER', clear_aperture=radius, shutter_open=bool(is_open))
+    _add_port(o, "IN", 'IN', (0, 0, -2.0), (0, 0, -1), radius)
+    _add_port(o, "OUT", 'OUT', (0, 0, 2.0), (0, 0, 1), radius)
+    _set_matrix(o, Vector(loc), _z_to(axis))
+    return o
+
+
 def knife_edge(name, loc, axis, coll=None, position=0.0, angle=0.0, radius=14.0):
     """A KNIFE_EDGE: a razor half-plane blade mounted on a translation stage, cutting into the beam from one
     side at transverse ``position`` mm (along the cut axis, rolled by ``angle`` deg). The tracer transmits the
