@@ -12,7 +12,7 @@ from bpy.types import Operator
 from bpy.props import FloatProperty
 from mathutils import Vector
 
-from . import tracer
+from . import tracer, beamcolor
 
 BEAM_COLL = "COL_BEAMS"
 BEAM_MAT = "OPTICS_BEAM"
@@ -20,10 +20,23 @@ BEAM_MAT = "OPTICS_BEAM"
 _baked_sig = None       # signature of the segments currently baked (so renders never use a stale bake)
 
 
-def _segments_sig(segs):
-    """Cheap hash of the baked beam geometry (segment endpoints)."""
-    return hash(tuple(round(c, 3) for s in segs
-                      for pt in (s["p1"], s["p2"]) for c in pt))
+def _segments_sig(segs, oob=None):
+    """Hash of everything the bake turns into meshes and materials.
+
+    Endpoints are not enough. The tube's SHAPE also follows `kind` (a split-transmitted leg
+    is drawn thinner) and the Gaussian taper (`w_mm`/`qd`/`m2`), and its COLOUR follows the
+    wavelength and the invisible-beam mode. Signing geometry alone let `ensure_beams` keep a
+    stale bake when only the colour had moved: retune a source's wavelength, or switch
+    oob_display, and the render still showed the previous tubes because nothing had moved."""
+    rows = []
+    for s in segs:
+        rows.append((
+            tuple(round(c, 3) for pt in (s["p1"], s["p2"]) for c in pt),
+            s.get("kind"), s.get("wavelength"), s.get("m2"),
+            round(s.get("w_mm") or 0.0, 6),
+            tuple(round(v, 6) for v in (s.get("qd") or ())),
+        ))
+    return hash((oob, tuple(rows)))
 
 
 def beam_collection(scene):
@@ -38,53 +51,27 @@ def beam_collection(scene):
     return c
 
 
-def wavelength_rgb(wl_nm):
-    """Visible-spectrum wavelength -> linear RGB (Bruton-style piecewise approximation).
+def beam_material(wl_nm=None, mode='FALSE_COLOR'):
+    """Per-wavelength emission material (BEAM_MAT for the legacy default, BEAM_MAT_<nm>_<mode>
+    otherwise) so a baked bench shows its real colors -- an SHG bench MUST read IR in / green out.
 
-    VISUALIZATION convention, not radiometry: out-of-band light is invisible in reality, but a
-    black tube reads as "no beam", so IR (>780 nm) renders as a dim deep crimson and UV (<380 nm)
-    as a dim violet -- the standard optics-figure convention (e.g. a 1064 nm pump drawn dark red
-    next to its bright green 532 nm harmonic)."""
-    w = float(wl_nm)
-    if w < 380.0:
-        r, g, b = 0.35, 0.08, 0.55
-    elif w < 440.0:
-        r, g, b = (440.0 - w) / 60.0, 0.0, 1.0
-    elif w < 490.0:
-        r, g, b = 0.0, (w - 440.0) / 50.0, 1.0
-    elif w < 510.0:
-        r, g, b = 0.0, 1.0, (510.0 - w) / 20.0
-    elif w < 545.0:
-        r, g, b = 0.0, 1.0, 0.0                  # green plateau: 532 nm must READ laser-green
-    elif w < 580.0:
-        r, g, b = (w - 545.0) / 35.0, 1.0, 0.0
-    elif w < 645.0:
-        # squared falloff: 633 nm must stay LASER-red under a bright emission (a linear ramp
-        # leaves g=0.19 there, which blooms yellow-orange); 589 nm still reads sodium-yellow
-        r, g, b = 1.0, ((645.0 - w) / 65.0) ** 2, 0.0
-    elif w <= 780.0:
-        r, g, b = 1.0, 0.0, 0.0
-    else:
-        r, g, b = 0.55, 0.02, 0.02
-    # gentle intensity roll-off at the band edges (keeps 633 nm at full brightness)
-    if 380.0 <= w < 420.0:
-        f = 0.3 + 0.7 * (w - 380.0) / 40.0
-        r, g, b = r * f, g * f, b * f
-    elif 700.0 < w <= 780.0:
-        f = 0.3 + 0.7 * (780.0 - w) / 80.0
-        r, g, b = r * f, g * f, b * f
-    return r, g, b
-
-
-def beam_material(wl_nm=None):
-    """Per-wavelength emission material (BEAM_MAT for the legacy default, BEAM_MAT_<nm> otherwise)
-    so a baked bench shows its real colors -- an SHG bench MUST read IR in / green out."""
+    The colour convention lives in `beamcolor`, shared with the viewport overlay and the SVG
+    export. Returns None when `mode` hides this wavelength, so the caller skips the tube."""
     if wl_nm is None:
-        name, color = BEAM_MAT, (1.0, 0.08, 0.04, 1.0)      # legacy default (633-class red)
+        name, color, strength = BEAM_MAT, (1.0, 0.08, 0.04, 1.0), 25.0   # legacy default (633-class red)
     else:
-        name = "%s_%d" % (BEAM_MAT, int(round(wl_nm)))
-        r, g, b = wavelength_rgb(wl_nm)
-        color = (r, g, b, 1.0)
+        rgb = beamcolor.wavelength_rgb(wl_nm, mode)
+        if rgb is None:                                     # HIDE: this beam is not drawn at all
+            return None
+        # The name IS the cache key, so it must separate everything that separates the colour.
+        # The mode belongs in it (the same 1064 nm beam is a different colour under VIVID), and
+        # the wavelength has to keep its decimals: rounding to a whole nm collided any two lines
+        # that round the same way into one datablock, and the second one then silently rendered
+        # in the first one's colour (589.0 and 589.4 nm both key to 589, and differ by 3/255 in
+        # green -- the pair test_optics pins).
+        name = "%s_%.3f_%s" % (BEAM_MAT, float(wl_nm), mode)
+        color = tuple(rgb) + (1.0,)
+        strength = beamcolor.emission_strength(wl_nm, mode)
     m = bpy.data.materials.get(name)
     if m:
         return m
@@ -94,8 +81,7 @@ def beam_material(wl_nm=None):
     nt.nodes.clear()
     em = nt.nodes.new("ShaderNodeEmission")
     em.inputs["Color"].default_value = color
-    # out-of-band tubes glow dimmer: an IR pump should read as a dark ember next to its harmonic
-    em.inputs["Strength"].default_value = 25.0 if (wl_nm is None or 380.0 <= wl_nm <= 780.0) else 14.0
+    em.inputs["Strength"].default_value = strength
     out = nt.nodes.new("ShaderNodeOutputMaterial")
     nt.links.new(em.outputs["Emission"], out.inputs["Surface"])
     return m
@@ -194,8 +180,11 @@ def bake_beams(context, radius=0.6):
     clear_baked(scene)
     coll = beam_collection(scene)
     n = 0
+    oob = getattr(scene.optics, "oob_display", 'FALSE_COLOR')
     for i, s in enumerate(tracer.cached_segments):
-        mat = beam_material(s.get("wavelength"))     # per-segment color: SHG green != pump IR
+        mat = beam_material(s.get("wavelength"), oob)  # per-segment color: SHG green != pump IR
+        if mat is None:                                # hidden by the invisible-beam mode (IR/UV)
+            continue
         p1, p2 = Vector(s["p1"]), Vector(s["p2"])
         qd = s.get("qd")
         if qd is not None:                              # taper to the real Gaussian w(z) along the segment
@@ -208,21 +197,23 @@ def bake_beams(context, radius=0.6):
             r1 = r2 = radius * (0.6 if s["kind"] == 'SPLIT_T' else 1.0)
         if _make_taper(context, "BEAM_%02d" % i, p1, p2, r1, r2, mat, coll):
             n += 1
-    _baked_sig = _segments_sig(tracer.cached_segments)
+    _baked_sig = _segments_sig(tracer.cached_segments, oob)
     return n
 
 
 def ensure_beams(context):
-    """Make sure baked beams exist AND match the current beam path before a render. Re-bakes
-    when the path has changed since the last bake (the old bake would otherwise render stale
-    beams over the moved optics)."""
+    """Make sure baked beams exist AND match what the current scene should draw, before a
+    render. Re-bakes when anything the bake depends on has changed since the last one -- the
+    beam path, but also the wavelengths and the invisible-beam mode, which change the tubes'
+    colour without moving them (the old bake would otherwise render stale beams)."""
     scene = context.scene
     segs = tracer.trace_scene(scene, mode=scene.optics.trace_mode,
                               max_segments=scene.optics.max_segments, max_depth=scene.optics.max_depth)
     tracer.cached_segments = segs
     c = bpy.data.collections.get(BEAM_COLL)
     have = c is not None and any(o.name.startswith("BEAM_") for o in c.objects)
-    if have and _segments_sig(segs) == _baked_sig:
+    oob = getattr(scene.optics, "oob_display", 'FALSE_COLOR')
+    if have and _segments_sig(segs, oob) == _baked_sig:
         return len(c.objects)
     return bake_beams(context)
 

@@ -4,6 +4,31 @@ All notable changes to the **Blender Optics Simulator** (`optical_alignment_sim`
 here. The format follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 semantic versioning.
 
+## [Unreleased]
+
+### Fixed — three beam-colour conventions where there should have been one
+- **One colour convention, shared.** `bake.py`, `overlay.py` and `svg_export.py` each carried their
+  own wavelength→RGB curve and they had drifted: the viewport ignored wavelength entirely (every
+  beam red), the SVG used a linear 510–580 nm ramp against the bake's tuned green plateau, and the
+  two disagreed on out-of-band light (dim crimson vs flat grey). A 589 nm beam rendered as three
+  different colours depending on where you looked at it. The convention now lives in one bpy-free
+  module, `beamcolor.py`, with a bare-interpreter self-test; the in-band curve is bit-for-bit the
+  one that shipped in `bake.py`, so existing scenes do not shift hue.
+
+### Added — invisible beams you can actually tell apart
+- **The viewport colours beams by wavelength.** It was drawing every beam the same red regardless
+  of the source's `wavelength`, while the bake and the SVG export already honoured it. An SHG bench
+  now reads IR-in / green-out while you drag it, not only after a bake.
+- **IR and UV ramp instead of flat-lining.** All light above 780 nm used to collapse to one constant
+  dark red, so an OPO bench's 1064 / 1550 / 3394 nm lines were three identical tubes. Colour now
+  keeps moving past the band edge (log-spaced through the IR, so the near-IR where benches actually
+  live is not squashed into a few percent), while staying dim enough to read as invisible light.
+- **`oob_display` scene setting** — *Invisible beams* in the beam panel: `FALSE_COLOR` (default),
+  `HIDE` (drop IR/UV entirely, e.g. to watch a 532 nm harmonic without the pump crossing it), or
+  `VIVID` (full-brightness false colour for figures). It applies identically to the viewport, the
+  bake and the SVG export. Display only — a regression check asserts the trace is byte-identical in
+  all three modes.
+
 ## [0.27.0] — Nothing floats: catalog-true cage hardware and a structural-support gate — 2026-07-28
 
 ### Fixed — hardware that only *looked* mounted

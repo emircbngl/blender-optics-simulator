@@ -2103,6 +2103,138 @@ bake.clear_baked(sc)
 check("no BEAM_ objects after clear", not any(o.name.startswith("BEAM_") for o in sc.objects))
 check("clear_baked frees beam meshes (no orphan leak)", len(bpy.data.meshes) <= m0)
 
+print("[invisible-beam display mode: one colour convention, DISPLAY-only (trace untouched)]")
+from optical_alignment_sim import beamcolor, svg_export, overlay
+# the green doubler carries 1064 nm in and 532 nm out -- the case the mode exists for
+optics_api.build_example("green_doubler")
+bpy.context.view_layer.update()
+_segs_before = [dict(s) for s in tracer.trace_scene(sc, mode=sc.optics.trace_mode,
+                                                    max_segments=sc.optics.max_segments,
+                                                    max_depth=sc.optics.max_depth)]
+_wls = {round(s.get("wavelength", 0.0)) for s in _segs_before}
+check("SHG bench carries both an out-of-band and an in-band line (the case under test)",
+      any(beamcolor.is_out_of_band(w) for w in _wls) and any(not beamcolor.is_out_of_band(w) for w in _wls))
+
+# the mode must NEVER reach the tracer. Digest EVERY field the tracer emits -- geometry
+# (p1/p2/kind/from/to/parent), fields (power/wavelength/jones/opl/phase/coh), the Gaussian
+# (qd/w_mm/m2) and aberr -- not a hand-picked subset, or "byte-identical" would be claiming
+# more than the check tests.
+def _seg_digest(segs):
+    rows = []
+    for _s in segs:
+        _row = []
+        for _k in sorted(_s):
+            _v = _s[_k]
+            if hasattr(_v, "to_tuple"):          # mathutils Vector -> stable repr
+                _v = tuple(_v)
+            _row.append("%s=%r" % (_k, _v))
+        rows.append("|".join(_row))
+    return "\n".join(rows)
+
+_digest_before = _seg_digest(_segs_before)
+_digest_keys = set().union(*(set(s) for s in _segs_before))
+_same = True
+for _mode in beamcolor.OOB_MODES:
+    sc.optics.oob_display = _mode
+    _segs = tracer.trace_scene(sc, mode=sc.optics.trace_mode, max_segments=sc.optics.max_segments,
+                               max_depth=sc.optics.max_depth)
+    if len(_segs) != len(_segs_before) or _seg_digest(_segs) != _digest_before:
+        _same = False
+        break
+check("oob_display is display-only: the FULL segment digest is identical in all three modes", _same)
+# guard the guard: a digest over an accidentally-empty field set would pass vacuously
+check("that digest actually covers the trace's physics fields (not a vacuous compare)",
+      {"p1", "p2", "kind", "power", "wavelength", "jones", "opl", "qd", "m2", "parent"} <= _digest_keys)
+
+# HIDE drops exactly the invisible tubes and keeps the visible ones
+sc.optics.oob_display = 'HIDE'
+bake.bake_beams(bpy.context)
+_n_hidden = sum(1 for o in sc.objects if o.name.startswith("BEAM_"))
+bake.clear_baked(sc)
+sc.optics.oob_display = 'FALSE_COLOR'
+bake.bake_beams(bpy.context)
+_n_shown = sum(1 for o in sc.objects if o.name.startswith("BEAM_"))
+bake.clear_baked(sc)
+check("HIDE bakes fewer beam tubes than FALSE_COLOR (the IR ones are dropped)",
+      0 < _n_hidden < _n_shown)
+
+# The render path is ensure_beams(), not bake_beams(): it SKIPS the re-bake when its signature
+# matches. A colour-only change moves NOTHING, so a signature over endpoints alone kept the
+# previous tubes and rendered stale colour. Both cases below hold the geometry fixed on purpose
+# -- if the layout moved, the old endpoint-only signature would have caught it and these would
+# prove nothing.
+def _endpoints(segs):
+    return [tuple(round(c, 3) for pt in (s["p1"], s["p2"]) for c in pt) for s in segs]
+
+def _beam_mats():
+    return {o.active_material.name for o in sc.objects
+            if o.name.startswith("BEAM_") and o.active_material}
+
+sc.optics.oob_display = 'FALSE_COLOR'
+bake.bake_beams(bpy.context)
+_ep0, _n0, _mats0 = _endpoints(tracer.cached_segments), _n_shown, _beam_mats()
+
+# (1) mode change alone -> ensure_beams must notice
+sc.optics.oob_display = 'HIDE'
+bake.ensure_beams(bpy.context)
+_n_after_mode = sum(1 for o in sc.objects if o.name.startswith("BEAM_"))
+check("ensure_beams re-bakes on a MODE change alone (geometry byte-identical, tube count drops)",
+      _endpoints(tracer.cached_segments) == _ep0 and _n_after_mode < _n0)
+
+sc.optics.oob_display = 'VIVID'
+bake.ensure_beams(bpy.context)
+check("ensure_beams re-bakes FALSE_COLOR -> VIVID (same tubes, different materials)",
+      _endpoints(tracer.cached_segments) == _ep0 and _beam_mats() != _mats0)
+
+# (2) wavelength change alone -> retune the pump; the bench does not move
+sc.optics.oob_display = 'FALSE_COLOR'
+bake.ensure_beams(bpy.context)
+_mats_fc = _beam_mats()
+_wsrc = next(o for o in sc.objects if o.optics.element_type == 'SOURCE')
+_wsrc.optics.wavelength = 1030.0
+bpy.context.view_layer.update()
+bake.ensure_beams(bpy.context)
+check("ensure_beams re-bakes on a WAVELENGTH change alone (new materials, layout unmoved)",
+      _endpoints(tracer.cached_segments) == _ep0 and _beam_mats() != _mats_fc)
+
+# The material name is the cache key, so two lines that render DIFFERENT colours must not
+# share one datablock. 589.0 / 589.4 is the case that broke: both round to 589 nm, so the
+# old integer key handed the second line the first one's material. (589.6 would round to 590
+# and pass either way -- it proves nothing, which is why the pair matters.)
+_m589a, _m589b = bake.beam_material(589.0, 'FALSE_COLOR'), bake.beam_material(589.4, 'FALSE_COLOR')
+check("beam materials keep same-rounding lines apart (589.0 vs 589.4 are two datablocks)",
+      _m589a is not _m589b)
+check("...and those two datablocks really do carry different colours",
+      tuple(_m589a.node_tree.nodes["Emission"].inputs["Color"].default_value)[:3]
+      != tuple(_m589b.node_tree.nodes["Emission"].inputs["Color"].default_value)[:3])
+
+_wsrc.optics.wavelength = 1064.0                      # restore the bench for the checks below
+bpy.context.view_layer.update()
+bake.clear_baked(sc)
+
+# the three surfaces agree: bake material colour == overlay colour == SVG colour, per wavelength
+sc.optics.oob_display = 'FALSE_COLOR'
+_mat = bake.beam_material(1064.0, 'FALSE_COLOR')
+_mat_rgb = tuple(_mat.node_tree.nodes["Emission"].inputs["Color"].default_value)[:3]
+_ovl_rgb = overlay._color_for('TRANSMIT', 1064.0, 'FALSE_COLOR')[:3]
+_svg_rgb = beamcolor.wavelength_rgb255(1064.0, 'FALSE_COLOR')
+check("bake and overlay draw 1064 nm the same colour",
+      all(abs(a - b) < 1e-6 for a, b in zip(_mat_rgb, _ovl_rgb)))
+check("the SVG export quantizes that same colour (no second convention)",
+      _svg_rgb == tuple(int(255 * v) for v in _ovl_rgb))
+
+# and the reason the ramp exists: an OPO's three IR lines must not collapse to one colour
+check("1064 / 1550 / 3394 nm are three DISTINCT colours (a constant would merge them)",
+      len({beamcolor.wavelength_rgb255(w) for w in (1064.0, 1550.0, 3393.4)}) == 3)
+
+# HIDE removes the beam lines from the SVG too, without emptying the document
+_state = optics_api.get_state()
+_svg_all = svg_export.build_svg(_state, oob='FALSE_COLOR')
+_svg_hidden = svg_export.build_svg(_state, oob='HIDE')
+check("HIDE drops SVG beam lines but keeps the element glyphs",
+      _svg_hidden.count("<line") < _svg_all.count("<line") and "<svg" in _svg_hidden)
+sc.optics.oob_display = 'FALSE_COLOR'
+
 print("[medium-severity tail]")
 # SVG: a Y-dominant (vertical) beamline must not explode the canvas height
 from optical_alignment_sim import svg_export

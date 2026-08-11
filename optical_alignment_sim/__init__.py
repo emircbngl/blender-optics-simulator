@@ -20,7 +20,7 @@ if "properties" in locals():
 
 import sys
 
-from . import (prefs, presets, physics, geometry, properties, operators, mounts, tracer, overlay,
+from . import (prefs, presets, physics, geometry, beamcolor, properties, operators, mounts, tracer, overlay,
                monitor, handlers, alignment, solvers, design, diagnostics, scan, bake, render, library, assembly, ao,
                bridge, elements_generic, optomech, examples_builtin, svg_export, updater, ui, optics_api)
 

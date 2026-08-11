@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import bpy
 
-from . import tracer, geometry
+from . import tracer, geometry, beamcolor
 
 _handle = None
 _line_shader = None
@@ -29,10 +29,19 @@ def _shaders():
     return _line_shader, _point_shader
 
 
-def _color_for(kind):
-    if kind == 'SPLIT_T':
-        return (1.0, 0.55, 0.15, 0.6)      # beam-splitter transmitted: dim orange
-    return (1.0, 0.12, 0.05, 0.95)         # main beam: red
+def _color_for(kind, wl_nm=None, mode='FALSE_COLOR'):
+    """RGBA for a segment, or None when the invisible-beam mode hides this wavelength.
+
+    Colour comes from `beamcolor`, the same convention the bake and the SVG export use, so a
+    532 nm beam is the same green in all three. Kind still shapes the ALPHA: a beam-splitter's
+    transmitted leg stays faded so the two legs read apart at a shared wavelength."""
+    alpha = 0.6 if kind == 'SPLIT_T' else 0.95
+    if wl_nm is None:                      # no wavelength on the segment: the legacy red
+        return (1.0, 0.55, 0.15, alpha) if kind == 'SPLIT_T' else (1.0, 0.12, 0.05, alpha)
+    rgb = beamcolor.wavelength_rgb(wl_nm, mode)
+    if rgb is None:
+        return None
+    return tuple(rgb) + (alpha,)
 
 
 def _draw():
@@ -52,18 +61,24 @@ def _draw():
             return
         line_sh, point_sh = _shaders()
 
+        oob = getattr(sp, "oob_display", 'FALSE_COLOR') if sp else 'FALSE_COLOR'
+        # group by (kind, colour): one draw call per distinct beam colour, so a bench with a
+        # pump and its harmonic costs two, not one per segment
         groups = {}
         for s in segs:
-            groups.setdefault(s["kind"], []).extend([s["p1"], s["p2"]])
+            col = _color_for(s["kind"], s.get("wavelength"), oob)
+            if col is None:                   # hidden by the invisible-beam mode (IR/UV)
+                continue
+            groups.setdefault((s["kind"], col), []).extend([s["p1"], s["p2"]])
 
         gpu.state.blend_set('ALPHA')
         gpu.state.depth_test_set('LESS_EQUAL')
         try:
             line_sh.bind()
             line_sh.uniform_float("viewportSize", (region.width, region.height))
-            for kind, coords in groups.items():
+            for (kind, col), coords in groups.items():
                 line_sh.uniform_float("lineWidth", width if kind != 'SPLIT_T' else max(1.0, width * 0.6))
-                line_sh.uniform_float("color", _color_for(kind))
+                line_sh.uniform_float("color", col)
                 batch_for_shader(line_sh, 'LINES', {"pos": coords}).draw(line_sh)
 
             if show_ports and point_sh is not None:
