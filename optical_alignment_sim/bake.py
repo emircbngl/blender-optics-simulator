@@ -20,10 +20,23 @@ BEAM_MAT = "OPTICS_BEAM"
 _baked_sig = None       # signature of the segments currently baked (so renders never use a stale bake)
 
 
-def _segments_sig(segs):
-    """Cheap hash of the baked beam geometry (segment endpoints)."""
-    return hash(tuple(round(c, 3) for s in segs
-                      for pt in (s["p1"], s["p2"]) for c in pt))
+def _segments_sig(segs, oob=None):
+    """Hash of everything the bake turns into meshes and materials.
+
+    Endpoints are not enough. The tube's SHAPE also follows `kind` (a split-transmitted leg
+    is drawn thinner) and the Gaussian taper (`w_mm`/`qd`/`m2`), and its COLOUR follows the
+    wavelength and the invisible-beam mode. Signing geometry alone let `ensure_beams` keep a
+    stale bake when only the colour had moved: retune a source's wavelength, or switch
+    oob_display, and the render still showed the previous tubes because nothing had moved."""
+    rows = []
+    for s in segs:
+        rows.append((
+            tuple(round(c, 3) for pt in (s["p1"], s["p2"]) for c in pt),
+            s.get("kind"), s.get("wavelength"), s.get("m2"),
+            round(s.get("w_mm") or 0.0, 6),
+            tuple(round(v, 6) for v in (s.get("qd") or ())),
+        ))
+    return hash((oob, tuple(rows)))
 
 
 def beam_collection(scene):
@@ -50,9 +63,13 @@ def beam_material(wl_nm=None, mode='FALSE_COLOR'):
         rgb = beamcolor.wavelength_rgb(wl_nm, mode)
         if rgb is None:                                     # HIDE: this beam is not drawn at all
             return None
-        # the mode is part of the material identity: the same 1064 nm beam is a different
-        # colour under VIVID, and reusing one datablock would silently show the stale one
-        name = "%s_%d_%s" % (BEAM_MAT, int(round(wl_nm)), mode)
+        # The name IS the cache key, so it must separate everything that separates the colour.
+        # The mode belongs in it (the same 1064 nm beam is a different colour under VIVID), and
+        # the wavelength has to keep its decimals: rounding to a whole nm collided any two lines
+        # that round the same way into one datablock, and the second one then silently rendered
+        # in the first one's colour (589.0 and 589.4 nm both key to 589, and differ by 3/255 in
+        # green -- the pair test_optics pins).
+        name = "%s_%.3f_%s" % (BEAM_MAT, float(wl_nm), mode)
         color = tuple(rgb) + (1.0,)
         strength = beamcolor.emission_strength(wl_nm, mode)
     m = bpy.data.materials.get(name)
@@ -180,21 +197,23 @@ def bake_beams(context, radius=0.6):
             r1 = r2 = radius * (0.6 if s["kind"] == 'SPLIT_T' else 1.0)
         if _make_taper(context, "BEAM_%02d" % i, p1, p2, r1, r2, mat, coll):
             n += 1
-    _baked_sig = _segments_sig(tracer.cached_segments)
+    _baked_sig = _segments_sig(tracer.cached_segments, oob)
     return n
 
 
 def ensure_beams(context):
-    """Make sure baked beams exist AND match the current beam path before a render. Re-bakes
-    when the path has changed since the last bake (the old bake would otherwise render stale
-    beams over the moved optics)."""
+    """Make sure baked beams exist AND match what the current scene should draw, before a
+    render. Re-bakes when anything the bake depends on has changed since the last one -- the
+    beam path, but also the wavelengths and the invisible-beam mode, which change the tubes'
+    colour without moving them (the old bake would otherwise render stale beams)."""
     scene = context.scene
     segs = tracer.trace_scene(scene, mode=scene.optics.trace_mode,
                               max_segments=scene.optics.max_segments, max_depth=scene.optics.max_depth)
     tracer.cached_segments = segs
     c = bpy.data.collections.get(BEAM_COLL)
     have = c is not None and any(o.name.startswith("BEAM_") for o in c.objects)
-    if have and _segments_sig(segs) == _baked_sig:
+    oob = getattr(scene.optics, "oob_display", 'FALSE_COLOR')
+    if have and _segments_sig(segs, oob) == _baked_sig:
         return len(c.objects)
     return bake_beams(context)
 

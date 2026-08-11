@@ -2158,6 +2158,60 @@ bake.clear_baked(sc)
 check("HIDE bakes fewer beam tubes than FALSE_COLOR (the IR ones are dropped)",
       0 < _n_hidden < _n_shown)
 
+# The render path is ensure_beams(), not bake_beams(): it SKIPS the re-bake when its signature
+# matches. A colour-only change moves NOTHING, so a signature over endpoints alone kept the
+# previous tubes and rendered stale colour. Both cases below hold the geometry fixed on purpose
+# -- if the layout moved, the old endpoint-only signature would have caught it and these would
+# prove nothing.
+def _endpoints(segs):
+    return [tuple(round(c, 3) for pt in (s["p1"], s["p2"]) for c in pt) for s in segs]
+
+def _beam_mats():
+    return {o.active_material.name for o in sc.objects
+            if o.name.startswith("BEAM_") and o.active_material}
+
+sc.optics.oob_display = 'FALSE_COLOR'
+bake.bake_beams(bpy.context)
+_ep0, _n0, _mats0 = _endpoints(tracer.cached_segments), _n_shown, _beam_mats()
+
+# (1) mode change alone -> ensure_beams must notice
+sc.optics.oob_display = 'HIDE'
+bake.ensure_beams(bpy.context)
+_n_after_mode = sum(1 for o in sc.objects if o.name.startswith("BEAM_"))
+check("ensure_beams re-bakes on a MODE change alone (geometry byte-identical, tube count drops)",
+      _endpoints(tracer.cached_segments) == _ep0 and _n_after_mode < _n0)
+
+sc.optics.oob_display = 'VIVID'
+bake.ensure_beams(bpy.context)
+check("ensure_beams re-bakes FALSE_COLOR -> VIVID (same tubes, different materials)",
+      _endpoints(tracer.cached_segments) == _ep0 and _beam_mats() != _mats0)
+
+# (2) wavelength change alone -> retune the pump; the bench does not move
+sc.optics.oob_display = 'FALSE_COLOR'
+bake.ensure_beams(bpy.context)
+_mats_fc = _beam_mats()
+_wsrc = next(o for o in sc.objects if o.optics.element_type == 'SOURCE')
+_wsrc.optics.wavelength = 1030.0
+bpy.context.view_layer.update()
+bake.ensure_beams(bpy.context)
+check("ensure_beams re-bakes on a WAVELENGTH change alone (new materials, layout unmoved)",
+      _endpoints(tracer.cached_segments) == _ep0 and _beam_mats() != _mats_fc)
+
+# The material name is the cache key, so two lines that render DIFFERENT colours must not
+# share one datablock. 589.0 / 589.4 is the case that broke: both round to 589 nm, so the
+# old integer key handed the second line the first one's material. (589.6 would round to 590
+# and pass either way -- it proves nothing, which is why the pair matters.)
+_m589a, _m589b = bake.beam_material(589.0, 'FALSE_COLOR'), bake.beam_material(589.4, 'FALSE_COLOR')
+check("beam materials keep same-rounding lines apart (589.0 vs 589.4 are two datablocks)",
+      _m589a is not _m589b)
+check("...and those two datablocks really do carry different colours",
+      tuple(_m589a.node_tree.nodes["Emission"].inputs["Color"].default_value)[:3]
+      != tuple(_m589b.node_tree.nodes["Emission"].inputs["Color"].default_value)[:3])
+
+_wsrc.optics.wavelength = 1064.0                      # restore the bench for the checks below
+bpy.context.view_layer.update()
+bake.clear_baked(sc)
+
 # the three surfaces agree: bake material colour == overlay colour == SVG colour, per wavelength
 sc.optics.oob_display = 'FALSE_COLOR'
 _mat = bake.beam_material(1064.0, 'FALSE_COLOR')
