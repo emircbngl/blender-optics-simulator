@@ -4,7 +4,7 @@ All notable changes to the **Blender Optics Simulator** (`optical_alignment_sim`
 here. The format follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 semantic versioning.
 
-## [Unreleased]
+## [0.28.0] — One colour convention, a path readout that admits its limits, and a shutter — 2026-08-11
 
 ### Fixed — a bake control that never did anything
 - **"Beam radius" was inert and is now a working width scale.** The bake took a `radius`
