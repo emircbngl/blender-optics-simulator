@@ -109,7 +109,7 @@ def main():
     if bad or issues:
         raise RuntimeError("showcase gate failed: bad=%d validate=%s" % (bad, issues))
 
-    bake.bake_beams(bpy.context, radius=1.1)
+    bake.bake_beams(bpy.context)
     render.setup_final(scene)
     scene.cycles.device = 'CPU'
     scene.cycles.samples = 96

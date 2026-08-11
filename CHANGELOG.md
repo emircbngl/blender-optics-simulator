@@ -6,6 +6,22 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Fixed — a bake control that never did anything
+- **"Beam radius" was inert and is now a working width scale.** The bake took a `radius`
+  argument, offered it in the redo panel and in `optics_api.bake_beams()`, and ignored it
+  for any segment carrying a Gaussian — which is every segment a source produces (measured:
+  0 of 171 traced segments across all 27 built-in examples lack one, because the source
+  floors its waist). Baking `michelson` at 0.6, 2.0 and 8.0 gave *exactly* equal tube
+  extents, raw floats, `max |delta| = 0.0`. Replaced by a scene setting, **Beam width
+  scale**, that multiplies the real w(z): the tube keeps tracking the physical beam and 1.0
+  is physical size, so a figure can have fatter beams without the render implying a wider
+  beam. The unreachable no-Gaussian branch keeps a fixed internal fallback instead of a
+  user-facing knob. It is in the bake signature too, so changing it re-bakes — the scale
+  moves nothing, and a signature blind to it would render the previous widths.
+  **Breaking:** `optics_api.bake_beams(radius=...)` and the MCP tool's `radius` are now
+  `scale`. Passing `radius` fails loudly rather than being silently ignored, which is what
+  it did before.
+
 ### Added — detector path statistics and a binary shutter
 - **Source-to-detector path readout.** `path_statistics()` reconstructs every parent-indexed arrival route and
   reports geometric length and the tracer's accumulated phase OPL. The same range is visible in Inspect →

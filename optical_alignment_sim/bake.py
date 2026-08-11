@@ -17,17 +17,29 @@ from . import tracer, beamcolor
 BEAM_COLL = "COL_BEAMS"
 BEAM_MAT = "OPTICS_BEAM"
 
+# Tube radius for a segment that carries NO Gaussian q. Every source-originated ray does carry
+# one (the source floors its waist at 1 um, tracer.py), so this is a safety net, not a control:
+# the user-facing knob is the scene's beam_radius_scale, which multiplies the real w(z).
+FALLBACK_RADIUS_MM = 0.6
+
 _baked_sig = None       # signature of the segments currently baked (so renders never use a stale bake)
 
 
-def _segments_sig(segs, oob=None):
+def _scene_scale(scene):
+    return float(getattr(scene.optics, "beam_radius_scale", 1.0) or 1.0)
+
+
+def _segments_sig(segs, oob=None, scale=None):
     """Hash of everything the bake turns into meshes and materials.
 
     Endpoints are not enough. The tube's SHAPE also follows `kind` (a split-transmitted leg
     is drawn thinner) and the Gaussian taper (`w_mm`/`qd`/`m2`), and its COLOUR follows the
     wavelength and the invisible-beam mode. Signing geometry alone let `ensure_beams` keep a
     stale bake when only the colour had moved: retune a source's wavelength, or switch
-    oob_display, and the render still showed the previous tubes because nothing had moved."""
+    oob_display, and the render still showed the previous tubes because nothing had moved.
+
+    `scale` is in here for the same reason: it resizes every tube while moving nothing, so a
+    signature blind to it would render the previous widths."""
     rows = []
     for s in segs:
         rows.append((
@@ -36,7 +48,7 @@ def _segments_sig(segs, oob=None):
             round(s.get("w_mm") or 0.0, 6),
             tuple(round(v, 6) for v in (s.get("qd") or ())),
         ))
-    return hash((oob, tuple(rows)))
+    return hash((oob, round(float(scale), 6) if scale is not None else None, tuple(rows)))
 
 
 def beam_collection(scene):
@@ -156,20 +168,29 @@ def _make_taper(context, name, p1, p2, r1, r2, mat, coll):
     return ob
 
 
-def _vis_radius(w_mm, base, kind):
+def _vis_radius(w_mm, kind, scale=1.0):
     """VISIBLE tube radius tracking the REAL 1/e^2 Gaussian radius w(z) -- so the beam you SEE matches the
     footprint the physics actually samples (an expanded beam renders WIDE, covering the whole illuminated
     optic, not a thin stand-in). Floored at 0.3 mm so a focus / thin beam stays a visible neck; NO upper
     clamp, so a beam-expander's wide collimated output is shown at its true size (the old 6 mm cap made a
-    Ø20 mm beam look Ø12 mm -- visually under-illuminating an optic the sensor fully reads)."""
-    r = max(w_mm, 0.3) if (w_mm and w_mm > 0.0) else base
-    return r * (0.6 if kind == 'SPLIT_T' else 1.0)
+    Ø20 mm beam look Ø12 mm -- visually under-illuminating an optic the sensor fully reads).
+
+    `scale` multiplies the result: w(z) stays the truth, and a figure that needs fatter beams gets
+    them without pretending the beam is physically wider. FALLBACK_RADIUS_MM only covers a segment
+    that carries no Gaussian at all."""
+    r = max(w_mm, 0.3) if (w_mm and w_mm > 0.0) else FALLBACK_RADIUS_MM
+    return r * scale * (0.6 if kind == 'SPLIT_T' else 1.0)
 
 
-def bake_beams(context, radius=0.6):
+def bake_beams(context, scale=None):
+    """Bake the traced beams into meshes. `scale` multiplies every tube's radius (None = the
+    scene's beam_radius_scale). It is a display scale on the real w(z), not a radius in mm --
+    the old `radius` argument claimed to be one but never reached a Gaussian segment."""
     global _baked_sig
     from . import physics
     scene = context.scene
+    if scale is None:
+        scale = _scene_scale(scene)
     # always re-trace: baking the current geometry (not a possibly-stale cache from before the
     # last edit, e.g. with live mode off) is the whole point of a fresh bake
     tracer.cached_segments = tracer.trace_scene(
@@ -191,21 +212,21 @@ def bake_beams(context, radius=0.6):
             q2 = complex(qd[0], qd[1]); wl = s.get("wavelength", 633.0)
             m2 = s.get("m2", 1.0)                          # B1: physical radius = sqrt(m2)*beam_radius(q)
             L = (p2 - p1).length
-            r1 = _vis_radius(physics.beam_radius_m2(q2 - L, wl, m2), radius, s["kind"])   # w at p1
-            r2 = _vis_radius(s.get("w_mm") or physics.beam_radius_m2(q2, wl, m2), radius, s["kind"])  # w at p2
-        else:                                           # no Gaussian -> constant (thinner for SPLIT_T)
-            r1 = r2 = radius * (0.6 if s["kind"] == 'SPLIT_T' else 1.0)
+            r1 = _vis_radius(physics.beam_radius_m2(q2 - L, wl, m2), s["kind"], scale)   # w at p1
+            r2 = _vis_radius(s.get("w_mm") or physics.beam_radius_m2(q2, wl, m2), s["kind"], scale)  # w at p2
+        else:                                           # no Gaussian -> the fallback (thinner for SPLIT_T)
+            r1 = r2 = _vis_radius(0.0, s["kind"], scale)
         if _make_taper(context, "BEAM_%02d" % i, p1, p2, r1, r2, mat, coll):
             n += 1
-    _baked_sig = _segments_sig(tracer.cached_segments, oob)
+    _baked_sig = _segments_sig(tracer.cached_segments, oob, scale)
     return n
 
 
 def ensure_beams(context):
     """Make sure baked beams exist AND match what the current scene should draw, before a
     render. Re-bakes when anything the bake depends on has changed since the last one -- the
-    beam path, but also the wavelengths and the invisible-beam mode, which change the tubes'
-    colour without moving them (the old bake would otherwise render stale beams)."""
+    beam path, but also the wavelengths, the invisible-beam mode and the width scale, which
+    change the tubes without moving them (the old bake would otherwise render stale beams)."""
     scene = context.scene
     segs = tracer.trace_scene(scene, mode=scene.optics.trace_mode,
                               max_segments=scene.optics.max_segments, max_depth=scene.optics.max_depth)
@@ -213,7 +234,7 @@ def ensure_beams(context):
     c = bpy.data.collections.get(BEAM_COLL)
     have = c is not None and any(o.name.startswith("BEAM_") for o in c.objects)
     oob = getattr(scene.optics, "oob_display", 'FALSE_COLOR')
-    if have and _segments_sig(segs, oob) == _baked_sig:
+    if have and _segments_sig(segs, oob, _scene_scale(scene)) == _baked_sig:
         return len(c.objects)
     return bake_beams(context)
 
@@ -224,10 +245,14 @@ class OPTICS_OT_bake_beams(Operator):
     bl_description = "Create emission-cylinder meshes from the current beam path (for rendering)"
     bl_options = {'REGISTER', 'UNDO'}
 
-    radius: FloatProperty(name="Beam radius (mm)", default=0.6, min=0.01)
+    # A SCALE, not a radius in mm: the tube follows the real w(z), this widens it for a figure.
+    # Defaults to 0 meaning "use the scene setting", so the redo panel does not silently
+    # override beam_radius_scale every time the operator runs.
+    scale: FloatProperty(name="Width scale", default=0.0, min=0.0, max=20.0,
+                         description="Multiply the beam tube width (0 = use the scene's Beam width scale)")
 
     def execute(self, context):
-        n = bake_beams(context, radius=self.radius)
+        n = bake_beams(context, scale=(self.scale if self.scale > 0.0 else None))
         self.report({'INFO'}, "Baked %d beam segments into '%s'" % (n, BEAM_COLL))
         return {'FINISHED'}
 

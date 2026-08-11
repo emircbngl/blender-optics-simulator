@@ -67,7 +67,7 @@ def main():
 
     # bake every beam to an emission tube, then recolor by WAVELENGTH so the render reads physically:
     # 1064 IR -> deep red, 532 SHG -> bright green.
-    bake.bake_beams(bpy.context, radius=0.9)
+    bake.bake_beams(bpy.context)
     segs = tracer.cached_segments
     ir_mat = _emission("C7_IR_BEAM", (1.0, 0.10, 0.05), 75.0)      # 1064 nm infrared (rendered deep red)
     green_mat = _emission("C7_GREEN_BEAM", (0.10, 1.0, 0.18), 160.0)  # 532 nm second harmonic (green)
