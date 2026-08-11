@@ -72,6 +72,7 @@ BUILTIN = {
     "NDC_50C_2M": {"label": "Continuously Variable ND Wheel (NDC-50C-2M)", "vendor": "Thorlabs", "part_number": "NDC-50C-2M", "mesh": "NDC-50C-2M.stl", "format": "stl", "name": "VA_NDC50C", "element_type": "ATTENUATOR", "specs": "OD 0-2.0 reflective ND wheel"},
     # isolator / apertures / pinhole
     "IO_3D_633": {"label": "Free-Space Faraday Isolator (IO-3D-633-PBS)", "vendor": "Thorlabs", "part_number": "IO-3D-633-PBS", "mesh": "IO-3D-633-PBS.stl", "format": "stl", "name": "ISO_IO3D633", "element_type": "ISOLATOR", "specs": "633 nm, 3 mm aperture, PBS-based", "generic": {"radius": 9.0}},
+    "SHUTTER": {"label": "Generic Mechanical Shutter", "vendor": "generic", "name": "SHUTTER_generic", "element_type": "SHUTTER", "specs": "Binary open/closed in-line optical switch", "generic": {"radius": 12.5, "open": True}},
     "ID25": {"label": "25 mm Iris Diaphragm (ID25)", "vendor": "Thorlabs", "part_number": "ID25", "mesh": "ID25.stl", "format": "stl", "name": "AP_ID25", "element_type": "APERTURE", "specs": "1.0-25 mm SM1 iris", "generic": {"radius": 14.0}},
     "SM1D12": {"label": "SM1 Iris Diaphragm (SM1D12)", "vendor": "Thorlabs", "part_number": "SM1D12", "mesh": "SM1D12.stl", "format": "stl", "name": "AP_SM1D12", "element_type": "APERTURE", "specs": "1.0-12 mm SM1-mounted iris", "generic": {"radius": 12.0}},
     "P50K": {"label": "50 um Pinhole (P50K)", "vendor": "Thorlabs", "part_number": "P50K", "mesh": "P50K.stl", "format": "stl", "name": "PIN_P50K", "element_type": "PINHOLE", "specs": "50 um mounted pinhole", "generic": {"radius": 12.5}},
@@ -307,6 +308,8 @@ def _generic_fallback(element_type, name, location, hints):
         return o
     if et == 'ISOLATOR':
         return eg.isolator(name, loc, DIR, radius=h.get("radius", 9.0))
+    if et == 'SHUTTER':
+        return eg.shutter(name, loc, DIR, radius=h.get("radius", 12.5), is_open=h.get("open", True))
     if et == 'APERTURE':
         return eg.aperture(name, loc, DIR, radius=h.get("radius", 14.0))
     if et == 'PINHOLE':
@@ -341,25 +344,32 @@ def add_component(key, location=(0.0, 0.0, 0.0)):
     e = comps[key]
     name = e.get("name") or key
     msg = "ok"
-    try:
-        path = resolve_mesh(e)
-        obj = import_mesh(path)
-        obj.location = location
-        obj.name = name
-        obj.optics.is_optical = True
-        if e.get("element_type"):
-            obj.optics.element_type = e["element_type"]
-        _ops.do_auto_detect(obj)
-        if e.get("element_type"):
-            obj.optics.element_type = e["element_type"]   # keep explicit type
-    except (FileNotFoundError, RuntimeError) as ex:
-        # No usable vendor mesh -> fall back to a generic (mesh-free) element instead
-        # of failing, so every catalog entry spawns correct optical geometry.
+    if not e.get("mesh"):
         et = e.get("element_type") or 'PASSTHROUGH'
         obj = _generic_fallback(et, name, location, e.get("generic"))
         if obj is None:
-            return None, str(ex)
-        msg = "ok (generic placeholder - supply mesh '%s' for real CAD)" % e.get("mesh", "?")
+            return None, "no generic builder for element type '%s'" % et
+        msg = "ok (generic)"
+    else:
+        try:
+            path = resolve_mesh(e)
+            obj = import_mesh(path)
+            obj.location = location
+            obj.name = name
+            obj.optics.is_optical = True
+            if e.get("element_type"):
+                obj.optics.element_type = e["element_type"]
+            _ops.do_auto_detect(obj)
+            if e.get("element_type"):
+                obj.optics.element_type = e["element_type"]   # keep explicit type
+        except (FileNotFoundError, RuntimeError) as ex:
+            # No usable vendor mesh -> fall back to a generic (mesh-free) element instead
+            # of failing, so every catalog entry spawns correct optical geometry.
+            et = e.get("element_type") or 'PASSTHROUGH'
+            obj = _generic_fallback(et, name, location, e.get("generic"))
+            if obj is None:
+                return None, str(ex)
+            msg = "ok (generic placeholder - supply mesh '%s' for real CAD)" % e.get("mesh", "?")
     if e.get("mount") and e["mount"] in {**presets.MOUNT_LIBRARY, **mounts.get_library()}:
         mounts.apply_preset(obj, e["mount"])
     return obj, msg

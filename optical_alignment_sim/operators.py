@@ -131,7 +131,7 @@ def _default_specs_for_type(etype, obj):
     """Fallback port specs when the name prefix is unknown, keyed by element type."""
     ax = geometry.longest_axis(obj)
     plus, minus = "+" + ax, "-" + ax
-    if etype in ('LENS', 'WAVEPLATE', 'ATTENUATOR', 'PASSTHROUGH',
+    if etype in ('LENS', 'WAVEPLATE', 'ATTENUATOR', 'SHUTTER', 'PASSTHROUGH',
                  'POLARIZER', 'FILTER', 'ISOLATOR', 'PINHOLE', 'CAVITY'):
         return [("IN", "IN", minus), ("OUT", "OUT", plus)]
     if etype in ('SOURCE', 'FIBER_COLLIMATOR'):

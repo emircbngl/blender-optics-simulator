@@ -187,6 +187,7 @@ class OPTICS_PT_element(_OpticsPanel, Panel):
         elif et == 'GRATING':
             pcol.prop(props, "lines_per_mm"); pcol.prop(props, "grating_order")
         elif et == 'ATTENUATOR': pcol.prop(props, "od")
+        elif et == 'SHUTTER': pcol.prop(props, "shutter_open", text="Open")
         elif et == 'CAVITY': pcol.prop(props, "cavity_spacing_mm")
         elif et == 'CRYSTAL':
             pcol.prop(props, "nl_process")
@@ -499,7 +500,15 @@ class OPTICS_PT_optical_report(_OpticsPanel, Panel):
     bl_order = 20
     _ICON = {'OK': 'CHECKMARK', 'WARN': 'ERROR', 'BAD': 'CANCEL', 'UNKNOWN': 'QUESTION'}
     def draw(self, context):
+        from . import pathstats, tracer
         layout = self.layout; scene = context.scene; col = layout.column(align=True)
+        terminal_names = [o.name for o in scene.objects
+                          if getattr(o, "optics", None) and o.optics.element_type in tracer.TERMINAL
+                          and o.optics.element_type != 'BEAM_DUMP']
+        path_by_detector = {
+            row["detector"]: row for row in
+            pathstats.detector_path_statistics(tracer.cached_segments, terminal_names)["detectors"]
+        }
         for obj in scene.objects:
             props = getattr(obj, "optics", None)
             if not props or not props.is_optical or props.element_type == 'SOURCE': continue
@@ -518,6 +527,18 @@ class OPTICS_PT_optical_report(_OpticsPanel, Panel):
                     if props.meas_text: box.label(text=props.meas_text)
                 else:
                     box.label(text="No beam")
+            path_row = path_by_detector.get(obj.name)
+            if path_row and path_row["arrival_count"]:
+                phase_lo, phase_hi = path_row["phase_opl_range_mm"]
+                geom_lo, geom_hi = path_row["geometric_length_range_mm"]
+                if path_row["arrival_count"] == 1:
+                    box.label(text="Phase OPL %.3f mm" % phase_lo, icon='DRIVER_DISTANCE')
+                    box.label(text="Geometric path %.3f mm" % geom_lo)
+                else:
+                    box.label(text="Phase OPL %.3f–%.3f mm (%d arrivals)"
+                              % (phase_lo, phase_hi, path_row["arrival_count"]), icon='DRIVER_DISTANCE')
+                    box.label(text="Geometric path %.3f–%.3f mm" % (geom_lo, geom_hi))
+                box.label(text="Phase OPL only — group delay/GDD not modeled", icon='INFO')
             if props.mech_state not in ('UNKNOWN', 'OK'): box.label(text="Mechanical: %s" % props.mech_state, icon='CONSTRAINT')
             if props.align_detail: box.label(text=props.align_detail, icon='ERROR')
         if _advanced_enabled():

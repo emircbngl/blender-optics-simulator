@@ -1261,6 +1261,13 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
         if et in TERMINAL:
             continue
         J = ray.jones
+        if et == 'SHUTTER':
+            # An ideal binary bench shutter: OPEN is a lossless, undeviated continuation;
+            # CLOSED absorbs the incident ray, so no child is emitted.  This is deliberately
+            # state/topology only -- finite extinction and switching time are not modeled.
+            if getattr(op, 'shutter_open', True):
+                stack.append(_child(ray, E, H, ray.dir, ray.power, 'TRANSMIT', idx, t))
+            continue
         if et == 'APERTURE':
             Tc = _clip_T(ray, E, t)
             stack.append(_child(ray, E, H, ray.dir, ray.power * Tc, 'TRANSMIT', idx, t,

@@ -104,6 +104,7 @@ RENDER_DESCRIPTORS = {
     'PRISM':             ('glass', (0.86, 0.92, 1.00)),
     'FILTER':            ('glass', (0.95, 0.55, 0.30)),
     'ATTENUATOR':        ('glass', (0.55, 0.57, 0.62)),
+    'SHUTTER':           ('dark',  (0.08, 0.08, 0.10)),
     'PASSTHROUGH':       ('glass', (0.85, 0.90, 0.95)),
     'DETECTOR':          ('dark',  None),
     'PHOTODIODE':        ('dark',  None),
