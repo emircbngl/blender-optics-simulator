@@ -28,13 +28,15 @@ import math
 VISIBLE_MIN_NM = 380.0
 VISIBLE_MAX_NM = 780.0
 
-# Ramp ends, taken from the widest transparency window in physics.GLASS_RANGE_UM so the ramp
-# never saturates on a bench this add-on can actually build: ZnSe reaches 18.2 um (Ge's 14 um
-# and the CO2 line at 10.6 um sit inside it), and the shortest UV edge is 0.20 um (MgF2,
-# crystal quartz). Beyond these the ramp clamps and colours collapse again -- which is the
-# failure the ramp exists to prevent, so widen these before adding a more exotic material.
+# Ramp ends: the outermost transparency edges in physics.GLASS_RANGE_UM, so the ramp spends
+# its whole range on light a bench in this add-on can actually carry. ZnSe reaches 18.2 um
+# (Ge's 14 um and the CO2 line at 10.6 um sit inside it); the shortest UV edge is 0.20 um
+# (MgF2, crystal quartz). Past these the ramp clamps and colours collapse again -- the very
+# failure it exists to prevent -- so widen them before adding a more exotic material. A line
+# outside every material's window clamps to the end stop, which is the honest reading: no
+# optic in this catalog claims to transmit it.
 IR_RAMP_MAX_NM = 18200.0
-UV_RAMP_MIN_NM = 100.0
+UV_RAMP_MIN_NM = 200.0
 
 # How an out-of-band beam is drawn. In-band beams ignore this entirely.
 OOB_MODES = ('FALSE_COLOR', 'HIDE', 'VIVID')
@@ -50,8 +52,8 @@ _IR_STOPS = ((0.0, (0.55, 0.02, 0.02)),      # 780 nm  deep crimson (the legacy 
              (0.35, (0.42, 0.16, 0.05)),     # ~2.4 um brick
              (1.0, (0.30, 0.22, 0.18)))      # 18.2 um warm grey
 _UV_STOPS = ((0.0, (0.35, 0.08, 0.55)),      # 380 nm  violet (the legacy constant)
-             (0.5, (0.18, 0.06, 0.60)),      # ~240 nm deep blue-violet
-             (1.0, (0.10, 0.03, 0.45)))      # 100 nm  near-black indigo
+             (0.5, (0.18, 0.06, 0.60)),      # 290 nm  deep blue-violet
+             (1.0, (0.10, 0.03, 0.45)))      # 200 nm  near-black indigo
 
 # VIVID ramps: full brightness, for figures where the invisible beams still have to be the
 # subject. Keeps the warm=IR / cool=UV intuition so the direction is still readable.

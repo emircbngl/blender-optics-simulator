@@ -2115,21 +2115,36 @@ _wls = {round(s.get("wavelength", 0.0)) for s in _segs_before}
 check("SHG bench carries both an out-of-band and an in-band line (the case under test)",
       any(beamcolor.is_out_of_band(w) for w in _wls) and any(not beamcolor.is_out_of_band(w) for w in _wls))
 
-# the mode must NEVER reach the tracer: same segment count, same per-field power/wavelength/opl
+# the mode must NEVER reach the tracer. Digest EVERY field the tracer emits -- geometry
+# (p1/p2/kind/from/to/parent), fields (power/wavelength/jones/opl/phase/coh), the Gaussian
+# (qd/w_mm/m2) and aberr -- not a hand-picked subset, or "byte-identical" would be claiming
+# more than the check tests.
+def _seg_digest(segs):
+    rows = []
+    for _s in segs:
+        _row = []
+        for _k in sorted(_s):
+            _v = _s[_k]
+            if hasattr(_v, "to_tuple"):          # mathutils Vector -> stable repr
+                _v = tuple(_v)
+            _row.append("%s=%r" % (_k, _v))
+        rows.append("|".join(_row))
+    return "\n".join(rows)
+
+_digest_before = _seg_digest(_segs_before)
+_digest_keys = set().union(*(set(s) for s in _segs_before))
 _same = True
 for _mode in beamcolor.OOB_MODES:
     sc.optics.oob_display = _mode
     _segs = tracer.trace_scene(sc, mode=sc.optics.trace_mode, max_segments=sc.optics.max_segments,
                                max_depth=sc.optics.max_depth)
-    if len(_segs) != len(_segs_before):
+    if len(_segs) != len(_segs_before) or _seg_digest(_segs) != _digest_before:
         _same = False
         break
-    for _a, _b in zip(_segs, _segs_before):
-        if (_a.get("power") != _b.get("power") or _a.get("wavelength") != _b.get("wavelength")
-                or _a.get("opl") != _b.get("opl")):
-            _same = False
-            break
-check("oob_display is display-only: the trace is byte-identical in all three modes", _same)
+check("oob_display is display-only: the FULL segment digest is identical in all three modes", _same)
+# guard the guard: a digest over an accidentally-empty field set would pass vacuously
+check("that digest actually covers the trace's physics fields (not a vacuous compare)",
+      {"p1", "p2", "kind", "power", "wavelength", "jones", "opl", "qd", "m2", "parent"} <= _digest_keys)
 
 # HIDE drops exactly the invisible tubes and keeps the visible ones
 sc.optics.oob_display = 'HIDE'
