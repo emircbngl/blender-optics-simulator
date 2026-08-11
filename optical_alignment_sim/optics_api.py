@@ -1533,8 +1533,13 @@ def set_param(name, key, value):
     return {"ok": True, "name": name, key: value}
 
 
-def bake_beams(radius=0.6):
-    return {"baked": _bake.bake_beams(bpy.context, radius=radius)}
+def bake_beams(scale=None):
+    """Bake the traced beams into renderable meshes. `scale` multiplies each tube's width
+    (None = the scene's Beam width scale). It is a display scale on the real Gaussian w(z),
+    not a radius in mm: the removed `radius` argument claimed to be one but never reached a
+    segment carrying a Gaussian, which is every segment a source produces."""
+    return {"baked": _bake.bake_beams(bpy.context, scale=scale),
+            "scale": _bake._scene_scale(_scene()) if scale is None else float(scale)}
 
 
 def clear_beams():

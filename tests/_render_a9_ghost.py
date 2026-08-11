@@ -79,7 +79,7 @@ def main():
 
     # bake the beams to emission tubes, then RE-COLOR the ghost legs dim/amber so the ~4% ghost reads
     # as clearly fainter than the primary (the bake uses one bright-red material for every segment).
-    bake.bake_beams(bpy.context, radius=0.9)
+    bake.bake_beams(bpy.context)
     segs = tracer.cached_segments
     # crank the PRIMARY beam emission so it reads bright red against the studio fill (the ghost stays dim)
     pmat = bpy.data.materials.get("OPTICS_BEAM")

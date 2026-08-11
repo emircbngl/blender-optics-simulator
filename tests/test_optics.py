@@ -2223,6 +2223,50 @@ bake.clear_baked(sc)
 check("HIDE bakes fewer beam tubes than FALSE_COLOR (the IR ones are dropped)",
       0 < _n_hidden < _n_shown)
 
+print("[bake width scale: a control that actually reaches the tubes]")
+# The old `radius` argument never reached a Gaussian segment -- and every segment a source
+# produces carries one -- so it was inert on every bench. beam_radius_scale multiplies the
+# real w(z) instead, which is the branch that actually runs.
+sc.optics.oob_display = 'FALSE_COLOR'
+
+
+def _tube_widths():
+    return [o.dimensions.x for o in
+            sorted((o for o in sc.objects if o.name.startswith("BEAM_")), key=lambda o: o.name)]
+
+
+sc.optics.beam_radius_scale = 1.0
+bake.bake_beams(bpy.context)
+_w1 = _tube_widths()
+sc.optics.beam_radius_scale = 3.0
+bake.bake_beams(bpy.context)
+_w3 = _tube_widths()
+check("beam_radius_scale actually resizes the baked tubes",
+      len(_w1) == len(_w3) and len(_w1) > 0 and all(b > a for a, b in zip(_w1, _w3)))
+check("...and it scales them proportionally (3x scale -> 3x width)",
+      all(abs(b - 3.0 * a) < 1e-4 for a, b in zip(_w1, _w3)),
+      str(list(zip(_w1[:3], _w3[:3]))))
+check("scale=1.0 is physical size (the tube still tracks the real w(z), floor 0.3 mm)",
+      all(w >= 2 * 0.3 - 1e-6 for w in _w1))
+
+# the scale moves nothing, so ensure_beams must still notice it -- the same class of bug as
+# the wavelength/mode staleness fixed earlier
+sc.optics.beam_radius_scale = 1.0
+bake.bake_beams(bpy.context)
+_before_scale = _tube_widths()
+sc.optics.beam_radius_scale = 2.5
+bake.ensure_beams(bpy.context)
+check("ensure_beams re-bakes on a SCALE change alone (nothing moved)",
+      all(abs(b - 2.5 * a) < 1e-4 for a, b in zip(_before_scale, _tube_widths())))
+check("the bake signature separates two scales that produce different tubes",
+      bake._segments_sig(tracer.cached_segments, 'FALSE_COLOR', 1.0)
+      != bake._segments_sig(tracer.cached_segments, 'FALSE_COLOR', 2.5))
+sc.optics.beam_radius_scale = 1.0
+bake.clear_baked(sc)
+bake.bake_beams(bpy.context)
+_n_shown = sum(1 for o in sc.objects if o.name.startswith("BEAM_"))
+bake.clear_baked(sc)
+
 # The render path is ensure_beams(), not bake_beams(): it SKIPS the re-bake when its signature
 # matches. A colour-only change moves NOTHING, so a signature over endpoints alone kept the
 # previous tubes and rendered stale colour. Both cases below hold the geometry fixed on purpose

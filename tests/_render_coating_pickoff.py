@@ -79,7 +79,7 @@ def main():
 
     # bake the beams to emission tubes, then RE-COLOR the pickoff arm dim/amber so the 30% pickoff reads
     # as clearly fainter than the 70% primary (the bake uses one bright-red material for every segment).
-    bake.bake_beams(bpy.context, radius=0.9)
+    bake.bake_beams(bpy.context)
     segs = tracer.cached_segments
     # the pickoff lineage = the REFLECT child whose `from` is the pickoff window, + its descendants.
     is_pick = [s.get("kind") == "REFLECT" and s.get("from") == "A11_Pickoff" for s in segs]

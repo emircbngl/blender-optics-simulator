@@ -773,9 +773,11 @@ def check_mechanics() -> str:
 
 
 @mcp.tool()
-def bake_beams(radius: float = 0.6) -> str:
-    """Bake the traced beam path into emission-cylinder meshes (for rendering)."""
-    return _fmt(_call("bake_beams", radius=radius))
+def bake_beams(scale: float = 0.0) -> str:
+    """Bake the traced beam path into emission-cylinder meshes (for rendering). `scale`
+    multiplies the tube width (0 = use the scene's Beam width scale); the tube still follows
+    the real Gaussian w(z), so 1.0 is physical size."""
+    return _fmt(_call("bake_beams", **({"scale": scale} if scale > 0.0 else {})))
 
 
 @mcp.tool()

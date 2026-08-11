@@ -775,6 +775,12 @@ class OpticalSceneProps(PropertyGroup):
     max_segments: IntProperty(default=64, min=1, max=1024)
     max_depth: IntProperty(default=12, min=1, max=64)
     line_width: FloatProperty(name="Beam width", default=3.0, min=0.5, max=10.0)
+    # The bake's counterpart to line_width. A SCALE on the real Gaussian w(z), not a radius:
+    # the tube keeps tracking the physical beam, this only makes it read better in a figure.
+    beam_radius_scale: FloatProperty(
+        name="Beam width scale", default=1.0, min=0.05, max=20.0,
+        description="Multiply the baked beam tube width. The tube still follows the real Gaussian "
+                    "w(z); this scales it for rendering, so 1.0 is physical size")
     show_ports: BoolProperty(name="Show ports", default=True)
     # How IR / UV beams are DRAWN (viewport, bake and SVG alike). Display only -- the trace is
     # untouched, so switching this never changes a power, a Jones vector or a segment count.
