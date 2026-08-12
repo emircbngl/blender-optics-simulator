@@ -53,10 +53,13 @@ python3 tools/job.py run optics -- blender --background --factory-startup \
 python3 tools/job.py wait optics
 ```
 
-`tests/test_optics.py` alone is ~2900 lines and 403 checks; it exits with the
-number of failures. `test_validation.py` and `test_mesh_health.py` run the same
-way. Everything named `tests/_verify_*.py`, `_plot_*.py`, `_render_*.py` is a
-manual tool, not part of CI — do not treat those as the test suite.
+`tests/test_optics.py` is by far the largest suite — a few thousand lines and
+several hundred checks — and it exits with the *number of failures*, so read the
+`REGRESSION PASS (n/n checks)` line rather than trusting a count quoted here: it
+moves with every PR, and a stale number in this file has already gone unnoticed
+once. `test_validation.py` and `test_mesh_health.py` run the same way.
+Everything named `tests/_verify_*.py`, `_plot_*.py`, `_render_*.py` is a manual
+tool, not part of CI — do not treat those as the test suite.
 
 Before proposing a release, run the repo's own gate:
 

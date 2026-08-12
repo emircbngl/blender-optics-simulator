@@ -33,7 +33,10 @@ ideas, physics validation, documentation, and code.
    ```
 3. `tests/test_validation.py` = closed-form / oracle-verified physics checks.
    `tests/test_optics.py` = the byte-identical regression + pipeline invariants.
-4. CI runs both on Blender 4.2.3 (the `blender_version_min`) and 5.x. Both must stay green.
+4. CI runs on Blender 4.2.3 — the `blender_version_min`, and the only version it runs. It must stay
+   green. The add-on supports 4.2+ including 5.x, but **no CI job covers 5.x**, so a 5.x-only
+   regression can reach `main`: if your change touches anything version-sensitive, run the suites on
+   a 5.x build locally and say so in the PR.
 
 ## Submitting a change
 
