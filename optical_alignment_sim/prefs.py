@@ -25,8 +25,14 @@ def _auto_freecad():
 
 
 def _default_mesh_dir():
-    d = os.path.expanduser("~/Documents/Claude Projects/3D şema/blender_workspace/stl")
-    return d if os.path.isdir(d) else ""
+    """Vendor meshes are not bundled, so there is no location we can sensibly guess.
+
+    Honour ``OPTICS_MESH_DIR`` when it points at a real folder — that keeps a
+    one-machine convenience out of the source — and otherwise leave the field blank
+    for the user to fill in from the add-on preferences.
+    """
+    d = os.environ.get("OPTICS_MESH_DIR", "")
+    return d if d and os.path.isdir(d) else ""
 
 
 class OpticsAddonPrefs(AddonPreferences):
