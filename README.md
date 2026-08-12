@@ -40,10 +40,10 @@ can *see* and *close the loop* on.
 <p align="center"><em><b>A real bench, traced live.</b> Every mount, post, base and beam above is placed and computed by the add-on — then rendered in Cycles. Build it by hand in the UI, from a script, or let an AI agent drive it over MCP.</em></p>
 
 <p align="center">
-  <img src="docs/img/agent-align.gif" width="88%" alt="A laser beam steered by a kinematic mirror misses the detector, then auto-alignment walks the mount until the beam locks onto the sensor — rendered live in Blender">
+  <img src="docs/img/agent-align.gif" width="88%" alt="A laser beam steered by a kinematic mirror lands well off the detector centre, then auto-alignment walks the mount until the beam is re-centred on the sensor — rendered live in Blender">
 </p>
 
-<p align="center"><em><b>Alignment, solved.</b> A kinematic mirror is knocked out of alignment, so the beam misses the detector — then one <code>optics_api.align_element()</code> call solves the pointing residual (7.0 → 0.001 mrad) and the beam locks onto the sensor. See <a href="examples/agent_align.py"><code>examples/agent_align.py</code></a>.</em></p>
+<p align="center"><em><b>Alignment, solved.</b> A kinematic mirror is knocked 2° out of alignment, throwing the beam well off the sensor centre — then one <code>optics_api.align_element()</code> call collapses the pointing residual (7.02 → 0.0008 mrad) and re-centres it. See <a href="examples/agent_align.py"><code>examples/agent_align.py</code></a>, which reproduces those numbers headlessly in one command.</em></p>
 
 ---
 
