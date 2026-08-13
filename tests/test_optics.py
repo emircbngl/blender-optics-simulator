@@ -2168,6 +2168,74 @@ bake.clear_baked(sc)
 check("no BEAM_ objects after clear", not any(o.name.startswith("BEAM_") for o in sc.objects))
 check("clear_baked frees beam meshes (no orphan leak)", len(bpy.data.meshes) <= m0)
 
+print("[aperture shape: square/rect clip, with CIRCULAR still byte-identical]")
+_c5_clear()                                # isolate the bench: a leftover source must not feed AS_D
+_ap_coll = bpy.data.collections.new("APERTURE_SHAPE_TEST"); sc.collection.children.link(_ap_coll)
+_ap_src = eg.source("AS_S", (-150, 0, 0), _PV((1, 0, 0)), _ap_coll)
+_ap_src.optics.waist_um = 500.0            # pin the beam: the suite's defaults must not size this test
+_ap = eg.aperture("AS_A", (0, 0, 0), _PV((1, 0, 0)), _ap_coll, radius=0.5)
+eg.detector("AS_D", (150, 0, 0), _PV((1, 0, 0)), _ap_coll)
+bpy.context.view_layer.update()
+
+
+def _ap_power():
+    segs = scan._trace(sc)
+    hit = next((s for s in segs if s.get("to") == "AS_D"), None)
+    return hit["power"] if hit else None
+
+
+check("a fresh element defaults to CIRCULAR (existing scenes cannot change)",
+      _ap.optics.aperture_shape == 'CIRCULAR')
+_p_circ = _ap_power()
+# guard the guard: with a ~ w the clip must actually bite, or every comparison below is vacuous
+check("the test aperture actually clips (a ~ w, not wide open)",
+      _p_circ is not None and 0.05 < _p_circ < 0.95, str(_p_circ))
+_ap.optics.aperture_shape = 'SQUARE'
+bpy.context.view_layer.update()
+_p_sq = _ap_power()
+check("a SQUARE aperture of half-width a passes MORE than the circle of radius a",
+      _p_circ is not None and _p_sq is not None and _p_sq > _p_circ, "%s vs %s" % (_p_circ, _p_sq))
+# and it must stay below the circumscribed circle -- the square is bracketed by its two circles
+_AS_A = 0.5                                # the aperture half-width used above
+_ap.optics.aperture_shape = 'CIRCULAR'
+_ap.optics.clear_aperture = _AS_A * math.sqrt(2.0)
+bpy.context.view_layer.update()
+_p_circum = _ap_power()
+_ap.optics.clear_aperture = _AS_A
+_ap.optics.aperture_shape = 'SQUARE'
+bpy.context.view_layer.update()
+check("...and LESS than the circumscribed circle of radius a*sqrt2",
+      _p_circum is not None and _p_sq < _p_circum, "%s vs %s" % (_p_sq, _p_circum))
+
+# the beam is rotationally symmetric, so the aperture's roll must not change the answer --
+# this is why no clocking parameter exists (it would be a control that does nothing).
+# Roll about the BEAM axis (world +X here) by composing the matrix; assigning rotation_euler
+# would discard the orientation _set_matrix built and swing the optic out of the path.
+_as_m0 = _ap.matrix_world.copy()
+_ap.matrix_world = _RM.Rotation(math.radians(37.0), 4, 'X') @ _ap.matrix_world
+bpy.context.view_layer.update()
+_p_rolled = _ap_power()
+check("rolling a SQUARE aperture about the optical axis changes nothing (circular beam)",
+      _p_rolled == _p_sq, "%s vs %s" % (_p_rolled, _p_sq))
+_ap.matrix_world = _as_m0
+bpy.context.view_layer.update()
+
+# RECTANGULAR: narrowing one axis must clip harder than the square
+_ap.optics.aperture_shape = 'RECTANGULAR'
+_ap.optics.aperture_half_y = 0.3
+bpy.context.view_layer.update()
+check("a RECTANGULAR aperture narrowed on one axis clips harder than the square",
+      _ap_power() < _p_sq, "%s vs %s" % (_ap_power(), _p_sq))
+
+# CIRCULAR must reproduce the ORIGINAL number exactly -- the default path is untouched
+_ap.optics.aperture_shape = 'CIRCULAR'
+_ap.optics.aperture_half_y = 12.7
+bpy.context.view_layer.update()
+check("switching back to CIRCULAR restores the byte-identical original power",
+      _ap_power() == _p_circ, "%s vs %s" % (_ap_power(), _p_circ))
+_c5_clear()
+bpy.data.collections.remove(_ap_coll)
+
 print("[unit-scale mismatch is reported, never silently absorbed]")
 from optical_alignment_sim import geometry as _geo
 check("the add-on's convention is 1 unit = 1 mm", _geo.ADDON_SCALE_LENGTH == 0.001)

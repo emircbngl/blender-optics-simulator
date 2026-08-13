@@ -299,7 +299,27 @@ class OpticalElementProps(PropertyGroup):
     # only the mesh of an iris ever moves -- the optics (ports + this value) are read identically by the tracer.
     clear_aperture: FloatProperty(
         name="Clear Aperture (mm)", default=12.7, min=0.0, update=_iris_regen_update,
-        description="Clear aperture radius used for beam clipping in millimeters (default 12.7)")
+        description="Clear aperture radius used for beam clipping in millimeters (default 12.7). "
+                    "For a SQUARE/RECTANGULAR aperture_shape this is the half-width along local X")
+    # Aperture SHAPE. Circular is the default and the historical behaviour, so every existing scene
+    # traces byte-identically. Square/rectangular clip with the separable product of the verified 1-D
+    # erf slit kernel (physics.rect_aperture_transmission) -- the mesh for a dichroic or a BS cube is
+    # already square, and only the optical aperture was still a circle inscribed in it.
+    aperture_shape: EnumProperty(
+        name="Aperture shape", default='CIRCULAR',
+        items=[('CIRCULAR',    "Circular",
+                "Round clear aperture of radius Clear Aperture (T = 1 - exp(-2 a^2/w^2))"),
+               ('SQUARE',      "Square",
+                "Square clear aperture of half-width Clear Aperture (T = erf(sqrt2 a/w)^2)"),
+               ('RECTANGULAR', "Rectangular",
+                "Rectangular clear aperture: half-width Clear Aperture along local X, "
+                "Aperture half-height along local Y")],
+        description="Shape of the clear aperture used for Gaussian beam clipping. The beam is "
+                    "rotationally symmetric, so the aperture's roll about the optical axis does not "
+                    "change the transmission")
+    aperture_half_y: FloatProperty(
+        name="Aperture half-height (mm)", default=12.7, min=0.0,
+        description="Half-height along local Y for a RECTANGULAR aperture. Ignored for the other shapes")
     reflectivity: FloatProperty(
         name="Reflectivity", default=1.0, min=0.0, max=1.0,
         description="Fraction of incident optical power reflected by the element (default 1.0)")

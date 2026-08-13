@@ -222,6 +222,13 @@ class OPTICS_PT_element(_OpticsPanel, Panel):
             zrow = pcol.row(align=True)
             zrow.prop(props, "imprint_zonal_px", text="Zonal Pixels")
             zrow.operator("optics.wfs_zonal_render", text="Sensor Render", icon='IMAGE_BACKGROUND')
+        # Aperture shape is orthogonal to the per-type chain above: several element types carry a
+        # clear aperture, and some of them (SHUTTER, CAVITY, ...) also have their own branch. Keeping
+        # this a separate statement means adding a type here can never swallow that branch.
+        if et in ('APERTURE', 'DICHROIC', 'BEAMSPLITTER', 'FILTER', 'WINDOW', 'POLARIZER'):
+            pcol.prop(props, "aperture_shape")
+            if props.aperture_shape == 'RECTANGULAR':
+                pcol.prop(props, "aperture_half_y")
         if et in ('MIRROR', 'PRISM_MIRROR'):
             pcol.prop(props, "coating"); pcol.prop(props, "mirror_curve")
             if props.mirror_curve != 'FLAT': pcol.prop(props, "radius_curv")
