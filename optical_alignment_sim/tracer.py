@@ -297,14 +297,24 @@ def _clip_T(ray, E, t):
     if ray.q is None:
         return 1.0
     w = physics.beam_radius_m2(physics.q_propagate(ray.q, physics.abcd_free(t)), ray.wl, ray.m2)
-    a = E.optics.clear_aperture
-    if w <= 1e-9 or a <= 0.0:
+    if w <= 1e-9:
         return 1.0
+    a = E.optics.clear_aperture
+    # Dispatch on shape FIRST. A zero half-width on a shape the user explicitly chose means the
+    # opening has zero area -- it blocks -- and routing that through the kernel is the whole point
+    # of rect_aperture_transmission's zero case. Testing `a <= 0` before this returned 1.0 and
+    # passed the full beam through a closed stop, and left an axis asymmetry: aperture_half_y = 0
+    # blocked while clear_aperture = 0 did not, though the UI allows zero for both.
     shape = getattr(E.optics, 'aperture_shape', 'CIRCULAR')
     if shape == 'SQUARE':
         return physics.rect_aperture_transmission(a, a, w)
     if shape == 'RECTANGULAR':
         return physics.rect_aperture_transmission(a, getattr(E.optics, 'aperture_half_y', a), w)
+    # CIRCULAR keeps its historical reading of zero: "no clear aperture configured", so nothing
+    # clips. Changing that would alter every existing scene that never set the field, which is a
+    # separate decision from giving the new shapes a sane closed state.
+    if a <= 0.0:
+        return 1.0
     return 1.0 - math.exp(-2.0 * a * a / (w * w))
 
 

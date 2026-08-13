@@ -2236,6 +2236,53 @@ check("switching back to CIRCULAR restores the byte-identical original power",
 _c5_clear()
 bpy.data.collections.remove(_ap_coll)
 
+print("[a closed aperture blocks THROUGH THE TRACER, not just in the kernel]")
+# #16: rect_aperture_transmission returned 0 for a zero half-width, but _clip_T tested
+# `clear_aperture <= 0` BEFORE dispatching on shape and returned 1.0 -- so a closed square/rect
+# stop passed the whole beam. The kernel was right and never got called. Hence: drive this down
+# the real trace, the way a user does, rather than asserting on the kernel again.
+_c5_clear()
+_za = bpy.data.collections.new("ZERO_APERTURE_TEST"); sc.collection.children.link(_za)
+eg.source("ZA_S", (-150, 0, 0), _PV((1, 0, 0)), _za).optics.waist_um = 500.0
+_za_ap = eg.aperture("ZA_A", (0, 0, 0), _PV((1, 0, 0)), _za, radius=0.0)
+eg.detector("ZA_D", (150, 0, 0), _PV((1, 0, 0)), _za)
+bpy.context.view_layer.update()
+
+
+def _za_power():
+    hit = next((s for s in scan._trace(sc) if s.get("to") == "ZA_D"), None)
+    return None if hit is None else hit["power"]
+
+
+_za_ap.optics.aperture_shape = 'SQUARE'
+bpy.context.view_layer.update()
+check("SQUARE with a zero half-width blocks at the detector", (_za_power() or 0.0) < 1e-12,
+      str(_za_power()))
+_za_ap.optics.aperture_shape = 'RECTANGULAR'
+_za_ap.optics.aperture_half_y = 0.5
+bpy.context.view_layer.update()
+check("RECTANGULAR with a zero X half-width blocks (the reported case)",
+      (_za_power() or 0.0) < 1e-12, str(_za_power()))
+_za_ap.optics.clear_aperture = 0.5
+_za_ap.optics.aperture_half_y = 0.0
+bpy.context.view_layer.update()
+check("RECTANGULAR with a zero Y half-width blocks too (no axis asymmetry)",
+      (_za_power() or 0.0) < 1e-12, str(_za_power()))
+# and an OPEN shaped aperture still passes something, so the checks above are not vacuously dark
+_za_ap.optics.clear_aperture = 5.0
+_za_ap.optics.aperture_half_y = 5.0
+bpy.context.view_layer.update()
+check("...while an open rectangular aperture still transmits", (_za_power() or 0.0) > 0.5,
+      str(_za_power()))
+# CIRCULAR keeps its historical "zero means unset, do not clip" reading
+_za_ap.optics.aperture_shape = 'CIRCULAR'
+_za_ap.optics.clear_aperture = 0.0
+bpy.context.view_layer.update()
+check("CIRCULAR with a zero radius still means 'unconfigured' and does not clip",
+      abs((_za_power() or 0.0) - 1.0) < 1e-12, str(_za_power()))
+_c5_clear()
+bpy.data.collections.remove(_za)
+
 print("[convert a scene to mm: physical sizes survive, add-on geometry is left alone]")
 _c5_clear()
 _cv_coll = bpy.data.collections.new("UNIT_CONVERT_TEST"); sc.collection.children.link(_cv_coll)
