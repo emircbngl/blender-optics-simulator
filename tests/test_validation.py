@@ -759,6 +759,45 @@ _book_ds = field.slit_metrics(0.1, n_slits=2, sep_mm=0.5, wavelength_nm=632.8, n
 check("Double slit d=0.5mm -> Delta sin(theta)=0.0012656",
       _book_ds["fringe_spacing_sin_theta"], 0.0012656, 1e-4, "Young; lambda/d")
 
+print("[rectangular clear aperture: separable product of the verified 1-D erf slit clip]")
+# Closed-form ground truth: a circular Gaussian I(x,y) ~ exp(-2(x^2+y^2)/w^2) is separable, so a
+# rectangle |x|<=a, |y|<=b transmits erf(sqrt2 a/w) * erf(sqrt2 b/w). Checked against a direct 2-D
+# midpoint integration of the same Gaussian -- an independent numeric path, not a restatement.
+
+
+def _rect_numeric(a, b, w, n=900):
+    tot = 0.0
+    hx, hy = 2.0 * a / n, 2.0 * b / n
+    for i in range(n):
+        x = -a + (i + 0.5) * hx
+        ex = math.exp(-2.0 * x * x / (w * w))
+        s = 0.0
+        for j in range(n):
+            y = -b + (j + 0.5) * hy
+            s += math.exp(-2.0 * y * y / (w * w))
+        tot += ex * s * hx * hy
+    return tot / (math.pi * w * w / 2.0)
+
+
+for _a, _b in ((0.5, 0.5), (0.7, 1.4)):
+    check("Rect aperture %.1fx%.1f (w=1) == 2-D numerical integral" % (_a, _b),
+          physics.rect_aperture_transmission(_a, _b, 1.0), _rect_numeric(_a, _b, 1.0), 2e-4,
+          "erf(sqrt2 a/w)*erf(sqrt2 b/w); midpoint quadrature of exp(-2r^2/w^2)")
+
+# geometric bracket: a square of half-width a must pass MORE than its inscribed circle (radius a)
+# and LESS than its circumscribed circle (radius a*sqrt2). Independent of the algebra above.
+_sq = physics.rect_aperture_transmission(0.8, 0.8, 1.0)
+check("Square 0.8 beats its inscribed circle", 1.0 if _sq > (1.0 - math.exp(-2.0 * 0.64)) else 0.0,
+      1.0, 1e-9, "square contains the inscribed circle of radius a")
+check("Square 0.8 loses to its circumscribed circle",
+      1.0 if _sq < (1.0 - math.exp(-2.0 * 2.0 * 0.64)) else 0.0, 1.0, 1e-9,
+      "circumscribed circle of radius a*sqrt2 contains the square")
+
+# limits: opening one axis reduces exactly to the verified 1-D slit
+check("Rect aperture -> 1-D slit as the second axis opens",
+      physics.rect_aperture_transmission(0.6, 1.0e9, 1.0), physics.slit_transmission(0.6, 1.0), 1e-12,
+      "separability: erf(sqrt2 b/w) -> 1")
+
 print("=" * 60)
 n_pass = sum(_checks)
 n_total = len(_checks)

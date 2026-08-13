@@ -2155,7 +2155,7 @@ _PARAMS_BY_TYPE = {
     'WAVEPLATE': ["retardance_deg", "fast_axis_deg", "design_wl", "waveplate_crystal", "waveplate_order"],
     'POLARIZER': ["pol_axis_deg", "polarizer_type"],
     'SHUTTER': ["shutter_open", "clear_aperture"],
-    'APERTURE': ["clear_aperture"],
+    'APERTURE': ["clear_aperture", "aperture_shape", "aperture_half_y"],
     'PRISM': ["refractive_index", "prism_design_wl", "split_angle_deg"],
     'CRYSTAL': ["nl_process", "nl_efficiency", "poling_period_um", "nl_walkoff_mm"],
     'DETECTOR': ["clear_aperture", "analyzer"],

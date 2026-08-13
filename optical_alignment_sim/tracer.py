@@ -285,13 +285,26 @@ def _child(ray, E, H, d, power, kind, idx, t, jones=None, q=None, evec=None, abe
 
 
 def _clip_T(ray, E, t):
-    """Gaussian power transmission through the element's circular clear aperture."""
+    """Gaussian power transmission through the element's clear aperture.
+
+    CIRCULAR (the default, and what every element did before aperture_shape existed) is the round
+    stop: T = 1 - exp(-2 a^2/w^2). SQUARE / RECTANGULAR use the separable product of the VERIFIED 1-D
+    erf slit kernel (physics.rect_aperture_transmission) -- a square dichroic or BS cube already has a
+    square MESH, and only its optical aperture was still the circle inscribed in it, discarding the
+    light a real square optic passes at its corners.
+
+    The beam is rotationally symmetric, so the aperture's roll about the optical axis does not enter."""
     if ray.q is None:
         return 1.0
     w = physics.beam_radius_m2(physics.q_propagate(ray.q, physics.abcd_free(t)), ray.wl, ray.m2)
     a = E.optics.clear_aperture
     if w <= 1e-9 or a <= 0.0:
         return 1.0
+    shape = getattr(E.optics, 'aperture_shape', 'CIRCULAR')
+    if shape == 'SQUARE':
+        return physics.rect_aperture_transmission(a, a, w)
+    if shape == 'RECTANGULAR':
+        return physics.rect_aperture_transmission(a, getattr(E.optics, 'aperture_half_y', a), w)
     return 1.0 - math.exp(-2.0 * a * a / (w * w))
 
 

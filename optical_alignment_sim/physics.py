@@ -1595,6 +1595,38 @@ def slit_transmission(b_mm, w_mm):
     return math.erf(math.sqrt(2.0) * b_mm / w_mm)
 
 
+def rect_aperture_transmission(a_mm, b_mm, w_mm):
+    """Power transmission of a RECTANGULAR clear aperture (half-widths ``a_mm`` x ``b_mm``) clipping a
+    circular Gaussian of 1/e^2 intensity radius ``w_mm``:
+
+        T = erf(sqrt2 * a/w) * erf(sqrt2 * b/w)   = slit_transmission(a,w) * slit_transmission(b,w)
+
+    NOT a new formula. A circular Gaussian I(x,y) ~ exp(-2(x^2+y^2)/w^2) is separable, so the rectangle
+    is exactly the product of the two 1-D slit clips, and that 1-D kernel is the VERIFIED one above
+    (physics_verify ok=true 8/8). Checked against direct 2-D numerical integration in
+    tests/test_validation.py, alongside the geometric bracket that a square of half-width a must pass
+    MORE than its inscribed circle (radius a) and LESS than its circumscribed circle (radius a*sqrt2).
+
+    Because the beam is rotationally symmetric, the aperture's ROLL about the optical axis does not
+    appear: clocking a square aperture cannot change T for a circular Gaussian. It would matter for an
+    astigmatic beam (separate w_x, w_y), which this tracer does not model -- q is scalar. Do not add a
+    clocking parameter until that changes; it would be a control that does nothing.
+
+    a == b gives the square case. A degenerate w returns 1 (no Gaussian -> nothing to clip), matching
+    slit_transmission and _clip_T.
+
+    The zero case differs from slit_transmission ON PURPOSE, and the difference is not a detail: there,
+    b <= 0 means "no blades are present", so nothing clips and T = 1. Here a half-width of zero means
+    the aperture is SHUT, so T = 0. Same erf, opposite degenerate meaning, because a missing slit and a
+    closed aperture are different objects. Routing this case through the kernel would silently pass a
+    beam through a closed stop."""
+    if w_mm <= 1e-9:
+        return 1.0
+    if a_mm <= 0.0 or b_mm <= 0.0:
+        return 0.0
+    return slit_transmission(a_mm, w_mm) * slit_transmission(b_mm, w_mm)
+
+
 def knife_transmission(e_mm, xc_mm, w_mm):
     """Power transmitted PAST a knife-edge (half-plane blade) whose edge sits at transverse position ``e_mm``,
     cutting into a Gaussian of 1/e^2 intensity radius ``w_mm`` centered at ``xc_mm`` (the beam chief-ray on the
@@ -2353,6 +2385,37 @@ if __name__ == "__main__":
         fails.append("LBO NCPM model T %.1f != ~256" % lbo_ncpm_temperature_estimate(1064.0))
     if lbo_ncpm_temperature_estimate(1064.0) - LBO_NCPM_TEMP_LIT_C < 80.0:
         fails.append("LBO NCPM honest gap (model vs 148 C lit) not documented")
+
+    # rectangular aperture = separable product of the verified 1-D slit clip. Checked against a
+    # direct 2-D midpoint integration of the Gaussian over the rectangle, plus the geometric
+    # bracket inscribed-circle < square < circumscribed-circle.
+    def _rect_numeric(a, b, w, n=600):
+        tot = 0.0
+        hx, hy = 2.0 * a / n, 2.0 * b / n
+        for i in range(n):
+            x = -a + (i + 0.5) * hx
+            ex = math.exp(-2.0 * x * x / (w * w))
+            s = 0.0
+            for j in range(n):
+                y = -b + (j + 0.5) * hy
+                s += math.exp(-2.0 * y * y / (w * w))
+            tot += ex * s * hx * hy
+        return tot / (math.pi * w * w / 2.0)
+
+    for _a, _b in ((0.5, 0.5), (0.7, 1.4)):
+        if not close(rect_aperture_transmission(_a, _b, 1.0), _rect_numeric(_a, _b, 1.0), 1e-4):
+            fails.append("rect aperture %gx%g != 2-D numerical integral" % (_a, _b))
+    for _a in (0.4, 0.8, 1.5):
+        _ins = 1.0 - math.exp(-2.0 * _a * _a)                      # inscribed circle, w=1
+        _cir = 1.0 - math.exp(-2.0 * 2.0 * _a * _a)                # circumscribed, radius a*sqrt2
+        _sq = rect_aperture_transmission(_a, _a, 1.0)
+        if not (_ins < _sq < _cir):
+            fails.append("square a=%g not bracketed by its circles (%.6f %.6f %.6f)" % (_a, _ins, _sq, _cir))
+    if not close(rect_aperture_transmission(0.6, 1.0e9, 1.0), slit_transmission(0.6, 1.0), 1e-12):
+        fails.append("rect aperture does not reduce to the 1-D slit as the other axis opens")
+    if rect_aperture_transmission(0.0, 1.0, 1.0) != 0.0 or not close(
+            rect_aperture_transmission(1.0e9, 1.0e9, 1.0), 1.0, 1e-12):
+        fails.append("rect aperture limits wrong (closed -> 0, wide open -> 1)")
 
     if fails:
         print("PHYSICS SELFTEST FAILED:")
