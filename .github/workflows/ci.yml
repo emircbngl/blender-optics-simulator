@@ -7,9 +7,17 @@ on:
 
 jobs:
   test:
+    # Both ends of the supported range. 4.2.3 is blender_version_min and stays the gate for
+    # "does it still run on the oldest build"; 5.1.1 covers the top, which ships a 5.x-specific
+    # artifact (build_platform_zip bundles cp313 wheels for it) that no job had ever exercised on
+    # 5.x. fail-fast off: a break at one end must not hide the state of the other.
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        blender: ["4.2.3", "5.1.1"]
     env:
-      BLENDER_VERSION: "4.2.3"
+      BLENDER_VERSION: ${{ matrix.blender }}
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true     # opt the checkout/cache actions onto Node 24
     steps:
       - uses: actions/checkout@v4
