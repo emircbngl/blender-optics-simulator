@@ -198,6 +198,80 @@ def do_auto_detect(obj):
 
 # --- operators --------------------------------------------------------------
 
+def _addon_owned(obj):
+    """True for geometry this add-on authored, which is ALREADY in millimetres.
+
+    Optical elements carry is_optical; bench hardware and baked beams live in their own
+    collections and carry the oa_owner tag; mount parts are parented to their optic and follow
+    it. Converting a scene must not touch any of them -- they are the reference the user's own
+    models are being brought into."""
+    from . import optomech, bake
+    op = getattr(obj, "optics", None)
+    if op is not None and op.is_optical:
+        return True
+    if "oa_owner" in obj:
+        return True
+    owned_colls = {optomech.BENCH_COLL, bake.BEAM_COLL}
+    return any(c.name in owned_colls for c in obj.users_collection)
+
+
+def convert_scene_to_mm(scene):
+    """Put the scene on the add-on's millimetre convention WITHOUT resizing anything physically.
+
+    The add-on measures in millimetres and cannot be told otherwise -- the tracer reads world
+    coordinates as mm unconditionally. Rather than leave the user rescaling every imported part by
+    hand, this brings their scene to the optics: it sets Unit Scale to 0.001 and multiplies their
+    own objects by the same factor, so a 2 m model stays 2 m long and an optic added afterwards
+    lands at its true size beside it.
+
+    Only unparented objects are scaled -- children inherit their parent's transform, and scaling
+    both would square the factor. Add-on geometry is left alone (see _addon_owned): it is already
+    mm-authored, which is exactly what the scene is being converted to.
+
+    Returns {ok, factor, scaled, skipped, was_scale_length, msg}."""
+    us = scene.unit_settings
+    was = float(us.scale_length)
+    factor = was / geometry.ADDON_SCALE_LENGTH
+    # Ask the SAME question the warning asks. Blender stores scale_length as float32, so writing
+    # 0.001 reads back 0.0010000000474974513 -- a tolerance tight enough to call that "different"
+    # makes this operation non-idempotent, and pressing the button twice would scale the scene
+    # again by 1.0000000475. Sharing one predicate also stops the warning and its fix from ever
+    # disagreeing about whether a scene needs converting.
+    if geometry.unit_scale_mismatch(scene) is None:
+        return {"ok": True, "factor": 1.0, "scaled": 0, "skipped": 0, "was_scale_length": was,
+                "msg": "scene already on the millimetre convention"}
+    scaled = skipped = 0
+    for obj in scene.objects:
+        if obj.parent is not None:            # children ride their parent's transform
+            continue
+        if _addon_owned(obj):
+            skipped += 1
+            continue
+        obj.scale = tuple(s * factor for s in obj.scale)
+        obj.location = tuple(c * factor for c in obj.location)
+        scaled += 1
+    us.system = 'METRIC'
+    us.scale_length = geometry.ADDON_SCALE_LENGTH
+    us.length_unit = 'MILLIMETERS'
+    return {"ok": True, "factor": factor, "scaled": scaled, "skipped": skipped,
+            "was_scale_length": was,
+            "msg": "unit scale %g -> %g; scaled %d of your objects by %g, left %d add-on objects alone"
+                   % (was, geometry.ADDON_SCALE_LENGTH, scaled, factor, skipped)}
+
+
+class OPTICS_OT_convert_scene_units(Operator):
+    bl_idname = "optics.convert_scene_units"
+    bl_label = "Convert Scene to Millimetres"
+    bl_description = ("Set Unit Scale to 0.001 and scale your own objects to match, so they keep "
+                      "their physical size and optical components land at their true size")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    def execute(self, context):
+        res = convert_scene_to_mm(context.scene)
+        self.report({'INFO'}, res["msg"])
+        return {'FINISHED'}
+
+
 class OPTICS_OT_tag_element(Operator):
     bl_idname = "optics.tag_element"
     bl_label = "Tag as Optical Element"
@@ -354,6 +428,7 @@ _classes = (
     OPTICS_OT_auto_detect_ports,
     OPTICS_OT_pick_port_from_face,
     OPTICS_OT_normalize_import,
+    OPTICS_OT_convert_scene_units,
 )
 
 

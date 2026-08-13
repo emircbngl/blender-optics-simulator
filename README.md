@@ -166,9 +166,14 @@ byte-identical trace, because the numbers are simply reinterpreted by Blender's 
 calls them millimetres.
 
 So work with **Scene → Units → Unit Scale = 0.001**. The examples set it for you (and say so when they
-change it). If you keep your own models at metre scale, bring them *to* the optics — scale them by 1000 on
-the way in — rather than rescaling the optics: an optic scaled to 0.001× would desynchronise from the
-physics, since a 150 mm arm would become 0.15 units and the tracer would read it as 0.15 mm.
+change it). If your scene is on another unit scale, the beam panel offers **Convert Scene to Millimetres**
+(`optics_api.convert_scene_to_mm()`): it sets Unit Scale to 0.001 *and* scales your own objects by the same
+factor, so a 2 m model stays 2 m long and optics land at true size beside it. Add-on geometry is already
+mm-authored and is left alone.
+
+The conversion goes that way round on purpose. Rescaling the optics instead would desynchronise them from
+the physics: a 150 mm arm would become 0.15 units and the tracer would read it as 0.15 mm — every
+propagation, path length and aperture clip wrong by 1000×, with no error raised.
 
 The add-on does not guess. Add a component in a scene on another unit scale and it is still placed at its
 true millimetre size, with a warning naming the factor — `add_component()` returns a `warning` key and the

@@ -781,6 +781,14 @@ def bake_beams(scale: float = 0.0) -> str:
 
 
 @mcp.tool()
+def convert_scene_to_mm() -> str:
+    """Bring the scene onto the add-on's millimetre convention, keeping physical sizes. The tracer
+    reads world coordinates as mm and cannot be told otherwise, so this scales the USER's objects by
+    the same factor it changes Unit Scale by; add-on geometry is already mm-authored and untouched."""
+    return _fmt(_call("convert_scene_to_mm"))
+
+
+@mcp.tool()
 def clear_beams() -> str:
     """Remove all baked beam geometry."""
     return _fmt(_call("clear_beams"))
