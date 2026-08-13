@@ -2236,6 +2236,52 @@ check("switching back to CIRCULAR restores the byte-identical original power",
 _c5_clear()
 bpy.data.collections.remove(_ap_coll)
 
+print("[convert a scene to mm: physical sizes survive, add-on geometry is left alone]")
+_c5_clear()
+_cv_coll = bpy.data.collections.new("UNIT_CONVERT_TEST"); sc.collection.children.link(_cv_coll)
+sc.unit_settings.system = 'METRIC'
+sc.unit_settings.scale_length = 1.0                     # the reporter's case: a metre-scale scene
+# the user's own model: a 2 m cube, i.e. 2 units at metre scale
+bpy.ops.mesh.primitive_cube_add(size=2.0, location=(3.0, 0.0, 0.0))
+_cv_user = bpy.context.active_object
+_cv_user.name = "USER_MODEL"
+for _c in list(_cv_user.users_collection):
+    _c.objects.unlink(_cv_user)
+_cv_coll.objects.link(_cv_user)
+_cv_user_m_before = _cv_user.dimensions.x * sc.unit_settings.scale_length      # physical metres
+_cv_user_loc_m_before = _cv_user.location.x * sc.unit_settings.scale_length
+# an add-on optic: mm-authored, so it is ALREADY on the convention being converted to
+_cv_optic = eg.source("CV_SRC", (0, 0, 0), _PV((1, 0, 0)), _cv_coll)
+_cv_optic_units_before = tuple(round(v, 6) for v in _cv_optic.dimensions)
+
+_cv = operators.convert_scene_to_mm(sc)
+bpy.context.view_layer.update()          # dimensions are depsgraph-derived
+check("convert reports the factor it applied", abs(_cv["factor"] - 1000.0) < 1e-9, str(_cv))
+# scale_length is stored as float32, so 0.001 reads back as 0.0010000000474974513
+check("convert puts the scene on the mm convention",
+      abs(sc.unit_settings.scale_length - 0.001) < 1e-9, repr(sc.unit_settings.scale_length))
+check("it scaled the user's object and skipped the add-on's",
+      _cv["scaled"] >= 1 and _cv["skipped"] >= 1, str(_cv))
+# the point of the whole operation: the user's model is the SAME PHYSICAL SIZE afterwards
+_cv_user_m_after = _cv_user.dimensions.x * sc.unit_settings.scale_length
+# RELATIVE tolerance: scale_length is float32, so the round trip carries ~5e-8 of relative error
+# (2000 units x 0.0010000000474974513 = 2.0000000949...). That is the precision Blender stores, not
+# slop in the conversion -- an absolute 1e-9 here would be asserting more than the format can hold.
+check("the user's 2 m model is still 2 m after conversion",
+      abs(_cv_user_m_after - _cv_user_m_before) < 1e-6 * _cv_user_m_before,
+      "%.9f m -> %.9f m" % (_cv_user_m_before, _cv_user_m_after))
+check("...and it is still in the same physical place",
+      abs(_cv_user.location.x * sc.unit_settings.scale_length - _cv_user_loc_m_before)
+      < 1e-6 * abs(_cv_user_loc_m_before))
+check("the mm-authored optic was NOT rescaled (it defined the target convention)",
+      tuple(round(v, 6) for v in _cv_optic.dimensions) == _cv_optic_units_before,
+      "%s -> %s" % (_cv_optic_units_before, tuple(round(v, 6) for v in _cv_optic.dimensions)))
+check("converting an already-mm scene is a no-op",
+      operators.convert_scene_to_mm(sc)["scaled"] == 0)
+_c5_clear()
+bpy.data.collections.remove(_cv_coll)
+sc.unit_settings.scale_length = 0.001
+
 print("[unit-scale mismatch is reported, never silently absorbed]")
 from optical_alignment_sim import geometry as _geo
 check("the add-on's convention is 1 unit = 1 mm", _geo.ADDON_SCALE_LENGTH == 0.001)

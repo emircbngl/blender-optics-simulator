@@ -51,7 +51,7 @@ _TOOL_GROUPS = {
         "inspect_beam", "inspect_element", "inspect_all", "beam_profile", "ao_measure", "get_wavefront", "sensor_capture",
         "check_mechanics", "coupling_efficiency", "material_tables"],
     "build / scene": [
-        "build_example", "build_bench", "add_component", "tag_element", "swap_part", "set_param", "set_mount",
+        "build_example", "build_bench", "add_component", "tag_element", "swap_part", "set_param", "set_mount", "convert_scene_to_mm",
         "import_glass", "fdtd_derive_property"],
     "design (pure math, no scene change)": [
         "design_telescope", "design_4f", "mode_match", "optics_calc", "wave_psf", "aberrated_psf",
@@ -1619,6 +1619,17 @@ def add_component(key, location=(0.0, 0.0, 0.0)):
     if mismatch:
         out["warning"] = mismatch
     return out
+
+
+def convert_scene_to_mm():
+    """Bring the scene onto the add-on's millimetre convention, keeping physical sizes.
+
+    The tracer reads world coordinates as millimetres and cannot be told otherwise, so rather
+    than leave you rescaling every imported part by hand this scales YOUR objects by the same
+    factor it changes Unit Scale by: a 2 m model stays 2 m, and optics land at true size beside
+    it. Add-on geometry is already mm-authored and is left untouched.
+    {ok, factor, scaled, skipped, was_scale_length, msg}."""
+    return _ops.convert_scene_to_mm(_scene())
 
 
 def swap_part(name, filepath, refit_ports=False):

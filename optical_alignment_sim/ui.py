@@ -396,6 +396,7 @@ class OPTICS_PT_trace_settings(_OpticsPanel, Panel):
     bl_order = 0
     bl_options = {'DEFAULT_CLOSED'}
     def draw(self, context):
+        from . import geometry
         layout = self.layout; props = context.scene.optics
         layout.prop(props, "trace_mode")
         if props.trace_mode == 'ORDER' and _advanced_enabled(): layout.prop(props, "order_csv")
@@ -404,6 +405,10 @@ class OPTICS_PT_trace_settings(_OpticsPanel, Panel):
             col.prop(props, "line_width")
             col.prop(props, "show_ports")
             col.prop(props, "beam_radius_scale")
+            if geometry.unit_scale_mismatch(context.scene):
+                warn = col.box().column(align=True)
+                warn.label(text="Scene is not on the mm convention", icon='ERROR')
+                warn.operator("optics.convert_scene_units", icon='MOD_LENGTH')
             col.prop(props, "oob_display")
             col.prop(props, "auto_color")
             col.prop(props, "max_segments")
