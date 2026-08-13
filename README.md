@@ -157,6 +157,24 @@ Ports**. Advanced mode lets you pick/edit the IN/OUT/REFLECT faces. The API equi
 retaining its ports and optical behaviour. Mesh appearance and optical behaviour are intentionally separate:
 new behaviour beyond the shipped element types still requires a tracer implementation, not only a mesh.
 
+### Units: 1 Blender unit = 1 mm
+
+Every component is built at that scale, and the whole measurement layer reads world coordinates **as
+millimetres** — `scale_length` is not consulted by the tracer, solvers, alignment or diagnostics. It is a
+convention, not a display preference: the same bench traced in a metre-scale scene produces a
+byte-identical trace, because the numbers are simply reinterpreted by Blender's UI while the physics still
+calls them millimetres.
+
+So work with **Scene → Units → Unit Scale = 0.001**. The examples set it for you (and say so when they
+change it). If you keep your own models at metre scale, bring them *to* the optics — scale them by 1000 on
+the way in — rather than rescaling the optics: an optic scaled to 0.001× would desynchronise from the
+physics, since a 150 mm arm would become 0.15 units and the tracer would read it as 0.15 mm.
+
+The add-on does not guess. Add a component in a scene on another unit scale and it is still placed at its
+true millimetre size, with a warning naming the factor — `add_component()` returns a `warning` key and the
+UI reports it. Supporting non-mm scenes properly means making the measurement layer unit-aware; that is
+tracked separately.
+
 ---
 
 ## What you can do

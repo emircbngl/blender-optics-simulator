@@ -678,11 +678,18 @@ def build(kind, context):
 def _show(context, coll_name):
     """Trace, enable the live overlay, frame the viewport on the new setup, and
     set a render camera (without forcing the viewport into camera view)."""
-    from . import tracer, render
+    from . import tracer, render, geometry
     sc = context.scene
+    # The examples are authored at 1 unit = 1 mm and the tracer measures in mm, so the scene has
+    # to be on that convention for the bench to read correctly. Forcing it is right; doing it
+    # silently was not -- a user who had set metres lost that setting with no message. Report it.
+    was = (sc.unit_settings.scale_length, sc.unit_settings.length_unit)
     sc.unit_settings.system = 'METRIC'
-    sc.unit_settings.scale_length = 0.001          # 1 unit = 1 mm (add-on convention)
+    sc.unit_settings.scale_length = geometry.ADDON_SCALE_LENGTH   # 1 unit = 1 mm (add-on convention)
     sc.unit_settings.length_unit = 'MILLIMETERS'
+    now = (sc.unit_settings.scale_length, sc.unit_settings.length_unit)
+    unit_note = ("scene units changed from %g/%s to mm — the examples and the tracer both "
+                 "measure in millimetres" % (was[0], was[1])) if was != now else None
     sc.optics.line_width = 4.0
     tracer.cached_segments = tracer.trace_scene(
         sc, mode=sc.optics.trace_mode,
@@ -713,6 +720,7 @@ def _show(context, coll_name):
                 ar.tag_redraw()
     except Exception:
         pass
+    return unit_note
 
 
 class OPTICS_OT_build_example(Operator):
@@ -735,10 +743,13 @@ class OPTICS_OT_build_example(Operator):
 
     def execute(self, context):
         name = build(self.kind, context)
-        _show(context, name)
+        unit_note = _show(context, name)
         from . import tracer
-        self.report({'INFO'}, "Built %s (%d beam segments)"
-                    % (EXAMPLES[self.kind][0], len(tracer.cached_segments)))
+        built = "Built %s (%d beam segments)" % (EXAMPLES[self.kind][0], len(tracer.cached_segments))
+        if unit_note:                      # never change a user's scene settings without saying so
+            self.report({'WARNING'}, "%s — %s" % (built, unit_note))
+        else:
+            self.report({'INFO'}, built)
         return {'FINISHED'}
 
 

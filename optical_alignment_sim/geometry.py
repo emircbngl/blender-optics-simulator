@@ -20,6 +20,35 @@ from mathutils import Vector
 
 EPS = 1e-6
 
+# --- unit convention --------------------------------------------------------
+# The whole measurement layer reads world coordinates AS MILLIMETRES. That is not a display
+# preference: `scale_length` is consulted nowhere in tracer / solvers / alignment /
+# diagnostics, so a bench traced at scale_length=1.0 yields a byte-identical trace to the
+# same bench at 0.001 -- the numbers are simply reinterpreted as metres by Blender's UI
+# while the physics still calls them millimetres.
+#
+# The consequence is silent and large: a 1" optic is 25.4 units wide, which reads as 25.4 m
+# in a metre-scale scene. Rescaling the OBJECT would desynchronise it from the physics (a
+# 150 mm arm becomes 0.15 units -> the tracer reads 0.15 mm), so the add-on does not guess.
+# It detects the mismatch and says so.
+ADDON_SCALE_LENGTH = 0.001          # 1 Blender unit == 1 mm
+
+
+def unit_scale_mismatch(scene):
+    """None when the scene matches the add-on's mm convention, else a one-line explanation.
+
+    Callers that place geometry should surface this rather than silently dropping a 25 m
+    lens into a metre-scale scene."""
+    sl = getattr(getattr(scene, "unit_settings", None), "scale_length", ADDON_SCALE_LENGTH)
+    if sl is None or abs(sl - ADDON_SCALE_LENGTH) <= 1e-9:
+        return None
+    factor = sl / ADDON_SCALE_LENGTH
+    return ("scene unit scale is %g, but this add-on measures in millimetres (scale_length %g). "
+            "Components are built at 1 unit = 1 mm, so they read %gx too large here, and the "
+            "trace still treats every distance as mm. Set Scene > Units > Unit Scale to %g and "
+            "scale your own models by %g on the way in."
+            % (sl, ADDON_SCALE_LENGTH, factor, ADDON_SCALE_LENGTH, factor))
+
 # --- axis helpers -----------------------------------------------------------
 
 # face/axis label -> (component index, sign)
