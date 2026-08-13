@@ -2168,6 +2168,47 @@ bake.clear_baked(sc)
 check("no BEAM_ objects after clear", not any(o.name.startswith("BEAM_") for o in sc.objects))
 check("clear_baked frees beam meshes (no orphan leak)", len(bpy.data.meshes) <= m0)
 
+print("[unit-scale mismatch is reported, never silently absorbed]")
+from optical_alignment_sim import geometry as _geo
+check("the add-on's convention is 1 unit = 1 mm", _geo.ADDON_SCALE_LENGTH == 0.001)
+
+
+class _FakeUnits:
+    def __init__(self, sl):
+        self.scale_length = sl
+
+
+class _FakeScene:
+    def __init__(self, sl):
+        self.unit_settings = _FakeUnits(sl)
+
+
+check("a mm scene reports no mismatch", _geo.unit_scale_mismatch(_FakeScene(0.001)) is None)
+_um = _geo.unit_scale_mismatch(_FakeScene(1.0))
+check("a metre scene reports one, naming the factor and the fix",
+      isinstance(_um, str) and "1000" in _um and "0.001" in _um, str(_um))
+
+# the API surface an agent sees: a placed component must not look like a bare success
+_us_prev = sc.unit_settings.scale_length
+sc.unit_settings.scale_length = 0.001
+_ok = optics_api.add_component("SHUTTER", location=(0, 0, 0))
+check("add_component carries NO warning when the scene matches", "warning" not in _ok, str(_ok))
+_ok_obj = bpy.data.objects.get(_ok.get("name", ""))
+if _ok_obj is not None:
+    eg.drop_example_object(_ok_obj)
+sc.unit_settings.scale_length = 1.0
+_bad = optics_api.add_component("SHUTTER", location=(0, 0, 0))
+check("add_component warns when the scene is on another unit scale",
+      "warning" in _bad and "millimetres" in _bad["warning"] and _bad.get("name"), str(_bad))
+_bad_obj = bpy.data.objects.get(_bad.get("name", ""))
+_bad_dim = _bad_obj.dimensions.x if _bad_obj is not None else None
+# the part is still built at its mm size -- the add-on reports, it does not silently rescale
+check("the component is still built at 1 unit = 1 mm (no silent rescale)",
+      _bad_dim is not None and _bad_dim > 5.0, str(_bad_dim))
+if _bad_obj is not None:
+    eg.drop_example_object(_bad_obj)
+sc.unit_settings.scale_length = _us_prev
+
 print("[invisible-beam display mode: one colour convention, DISPLAY-only (trace untouched)]")
 from optical_alignment_sim import beamcolor, svg_export, overlay
 # the green doubler carries 1064 nm in and 532 nm out -- the case the mode exists for

@@ -21,7 +21,7 @@ import bpy
 from bpy.types import Operator
 from bpy.props import StringProperty, EnumProperty, BoolProperty
 
-from . import presets, mounts
+from . import presets, mounts, geometry
 from . import operators as _ops
 from .prefs import get_prefs
 
@@ -435,7 +435,13 @@ class OPTICS_OT_add_from_library(Operator):
         if obj is None:
             self.report({'WARNING'}, msg)
             return {'CANCELLED'}
-        self.report({'INFO'}, "Added %s (%d ports)" % (obj.name, len(obj.optics.ports)))
+        # A component is built at 1 unit = 1 mm. In a scene on another unit scale it lands
+        # visibly wrong, and the old behaviour was to say nothing at all about why.
+        mismatch = geometry.unit_scale_mismatch(context.scene)
+        if mismatch:
+            self.report({'WARNING'}, "Added %s, but %s" % (obj.name, mismatch))
+        else:
+            self.report({'INFO'}, "Added %s (%d ports)" % (obj.name, len(obj.optics.ports)))
         return {'FINISHED'}
 
 

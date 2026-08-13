@@ -1584,7 +1584,11 @@ def build_example(kind='mach_zehnder'):
         return {"error": "unknown example '%s'; choose from %s" % (kind, list(ex.EXAMPLES))}
     name = ex.build(kind, bpy.context)
     res = trace_beam()
-    return {"built": kind, "collection": name, "segments": res["segments"]}
+    out = {"built": kind, "collection": name, "segments": res["segments"]}
+    mismatch = geometry.unit_scale_mismatch(_scene())
+    if mismatch:                                # the bench is mm-authored; say so, do not rescale it
+        out["warning"] = mismatch
+    return out
 
 
 def build_bench(spec):
@@ -1601,12 +1605,20 @@ def build_bench(spec):
 
 
 def add_component(key, location=(0.0, 0.0, 0.0)):
-    """Spawn a catalog component by key (or its generic mesh-free fallback). {name, msg}."""
+    """Spawn a catalog component by key (or its generic mesh-free fallback). {name, msg}.
+
+    Components are built at 1 unit = 1 mm. When the scene is on another unit scale the result
+    carries a `warning`: the part is placed, but it reads the wrong size while the trace still
+    measures in mm, and an agent handed a bare success would have no way to know."""
     from . import library
     obj, msg = library.add_component(key, tuple(location))
     if obj is None:                             # unknown key -> a real error, not a {name: None} success
         return {"error": msg}
-    return {"name": obj.name, "msg": msg}
+    out = {"name": obj.name, "msg": msg}
+    mismatch = geometry.unit_scale_mismatch(_scene())
+    if mismatch:
+        out["warning"] = mismatch
+    return out
 
 
 def swap_part(name, filepath, refit_ports=False):
