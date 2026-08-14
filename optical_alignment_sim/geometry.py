@@ -34,6 +34,19 @@ EPS = 1e-6
 ADDON_SCALE_LENGTH = 0.001          # 1 Blender unit == 1 mm
 
 
+def mm_per_unit(scene):
+    """How many millimetres one Blender unit spans in this scene. Exactly 1.0 on the mm convention.
+
+    The single conversion factor between the scene's units and the millimetres the physics is
+    written in. `scale_length` is metres-per-unit, so mm-per-unit is that times 1000: a metre scene
+    gives 1000, and the add-on's own 0.001 gives exactly 1 -- which is what keeps the millimetre
+    case bit-for-bit unchanged everywhere this is applied."""
+    sl = getattr(getattr(scene, "unit_settings", None), "scale_length", ADDON_SCALE_LENGTH)
+    if not sl or sl <= 0.0:
+        return 1.0
+    return float(sl) * 1000.0
+
+
 def unit_scale_mismatch(scene):
     """None when the scene matches the add-on's mm convention, else a one-line explanation.
 
