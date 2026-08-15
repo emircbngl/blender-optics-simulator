@@ -632,7 +632,12 @@ def export_report(filepath=None, title="Optical Bench Report", with_render=False
     prof = beam_profile() if any(True for _o in _scene().objects
                                  if getattr(_o, "optics", None) and getattr(_o.optics, "is_optical", False)) else {}
     rows = dash.get("elements", [])
-    issues = diag.get("issues") or diag.get("problems") or []
+    # diagnose() publishes its findings under "diagnostics" -- its docstring says so and so does its
+    # return. Reading "issues"/"problems" found neither key, so every report said "No issues flagged"
+    # with n_issues=0 no matter how bad the bench was. A report that quietly certifies a broken bench
+    # is worse than no report. Read the documented contract; the old names stay only as a fallback in
+    # case a caller hands us an older-shaped dict.
+    issues = diag.get("diagnostics") or diag.get("issues") or diag.get("problems") or []
     parts = ["<!doctype html><meta charset=utf-8><title>%s</title>" % _html.escape(title),
              "<style>body{background:#0d0d10;color:#e8e8ea;font:14px/1.5 system-ui,sans-serif;margin:0;padding:28px}"
              "h1{color:#f4f4f6}h2{color:#4a8db0;border-bottom:1px solid #33343a;padding-bottom:4px;margin-top:28px}"
@@ -657,13 +662,18 @@ def export_report(filepath=None, title="Optical Bench Report", with_render=False
     parts.append("</table>")
 
     if issues:
-        parts.append("<h2>Diagnostics</h2><table><tr><th>Severity</th><th>Issue</th><th>Where</th></tr>")
+        parts.append("<h2>Diagnostics</h2>"
+                     "<table><tr><th>Severity</th><th>Issue</th><th>Where</th><th>Detail</th></tr>")
         for it in issues:
             sev = str(it.get("severity", it.get("state", "")))
             cls = "bad" if sev in ("BAD", "WARN", "high", "medium") else "ok"
-            parts.append("<tr><td class=%s>%s</td><td>%s</td><td>%s</td></tr>" % (
+            # `detail` is the field that says WHY -- a table of kinds and element names tells a
+            # reader something is wrong without telling them what, which is barely better than the
+            # empty section this used to print.
+            parts.append("<tr><td class=%s>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>" % (
                 cls, _html.escape(sev), _html.escape(str(it.get("issue", it.get("problem", it.get("kind", ""))))),
-                _html.escape(str(it.get("where", it.get("element", ""))))))
+                _html.escape(str(it.get("where", it.get("element", "")))),
+                _html.escape(str(it.get("detail", "")))))
         parts.append("</table>")
     else:
         parts.append("<h2>Diagnostics</h2><p class=ok>No issues flagged.</p>")

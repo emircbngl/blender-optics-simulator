@@ -1910,6 +1910,31 @@ _rep = optics_api.export_report(filepath="/tmp/oas_report.html", title="Regress"
 _rep_html = open("/tmp/oas_report.html").read() if _rep.get("ok") else ""
 check("export_report: self-contained HTML with the dashboard table", _rep.get("ok") and "<table>" in _rep_html and _rep["n_elements"] >= 4, str(_rep.get("path")))
 
+# The report must AGREE with diagnose(). It used to read keys diagnose() never returns, so every
+# report certified a clean bench however broken it was -- and the check above could not see that,
+# because it only asks whether a table exists. Build a bench with a known BAD finding and compare
+# the two, rather than asserting the report is merely well-formed.
+_c5_clear()
+_dr = bpy.data.collections.new("REPORT_DIAG_TEST"); sc.collection.children.link(_dr)
+eg.source("RD_S", (-150, 0, 0), _PV((1, 0, 0)), _dr)
+eg.detector("RD_DARK", (0, 200, 0), _PV((0, 1, 0)), _dr)      # off the beam path -> dark_detector
+bpy.context.view_layer.update()
+_rd_diag = optics_api.diagnose()
+_rd_kinds = {d.get("kind") for d in _rd_diag.get("diagnostics", [])}
+check("the probe bench really does raise a diagnostic (not a vacuous comparison)",
+      _rd_diag.get("counts", {}).get("BAD", 0) >= 1 and "dark_detector" in _rd_kinds, str(_rd_kinds))
+_rd_rep = optics_api.export_report(filepath="/tmp/oas_report_diag.html", title="DiagRegress")
+_rd_html = open("/tmp/oas_report_diag.html").read() if _rd_rep.get("ok") else ""
+check("export_report counts the same findings diagnose() reports",
+      _rd_rep.get("n_issues") == len(_rd_diag.get("diagnostics", [])) and _rd_rep["n_issues"] >= 1,
+      "report %s vs diagnose %s" % (_rd_rep.get("n_issues"), len(_rd_diag.get("diagnostics", []))))
+check("...and the HTML names the finding instead of claiming the bench is clean",
+      "dark_detector" in _rd_html and "No issues flagged" not in _rd_html)
+check("...and it shows the detail that says why", "RD_DARK" in _rd_html and "<th>Detail</th>" in _rd_html)
+_c5_clear()
+bpy.data.collections.remove(_dr)
+optics_api.build_example("michelson")          # restore a bench for the checks that follow
+
 print("[beam profile w(z)]")
 optics_api.build_example("newton_rings")
 bp = optics_api.beam_profile("NR_D")
