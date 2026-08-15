@@ -25,8 +25,16 @@ metre-scale scene works".
     physical_mm = |p2 - p1| * geometry.mm_per_unit(scene)
     assert the running total of physical_mm == segment["opl"]
 
-On the millimetre convention mm_per_unit is exactly 1.0 and this holds today. In any other scene
-it fails, and the size of the failure is the size of the lie.
+and it checks the bench is the SIZE the millimetre arguments asked for:
+
+    assert source-to-lens spacing == the 150 mm the builder call requested
+
+That second half is not decoration. Fixing only the measurement side would give a 150-METRE
+bench measured as 150 metres -- self-consistent, and useless. Both together are what a user
+means by "my metre-scale scene works".
+
+On the millimetre convention mm_per_unit is exactly 1.0 and both hold today. In any other scene
+they fail, and the size of the failure is the size of the lie.
 """
 import bpy, sys, os
 
