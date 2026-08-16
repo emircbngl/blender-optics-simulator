@@ -1520,7 +1520,27 @@ def tilt_null(detector=None, mirrors=None, gain=1.0, eps=0.04, max_iters=8, pist
     return res
 
 
+def _hardware_unsupported_here():
+    """Opto-mechanics is millimetre-hardcoded, so it cannot follow a declared non-mm scene.
+
+    POST_RADIUS, GRID_IMPERIAL_MM and BOARD_THICKNESS are millimetre literals, and check_mechanics
+    compares real mesh geometry with BVH overlap tests. With the optics at true physical size in a
+    metre scene and the hardware still authored in millimetres, those tests would compare geometry
+    a factor of a thousand apart and report posts that float or interpenetrate as fine. A mechanics
+    gate that silently passes is worse than no gate, so this refuses instead."""
+    scene = _scene()
+    if geometry.mm_per_unit(scene) == 1.0:
+        return None
+    return {"error": "opto-mechanical hardware is millimetre-only and is not supported while "
+                     "'Scene units are authoritative' is on: it would be placed and collision-"
+                     "checked a factor of %g out. Turn the declaration off, or keep the bench in "
+                     "a millimetre scene." % geometry.mm_per_unit(scene)}
+
+
 def check_mechanics():
+    blocked = _hardware_unsupported_here()
+    if blocked:
+        return blocked
     return {"worst": mounts.check_mechanics(_scene())}
 
 
@@ -1716,6 +1736,9 @@ def dress_bench(enable=True):
     """Spawn (enable=True) or remove (enable=False) the procedural breadboard + posts + pedestals
     + mount rings. The grid is then exposed via get_state()['bench']. Trace is unaffected (optics
     are not moved). Returns the object count and the grid."""
+    blocked = _hardware_unsupported_here()
+    if blocked and enable:                 # removing hardware is always allowed
+        return blocked
     scene = _scene()
     if enable:
         n = _optomech.dress(scene)

@@ -407,8 +407,13 @@ class OPTICS_PT_trace_settings(_OpticsPanel, Panel):
             col.prop(props, "beam_radius_scale")
             if geometry.unit_scale_mismatch(context.scene):
                 warn = col.box().column(align=True)
-                warn.label(text="Scene is not on the mm convention", icon='ERROR')
-                warn.operator("optics.convert_scene_units", icon='MOD_LENGTH')
+                if props.scene_units_authoritative:
+                    warn.label(text="Working in declared scene units", icon='CHECKMARK')
+                    warn.label(text="Opto-mech hardware unsupported here", icon='ERROR')
+                else:
+                    warn.label(text="Scene is not on the mm convention", icon='ERROR')
+                    warn.operator("optics.convert_scene_units", icon='MOD_LENGTH')
+                warn.prop(props, "scene_units_authoritative")
             col.prop(props, "oob_display")
             col.prop(props, "auto_color")
             col.prop(props, "max_segments")

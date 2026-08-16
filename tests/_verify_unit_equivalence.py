@@ -3,9 +3,15 @@
 Run:
     blender --background --factory-startup --python tests/_verify_unit_equivalence.py
 
-Not part of CI (see AGENTS.md) -- it is expected to FAIL today. It exists to make "a non-mm
-scene is a supported way to work" a decidable claim rather than an opinion, and to be the gate
-any implementation of #18 has to pass.
+Not part of CI (see AGENTS.md). It was written to FAIL, as the decidable form of "a non-mm scene
+is a supported way to work", and it now PASSES -- so it has turned from a target into a guard.
+Run it after touching the tracer, the element builders or geometry.mm_per_unit().
+
+It only means anything because the scenes below DECLARE their unit scale authoritative
+(`scene.optics.scene_units_authoritative`). Without that declaration mm_per_unit() is 1.0 by
+design and every conversion is the identity: Blender's factory scale_length is 1.0 and this
+add-on never set it, so a scene reading 1.0 is almost always one where nobody touched units.
+Inferring intent from scale_length instead was measured to break 20 behaviours.
 
 WHAT IT CHECKS, AND WHY NOT THE OBVIOUS THING
 
@@ -53,6 +59,10 @@ def build_and_trace(scale_length):
     sc = bpy.context.scene
     sc.unit_settings.system = 'METRIC'
     sc.unit_settings.scale_length = scale_length
+    # DECLARE that this scene's unit scale means what it says. Without this the add-on treats
+    # scale_length as noise -- rightly, since Blender's default is 1.0 and most scenes never touch
+    # it -- and every conversion below is the identity. The declaration is the feature.
+    sc.optics.scene_units_authoritative = True
     coll = bpy.data.collections.new("EQ")
     sc.collection.children.link(coll)
     src = eg.source("EQ_S", (-150.0, 0.0, 0.0), Vector((1, 0, 0)), coll)
@@ -102,10 +112,17 @@ mm_rows, mm_f, mm_span = build_and_trace(0.001)
 me_rows, me_f, me_span = build_and_trace(1.0)
 
 print("=" * 78)
-numbers_match = ([(r["kind"], r["power"], r["opl"], r["w_mm"]) for r in mm_rows]
-                 == [(r["kind"], r["power"], r["opl"], r["w_mm"]) for r in me_rows])
-print("reported physics numbers identical across the two scenes:", numbers_match)
-print("  (this alone proves nothing -- see the module docstring)")
+# Exact equality is the wrong bar here: scale_length is stored as float32, so a metre scene's
+# divide-then-multiply round trip carries ~1e-7 of relative error. Report the worst relative
+# difference instead of a bare boolean, so float noise does not read as a physics discrepancy.
+_worst = 0.0
+for _a, _b in zip(mm_rows, me_rows):
+    for _k in ("power", "opl", "w_mm"):
+        _d = abs(_a[_k] - _b[_k]) / max(abs(_a[_k]), 1e-30)
+        _worst = max(_worst, _d)
+print("physics agrees across the two scenes to a relative %.1e  (float32 scale_length noise is ~1e-7)"
+      % _worst)
+print("  (agreement alone proves nothing -- see the module docstring)")
 print("-" * 78)
 ok_mm = report("millimetre scene", mm_rows, mm_f)
 print()

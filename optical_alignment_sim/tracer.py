@@ -84,6 +84,25 @@ def _first_out(props):
     return _find_port(props, 'OUT')
 
 
+# Millimetres per Blender unit for the trace in progress. The tracer's arithmetic is entirely in
+# millimetres, so every POSITION it reads is converted on the way in and the emitted p1/p2 are
+# converted back to world units on the way out (the overlay and the bake draw with them). Every
+# distance is derived from those positions, so none of them needs converting individually -- there
+# is no length site left to forget. Unless the scene declares its units authoritative this is
+# exactly 1.0 and every multiplication below is the identity.
+_mmpu = 1.0
+
+
+def _wp(obj, local_position):
+    """Port position in MILLIMETRES."""
+    return geometry.world_port(obj, local_position) * _mmpu
+
+
+def _wc(obj):
+    """Element centre in MILLIMETRES."""
+    return obj.matrix_world.translation * _mmpu
+
+
 def interaction_surface(obj):
     """Return (point, normal, aperture) of the surface the beam interacts with:
     the REFLECT plane for reflective elements, otherwise the IN port plane."""
@@ -192,7 +211,7 @@ def _seg(ray, p2, to_obj, sn=None):
              ev[0] * e2[0] + ev[1] * e2[1] + ev[2] * e2[2])
     qd = physics.q_propagate(ray.q, physics.abcd_free(seg_len)) if ray.q is not None else None
     return {
-        "p1": ray.p1.copy(), "p2": p2.copy(), "kind": ray.kind,
+        "p1": ray.p1 / _mmpu, "p2": p2 / _mmpu, "kind": ray.kind,
         "from": ray.from_obj.name if ray.from_obj else None,
         "to": to_obj.name if to_obj else None,
         "power": round(ray.power, 4), "wavelength": ray.wl, "parent": ray.parent,
@@ -482,7 +501,8 @@ def _build_world_bvhtree(E):
         if not bm.faces:
             bm.free()
             return None
-        bm.transform(E.matrix_world)
+        bm.transform(Matrix.Scale(_mmpu, 4) @ E.matrix_world if _mmpu != 1.0
+                     else E.matrix_world)
         tree = BVHTree.FromBMesh(bm)
     except Exception:
         try:
@@ -768,7 +788,7 @@ def _slit_T(ray, E, H, t):
         return 1.0
     b = max(E.optics.slit_width, 0.0) * 0.5
     axis = _clip_axis_world(E, E.optics.slit_angle)
-    center = E.matrix_world.translation
+    center = _wc(E)
     off = abs((H - center).dot(axis))                  # chief-ray offset along the clipped axis (~0 if centered)
     # transmit the band [off - b, off + b]: T = 0.5(erf(sqrt2(off+b)/w) + erf(sqrt2(b-off)/w)). When off=0 this
     # reduces to erf(sqrt2 b/w) (the verified centered slit); off>0 shifts the band off the beam, clipping more.
@@ -784,7 +804,7 @@ def _knife_T(ray, E, H, t):
     if w <= 1e-9:
         return 1.0
     axis = _clip_axis_world(E, E.optics.knife_angle)
-    center = E.matrix_world.translation
+    center = _wc(E)
     xc = (H - center).dot(axis)                        # chief-ray position on the cut axis (relative to stage center)
     e = E.optics.knife_position
     return physics.knife_transmission(e, xc, w)
@@ -933,8 +953,8 @@ def _prism_faces(E):
     """World (point, outward-normal) of a prism's entry (IN) and exit (OUT) faces."""
     op = E.optics
     ip, opo = _find_port(op, 'IN'), _find_port(op, 'OUT')
-    pin = (geometry.world_port(E, ip.local_position), geometry.world_normal(E, ip.local_normal)) if ip else None
-    pout = (geometry.world_port(E, opo.local_position), geometry.world_normal(E, opo.local_normal)) if opo else None
+    pin = (_wp(E, ip.local_position), geometry.world_normal(E, ip.local_normal)) if ip else None
+    pout = (_wp(E, opo.local_position), geometry.world_normal(E, opo.local_normal)) if opo else None
     return pin, pout
 
 
@@ -948,7 +968,7 @@ def _glass_seg(ray, p2, E, n_glass, kind):
     j = ray.jones
     qd = physics.q_propagate(ray.q, physics.abcd_free(seg_len)) if ray.q is not None else None
     return {
-        "p1": ray.p1.copy(), "p2": p2.copy(), "kind": kind,
+        "p1": ray.p1 / _mmpu, "p2": p2 / _mmpu, "kind": kind,
         "from": ray.from_obj.name if ray.from_obj else None,
         "to": E.name if E else None,
         "power": round(ray.power, 4), "wavelength": ray.wl, "parent": ray.parent,
@@ -1009,6 +1029,8 @@ def _route_fold(glass_ray, E, fold_faces, segments, parent_idx, n_glass):
 
 
 def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
+    global _mmpu
+    _mmpu = geometry.mm_per_unit(scene)   # 1.0 unless the scene declares its units authoritative
     elems = [o for o in scene.objects
              if getattr(o, "optics", None) and o.optics.is_optical]
     order = _order_list(scene)
@@ -1019,10 +1041,12 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
     geometry_table = []
     for E in elems:
         surface = interaction_surface(E)
+        if _mmpu != 1.0 and surface[0] is not None:   # the trace works in mm; this helper
+            surface = (surface[0] * _mmpu, surface[1], surface[2])   # stays world for diagnostics
         port_surfaces = []
         if E.optics.element_type == 'CIRCULATOR':
             for p in _circulator_ports(E.optics):
-                port_surfaces.append((geometry.world_port(E, p.local_position),
+                port_surfaces.append((_wp(E, p.local_position),
                                       geometry.world_normal(E, p.local_normal),
                                       p.clear_aperture or E.optics.clear_aperture))
         record = (E, surface, port_surfaces)
@@ -1068,7 +1092,7 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 spectrum = [(w, wt / tw) for w, wt in pairs]
             else:
                 spectrum = [(sp.wavelength, 1.0)]
-            P = geometry.world_port(src, op.local_position)
+            P = _wp(src, op.local_position)
             D = geometry.world_normal(src, op.local_normal)
             m2 = max(getattr(sp, 'm2', 1.0), 1.0)
             for wl_i, sw in spectrum:
@@ -1257,13 +1281,13 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             if N >= 2:
                 # identify the ENTRY port: the one whose world position is nearest the hit point H (the
                 # face the ray actually crossed). _find_next already gated H to a single port's aperture.
-                entry = min(range(N), key=lambda k: (geometry.world_port(E, ports[k].local_position) - H).length)
+                entry = min(range(N), key=lambda k: (_wp(E, ports[k].local_position) - H).length)
                 T_thru = min(max(getattr(op, 'element_transmittance', 1.0), 0.0), 1.0)   # universal insertion loss (default 1.0)
                 iso_lin = physics.db_to_linear(max(getattr(op, 'isolation_db', 20.0), 0.0))
                 nxt = ports[(entry + 1) % N]                # main path -> NEXT port (the cyclic route)
                 prv = ports[(entry - 1) % N]                # isolation leak -> PREVIOUS port (non-reciprocity is here)
                 # main child: through power from P(i+1) along its outward normal; polarization state unchanged.
-                Pn = geometry.world_port(E, nxt.local_position)
+                Pn = _wp(E, nxt.local_position)
                 Dn = geometry.world_normal(E, nxt.local_normal)
                 jn = (ray.jones if T_thru == 1.0 else
                       physics.scale(ray.jones, math.sqrt(T_thru)) if ray.jones else None)
@@ -1272,7 +1296,7 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 # isolation child: the small directivity leak from P(i-1). Same energy bookkeeping as the
                 # through path scaled by the dB ratio; pol carried unchanged (sqrt for the field amplitude).
                 if prv is not nxt and ray.power * T_thru * iso_lin >= 1e-9:
-                    Pp = geometry.world_port(E, prv.local_position)
+                    Pp = _wp(E, prv.local_position)
                     Dp = geometry.world_normal(E, prv.local_normal)
                     ji = (physics.scale(ray.jones, math.sqrt(iso_lin)) if T_thru == 1.0 and ray.jones else
                           physics.scale(ray.jones, math.sqrt(T_thru * iso_lin)) if ray.jones else None)
@@ -1530,7 +1554,7 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             ipo, opo = _find_port(op, 'IN'), _find_port(op, 'OUT')
             fwd = None
             if ipo and opo:
-                fwd = geometry.world_port(E, opo.local_position) - geometry.world_port(E, ipo.local_position)
+                fwd = _wp(E, opo.local_position) - _wp(E, ipo.local_position)
                 fwd = fwd.normalized() if fwd.length > 1e-9 else None
             if fwd is not None and ray.dir.dot(fwd) < 0.0:
                 continue                                  # backward -> absorbed
@@ -1593,7 +1617,7 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 tir_n = geometry.world_normal(E, tirp.local_normal)
                 # fold the in-glass ray off the TIR face. The face midpoint is the in-glass ray's hit; use the
                 # ray-plane intersection through the TIR port position for the segment break.
-                tir_pt = geometry.world_port(E, tirp.local_position)
+                tir_pt = _wp(E, tirp.local_position)
                 hb = _ray_plane(glass_ray.p1, glass_ray.dir, tir_pt, tir_n)
                 Hb = hb[0] if hb is not None else (glass_ray.p1 + glass_ray.dir * 1.0)
                 gseg, opl_b, _qd = _glass_seg(glass_ray, Hb, E, n_g, 'GLASS')
@@ -1652,7 +1676,7 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 if cemp is None:
                     continue
                 cem_n = geometry.world_normal(E, cemp.local_normal)
-                cem_pt = geometry.world_port(E, cemp.local_position)
+                cem_pt = _wp(E, cemp.local_position)
                 hc = _ray_plane(glass_ray.p1, glass_ray.dir, cem_pt, cem_n)
                 Hc = hc[0] if hc is not None else (glass_ray.p1 + glass_ray.dir * 1.0)
                 gseg, opl_c, _qd = _glass_seg(glass_ray, Hc, E, n_g, 'GLASS')   # crown leg (n_g)
@@ -1688,7 +1712,7 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                     if fp is None:
                         ok = False
                         break
-                    folds.append((geometry.world_port(E, fp.local_position),
+                    folds.append((_wp(E, fp.local_position),
                                   geometry.world_normal(E, fp.local_normal)))
                 if not ok:
                     continue

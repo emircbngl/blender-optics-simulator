@@ -2308,6 +2308,40 @@ check("CIRCULAR with a zero radius still means 'unconfigured' and does not clip"
 _c5_clear()
 bpy.data.collections.remove(_za)
 
+print("[declared scene units: intent is stated, never inferred from scale_length]")
+from optical_alignment_sim import geometry as _geo
+# The whole reason this is a declaration: Blender's factory scale_length is 1.0 and the add-on has
+# never set it, so a scene reading 1.0 is almost always one where nobody touched units. Keying the
+# unit-aware paths off scale_length alone was measured to break 20 behaviours -- a periscope's
+# vertical fold came out 0.1 instead of 100 -- because every default scene was read as metres.
+_ua_prev_decl = sc.optics.scene_units_authoritative
+_ua_prev_sl = sc.unit_settings.scale_length
+sc.unit_settings.scale_length = 1.0
+sc.optics.scene_units_authoritative = False
+check("a metre-looking scene is NOT treated as metres unless declared",
+      _geo.mm_per_unit(sc) == 1.0, str(_geo.mm_per_unit(sc)))
+sc.optics.scene_units_authoritative = True
+check("...and IS once declared", abs(_geo.mm_per_unit(sc) - 1000.0) < 1e-3, str(_geo.mm_per_unit(sc)))
+sc.unit_settings.scale_length = 0.001
+check("a declared millimetre scene still gives exactly 1.0 (the identity that keeps mm untouched)",
+      _geo.mm_per_unit(sc) == 1.0, str(_geo.mm_per_unit(sc)))
+
+# opto-mechanics is mm-hardcoded and BVH-coupled to the optics, so it must REFUSE rather than
+# report a bench it measured a factor of a thousand out
+sc.unit_settings.scale_length = 1.0
+sc.optics.scene_units_authoritative = True
+_ua_mech = optics_api.check_mechanics()
+_ua_dress = optics_api.dress_bench(enable=True)
+check("check_mechanics refuses in a declared non-mm scene rather than reporting a wrong answer",
+      "error" in _ua_mech, str(_ua_mech))
+check("dress_bench refuses too (hardware would be placed 1000x out)",
+      "error" in _ua_dress, str(_ua_dress))
+sc.optics.scene_units_authoritative = False
+check("...and both work again once the declaration is off",
+      "error" not in optics_api.check_mechanics())
+sc.unit_settings.scale_length = _ua_prev_sl
+sc.optics.scene_units_authoritative = _ua_prev_decl
+
 print("[convert a scene to mm: physical sizes survive, add-on geometry is left alone]")
 _c5_clear()
 _cv_coll = bpy.data.collections.new("UNIT_CONVERT_TEST"); sc.collection.children.link(_cv_coll)
@@ -2355,7 +2389,6 @@ bpy.data.collections.remove(_cv_coll)
 sc.unit_settings.scale_length = 0.001
 
 print("[unit-scale mismatch is reported, never silently absorbed]")
-from optical_alignment_sim import geometry as _geo
 check("the add-on's convention is 1 unit = 1 mm", _geo.ADDON_SCALE_LENGTH == 0.001)
 
 

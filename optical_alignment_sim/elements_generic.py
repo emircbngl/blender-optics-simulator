@@ -154,11 +154,23 @@ def _tag(obj, element_type, **params):
 
 
 def _set_matrix(obj, loc, rot3=None):
-    """Place obj at loc with optional 3x3 world rotation matrix."""
-    if rot3 is None:
-        obj.matrix_world = Matrix.Translation(loc)
-    else:
-        obj.matrix_world = Matrix.Translation(loc) @ rot3.to_4x4()
+    """Place obj at loc (MILLIMETRES) with an optional 3x3 world rotation.
+
+    Every builder here funnels through this, and every builder's coordinates and dimensions are
+    millimetres -- that is the documented API. A scene that has DECLARED its unit scale
+    authoritative needs those millimetres expressed in its units, so the translation is divided by
+    mm-per-unit and the object carries the reciprocal scale, which shrinks the mm-authored mesh to
+    true physical size. Otherwise mm_per_unit() is exactly 1.0, both are the identity, and this is
+    the same single matrix assignment it always was."""
+    from . import geometry
+    mmpu = geometry.mm_per_unit(bpy.context.scene)
+    if mmpu == 1.0:
+        obj.matrix_world = (Matrix.Translation(loc) if rot3 is None
+                            else Matrix.Translation(loc) @ rot3.to_4x4())
+        return
+    t = Matrix.Translation(Vector(loc) / mmpu)
+    m = t if rot3 is None else t @ rot3.to_4x4()
+    obj.matrix_world = m @ Matrix.Scale(1.0 / mmpu, 4)
 
 
 def _basis(x, y):
