@@ -801,6 +801,19 @@ class OpticalSceneProps(PropertyGroup):
         name="Beam width scale", default=1.0, min=0.05, max=20.0,
         description="Multiply the baked beam tube width. The tube still follows the real Gaussian "
                     "w(z); this scales it for rendering, so 1.0 is physical size")
+    # Does this scene's Unit Scale MEAN anything? Default False, and that default is the whole
+    # point. Blender's factory scale_length is 1.0 and this add-on has never set it, so a scene
+    # reading 1.0 is overwhelmingly one where nobody touched units -- not a metre-scale scene.
+    # Inferring intent from scale_length reinterprets every such scene as metres and shrinks it by
+    # a thousand; that was measured, and it broke 20 existing behaviours. So intent is DECLARED,
+    # never guessed: while this is off, geometry.mm_per_unit() returns exactly 1.0 and every
+    # unit-aware code path is the identity.
+    scene_units_authoritative: BoolProperty(
+        name="Scene units are authoritative", default=False,
+        description="Treat this scene's Unit Scale as the real one, so millimetre component "
+                    "arguments are placed at true physical size and the trace measures physical "
+                    "millimetres. Leave off unless you deliberately work in a non-millimetre "
+                    "scene; opto-mechanical hardware is not supported while it is on")
     show_ports: BoolProperty(name="Show ports", default=True)
     # How IR / UV beams are DRAWN (viewport, bake and SVG alike). Display only -- the trace is
     # untouched, so switching this never changes a power, a Jones vector or a segment count.

@@ -40,11 +40,27 @@ def mm_per_unit(scene):
     The single conversion factor between the scene's units and the millimetres the physics is
     written in. `scale_length` is metres-per-unit, so mm-per-unit is that times 1000: a metre scene
     gives 1000, and the add-on's own 0.001 gives exactly 1 -- which is what keeps the millimetre
-    case bit-for-bit unchanged everywhere this is applied."""
+    case bit-for-bit unchanged everywhere this is applied.
+
+    It returns 1.0 unless the scene has DECLARED that its unit scale is authoritative, and that
+    guard is the load-bearing part. Blender's factory scale_length is 1.0 and this add-on has never
+    set it, so a scene reading 1.0 is overwhelmingly one where nobody touched units rather than a
+    metre-scale scene. Keying off scale_length alone reinterprets every one of those -- including
+    every bench this project's own tests build -- and shrinks it by a thousand. That was measured:
+    it broke 20 existing behaviours, one of them a periscope whose vertical fold came out 0.1
+    instead of 100. Intent is declared here, never inferred."""
+    opt = getattr(scene, "optics", None)
+    if not getattr(opt, "scene_units_authoritative", False):
+        return 1.0
     sl = getattr(getattr(scene, "unit_settings", None), "scale_length", ADDON_SCALE_LENGTH)
     if not sl or sl <= 0.0:
         return 1.0
-    return float(sl) * 1000.0
+    mmpu = float(sl) * 1000.0
+    # Snap to exactly 1.0 inside float32 noise. Blender stores scale_length as float32, so writing
+    # 0.001 reads back 0.0010000000474974513 and this would return 1.0000000475 -- enough to send a
+    # DECLARED millimetre scene down the conversion path and stop it being byte-identical, for a
+    # difference that is pure storage precision. Same trap as the scene converter's idempotence.
+    return 1.0 if abs(mmpu - 1.0) < 1e-6 else mmpu
 
 
 def unit_scale_mismatch(scene):

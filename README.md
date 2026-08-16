@@ -175,6 +175,19 @@ The conversion goes that way round on purpose. Rescaling the optics instead woul
 the physics: a 150 mm arm would become 0.15 units and the tracer would read it as 0.15 mm — every
 propagation, path length and aperture clip wrong by 1000×, with no error raised.
 
+**If you genuinely work in another unit scale**, turn on **Scene units are authoritative**
+(`scene.optics.scene_units_authoritative`). Component arguments stay in millimetres — the API is unchanged —
+but they are then placed at true physical size and the trace measures physical millimetres, verified by
+`tests/_verify_unit_equivalence.py`. It is off by default and that default is deliberate: Blender's factory
+Unit Scale is 1.0 and this add-on never set it, so a scene reading 1.0 is almost always one where nobody
+touched units, not a metre-scale scene. Guessing from Unit Scale alone reinterprets every such scene and
+shrinks it by a thousand.
+
+**Opto-mechanical hardware is not supported while it is on.** Posts, breadboards and mounts are
+millimetre-hardcoded and `check_mechanics()` compares real mesh geometry, so it would collision-check parts
+a factor of a thousand apart. `dress_bench()` and `check_mechanics()` refuse rather than report a wrong
+answer.
+
 The add-on does not guess. Add a component in a scene on another unit scale and it is still placed at its
 true millimetre size, with a warning naming the factor — `add_component()` returns a `warning` key and the
 UI reports it. Supporting non-mm scenes properly means making the measurement layer unit-aware; that is
