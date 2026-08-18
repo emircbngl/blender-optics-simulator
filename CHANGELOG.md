@@ -4,6 +4,27 @@ All notable changes to the **Blender Optics Simulator** (`optical_alignment_sim`
 here. The format follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 semantic versioning.
 
+## [Unreleased]
+
+### Fixed — the drawn beam folds on the coating, not inside the glass
+- **Reflective optics are seated on the plane they reflect from** ([#25](https://github.com/emircbngl/blender-optics-simulator/issues/25)). Every reflective builder
+  modelled its substrate straddling the object origin, so the coated face stood proud of the
+  REFLECT plane the tracer folds the beam at: 3 mm on a mirror, 1.5 mm on a dichroic, 2.5 mm on a
+  grating. The beam visibly turned *inside* the substrate. The mesh is now slid so the surface the
+  axial ray strikes sits on that plane.
+  For a **curved** mirror that point is the apex, not the rim — the mesh's spherical cap carries a
+  fixed cosmetic sag (the focal power comes from `radius_curv`, never from the mesh), so seating the
+  rim would still have folded the beam 2 mm off the face it visibly hits. The seat depth is now read
+  from the profile itself so the two cannot drift apart.
+  **Two optics are exempt by construction, not by oversight:** a cube beamsplitter's coating is its
+  internal 45° diagonal, which already passes through the origin, and a corner-cube retroreflector
+  is angle-insensitive with no single face to seat.
+  Guarded by five checks that cast a ray down the local axis and demand the hit land on the REFLECT
+  plane; with the fix removed all five fail, and with only the flat case fixed exactly the two
+  curved ones fail. **No traced number changed** — the segment digests for the `green_doubler` and
+  `michelson` benches are identical before and after, because the tracer reads ports and
+  `matrix_world`, never the mesh.
+
 ## [0.29.0] — Say it, don't guess it: declared scene units, shaped apertures, and reports that stop lying — 2026-08-18
 
 ### Added — a non-millimetre scene is a supported way to work

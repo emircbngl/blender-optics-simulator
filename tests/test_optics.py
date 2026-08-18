@@ -601,9 +601,20 @@ check("phenomenon: produce(accept=True) emerges Talbot (z_T = 2 d^2/lambda ~ 31.
       _grp.get("ok") and abs((_grp.get("produced") or {}).get("talbot_distance_mm", 0.0) - 31.6056) < 0.1,
       str((_grp.get("produced") or {}).get("talbot_distance_mm")))
 
-def _frontrange(o):          # z-spread of the FRONT-half verts: ~0 for a flat front, big if curved
-    zs = [v.co.z for v in o.data.vertices if v.co.z > 0.1]
-    return (max(zs) - min(zs)) if zs else 0.0
+def _frontrange(o):
+    """z-spread of the FRONT-most verts: ~0 for a flat front, big if curved.
+
+    Selected relative to the mesh's OWN extent, not against a fixed z > 0.1. The old absolute cut
+    assumed the substrate straddled the origin; once the mesh was seated so its coated face sits on
+    the REFLECT plane (#25) the whole body lies at z <= 0, no vertex cleared the threshold, and this
+    returned 0.0 for curved and flat alike -- reporting a shape regression where the shape was
+    unchanged. A test about shape should not depend on where the shape sits."""
+    zs = [v.co.z for v in o.data.vertices]
+    if not zs:
+        return 0.0
+    lo, hi = min(zs), max(zs)
+    front = [z for z in zs if z >= hi - 0.4 * (hi - lo)]
+    return (max(front) - min(front)) if front else 0.0
 
 
 _cmesh = eg.mirror("CM_curved", (0, 0, 0), (1, 0, 0), (0, 1, 0), coll=_mcoll, mirror_curve='CONCAVE', radius_curv=300.0)
@@ -611,6 +622,29 @@ _cflat = eg.mirror("CM_flat", (40, 0, 0), (1, 0, 0), (0, 1, 0), coll=_mcoll, mir
 check("concave mirror has a curved front (vs near-flat front)", _frontrange(_cmesh) > _frontrange(_cflat) + 1.0,
       "%.2f vs %.2f" % (_frontrange(_cmesh), _frontrange(_cflat)))
 check("mirror curvature recorded on the optic", _cmesh.optics.mirror_curve == 'CONCAVE')
+
+# --- #25: the beam must turn ON the coated face, not behind it -------------------------------
+# Cast down the local axis and demand the surface the AXIAL ray strikes sits on the REFLECT plane
+# (z=0). Before the fix a flat mirror's coating sat 3 mm proud and a curved mirror's apex +/-2 mm,
+# so the drawn beam folded inside the glass. Exempt by construction, NOT overlooked: a cube
+# beamsplitter's coating is its internal 45-degree diagonal (already through the origin) and a
+# corner cube is angle-insensitive with no single face to seat.
+def _axial_hit_z(o):
+    hit, loc, _n, _i = o.ray_cast(_Vec((0, 0, 60.0)), _Vec((0, 0, -1.0)))
+    return loc.z if hit else None
+
+for _lbl, _mk in (("flat mirror",    lambda: eg.mirror("S_f", (0, 0, 0), (1, 0, 0), (0, 1, 0), coll=_mcoll)),
+                  ("concave mirror", lambda: eg.mirror("S_c", (0, 0, 0), (1, 0, 0), (0, 1, 0), coll=_mcoll,
+                                                       mirror_curve='CONCAVE', radius_curv=300.0)),
+                  ("convex mirror",  lambda: eg.mirror("S_x", (0, 0, 0), (1, 0, 0), (0, 1, 0), coll=_mcoll,
+                                                       mirror_curve='CONVEX', radius_curv=300.0)),
+                  ("dichroic",       lambda: eg.dichroic("S_d", (0, 0, 0), (1, 0, 0), (0, 1, 0), coll=_mcoll)),
+                  ("grating",        lambda: eg.grating("S_g", (0, 0, 0), (1, 0, 0), (0, 1, 0), coll=_mcoll,
+                                                        lines_per_mm=1200.0))):
+    _z = _axial_hit_z(_mk())
+    check("#25: %s turns the beam on its coated face (axial hit on the REFLECT plane)" % _lbl,
+          _z is not None and abs(_z) < 1e-3, "axial hit z = %s" % ("miss" if _z is None else "%.3f" % _z))
+
 for _o in list(_mcoll.objects):
     eg.drop_example_object(_o)
 bpy.data.collections.remove(_mcoll)
