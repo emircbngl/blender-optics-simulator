@@ -4,6 +4,46 @@ All notable changes to the **Blender Optics Simulator** (`optical_alignment_sim`
 here. The format follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 semantic versioning.
 
+## [0.29.0] — Say it, don't guess it: declared scene units, shaped apertures, and reports that stop lying — 2026-08-18
+
+### Added — a non-millimetre scene is a supported way to work
+- **`scene_units_authoritative`.** Turn it on and component arguments — still millimetres, the API
+  is unchanged — are placed at true physical size while the trace measures physical millimetres.
+  Off by default, and that default is the design: Blender's factory Unit Scale is 1.0 and this
+  add-on never set it, so a scene reading 1.0 is almost always one where nobody touched units.
+  Inferring intent from Unit Scale instead was measured to break 20 behaviours, a periscope's
+  vertical fold landing at 0.1 instead of 100. While it is off, `mm_per_unit()` returns exactly 1.0
+  and every unit-aware path is the identity. Verified by `tests/_verify_unit_equivalence.py`, which
+  was written to fail and now guards the property instead.
+  **Opto-mechanics is unsupported in that mode and says so:** posts and breadboards are
+  millimetre-hardcoded and `check_mechanics()` compares real mesh geometry, so `dress_bench()` and
+  `check_mechanics()` refuse rather than collision-check parts a factor of a thousand apart.
+- **Convert Scene to Millimetres.** Sets Unit Scale to 0.001 *and* scales your own objects by the
+  same factor, so a 2 m model stays 2 m and optics land at true size beside it. Add-on geometry is
+  skipped — it already defines the convention.
+- **Aperture shape.** `CIRCULAR` (default) / `SQUARE` / `RECTANGULAR`. A square dichroic or BS cube
+  already had a square mesh while its optical aperture was the circle inscribed in it, discarding
+  the light a real square optic passes at its corners. The non-circular clip is the separable
+  product of the verified 1-D erf slit kernel, checked against 2-D numerical integration and the
+  bracket that a square passes more than its inscribed circle and less than its circumscribed one.
+
+### Fixed — three things that reported success while being wrong
+- **`export_report()` said "No issues flagged" on every bench.** It read `issues`/`problems`;
+  `diagnose()` publishes `diagnostics`, so the list was always empty and `n_issues` always 0 no
+  matter how broken the bench. The diagnostics table also now carries the `detail` field that says
+  *why*.
+- **A closed square/rectangular aperture passed the whole beam.** `_clip_T` returned early on
+  `clear_aperture <= 0` before dispatching on shape, so a stop with zero area transmitted
+  everything — and only on the X axis, since a zero Y half-width blocked correctly.
+- **The unit-scale mismatch was silent.** `add_component()` and `build_example()` now carry a
+  `warning`, the UI reports it, and building an example from the panel no longer changes your unit
+  settings without saying so.
+
+### Changed
+- **CI runs Blender 5.1.1 as well as 4.2.3.** The add-on ships a 5.x-specific artifact (cp313
+  wheels) that no job had ever exercised on 5.x. `CONTRIBUTING.md` had claimed this matrix existed;
+  now it does.
+
 ## [0.28.0] — One colour convention, a path readout that admits its limits, and a shutter — 2026-08-11
 
 ### Fixed — a bake control that never did anything
