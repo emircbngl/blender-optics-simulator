@@ -574,7 +574,7 @@ class OPTICS_PT_render(_OpticsPanel, Panel):
     bl_options = {'DEFAULT_CLOSED'}
     def draw(self, context):
         layout = self.layout; row = layout.row(align=True)
-        row.operator("optics.bake_beams", text="Bake Beams", icon='OUTLINER_OB_MESH'); row.operator("optics.clear_baked", text="Clear Baked", icon='X')
+        row.operator("optics.bake_beams", text="Beams to Mesh", icon='OUTLINER_OB_MESH'); row.operator("optics.clear_baked", text="Clear Baked", icon='X')
         layout.label(text="Camera"); grid = layout.grid_flow(columns=4, align=True)
         for preset in ('HERO', 'TOP', 'FRONT', 'SIDE'): grid.operator("optics.set_camera", text=preset.title()).preset = preset
         layout.label(text="Background"); layout.prop(context.scene.optics, "bg_preset", text=""); layout.prop(context.scene.optics, "realistic_optics")
