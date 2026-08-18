@@ -414,7 +414,12 @@ def _build_mount(o, coll, idx):
     et = op.element_type
     mt = getattr(op, "mount_type", 'FIXED')
     ca = max(getattr(op, "clear_aperture", 10.0), 6.0)
-    p = o.matrix_world.translation
+    # Follow the glass. Mount parts are laid out from the object origin on the assumption that the
+    # substrate straddles it; a seated optic (#25) has its mesh slid back so the coated face sits on
+    # the origin, so the mount frame is slid by the same amount. 0.0 -- and therefore the untouched
+    # original layout -- for every optic that was never seated.
+    _seat = float(o.get("optic_seat_shift", 0.0) or 0.0)
+    p = (o.matrix_world @ Vector((0.0, 0.0, -_seat))) if _seat else o.matrix_world.translation
     mw = Matrix.Translation(p) @ o.matrix_world.to_3x3().to_4x4()
     pre = BENCH_PREFIX
     nm = "%02d" % idx

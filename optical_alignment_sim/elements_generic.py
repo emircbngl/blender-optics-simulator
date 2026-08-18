@@ -168,8 +168,15 @@ def _seat_optical_face(obj, face_z):
     NOT applied blindly to everything reflective. A cube beamsplitter's coated surface is its
     internal 45-degree diagonal, which already passes through the origin, and a corner cube is
     modelled as angle-insensitive with no single face to seat. Both are correct as built; shifting
-    them would introduce the very error this fixes."""
+    them would introduce the very error this fixes.
+
+    The shift is RECORDED on the object because the opto-mechanics builds every mount part from the
+    object origin, assuming the glass straddles it. Left unrecorded, the mount stays put while the
+    glass slides out of it -- measured as the KM retaining ring, the physical stop for the mirror
+    edge, floating 3.6 mm clear of the face it is meant to retain. ``_build_mount`` reads this and
+    follows the glass, so the optic/mount relationship is exactly what it was before seating."""
     obj.data.transform(Matrix.Translation((0.0, 0.0, -face_z)))
+    obj["optic_seat_shift"] = float(face_z)
 
 
 def _set_matrix(obj, loc, rot3=None):

@@ -19,9 +19,16 @@ semantic versioning.
   **Two optics are exempt by construction, not by oversight:** a cube beamsplitter's coating is its
   internal 45° diagonal, which already passes through the origin, and a corner-cube retroreflector
   is angle-insensitive with no single face to seat.
-  Guarded by five checks that cast a ray down the local axis and demand the hit land on the REFLECT
-  plane; with the fix removed all five fail, and with only the flat case fixed exactly the two
-  curved ones fail. **No traced number changed** — the segment digests for the `green_doubler` and
+  **The mount follows the glass.** The opto-mechanics lays every part out from the object origin on
+  the assumption that the substrate straddles it, so seating the mesh alone left the KM retaining
+  ring -- the physical stop for the mirror edge -- floating 3.6 mm clear of the face it retains,
+  with the plate bore cutting through the coating. The seat shift is recorded on the object and the
+  mount frame is slid by the same amount, restoring the exact optic/mount relationship: the ring's
+  back face now sits on the glass front. Optics that were never seated read 0.0 and are untouched.
+  Guarded by six checks -- five that cast a ray down the local axis and demand the hit land on the REFLECT
+  plane, and one that demands the retaining ring still contact the seated face. With the fix removed
+  all five axial checks fail; with only the flat case fixed exactly the two curved ones fail; and
+  with the mount left behind the ring check fails. **No traced number changed** — the segment digests for the `green_doubler` and
   `michelson` benches are identical before and after, because the tracer reads ports and
   `matrix_world`, never the mesh.
 

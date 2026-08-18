@@ -645,6 +645,34 @@ for _lbl, _mk in (("flat mirror",    lambda: eg.mirror("S_f", (0, 0, 0), (1, 0, 
     check("#25: %s turns the beam on its coated face (axial hit on the REFLECT plane)" % _lbl,
           _z is not None and abs(_z) < 1e-3, "axial hit z = %s" % ("miss" if _z is None else "%.3f" % _z))
 
+# --- #25 follow-up: seating the glass must not leave the MOUNT behind -------------------------
+# The opto-mechanics lays every part out from the object origin assuming the substrate straddles it.
+# Sliding the mesh without telling it left the KM retaining ring -- the physical stop for the mirror
+# edge -- floating 3.6 mm clear of the face it retains, and the plate bore cutting through the
+# coating. Demand the ring still CONTACT the glass front.
+_kcoll = bpy.data.collections.new("KMSEAT"); sc.collection.children.link(_kcoll)
+_km = eg.mirror("KM_seat", (0, 0, 100.0), (1, 0, 0), (0, 1, 0), coll=_kcoll)
+bpy.context.view_layer.update()
+optomech.dress(sc)
+bpy.context.view_layer.update()
+_ax = _km.matrix_world.to_3x3() @ _Vec((0, 0, 1))
+def _span(ob):
+    pr = [((ob.matrix_world @ v.co) - _km.location).dot(_ax) for v in ob.data.vertices]
+    return (min(pr), max(pr))
+_gfront = _span(_km)[1]
+# the scene already carries mounts from earlier benches, and part names carry an index, not the
+# optic name -- so pick the retainer belonging to THIS mirror by proximity, not by first match
+_rings = [ob for ob in sc.objects if "KMretainer" in ob.name and ob.type == 'MESH']
+_ring = min(_rings, key=lambda ob: (ob.matrix_world.translation - _km.location).length, default=None)
+if _ring is not None and (_ring.matrix_world.translation - _km.location).length > 30.0:
+    _ring = None        # nothing of this mirror's own: fail loudly rather than measure a stranger
+check("#25: the KM retaining ring still contacts the seated mirror's face (mount followed the glass)",
+      _ring is not None and abs(_span(_ring)[0] - _gfront) < 0.05,
+      "glass front %.3f vs ring back %s" % (_gfront, "none" if _ring is None else "%.3f" % _span(_ring)[0]))
+for _o in list(_kcoll.objects):
+    eg.drop_example_object(_o)
+bpy.data.collections.remove(_kcoll)
+
 for _o in list(_mcoll.objects):
     eg.drop_example_object(_o)
 bpy.data.collections.remove(_mcoll)
