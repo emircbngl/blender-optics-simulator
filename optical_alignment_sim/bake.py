@@ -242,7 +242,11 @@ def ensure_beams(context):
 class OPTICS_OT_bake_beams(Operator):
     bl_idname = "optics.bake_beams"
     bl_label = "Bake Beams to Mesh"
-    bl_description = "Create emission-cylinder meshes from the current beam path (for rendering)"
+    # "(for rendering)" told users the opposite of the truth: these ARE real mesh objects in
+    # COL_BEAMS, so they export to glTF/FBX/OBJ like any other geometry. A user who wanted the
+    # beams in a slide deck read that parenthetical and concluded the beams were viewport-only.
+    bl_description = ("Turn the traced beam path into real mesh objects in COL_BEAMS -- editable, "
+                      "renderable, and exported with the rest of the scene")
     bl_options = {'REGISTER', 'UNDO'}
 
     # A SCALE, not a radius in mm: the tube follows the real w(z), this widens it for a figure.
