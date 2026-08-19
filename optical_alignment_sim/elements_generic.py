@@ -153,6 +153,32 @@ def _tag(obj, element_type, **params):
             setattr(op, k, v)
 
 
+def _seat_optical_face(obj, face_z):
+    """Slide an optic's MESH so its optical surface sits on the object origin.
+
+    The engine's optical surface is the REFLECT port, and every reflective builder puts that port at
+    local z = 0 -- the object origin. The substrate, though, was built centred on that origin, so a
+    front-surface optic reflected from the middle of its own glass: a 6 mm mirror turned the beam
+    3 mm behind the coating it is drawn with (#25).
+
+    This moves the MESH, not the port, so no traced number changes anywhere -- and it gives the
+    origin a meaning: place a mirror at P and the beam turns at P, with the glass behind it, which
+    is what a front-surface optic is.
+
+    NOT applied blindly to everything reflective. A cube beamsplitter's coated surface is its
+    internal 45-degree diagonal, which already passes through the origin, and a corner cube is
+    modelled as angle-insensitive with no single face to seat. Both are correct as built; shifting
+    them would introduce the very error this fixes.
+
+    The shift is RECORDED on the object because the opto-mechanics builds every mount part from the
+    object origin, assuming the glass straddles it. Left unrecorded, the mount stays put while the
+    glass slides out of it -- measured as the KM retaining ring, the physical stop for the mirror
+    edge, floating 3.6 mm clear of the face it is meant to retain. ``_build_mount`` reads this and
+    follows the glass, so the optic/mount relationship is exactly what it was before seating."""
+    obj.data.transform(Matrix.Translation((0.0, 0.0, -face_z)))
+    obj["optic_seat_shift"] = float(face_z)
+
+
 def _set_matrix(obj, loc, rot3=None):
     """Place obj at loc (MILLIMETRES) with an optional 3x3 world rotation.
 
@@ -896,9 +922,11 @@ def mirror(name, loc, in_dir, out_dir, coll=None, size=25.0, mirror_curve='FLAT'
     n = (Vector(out_dir).normalized() - Vector(in_dir).normalized())
     n = n.normalized() if n.length > 1e-6 else Vector((0, 0, 1))
     if mirror_curve in ('CONCAVE', 'CONVEX'):
-        o = _revolve(name, _mirror_profile(size * 0.5, mirror_curve), coll,
-                     seg=_seg_for_aperture(size), smooth=True)
+        prof = _mirror_profile(size * 0.5, mirror_curve)
+        face_z = prof[0][1]     # apex (r=0): where the on-axis beam actually strikes, NOT the rim
+        o = _revolve(name, prof, coll, seg=_seg_for_aperture(size), smooth=True)
     else:
+        face_z = 3.0            # flat 6 mm substrate: the coated +Z face
         o = _disc(name, size * 0.5, 6.0, coll)    # Ø1" substrate, 6 mm thick; +Z = coated front face
         _bevel(o, 0.5, 2)
     o.data.materials.clear(); o.data.materials.append(MATS["mirror"]())
@@ -906,6 +934,11 @@ def mirror(name, loc, in_dir, out_dir, coll=None, size=25.0, mirror_curve='FLAT'
     _accent(o, "subglass", lambda c, nrm: nrm.z < 0.55)
     _tag(o, 'MIRROR', clear_aperture=size * 0.5, reflectivity=1.0,
          mirror_curve=mirror_curve, radius_curv=radius_curv)
+    # Seat the point the AXIAL ray hits onto the REFLECT plane. For a curved mirror that is the apex,
+    # not the rim: the mesh's spherical cap carries a fixed cosmetic sag (see _mirror_profile), so
+    # seating the rim would still turn the beam 2 mm off the surface it visibly strikes -- #25 again,
+    # smaller. Taken from the profile itself so the two cannot drift apart.
+    _seat_optical_face(o, face_z)
     _add_port(o, "IN", 'IN', (0, 0, 2.0), (0, 0, 1), size * 0.5)
     _add_port(o, "REFLECT", 'REFLECT', (0, 0, 0), (0, 0, 1), size * 0.5)
     _set_matrix(o, Vector(loc), _z_to(n))     # local +Z (face/REFLECT normal) -> bisector n
@@ -1796,6 +1829,7 @@ def dichroic(name, loc, in_dir, reflect_dir, coll=None, split=0.5, size=25.0,
     _accent(o, "coatdich", lambda c, nrm: nrm.z > 0.7)   # the wavelength-selective coated +Z face
     _tag(o, 'DICHROIC', split_ratio=split, clear_aperture=size * 0.5, reflectivity=1.0,
          pass_type=pass_type, cut_nm=cut_nm)
+    _seat_optical_face(o, 1.5)      # 3 mm plate: the coated +Z face is the optical surface
     _add_port(o, "IN", 'IN', (0, 0, 1.5), (0, 0, 1), size * 0.5)
     _add_port(o, "REFLECT", 'REFLECT', (0, 0, 0), (0, 0, 1), size * 0.5)
     _set_matrix(o, Vector(loc), _roll_upright(_z_to(n), n))   # square plate upright, not a diamond
@@ -1818,6 +1852,7 @@ def grating(name, loc, in_dir, out_dir, coll=None, size=25.0, lines_per_mm=1200.
     o.data.materials.clear(); o.data.materials.append(MATS["grating"]())
     _tag(o, 'GRATING', clear_aperture=size * 0.5, reflectivity=0.8,
          lines_per_mm=lines_per_mm, grating_order=order, grating_profile=grating_profile)
+    _seat_optical_face(o, 2.5)      # 5 mm plate: the ruled +Z face is the optical surface
     _add_port(o, "IN", 'IN', (0, 0, 2.5), (0, 0, 1), size * 0.5)
     _add_port(o, "REFLECT", 'REFLECT', (0, 0, 0), (0, 0, 1), size * 0.5)
     _set_matrix(o, Vector(loc), _roll_upright(_z_to(n), n))   # square upright + grooves vertical
