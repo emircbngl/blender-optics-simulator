@@ -1343,11 +1343,14 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             #
             # THIN-ELEMENT IDEALIZATION -- the internal path is deliberately NOT modelled (#30).
             # The beam turns on the REFLECT plane and the trihedral depth costs it nothing. A real
-            # corner cube instead runs in to the apex and back out, adding 2*d of geometric path
-            # (2*n*d in a solid cube). That term is EXACT, not approximate, and identical for every
-            # ray in the aperture -- the constant-path property corner cubes are used for. Verified
-            # by tracing three perpendicular mirrors: six entry points, total path 2d to within
-            # 1e-9, independent of entry point.
+            # corner cube instead runs in to the apex and back out, adding 2*d of geometric path.
+            # For a HOLLOW (mirror) cube that term is EXACT, not approximate, and identical for
+            # every ray in the aperture -- the constant-path property corner cubes are used for.
+            # Verified by tracing three perpendicular mirrors: six entry points, total path 2d to
+            # within 1e-9, independent of entry point.
+            # A SOLID glass cube is 2*n*d at NORMAL INCIDENCE ONLY, and that case is NOT verified
+            # here: the entrance face refracts, so off-normal the internal geometry is no longer a
+            # plain 2d scaled by n. Treat 2*n*d as the normal-incidence figure, not a general one.
             # It is omitted because the element carries NO depth parameter -- the mesh's apex is a
             # cosmetic proportion (_corner_cube uses size*0.6) and this tracer never reads the mesh,
             # so there is no physical depth here to charge for. Consequence to know: direction and

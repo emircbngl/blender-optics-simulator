@@ -25,10 +25,12 @@ semantic versioning.
 
 ### Documented — the corner cube is a thin-element idealization
 - **Retroreflector OPL** ([#30](https://github.com/emircbngl/blender-optics-simulator/issues/30)). The trace turns the beam on the REFLECT plane and charges nothing
-  for the trihedral depth. A real corner cube runs in to the apex and back, adding `2d` of path
-  (`2nd` solid) — a term that is *exact* and identical for every ray in the aperture, verified by
-  tracing three perpendicular mirrors (six entry points, `2d` to within 1e-9, independent of entry
-  point). It is omitted deliberately: the element carries no depth parameter, the mesh apex is a
+  for the trihedral depth. A real corner cube runs in to the apex and back, adding `2d` of path —
+  for a **hollow** cube a term that is *exact* and identical for every ray in the aperture, verified
+  by tracing three perpendicular mirrors (six entry points, `2d` to within 1e-9, independent of
+  entry point). A solid glass cube is `2nd` **at normal incidence only**, and that case is not
+  verified here: the entrance face refracts, so off-normal the internal path is not a plain `2d`
+  scaled by `n`. It is omitted deliberately: the element carries no depth parameter, the mesh apex is a
   cosmetic proportion, and the tracer never reads the mesh — so there is no physical depth to
   charge for. Direction and power are right; OPL is the thin-element value. In an interferometer
   the missing `2d` is a constant piston in that arm: it shifts fringe position without distorting
