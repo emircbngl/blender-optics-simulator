@@ -1340,6 +1340,23 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             # corner cube does not, so a specular model reports misalignment that does not
             # physically exist. Tier-1 polarization: ideal scalar reflectivity (a real cube
             # rotates polarization per sextant; out of scope for the chief-ray model).
+            #
+            # THIN-ELEMENT IDEALIZATION -- the internal path is deliberately NOT modelled (#30).
+            # The beam turns on the REFLECT plane and the trihedral depth costs it nothing. A real
+            # corner cube instead runs in to the apex and back out, adding 2*d of geometric path.
+            # For a HOLLOW (mirror) cube that term is EXACT, not approximate, and identical for
+            # every ray in the aperture -- the constant-path property corner cubes are used for.
+            # Verified by tracing three perpendicular mirrors: six entry points, total path 2d to
+            # within 1e-9, independent of entry point.
+            # A SOLID glass cube is 2*n*d at NORMAL INCIDENCE ONLY, and that case is NOT verified
+            # here: the entrance face refracts, so off-normal the internal geometry is no longer a
+            # plain 2d scaled by n. Treat 2*n*d as the normal-incidence figure, not a general one.
+            # It is omitted because the element carries NO depth parameter -- the mesh's apex is a
+            # cosmetic proportion (_corner_cube uses size*0.6) and this tracer never reads the mesh,
+            # so there is no physical depth here to charge for. Consequence to know: direction and
+            # power are right, but OPL through a retroreflector is the thin-element value. In an
+            # interferometer the missing 2*d is a constant piston in that arm -- it shifts fringe
+            # POSITION without distorting the wavefront. Model the standoff explicitly if it matters.
             nd = (-ray.dir).normalized()
             if ray.evec is not None:
                 a = math.sqrt(max(op.reflectivity, 0.0))

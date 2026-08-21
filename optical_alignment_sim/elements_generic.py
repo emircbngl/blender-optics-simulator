@@ -939,7 +939,12 @@ def mirror(name, loc, in_dir, out_dir, coll=None, size=25.0, mirror_curve='FLAT'
     # seating the rim would still turn the beam 2 mm off the surface it visibly strikes -- #25 again,
     # smaller. Taken from the profile itself so the two cannot drift apart.
     _seat_optical_face(o, face_z)
-    _add_port(o, "IN", 'IN', (0, 0, 2.0), (0, 0, 1), size * 0.5)
+    # IN sits ON the coated face, coincident with REFLECT: for a front-surface optic the beam
+    # enters exactly where it turns. The old standoff was the PRE-#25 face position, which stopped
+    # denoting anything once the glass was seated (#29). interaction_surface() takes the REFLECT
+    # plane for every REFLECTIVE element and falls back to IN only for transmissive ones, so this
+    # moves the auto-alignment AIM POINT onto the real reflection point and nothing else.
+    _add_port(o, "IN", 'IN', (0, 0, 0), (0, 0, 1), size * 0.5)
     _add_port(o, "REFLECT", 'REFLECT', (0, 0, 0), (0, 0, 1), size * 0.5)
     _set_matrix(o, Vector(loc), _z_to(n))     # local +Z (face/REFLECT normal) -> bisector n
     return o
@@ -1830,7 +1835,12 @@ def dichroic(name, loc, in_dir, reflect_dir, coll=None, split=0.5, size=25.0,
     _tag(o, 'DICHROIC', split_ratio=split, clear_aperture=size * 0.5, reflectivity=1.0,
          pass_type=pass_type, cut_nm=cut_nm)
     _seat_optical_face(o, 1.5)      # 3 mm plate: the coated +Z face is the optical surface
-    _add_port(o, "IN", 'IN', (0, 0, 1.5), (0, 0, 1), size * 0.5)
+    # IN sits ON the coated face, coincident with REFLECT: for a front-surface optic the beam
+    # enters exactly where it turns. The old standoff was the PRE-#25 face position, which stopped
+    # denoting anything once the glass was seated (#29). interaction_surface() takes the REFLECT
+    # plane for every REFLECTIVE element and falls back to IN only for transmissive ones, so this
+    # moves the auto-alignment AIM POINT onto the real reflection point and nothing else.
+    _add_port(o, "IN", 'IN', (0, 0, 0), (0, 0, 1), size * 0.5)
     _add_port(o, "REFLECT", 'REFLECT', (0, 0, 0), (0, 0, 1), size * 0.5)
     _set_matrix(o, Vector(loc), _roll_upright(_z_to(n), n))   # square plate upright, not a diamond
     return o
@@ -1853,7 +1863,12 @@ def grating(name, loc, in_dir, out_dir, coll=None, size=25.0, lines_per_mm=1200.
     _tag(o, 'GRATING', clear_aperture=size * 0.5, reflectivity=0.8,
          lines_per_mm=lines_per_mm, grating_order=order, grating_profile=grating_profile)
     _seat_optical_face(o, 2.5)      # 5 mm plate: the ruled +Z face is the optical surface
-    _add_port(o, "IN", 'IN', (0, 0, 2.5), (0, 0, 1), size * 0.5)
+    # IN sits ON the coated face, coincident with REFLECT: for a front-surface optic the beam
+    # enters exactly where it turns. The old standoff was the PRE-#25 face position, which stopped
+    # denoting anything once the glass was seated (#29). interaction_surface() takes the REFLECT
+    # plane for every REFLECTIVE element and falls back to IN only for transmissive ones, so this
+    # moves the auto-alignment AIM POINT onto the real reflection point and nothing else.
+    _add_port(o, "IN", 'IN', (0, 0, 0), (0, 0, 1), size * 0.5)
     _add_port(o, "REFLECT", 'REFLECT', (0, 0, 0), (0, 0, 1), size * 0.5)
     _set_matrix(o, Vector(loc), _roll_upright(_z_to(n), n))   # square upright + grooves vertical
     return o
@@ -1923,7 +1938,16 @@ def deformable_mirror(name, loc, in_dir, out_dir, coll=None, size=25.0, command=
     _join(o, housing)
     _tag(o, 'DEFORMABLE_MIRROR', clear_aperture=size * 0.5, reflectivity=1.0)
     o.optics.dm_command = _pad15(command)
-    _add_port(o, "IN", 'IN', (0, 0, 2.0), (0, 0, 1), size * 0.5)
+    # DEFORMABLE_MIRROR is in the tracer's REFLECTIVE tuple, so it folds the beam at its REFLECT
+    # plane like any mirror -- but #25 seated only mirror/dichroic/grating and missed it, leaving
+    # its face 2 mm proud and the beam turning inside the faceplate.
+    _seat_optical_face(o, 2.0)      # 4 mm faceplate over the actuator housing
+    # IN sits ON the coated face, coincident with REFLECT: for a front-surface optic the beam
+    # enters exactly where it turns. The old standoff was the PRE-#25 face position, which stopped
+    # denoting anything once the glass was seated (#29). interaction_surface() takes the REFLECT
+    # plane for every REFLECTIVE element and falls back to IN only for transmissive ones, so this
+    # moves the auto-alignment AIM POINT onto the real reflection point and nothing else.
+    _add_port(o, "IN", 'IN', (0, 0, 0), (0, 0, 1), size * 0.5)
     _add_port(o, "REFLECT", 'REFLECT', (0, 0, 0), (0, 0, 1), size * 0.5)
     _set_matrix(o, Vector(loc), _z_to(n))     # local +Z (REFLECT normal) -> bisector n
     return o
