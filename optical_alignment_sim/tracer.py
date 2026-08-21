@@ -1346,11 +1346,22 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             # corner cube instead runs in to the apex and back out, adding 2*d of geometric path.
             # For a HOLLOW (mirror) cube that term is EXACT, not approximate, and identical for
             # every ray in the aperture -- the constant-path property corner cubes are used for.
-            # Verified by tracing three perpendicular mirrors: six entry points, total path 2d to
-            # within 1e-9, independent of entry point.
-            # A SOLID glass cube is 2*n*d at NORMAL INCIDENCE ONLY, and that case is NOT verified
-            # here: the entrance face refracts, so off-normal the internal geometry is no longer a
-            # plain 2d scaled by n. Treat 2*n*d as the normal-incidence figure, not a general one.
+            # Verified by ray-tracing the actual trihedral -- apex at the origin, facets the three
+            # QUARTER-planes bounding one octant, so a hit only counts inside the facet: 3 incidence
+            # directions x 5 entry points, every ray touching all THREE facets (bounce orders zxy,
+            # xyz, xzy, yxz, zyx all occur), total path 2d to within 4e-15 and the exit exactly
+            # antiparallel. The path is independent of BOTH entry point and incidence angle within
+            # the acceptance cone -- the three reflections compose to a point inversion through the
+            # apex. (An earlier note here claimed this from a degenerate test: a ray sent along -Z
+            # at planes x=0/y=0/z=0 has no x or y velocity, so it can only ever reach z=0. It hit
+            # ONE facet and measured a single flat mirror at distance d, for which 2d is true by
+            # definition. The claim was right; that test could not establish it.)
+            # A SOLID glass cube is 2*n*d at NORMAL INCIDENCE ONLY -- measured, by tracing the same
+            # trihedral behind a flat entrance face with Snell refraction in and out (d=15 mm, n from
+            # this module's own sellmeier_n(633, 'N-BK7', 20) = 1.515082): at 0 deg the internal path
+            # is 2d exactly and the OPL is 2*n*d to 4e-15, then it GROWS with angle (+0.0754 mm at
+            # 5 deg, +1.2044 mm at 20 deg) while staying independent of entry point. So 2*n*d is the
+            # normal-incidence figure, not a general one.
             # It is omitted because the element carries NO depth parameter -- the mesh's apex is a
             # cosmetic proportion (_corner_cube uses size*0.6) and this tracer never reads the mesh,
             # so there is no physical depth here to charge for. Consequence to know: direction and
