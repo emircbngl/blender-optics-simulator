@@ -640,10 +640,22 @@ for _lbl, _mk in (("flat mirror",    lambda: eg.mirror("S_f", (0, 0, 0), (1, 0, 
                                                        mirror_curve='CONVEX', radius_curv=300.0)),
                   ("dichroic",       lambda: eg.dichroic("S_d", (0, 0, 0), (1, 0, 0), (0, 1, 0), coll=_mcoll)),
                   ("grating",        lambda: eg.grating("S_g", (0, 0, 0), (1, 0, 0), (0, 1, 0), coll=_mcoll,
-                                                        lines_per_mm=1200.0))):
-    _z = _axial_hit_z(_mk())
+                                                        lines_per_mm=1200.0)),
+                  # deformable mirror is in the tracer's REFLECTIVE tuple too -- #25 missed it
+                  ("deformable mirror", lambda: eg.deformable_mirror("S_dm", (0, 0, 0), (1, 0, 0), (0, 1, 0),
+                                                                     coll=_mcoll))):
+    _el = _mk()
+    _z = _axial_hit_z(_el)
     check("#25: %s turns the beam on its coated face (axial hit on the REFLECT plane)" % _lbl,
           _z is not None and abs(_z) < 1e-3, "axial hit z = %s" % ("miss" if _z is None else "%.3f" % _z))
+    # #29: the entry port must mark that same face -- a front-surface optic is entered where it turns
+    _pin = next((q for q in _el.optics.ports if q.role == 'IN'), None)
+    _prf = next((q for q in _el.optics.ports if q.role == 'REFLECT'), None)
+    check("#29: %s entry port sits on the coated face, not at a stale standoff" % _lbl,
+          _pin is not None and _prf is not None
+          and (_pin.local_position - _prf.local_position).length < 1e-6,
+          "IN %s vs REFLECT %s" % (None if not _pin else tuple(round(v, 3) for v in _pin.local_position),
+                                   None if not _prf else tuple(round(v, 3) for v in _prf.local_position)))
 
 # --- #25 follow-up: seating the glass must not leave the MOUNT behind -------------------------
 # The opto-mechanics lays every part out from the object origin assuming the substrate straddles it.

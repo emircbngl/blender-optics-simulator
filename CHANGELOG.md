@@ -6,6 +6,34 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Fixed — the entry port marks the face, and the deformable mirror gets seated too
+- **`IN` ports sit on the coated face** ([#29](https://github.com/emircbngl/blender-optics-simulator/issues/29)). #25 moved the glass and left the ports behind, and
+  two of those offsets had been chosen to *be* the face: dichroic `1.5`, grating `2.5`. They ended
+  up floating half a substrate-thickness in front of the glass, denoting nothing. They now coincide
+  with `REFLECT` — for a front-surface optic the beam enters exactly where it turns.
+  The trace is untouched (`interaction_surface()` takes the REFLECT plane for every `REFLECTIVE`
+  element and falls back to `IN` only for transmissive ones), but the auto-alignment **residual
+  reporting was wrong** and is now right: the aim point had been off the real interaction surface,
+  inflating errors that did not exist. On the bundled benches `GD_Dichroic`'s position error drops
+  from 1.2186 to 0.5999 mm and `GD_KTP`'s angular error from 0.4135° to 0.000007°, while the genuine
+  3.9725° misalignment of `MI_M_fixed` is reported unchanged — the phantom term went, the real one
+  stayed.
+- **The deformable mirror was missed by #25.** `DEFORMABLE_MIRROR` is in the tracer's `REFLECTIVE`
+  tuple and folds the beam at its REFLECT plane like any mirror, but only mirror/dichroic/grating
+  were seated. Its face stood 2 mm proud and the beam turned inside the faceplate. Now seated, and
+  the axial-hit guard covers every seated builder so the gap cannot reopen.
+
+### Documented — the corner cube is a thin-element idealization
+- **Retroreflector OPL** ([#30](https://github.com/emircbngl/blender-optics-simulator/issues/30)). The trace turns the beam on the REFLECT plane and charges nothing
+  for the trihedral depth. A real corner cube runs in to the apex and back, adding `2d` of path
+  (`2nd` solid) — a term that is *exact* and identical for every ray in the aperture, verified by
+  tracing three perpendicular mirrors (six entry points, `2d` to within 1e-9, independent of entry
+  point). It is omitted deliberately: the element carries no depth parameter, the mesh apex is a
+  cosmetic proportion, and the tracer never reads the mesh — so there is no physical depth to
+  charge for. Direction and power are right; OPL is the thin-element value. In an interferometer
+  the missing `2d` is a constant piston in that arm: it shifts fringe position without distorting
+  the wavefront. Now stated where a physicist would look, in the tracer branch itself.
+
 ### Fixed — the drawn beam folds on the coating, not inside the glass
 - **Reflective optics are seated on the plane they reflect from** ([#25](https://github.com/emircbngl/blender-optics-simulator/issues/25)). Every reflective builder
   modelled its substrate straddling the object origin, so the coated face stood proud of the
