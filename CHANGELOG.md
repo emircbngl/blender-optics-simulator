@@ -4,7 +4,7 @@ All notable changes to the **Blender Optics Simulator** (`optical_alignment_sim`
 here. The format follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 semantic versioning.
 
-## [Unreleased]
+## [0.29.1] — The beam turns on the coating, the mount follows the glass, and a verification that finally tested something — 2026-08-21
 
 ### Fixed — the entry port marks the face, and the deformable mirror gets seated too
 - **`IN` ports sit on the coated face** ([#29](https://github.com/emircbngl/blender-optics-simulator/issues/29)). #25 moved the glass and left the ports behind, and

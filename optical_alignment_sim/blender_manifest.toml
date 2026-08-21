@@ -1,7 +1,7 @@
 schema_version = "1.0.0"
 
 id = "optical_alignment_sim"
-version = "0.29.0"
+version = "0.29.1"
 name = "Optics Simulator"
 tagline = "Live ray tracing & auto-alignment for optical benches"
 maintainer = "Emir <emircbngl@gmail.com>"
