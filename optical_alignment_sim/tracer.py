@@ -1357,10 +1357,11 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             # ONE facet and measured a single flat mirror at distance d, for which 2d is true by
             # definition. The claim was right; that test could not establish it.)
             # A SOLID glass cube is 2*n*d at NORMAL INCIDENCE ONLY -- measured, by tracing the same
-            # trihedral behind a flat entrance face with Snell refraction in and out (n=1.5145,
-            # d=15): at 0 deg the internal path is 2d exactly and the OPL is 2*n*d to 4e-15, and it
-            # then GROWS with angle (+0.075 mm at 5 deg, +1.205 mm at 20 deg) while staying
-            # independent of entry point. So 2*n*d is the normal-incidence figure, not a general one.
+            # trihedral behind a flat entrance face with Snell refraction in and out (d=15 mm, n from
+            # this module's own sellmeier_n(633, 'N-BK7', 20) = 1.515082): at 0 deg the internal path
+            # is 2d exactly and the OPL is 2*n*d to 4e-15, then it GROWS with angle (+0.0754 mm at
+            # 5 deg, +1.2044 mm at 20 deg) while staying independent of entry point. So 2*n*d is the
+            # normal-incidence figure, not a general one.
             # It is omitted because the element carries NO depth parameter -- the mesh's apex is a
             # cosmetic proportion (_corner_cube uses size*0.6) and this tracer never reads the mesh,
             # so there is no physical depth here to charge for. Consequence to know: direction and

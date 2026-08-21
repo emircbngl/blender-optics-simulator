@@ -32,7 +32,8 @@ semantic versioning.
   exit exactly antiparallel. The path is independent of **both** entry point and incidence angle
   within the acceptance cone, the three reflections composing to a point inversion through the apex. A solid glass cube is `2nd` **at normal incidence only** — also measured, by tracing
   the same trihedral behind a refracting entrance face: exact at 0°, then growing with angle
-  (+0.075 mm at 5°, +1.205 mm at 20° for n=1.5145, d=15 mm) while staying entry-point independent. It is omitted deliberately: the element carries no depth parameter, the mesh apex is a
+  (+0.0754 mm at 5°, +1.2044 mm at 20°, for d=15 mm and `n` taken from the module's own
+  `sellmeier_n(633, 'N-BK7', 20)` = 1.515082) while staying entry-point independent. It is omitted deliberately: the element carries no depth parameter, the mesh apex is a
   cosmetic proportion, and the tracer never reads the mesh — so there is no physical depth to
   charge for. Direction and power are right; OPL is the thin-element value. In an interferometer
   the missing `2d` is a constant piston in that arm: it shifts fringe position without distorting
