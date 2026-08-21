@@ -7,7 +7,7 @@
    "id": "optical_alignment_sim",
    "name": "Optics Simulator",
    "tagline": "Live ray tracing & auto-alignment for optical benches",
-   "version": "0.29.0",
+   "version": "0.29.1",
    "type": "add-on",
    "maintainer": "Emir <emircbngl@gmail.com>",
    "license": [
@@ -22,9 +22,9 @@
    "tags": [
     "Render"
    ],
-   "archive_url": "https://github.com/emircbngl/blender-optics-simulator/releases/download/v0.29.0/optical_alignment_sim-0.29.0.zip",
-   "archive_size": 457964,
-   "archive_hash": "sha256:d1e1f8a505ccd31e8274f44091e812017fdc9451cd12e0470a9685c322a16878"
+   "archive_url": "https://github.com/emircbngl/blender-optics-simulator/releases/download/v0.29.1/optical_alignment_sim-0.29.1.zip",
+   "archive_size": 459381,
+   "archive_hash": "sha256:8eb1387f46f5f4d4dfe7268abce6d156098f41a9bfe627b778a6e4fa739fa86e"
   }
  ]
 }
