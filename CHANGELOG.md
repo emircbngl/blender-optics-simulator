@@ -30,9 +30,9 @@ semantic versioning.
   by ray-tracing the actual trihedral — facets as quarter-planes bounding one octant, 3 incidence
   directions × 5 entry points, every ray touching all three facets, `2d` to within 4e-15 with the
   exit exactly antiparallel. The path is independent of **both** entry point and incidence angle
-  within the acceptance cone, the three reflections composing to a point inversion through the apex. A solid glass cube is `2nd` **at normal incidence only**, and that case is not
-  verified here: the entrance face refracts, so off-normal the internal path is not a plain `2d`
-  scaled by `n`. It is omitted deliberately: the element carries no depth parameter, the mesh apex is a
+  within the acceptance cone, the three reflections composing to a point inversion through the apex. A solid glass cube is `2nd` **at normal incidence only** — also measured, by tracing
+  the same trihedral behind a refracting entrance face: exact at 0°, then growing with angle
+  (+0.075 mm at 5°, +1.205 mm at 20° for n=1.5145, d=15 mm) while staying entry-point independent. It is omitted deliberately: the element carries no depth parameter, the mesh apex is a
   cosmetic proportion, and the tracer never reads the mesh — so there is no physical depth to
   charge for. Direction and power are right; OPL is the thin-element value. In an interferometer
   the missing `2d` is a constant piston in that arm: it shifts fringe position without distorting
