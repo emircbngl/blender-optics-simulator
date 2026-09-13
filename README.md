@@ -780,4 +780,20 @@ resolves to the latest version. Each release also mints its own version DOI (see
 property of their respective owners; this project ships only original metadata, procedural geometry,
 and tooling.
 
+### Contributors
+
+- **Tengfei Ma** — ShanghaiTech University ·
+  [ORCID 0009-0008-4556-4682](https://orcid.org/0009-0008-4556-4682) ·
+  [@Harca-Yita](https://github.com/Harca-Yita). Reports from a working optical bench in
+  [#1](https://github.com/emircbngl/blender-optics-simulator/issues/1) led to wavelength-true beam
+  colours and the shutter element ([#2](https://github.com/emircbngl/blender-optics-simulator/pull/2),
+  [#3](https://github.com/emircbngl/blender-optics-simulator/pull/3)), the unit-scale work
+  ([#9](https://github.com/emircbngl/blender-optics-simulator/issues/9),
+  [#18](https://github.com/emircbngl/blender-optics-simulator/issues/18)), shaped apertures
+  ([#10](https://github.com/emircbngl/blender-optics-simulator/issues/10)), the *Beams to Mesh* fix
+  ([#26](https://github.com/emircbngl/blender-optics-simulator/pull/26)), and reflection at the coated
+  mirror face ([#25](https://github.com/emircbngl/blender-optics-simulator/issues/25),
+  [#29](https://github.com/emircbngl/blender-optics-simulator/issues/29),
+  [#30](https://github.com/emircbngl/blender-optics-simulator/issues/30)).
+
 Built in the spirit of Bigweld's maxim from *Robots* (2005) — **"See a need, fill a need."**
