@@ -209,6 +209,10 @@ def _seg(ray, p2, to_obj, sn=None):
         ev = ray.evec
         j = (ev[0] * e1[0] + ev[1] * e1[1] + ev[2] * e1[2],
              ev[0] * e2[0] + ev[1] * e2[1] + ev[2] * e2[2])
+        # The projection is for a common frame only: a beam arriving obliquely would otherwise lose the
+        # field component along sn, and the detector (which reads |J|^2) would under-read power it
+        # intercepts in full. Keep the projected polarization, restore the beam's power.
+        j = _jones_at_power(j, ray.power)
     qd = physics.q_propagate(ray.q, physics.abcd_free(seg_len)) if ray.q is not None else None
     return {
         "p1": ray.p1 / _mmpu, "p2": p2 / _mmpu, "kind": ray.kind,
@@ -230,6 +234,18 @@ def _aberr_combine(base, vec, sign):
     for i in range(min(len(out), len(vec))):
         out[i] = out[i] + sign * vec[i]
     return out
+
+
+def _jones_at_power(J, power):
+    """J rescaled so |J|^2 == power. A detector reads power from the Jones vector (alignment.measure), so a
+    child whose `power` was scaled by an efficiency or a Fresnel loss must carry an amplitude to match --
+    otherwise it reads the parent's full power. The polarization state (ratio and phase) is unchanged."""
+    if J is None:
+        return None
+    norm = physics.intensity(J)
+    if norm <= 0.0:
+        return J
+    return physics.scale(J, math.sqrt(max(power, 0.0) / norm))
 
 
 def _child(ray, E, H, d, power, kind, idx, t, jones=None, q=None, evec=None, aberr=None, wl=None):
@@ -985,7 +1001,7 @@ def _prism_exit_ray(glass_ray, E, He, d_out, opl_exit, power, parent_idx):
     """Continuation ray leaving a prism's exit face at He along d_out, carrying the accumulated optical path
     (opl_exit, already including the glass n*L legs) and the propagated Gaussian q. Polarization is rebuilt
     on the new direction. from_obj = E so the ray won't immediately re-hit the prism it just left."""
-    nj = glass_ray.jones
+    nj = _jones_at_power(glass_ray.jones, power)     # `power` carries the exit Fresnel loss; the amplitude must too
     nev = physics.field_from_jones(nj, d_out) if nj is not None else None
     return _Ray(He, d_out, power, glass_ray.depth + 1, E, glass_ray.wl, 'TRANSMIT', parent_idx,
                 jones=nj, opl=opl_exit, q=glass_ray.q, src_id=glass_ray.src_id, coh=glass_ray.coh,
@@ -1217,18 +1233,18 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 hj = (physics.jones_linear(90.0) if (pmt in ('TYPE1', 'TYPE2') and ray.jones)
                       else ray.jones)
                 stack.append(_child(ray, E, H, ray.dir, ray.power * (1.0 - eff), 'TRANSMIT', idx, t,
-                                    jones=ray.jones))       # residual unconverted pump
+                                    jones=_jones_at_power(ray.jones, ray.power * (1.0 - eff))))  # residual pump
                 stack.append(_child(ray, E, _emit_pt(woff), ray.dir, ray.power * eff, proc, idx, t,
-                                    jones=hj, q=_q_at(wco), wl=wco))
+                                    jones=_jones_at_power(hj, ray.power * eff), q=_q_at(wco), wl=wco))
             elif proc in ('SFG', 'DFG'):
                 wco = physics.nl_child_wavelength(proc, ray.wl, l2)
                 if wco is not None:
                     hj = (physics.jones_linear(90.0) if (pmt in ('TYPE1', 'TYPE2') and ray.jones)
                           else ray.jones)
                     stack.append(_child(ray, E, H, ray.dir, ray.power * (1.0 - eff), 'TRANSMIT', idx, t,
-                                        jones=ray.jones))   # residual unconverted pump
+                                        jones=_jones_at_power(ray.jones, ray.power * (1.0 - eff))))  # residual pump
                     stack.append(_child(ray, E, _emit_pt(woff), ray.dir, ray.power * eff, proc, idx, t,
-                                        jones=hj, q=_q_at(wco), wl=wco))
+                                        jones=_jones_at_power(hj, ray.power * eff), q=_q_at(wco), wl=wco))
                 else:
                     continue                                 # no physical child -> pump dumped
             elif proc == 'OPO':
@@ -1241,11 +1257,11 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                     js = physics.jones_linear(0.0) if ray.jones else None
                     ji = physics.jones_linear(90.0 if pmt == 'TYPE2' else 0.0) if ray.jones else None
                     stack.append(_child(ray, E, H, ray.dir, ray.power * (1.0 - eff), 'TRANSMIT', idx, t,
-                                        jones=ray.jones))   # residual unconverted pump
+                                        jones=_jones_at_power(ray.jones, ray.power * (1.0 - eff))))  # residual pump
                     stack.append(_child(ray, E, _emit_pt(0.0), ray.dir, ray.power * eff * 0.5, 'SIGNAL',
-                                        idx, t, jones=js, q=_q_at(wsig), wl=wsig))
+                                        idx, t, jones=_jones_at_power(js, ray.power * eff * 0.5), q=_q_at(wsig), wl=wsig))
                     stack.append(_child(ray, E, _emit_pt(woff), ray.dir, ray.power * eff * 0.5, 'IDLER',
-                                        idx, t, jones=ji, q=_q_at(widl), wl=widl))
+                                        idx, t, jones=_jones_at_power(ji, ray.power * eff * 0.5), q=_q_at(widl), wl=widl))
                 else:
                     continue
             elif proc == 'SPDC':
@@ -1255,11 +1271,11 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 js = physics.jones_linear(0.0) if ray.jones else ray.jones
                 ji = physics.jones_linear(90.0 if pmt == 'TYPE2' else 0.0) if ray.jones else ray.jones
                 stack.append(_child(ray, E, H, ray.dir, ray.power * (1.0 - eff), 'TRANSMIT', idx, t,
-                                    jones=ray.jones))       # residual unconverted pump
+                                    jones=_jones_at_power(ray.jones, ray.power * (1.0 - eff))))  # residual pump
                 stack.append(_child(ray, E, H, ray.dir, ray.power * eff * 0.5, 'SIGNAL', idx, t,
-                                    jones=js, q=q_conv, wl=wco))
+                                    jones=_jones_at_power(js, ray.power * eff * 0.5), q=q_conv, wl=wco))
                 stack.append(_child(ray, E, _emit_pt(woff), ray.dir, ray.power * eff * 0.5, 'IDLER', idx, t,
-                                    jones=ji, q=q_conv, wl=wco))
+                                    jones=_jones_at_power(ji, ray.power * eff * 0.5), q=q_conv, wl=wco))
             continue                                         # NONE / unhandled: pump dumped
 
         if et == 'CIRCULATOR':
@@ -1629,10 +1645,11 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             ex_n = Vector(exit_n)
 
             # --- entry-refracted in-glass ray ---
+            j_glass = _jones_at_power(ray.jones, ray.power * T_in)      # the entry Fresnel loss, in the amplitude too
             glass_ray = _Ray(H, d_glass, ray.power * T_in, ray.depth + 1, E, ray.wl, 'GLASS', idx,
-                             jones=ray.jones, opl=ray.opl + t, q=(physics.q_propagate(ray.q, physics.abcd_free(t))
+                             jones=j_glass, opl=ray.opl + t, q=(physics.q_propagate(ray.q, physics.abcd_free(t))
                              if ray.q is not None else None), src_id=ray.src_id, coh=ray.coh,
-                             evec=(physics.field_from_jones(ray.jones, d_glass) if ray.jones else None), m2=ray.m2)
+                             evec=(physics.field_from_jones(j_glass, d_glass) if j_glass else None), m2=ray.m2)
 
             ptype = getattr(op, 'prism_type', 'EQUILATERAL')
             if ptype == 'PELLIN_BROCA':
@@ -1652,7 +1669,7 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 segments.append(gseg)
                 d_fold = geometry.reflect(glass_ray.dir, tir_n)    # internal total reflection (the 90 deg fold)
                 fold_ray = _Ray(Hb, d_fold, glass_ray.power, glass_ray.depth + 1, E, ray.wl, 'GLASS', idx,
-                                jones=ray.jones, opl=opl_b, q=glass_ray.q, src_id=ray.src_id, coh=ray.coh,
+                                jones=glass_ray.jones, opl=opl_b, q=glass_ray.q, src_id=ray.src_id, coh=ray.coh,
                                 evec=glass_ray.evec, m2=ray.m2)
                 he = _ray_plane(fold_ray.p1, fold_ray.dir, exit_pt, ex_n)
                 He = he[0] if he is not None else (fold_ray.p1 + fold_ray.dir * 1.0)
@@ -1677,7 +1694,7 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 segments.append(gseg)
                 d_refl = geometry.reflect(glass_ray.dir, ex_n)     # coated back-reflection
                 refl_ray = _Ray(He, d_refl, glass_ray.power, glass_ray.depth + 1, E, ray.wl, 'GLASS', idx,
-                                jones=ray.jones, opl=opl_e, q=glass_ray.q, src_id=ray.src_id, coh=ray.coh,
+                                jones=glass_ray.jones, opl=opl_e, q=glass_ray.q, src_id=ray.src_id, coh=ray.coh,
                                 evec=glass_ray.evec, m2=ray.m2)
                 hx = _ray_plane(refl_ray.p1, refl_ray.dir, pin[0], Vector(pin[1]))
                 if hx is None:
@@ -1714,7 +1731,7 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 if d_flint is None:
                     continue
                 flint_ray = _Ray(Hc, Vector(d_flint), glass_ray.power, glass_ray.depth + 1, E, ray.wl, 'GLASS',
-                                 idx, jones=ray.jones, opl=opl_c, q=glass_ray.q, src_id=ray.src_id,
+                                 idx, jones=glass_ray.jones, opl=opl_c, q=glass_ray.q, src_id=ray.src_id,
                                  coh=ray.coh, evec=glass_ray.evec, m2=ray.m2)
                 he = _ray_plane(flint_ray.p1, flint_ray.dir, exit_pt, ex_n)
                 He = he[0] if he is not None else (flint_ray.p1 + flint_ray.dir * 1.0)
