@@ -129,6 +129,12 @@ class OPTICS_PT_element(_OpticsPanel, Panel):
         row = col.row(align=True)
         row.operator("optics.tag_element", text="Tag Element", icon='CHECKMARK')
         row.operator("optics.auto_detect_ports", text="Detect Ports", icon='FILE_REFRESH')
+        if props.element_type in ('MIRROR', 'DICHROIC', 'GRATING', 'DEFORMABLE_MIRROR'):
+            # where the beam turns decides the path length; a guessed coated face must be easy to correct
+            frow = col.row(align=True)
+            frow.operator("optics.pick_port_from_face", text="Reflect Face", icon='MOD_MIRROR').role = 'REFLECT'
+            if obj.get("optics_reflect_autoplaced"):
+                col.label(text="Coated face guessed (largest flat +Z face) — confirm with Reflect Face", icon='ERROR')
         col.operator("optics.normalize_import", text="Normalize Import", icon='MOD_MESHDEFORM')
         if not _advanced_enabled():
             return
