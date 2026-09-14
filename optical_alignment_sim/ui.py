@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import textwrap
 import bpy
 from bpy.types import Panel, UIList
 
@@ -32,6 +33,12 @@ def _advanced_enabled():
     from .prefs import get_prefs
     prefs = get_prefs()
     return bool(prefs and prefs.show_advanced)
+
+
+# A proposal can name a perfectly valid MCP/API tool without having a matching modal Blender
+# operator. Do not render a clickable Fix button for those records: the old UI let the user click
+# through to "No interactive operator" and made an advisory look like an action.
+_INTERACTIVE_FIX_TOOLS = frozenset(('align_element', 'auto_align', 'place_relative'))
 
 
 class OPTICS_UL_ports(UIList):
@@ -115,13 +122,20 @@ class OPTICS_PT_element(_OpticsPanel, Panel):
         col = layout.column()
         col.enabled = props.is_optical
         col.prop(props, "element_type")
-        col.prop(props, "focal_length")
-        col.prop(props, "split_ratio")
-        col.prop(props, "reflectivity")
-        col.prop(props, "clear_aperture")
-        col.prop(props, "wavelength")
-        col.prop(props, "waist_um")
-        col.prop(props, "pol_angle")
+        et = props.element_type
+        col.use_property_split = True
+        col.use_property_decorate = False
+        col.prop(props, "clear_aperture", text="Clear Radius (mm)")
+        if et in ('SOURCE', 'FIBER_COLLIMATOR'):
+            col.prop(props, "wavelength")
+            col.prop(props, "waist_um")
+            col.prop(props, "pol_angle")
+        if et == 'LENS':
+            col.prop(props, "focal_length")
+        if et == 'BEAMSPLITTER':
+            col.prop(props, "split_ratio")
+        if et in ('MIRROR', 'PRISM_MIRROR', 'DEFORMABLE_MIRROR', 'RETROREFLECTOR', 'CAVITY'):
+            col.prop(props, "reflectivity")
         col.prop(props, "mount_type")
         for dof in props.dofs:
             unit = "deg" if dof.kind in ('TIP', 'TILT', 'ROT') else "mm"
@@ -136,27 +150,8 @@ class OPTICS_PT_element(_OpticsPanel, Panel):
             if obj.get("optics_reflect_autoplaced"):
                 col.label(text="Coated face guessed (largest flat +Z face) — confirm with Reflect Face", icon='ERROR')
         col.operator("optics.normalize_import", text="Normalize Import", icon='MOD_MESHDEFORM')
-        if not _advanced_enabled():
-            return
-
-        box = col.box()
-        box.label(text="Ports", icon='EMPTY_ARROWS')
-        box.template_list("OPTICS_UL_ports", "", props, "ports", props, "ports_index", rows=3)
-        prow = box.row(align=True)
-        op = prow.operator("optics.pick_port_from_face", text="IN Face"); op.role = 'IN'
-        op = prow.operator("optics.pick_port_from_face", text="OUT Face"); op.role = 'OUT'
-        op = prow.operator("optics.pick_port_from_face", text="Reflect Face"); op.role = 'REFLECT'
-        if 0 <= props.ports_index < len(props.ports):
-            port = props.ports[props.ports_index]
-            pc = box.column(align=True)
-            pc.prop(port, "name")
-            pc.prop(port, "role")
-            pc.prop(port, "local_position", text="Local Position (mm)")
-            pc.prop(port, "local_normal")
-            pc.prop(port, "clear_aperture", text="Clear Aperture (mm)")
-
         pcol = col.column(align=True)
-        pcol.label(text="Advanced Parameters")
+        pcol.label(text="Optical Settings")
         et = props.element_type
         if et == 'LENS':
             pcol.prop(props, "lens_type")
@@ -201,7 +196,13 @@ class OPTICS_PT_element(_OpticsPanel, Panel):
                 pcol.prop(props, "crystal_material"); pcol.prop(props, "crystal_length_mm"); pcol.prop(props, "crystal_temp_C")
                 if props.nl_process in ('SFG', 'DFG', 'OPO'): pcol.prop(props, "nl_lambda2_nm")
                 if props.crystal_material == 'PPLN': pcol.prop(props, "poling_period_um")
-                pcol.prop(props, "nl_efficiency")
+                pcol.prop(props, "phase_matching_type")
+                pcol.prop(props, "pm_scheme")
+                pcol.prop(props, "use_chi2_solver")
+                if props.use_chi2_solver:
+                    pcol.prop(props, "nl_pump_power_W")
+                else:
+                    pcol.prop(props, "nl_efficiency")
         elif et == 'OBJECTIVE':
             pcol.prop(props, "obj_correction"); pcol.prop(props, "obj_mag")
             pcol.prop(props, "obj_na"); pcol.prop(props, "obj_wd"); pcol.prop(props, "obj_long_wd")
@@ -248,6 +249,25 @@ class OPTICS_PT_element(_OpticsPanel, Panel):
             zrow = ibx.row(align=True)
             zrow.prop(props, "imprint_zonal_px", text="Zonal Pixels")
             zrow.operator("optics.wfs_zonal_render", text="Sensor Render", icon='IMAGE_BACKGROUND')
+        if not _advanced_enabled():
+            return
+
+        box = col.box()
+        box.label(text="Ports", icon='EMPTY_ARROWS')
+        box.template_list("OPTICS_UL_ports", "", props, "ports", props, "ports_index", rows=3)
+        prow = box.row(align=True)
+        op = prow.operator("optics.pick_port_from_face", text="IN Face"); op.role = 'IN'
+        op = prow.operator("optics.pick_port_from_face", text="OUT Face"); op.role = 'OUT'
+        op = prow.operator("optics.pick_port_from_face", text="Reflect Face"); op.role = 'REFLECT'
+        if 0 <= props.ports_index < len(props.ports):
+            port = props.ports[props.ports_index]
+            pc = box.column(align=True)
+            pc.prop(port, "name")
+            pc.prop(port, "role")
+            pc.prop(port, "local_position", text="Local Position (mm)")
+            pc.prop(port, "local_normal")
+            pc.prop(port, "clear_aperture", text="Clear Aperture (mm)")
+
         pcol.prop(props, "ar_coated")
         if props.ar_coated:
             pcol.prop(props, "ar_reflectance")
@@ -346,6 +366,7 @@ class OPTICS_PT_mount(_OpticsPanel, Panel):
         row = body.row(align=True)
         row.operator("optics.capture_base_pose", text="Capture Base Pose", icon='EMPTY_AXIS')
         row.operator("optics.zero_dofs", text="Zero DOFs", icon='LOOP_BACK')
+        body.label(text="After moving by hand: Capture Base Pose", icon='INFO')
         box = body.box(); hdr = box.row(align=True)
         hdr.label(text="Adjustment DOFs (knobs)", icon='CON_ROTLIKE')
         hdr.operator("optics.define_dof", text="Add DOF", icon='ADD')
@@ -410,7 +431,7 @@ class OPTICS_PT_trace_settings(_OpticsPanel, Panel):
         from . import geometry
         layout = self.layout; props = context.scene.optics
         layout.prop(props, "trace_mode")
-        if props.trace_mode == 'ORDER' and _advanced_enabled(): layout.prop(props, "order_csv")
+        if props.trace_mode == 'ORDER': layout.prop(props, "order_csv")
         if _advanced_enabled():
             col = layout.column(align=True)
             col.prop(props, "line_width")
@@ -514,10 +535,15 @@ class OPTICS_PT_corrections(_OpticsPanel, Panel):
         for index, item in enumerate(wm.optics_diagnosis_cache):
             if not item.suggested_fix:
                 continue
-            row = col.row(align=True)
-            row.label(text=item.suggested_fix,
-                      icon='CANCEL' if item.severity == 'BAD' else 'ERROR')
-            row.operator("optics.fix_diagnosis", text="Fix…").index = index
+            box = col.box()
+            box.label(text=item.element or "Bench", icon='CANCEL' if item.severity == 'BAD' else 'ERROR')
+            width = max(18, int(getattr(getattr(context, 'region', None), 'width', 320) / 8) - 6)
+            for line in textwrap.wrap(item.suggested_fix, width=width):
+                box.label(text=line)
+            if item.tool in _INTERACTIVE_FIX_TOOLS:
+                box.operator("optics.fix_diagnosis", text="Review and Fix…").index = index
+            else:
+                box.operator("optics.fix_diagnosis", text="Select Element…", icon='RESTRICT_SELECT_OFF').index = index
         if len(wm.optics_diagnosis_cache) and not fresh:
             layout.label(text="Scene changed — re-run Diagnose", icon='ERROR')
 

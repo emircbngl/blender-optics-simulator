@@ -3,7 +3,7 @@
 
 It wraps the add-on's ``optics_api`` over the localhost socket bridge shipped in the
 add-on (``optical_alignment_sim/bridge.py``). Start the bridge inside the running
-Blender — **Optics ▸ Simulation ▸ Start MCP Bridge** (or enable *Auto-start bridge* in
+Blender — **Optics ▸ Present ▸ Tools & Integration ▸ Start MCP Bridge** (or enable *Auto-start bridge* in
 the add-on preferences) — then run this server from your MCP client.
 
 Each tool opens a short-lived TCP connection to ``127.0.0.1:<port>``, sends one JSON
@@ -56,7 +56,7 @@ def _call(fn, _wait=60.0, **args):
         return json.loads(buf.decode("utf-8").strip())
     except ConnectionRefusedError:
         return {"ok": False, "error": "bridge not reachable at %s:%d - start it in Blender "
-                "(Optics > Simulation > Start MCP Bridge)" % (HOST, PORT)}
+                "(Optics > Present > Tools & Integration > Start MCP Bridge)" % (HOST, PORT)}
     except Exception as e:
         return {"ok": False, "error": "%s: %s" % (type(e).__name__, e)}
 

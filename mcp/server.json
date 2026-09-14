@@ -19,7 +19,7 @@
       "environmentVariables": [
         {
           "name": "OPTICS_BRIDGE_PORT",
-          "description": "TCP port of the add-on's localhost bridge inside Blender (Optics > Simulation > Start MCP Bridge).",
+          "description": "TCP port of the add-on's localhost bridge inside Blender (Optics > Present > Tools & Integration > Start MCP Bridge).",
           "isRequired": false,
           "default": "9765"
         },

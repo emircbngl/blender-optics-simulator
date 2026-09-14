@@ -18,7 +18,7 @@ MCP client  ──stdio──▶  optics_mcp_server.py  ──TCP 127.0.0.1:9765
 
 ## 1. Start the bridge in Blender
 
-In the running Blender: **View3D ▸ Sidebar (N) ▸ Optics ▸ Simulation ▸ Start MCP Bridge**.
+In the running Blender: **View3D ▸ Sidebar (N) ▸ Optics ▸ Present ▸ Tools & Integration ▸ Start MCP Bridge**.
 The status line shows `MCP bridge: 127.0.0.1:9765 (live)`. (Or tick *Auto-start bridge* in
 the add-on preferences to start it on load. Change the port there if 9765 is taken.)
 

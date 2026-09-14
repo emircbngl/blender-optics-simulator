@@ -42,9 +42,10 @@ Low `fault_confidence` (e.g. `crossed_polarizer` ~0.3) → lean toward refuse/co
 don't silently "improve" the bench. This is the physics-honesty-gate pattern applied to bench corrections.
 
 ## Physics honesty
-Every shipped formula in this plugin is verified against the physicist oracle. When you state a result, it is
-backed by `physics_verify`-checked math — but **you** should still inspect outputs and report uncertainty
-honestly. The LIVE bench is a GEOMETRIC single-ray tracer with analytic Gaussian/Zernike/Fresnel overlays;
+The repository includes analytic validation and scene regression tests, with historical oracle checks
+for selected formulas. These do not certify every model or parameter combination. Inspect the current
+outputs, consult the audit's open findings, and report uncertainty. The LIVE bench is a GEOMETRIC
+single-ray tracer with analytic Gaussian/Zernike/Fresnel overlays;
 diffraction, sampled-field propagation, speckle, turbulence, pulses and photon transport live in the
 **opt-in, off-trace analysis layer** (the group below) — on-demand calculators that never touch the live
 trace. Full-wave Maxwell (FDTD/RCWA), vectorial high-NA focusing and many-mode quantum states remain out of
@@ -99,4 +100,4 @@ Every tool follows these — rely on them, and keep them if you add a tool:
 ## Connection
 The MCP server (`mcp/optics_mcp_server.py`) talks to a localhost socket bridge the Blender add-on opens on
 **127.0.0.1:9765**. Requirements: Blender running, the add-on enabled, and **View3D ▸ Sidebar ▸ Optics ▸
-Simulation ▸ Start MCP Bridge**. Each call is one JSON request `{"fn": <name>, "args": {…}}`.
+Present ▸ Tools & Integration ▸ Start MCP Bridge**. Each call is one JSON request `{"fn": <name>, "args": {…}}`.

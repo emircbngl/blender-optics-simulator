@@ -5,11 +5,11 @@ The canonical map of the plugin's surface. For an AI driving it over MCP, call `
 
 Architecture: a **geometric single-ray tracer + analytic overlays**, **property-driven** (each element carries
 optics properties; the generic tracer applies the physics — change a property, behaviour changes, no per-scene
-code). Every shipped formula is verified against the physicist oracle. Regression: 318 headless checks.
+code). Every shipped formula is covered by the repository's physics and Blender regression suites.
 
 ---
 
-## 1. MCP tools / `optics_api` surface (~42, grouped)
+## 1. MCP tools / `optics_api` surface (grouped)
 *All are remote-callable over the localhost bridge (127.0.0.1:9765) and 1:1 with `optics_api` public functions
 (a parity test enforces it). `capabilities()` returns the live grouping.*
 
@@ -33,11 +33,13 @@ code). Every shipped formula is verified against the physicist oracle. Regressio
   `zonal_render`.
 - **Render / export:** `render`, `render_sequence`, `export_svg`.
 
-## 2. Blender UI (the human counterpart) — ~60 operators, 9 panels
+## 2. Blender UI (the human counterpart)
 Operators mirror the MCP tools (tag/ports, mount/DOFs, trace, build_example, swap_part, place_relative,
 align_*, scan, fringe_image, power_budget, beam_profile, ao_close_loop, wfs_zonal_render, render_*, export_svg,
-bridge_toggle, …). Panels: Element, Mount & Adjustment, Simulation, Alignment Report, Render, Library,
-Assembly, Adaptive Optics, Examples.
+bridge_toggle, …). The top-level View3D sidebar flow is **Setup** (Element, Library), **Place** (parts,
+relative placement, anchoring), **Simulate** (trace, measurements, adaptive optics), **Inspect** (diagnostics,
+corrections, optical report), and **Present** (render, sequence, export, **Tools & Integration** for the MCP
+bridge).
 
 ## 3. Element types (34) — `properties.py` `element_type`
 - **Sources:** SOURCE, FIBER_COLLIMATOR.

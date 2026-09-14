@@ -334,7 +334,8 @@ def build_green_doubler(context):
     canonical SHG demo -- IR in, green out of the slab. Renders as a green beam leaving the crystal."""
     coll = G.example_collection("OpticsExample_GreenDoubler")
     X = Vector((1, 0, 0))
-    G.source("GD_Pump", (-200, 0, 0), X, coll, wavelength=1064.0)
+    pump = G.source("GD_Pump", (-200, 0, 0), X, coll, wavelength=1064.0)
+    pump.optics.pol_angle = 45.0  # Type-II requires both ordinary and extraordinary components.
     # KTP, Type-II critical phase matching at its phase-matched temperature (sinc^2=1 -> full eff)
     G.crystal("GD_KTP", (0, 0, 0), X, coll, size=16.0, nl_process='SHG',
               crystal_material='KTP', phase_matching_type='TYPE2', pm_scheme='CRITICAL',

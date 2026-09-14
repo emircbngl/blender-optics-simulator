@@ -108,6 +108,8 @@ def measure(segs, name, analyzer='NONE', incoming=None):
     M = physics.analyzer_matrix(analyzer)
     groups = {}
     for s in incoming:
+        # The tracer carries nonlinear mode identity in src_id through subsequent optics.
+        # Segment kind is a local interaction label, not a coherence group.
         groups.setdefault(s.get("src_id", -1), []).append(s)
     total, vis, strongest, best = 0.0, -1.0, None, -1.0
     for group in groups.values():
@@ -171,19 +173,30 @@ def _detector_readout(props, segs, name, obj, power, strongest):
     # --- responsivity-weighted photocurrent / voltage (per material + mode) ---
     wl = strongest.get("wavelength", props.wavelength) if strongest else props.wavelength
     R = physics.responsivity(props.det_material, wl)
+    spectral = {}
+    for seg in segs:
+        if seg.get("to") == name:
+            spectral.setdefault(seg.get("wavelength", wl), []).append(seg)
+    current = R * power
+    if len(spectral) > 1:
+        # Incoherent wavelength channels have different responsivity. Keep coherent summation
+        # within each channel (including the detector analyzer), then add photocurrents.
+        current = sum(physics.responsivity(props.det_material, wavelength) *
+                      max(measure(segs, name, props.analyzer, incoming=arrivals)[0], 0.0)
+                      for wavelength, arrivals in spectral.items())
     G = props.det_gain
     mode = props.det_mode
     if mode == 'APD':
         # I = M*R*P; the excess-noise F(M) is carried as a readout-quality note (it scales the noise,
         # not the mean signal). M is the avalanche gain (det_gain reused as M).
-        props.meas_current = G * R * power
+        props.meas_current = G * current
     elif mode == 'SPAD':
         # photon-counting: count rate saturates toward the SPAD ceiling (1 - exp(-rate/max)).
-        rate = R * power * max(G, 1.0)
+        rate = current * max(G, 1.0)
         cap = max(props.det_spad_max, 1.0)
         props.meas_current = cap * (1.0 - math.exp(-rate / cap))
     else:                                            # biased / amplified: linear V = G*R*P
-        props.meas_current = G * R * power
+        props.meas_current = G * current
 
     # --- quadrant / lateral-PSD position readout ---
     props.meas_quad_x = 0.0
@@ -251,6 +264,8 @@ def _measure_detector(props, segs, name, obj=None):
     props.meas_text = (spot + loss).strip()
     # C8 readout overlays (photocurrent + quadrant/PSD position) -- pure post-process on power/qd
     _detector_readout(props, segs, name, obj, power, strongest)
+    if props.det_mode == 'SPAD':
+        props.meas_text += " · relative SPAD response; not calibrated counts/s"
 
 
 def refresh_report(scene):
