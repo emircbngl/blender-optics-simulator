@@ -2535,6 +2535,45 @@ check("editing the aperture shape re-traces live (in the live signature)",
 _c5_clear()
 bpy.data.collections.remove(_cl)
 
+print("[a mirror's substrate side: absorbed by default, IDEAL keeps the old reflection, diagnose says which]")
+# Before: a beam arriving on a front-surface mirror's back reflected at full power as if it hit the coating
+# (reported by a user on #1). Decided with the maintainer: a selectable back_surface, ABSORB by default.
+_bk = bpy.data.collections.new("BACK_TEST"); sc.collection.children.link(_bk)
+
+
+def _back_bench(back, mode):
+    _c5_clear()
+    _m = eg.mirror("BK_M", (0, 0, 0), _PV((1, 0, 0)), _PV((0, 1, 0)), _bk)
+    if not hasattr(_m.optics, "back_surface"):
+        return None, None
+    _m.optics.back_surface = mode
+    if back:
+        eg.source("BK_S", (150, 0, 0), _PV((-1, 0, 0)), _bk)
+    else:
+        eg.source("BK_S", (-150, 0, 0), _PV((1, 0, 0)), _bk)
+    bpy.context.view_layer.update()
+    _s = scan._trace(sc)
+    _d = [x for x in optics_api.diagnose().get("diagnostics", []) if x["kind"] == "mirror_back_hit"]
+    return sum(x["power"] for x in _s if x["from"] == "BK_M"), [x["severity"] for x in _d]
+
+
+_bk_front = [_back_bench(False, _md) for _md in ("ABSORB", "IDEAL")]
+_bk_abs = _back_bench(True, "ABSORB")
+_bk_ideal = _back_bench(True, "IDEAL")
+check("mirror: a beam on the coated face reflects in both modes, with no back-hit finding",
+      all(_r[0] is not None and abs(_r[0] - 1.0) < 1e-9 and not _r[1] for _r in _bk_front), str(_bk_front))
+check("mirror: a beam on the substrate side is absorbed by default and diagnose reports it BAD",
+      _bk_abs[0] is not None and _bk_abs[0] < 1e-12 and _bk_abs[1] == ["BAD"], str(_bk_abs))
+check("mirror: back_surface IDEAL keeps the old full reflection, flagged WARN",
+      _bk_ideal[0] is not None and abs(_bk_ideal[0] - 1.0) < 1e-9 and _bk_ideal[1] == ["WARN"], str(_bk_ideal))
+_c5_clear()
+_bkm = eg.mirror("BK_M", (0, 0, 0), _PV((1, 0, 0)), _PV((0, 1, 0)), _bk)
+check("mirror back_surface defaults to ABSORB and re-traces live",
+      getattr(_bkm.optics, "back_surface", None) == 'ABSORB' and "back_surface" in handlers._SIG_PROPS,
+      str(getattr(_bkm.optics, "back_surface", None)))
+_c5_clear()
+bpy.data.collections.remove(_bk)
+
 print("[declared scene units: intent is stated, never inferred from scale_length]")
 from optical_alignment_sim import geometry as _geo
 # The whole reason this is a declaration: Blender's factory scale_length is 1.0 and the add-on has
