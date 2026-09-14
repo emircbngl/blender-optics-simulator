@@ -2535,6 +2535,35 @@ check("editing the aperture shape re-traces live (in the live signature)",
 _c5_clear()
 bpy.data.collections.remove(_cl)
 
+print("[a glass index read outside its Sellmeier window is reported, not silently used]")
+# Before: a 10.6 um beam through the default N-BK7 lens got n = 3.895 (the fit, far outside 0.30-2.50 um) and
+# focused 16 mm after the lens with a clean diagnose. physics.sellmeier_in_range existed and nothing called it.
+_gx = bpy.data.collections.new("GLASS_RANGE_TEST"); sc.collection.children.link(_gx)
+
+
+def _glass_findings(wl, et='LENS', glass='N-BK7'):
+    _c5_clear()
+    eg.source("GX_S", (-100, 0, 0), _PV((1, 0, 0)), _gx).optics.wavelength = wl
+    if et == 'LENS':
+        eg.lens("GX_E", (0, 0, 0), _PV((1, 0, 0)), _gx, focal=100.0).optics.lens_glass = glass
+    else:
+        eg.prism("GX_E", (0, 0, 0), _PV((1, 0, 0)), _gx, prism_type='EQUILATERAL', glass=glass, design_wl=550.0)
+    bpy.context.view_layer.update()
+    return [x for x in optics_api.diagnose().get("diagnostics", []) if x["kind"] == "glass_extrapolated"]
+
+
+_gf_ir = _glass_findings(10600.0)
+_gf_ok = _glass_findings(800.0)
+_gf_uv = _glass_findings(300.0, 'PRISM', 'N-SF11')
+check("a 10.6 um beam through an N-BK7 lens is reported as an extrapolated index (WARN, names the glass)",
+      len(_gf_ir) == 1 and _gf_ir[0]["severity"] == "WARN" and "N-BK7" in _gf_ir[0]["detail"]
+      and _gf_ir[0]["element"] == "GX_E", str([x["detail"] for x in _gf_ir]))
+check("...an 800 nm beam through the same lens is not", not _gf_ok, str([x["detail"] for x in _gf_ok]))
+check("a 300 nm beam into an N-SF11 prism (window from 370 nm) is reported too",
+      len(_gf_uv) == 1 and "N-SF11" in _gf_uv[0]["detail"], str([x["detail"] for x in _gf_uv]))
+_c5_clear()
+bpy.data.collections.remove(_gx)
+
 print("[declared scene units: intent is stated, never inferred from scale_length]")
 from optical_alignment_sim import geometry as _geo
 # The whole reason this is a declaration: Blender's factory scale_length is 1.0 and the add-on has
