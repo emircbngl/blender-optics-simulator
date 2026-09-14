@@ -2451,6 +2451,90 @@ check("CIRCULAR with a zero radius still means 'unconfigured' and does not clip"
 _c5_clear()
 bpy.data.collections.remove(_za)
 
+print("[an element intercepts with its body and passes only through its clear aperture, decentre and angle included]")
+# Before: the hit test was the opening itself and the clip assumed a centred beam, so an iris passed a beam
+# 0.5 or 1 mm off-centre at the centred value (0.9996) and a beam 3 mm off -- on the iris plate -- at 1.0;
+# optics (mirror, lens, BS...) did not clip at all. Decided with the maintainer: a stop or optic interacts
+# wherever its body is, and passes the overlap of the (decentred, obliquely seen) Gaussian with its opening.
+_cl = bpy.data.collections.new("CLIP_TEST"); sc.collection.children.link(_cl)
+
+
+def _stop_bench(shape='CIRCULAR', ca=1.0, half_y=None, off=0.0):
+    _c5_clear()
+    eg.source("CL_S", (-150, 0, 0), _PV((1, 0, 0)), _cl).optics.waist_um = 500.0
+    _a = eg.aperture("CL_A", (0, 0, 0), _PV((1, 0, 0)), _cl, radius=14.0)
+    _a.optics.aperture_shape = shape
+    _a.optics.clear_aperture = ca
+    if half_y is not None:
+        _a.optics.aperture_half_y = half_y
+    eg.detector("CL_D", (150, 0, 0), _PV((1, 0, 0)), _cl)
+    bpy.context.view_layer.update()
+    _a.location.y += off                    # local +Y of the aperture is world +Y here (its half_y axis)
+    bpy.context.view_layer.update()
+    _s = scan._trace(sc)
+    _w = next((x["w_mm"] for x in _s if x["to"] == "CL_A"), None)
+    return sum(x["power"] for x in _s if x["to"] == "CL_D"), _w, _s
+
+
+_iris = [_stop_bench(off=_o) for _o in (0.0, 0.5, 1.0)]
+_iris_want = [physics.ellipse_aperture_overlap(1.0, 1.0, _iris[0][1] or 0.5, 0.0, _o) for _o in (0.0, 0.5, 1.0)]
+check("decentred iris (a=1, w~0.5) transmits the offset overlap at 0 / 0.5 / 1 mm",
+      all(_g[1] is not None and abs(_g[0] - _e) < 1.5e-4 for _g, _e in zip(_iris, _iris_want)),
+      "%s vs %s" % ([round(_g[0], 4) for _g in _iris], [round(_e, 4) for _e in _iris_want]))
+check("...and a beam on the iris rim no longer reads the centred value (it was 0.9996)",
+      _iris[2][0] < 0.5 < _iris[0][0], str([round(_g[0], 4) for _g in _iris]))
+_p3, _w3, _s3 = _stop_bench(off=3.0)
+check("a beam landing on the iris plate outside the opening is blocked (it passed at 1.0)",
+      _p3 < 1e-9 and any(x["to"] == "CL_A" for x in _s3), "D=%s hitsA=%s" % (_p3, any(x["to"] == "CL_A" for x in _s3)))
+_cl_diag = [x for x in optics_api.diagnose().get("diagnostics", []) if x["kind"] == "beam_clipped" and x["element"] == "CL_A"]
+check("...and diagnose says so: beam_clipped on the iris", bool(_cl_diag), str(_cl_diag))
+_p10, _w10, _s10 = _stop_bench(off=10.0)
+check("a beam passing beside the iris body is not intercepted", abs(_p10 - 1.0) < 1e-9
+      and not any(x["to"] == "CL_A" for x in _s10), str(_p10))
+_pslot, _wslot, _ = _stop_bench('RECTANGULAR', 0.3, 20.0, off=0.5)
+check("a 0.3 x 20 mm slot decentred 0.5 mm along its long axis clips only across it (was a miss, 1.0)",
+      _wslot is not None and abs(_pslot - physics._gauss_band(-0.3, 0.3, 0.0, _wslot)
+                                 * physics._gauss_band(-20.0, 20.0, -0.5, _wslot)) < 1.5e-4,
+      "%.4f (slot hit: %s)" % (_pslot, _wslot is not None))
+_pshut, _, _ = _stop_bench('SQUARE', 0.0, off=0.2)
+check("a closed SQUARE stop blocks a decentred beam too (it leaked at 0.2 mm off)", _pshut < 1e-9, str(_pshut))
+
+
+def _fold_bench(ca, off_z, shape='CIRCULAR'):
+    _c5_clear()
+    eg.source("CL_S", (-150, 0, off_z), _PV((1, 0, 0)), _cl).optics.waist_um = 500.0
+    _m = eg.mirror("CL_M", (0, 0, 0), _PV((1, 0, 0)), _PV((0, 1, 0)), _cl)
+    _m.optics.clear_aperture = ca
+    _m.optics.aperture_shape = shape
+    bpy.context.view_layer.update()
+    _s = scan._trace(sc)
+    _w = next((x["w_mm"] for x in _s if x["to"] == "CL_M"), None)
+    return sum(x["power"] for x in _s if x["from"] == "CL_M"), _w
+
+
+_c45 = math.cos(math.radians(45.0))
+_pm0, _wm0 = _fold_bench(1.0, 0.0)
+_pm8, _wm8 = _fold_bench(1.0, 0.8)
+check("a 45-degree fold mirror clips its clear aperture as the beam sees it: an ellipse a*cos45 x a",
+      None not in (_wm0, _wm8)
+      and abs(_pm0 - physics.ellipse_aperture_overlap(1.0 * _c45, 1.0, _wm0)) < 1.5e-4
+      and abs(_pm8 - physics.ellipse_aperture_overlap(1.0 * _c45, 1.0, _wm8, 0.0, 0.8)) < 1.5e-4,
+      "%.4f / %.4f" % (_pm0, _pm8))
+_pm_sq, _ = _fold_bench(1.0, 0.0, 'SQUARE')
+check("...and the aperture shape changes that loss on a mirror (square passes more than its inscribed circle)",
+      _pm_sq > _pm0 + 1e-3, "%.4f vs %.4f" % (_pm_sq, _pm0))
+_pm_big, _ = _fold_bench(12.7, 0.0)
+check("a centred beam far inside a 1-inch mirror is untouched (T exactly 1)", _pm_big == 1.0, str(_pm_big))
+_pm_v, _ = _fold_bench(0.8, 0.0)             # T ~ 0.92: below VIGNETTE_T, so diagnose must report it
+_vig = [x for x in optics_api.diagnose().get("diagnostics", []) if x["kind"] == "vignetting" and x["element"] == "CL_M"]
+_vig_T = float(_vig[0]["detail"].split("T=")[1].split()[0]) if _vig else -1.0
+check("diagnose's vignetting T is the loss the trace took", _pm_v < 0.99 and abs(_vig_T - _pm_v) < 1.5e-4,
+      "diag %.4f vs traced %.4f" % (_vig_T, _pm_v))
+check("editing the aperture shape re-traces live (in the live signature)",
+      "aperture_shape" in handlers._SIG_PROPS and "aperture_half_y" in handlers._SIG_PROPS)
+_c5_clear()
+bpy.data.collections.remove(_cl)
+
 print("[declared scene units: intent is stated, never inferred from scale_length]")
 from optical_alignment_sim import geometry as _geo
 # The whole reason this is a declaration: Blender's factory scale_length is 1.0 and the add-on has
