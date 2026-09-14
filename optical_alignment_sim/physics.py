@@ -1643,6 +1643,120 @@ def knife_transmission(e_mm, xc_mm, w_mm):
     return 0.5 * (1.0 - math.erf(math.sqrt(2.0) * (e_mm - xc_mm) / w_mm))
 
 
+# --- decentred aperture overlap (beam's transverse frame) ---------------------------------------------
+# A circular Gaussian of 1/e^2 intensity radius w, centred at (xc, yc), clipped by an opening described in
+# the SAME transverse frame. The tracer projects the element's aperture into that frame along the beam, so
+# a circle seen at incidence theta becomes an ellipse (a*cos(theta), a) and a rectangle a parallelogram.
+# Both kernels integrate the exact 2-D overlap as a 1-D integral over x of the Gaussian's x-marginal times
+# the analytic erf band of the chord in y -- no new physics, only the separable Gaussian the slit/rect
+# kernels above already use, now with an offset and a chord that varies with x.
+
+_OVERLAP_REACH = 6.0          # in units of w: exp(-2*6^2) ~ 5e-32, beyond double precision
+
+
+def _gauss_band(lo, hi, c, w):
+    """Fraction of a 1-D Gaussian (1/e^2 radius w, centred at c) inside [lo, hi]."""
+    if hi <= lo:
+        return 0.0
+    s = math.sqrt(2.0) / w
+    return 0.5 * (math.erf(s * (hi - c)) - math.erf(s * (lo - c)))
+
+
+def _simpson(f, x0, x1, n):
+    n += n % 2
+    h = (x1 - x0) / n
+    acc = f(x0) + f(x1)
+    for i in range(1, n):
+        acc += (4.0 if i % 2 else 2.0) * f(x0 + i * h)
+    return acc * h / 3.0
+
+
+def ellipse_aperture_overlap(A_mm, B_mm, w_mm, xc_mm=0.0, yc_mm=0.0, n=200):
+    """Power fraction of a circular Gaussian (radius w, centre (xc, yc)) passing an axis-aligned ELLIPTICAL
+    opening with semi-axes A (along x) and B (along y), centred at the origin.
+
+    Centred circle (A = B = a, xc = yc = 0) is exactly 1 - exp(-2 a^2/w^2) and returns that closed form. A
+    closed opening (A or B <= 0) passes nothing. With no Gaussian (w ~ 0) the chief ray is a point: 1 inside,
+    0 outside. Otherwise x = A sin(phi) removes the chord's square-root endpoint singularity and composite
+    Simpson integrates g(x - xc) * band(-B cos phi, B cos phi) * A cos phi over the Gaussian's reach."""
+    if A_mm <= 0.0 or B_mm <= 0.0:
+        return 0.0
+    if w_mm <= 1e-9:
+        return 1.0 if (xc_mm / A_mm) ** 2 + (yc_mm / B_mm) ** 2 <= 1.0 else 0.0
+    r = math.hypot(xc_mm, yc_mm)
+    reach = _OVERLAP_REACH * w_mm
+    if abs(A_mm - B_mm) <= 1e-12 * A_mm and r <= 1e-12 * A_mm:
+        return 1.0 - math.exp(-2.0 * A_mm * A_mm / (w_mm * w_mm))
+    if r + reach <= min(A_mm, B_mm):
+        return 1.0                        # the whole Gaussian sits inside the inscribed circle
+    if r - reach >= max(A_mm, B_mm):
+        return 0.0                        # ... or outside the circumscribed one
+    lo, hi = max(-A_mm, xc_mm - reach), min(A_mm, xc_mm + reach)
+    if hi <= lo:
+        return 0.0
+    p0, p1 = math.asin(lo / A_mm), math.asin(hi / A_mm)
+    norm = math.sqrt(2.0 / math.pi) / w_mm
+
+    def f(phi):
+        c = math.cos(phi)
+        x = A_mm * math.sin(phi)
+        yh = B_mm * c
+        return norm * math.exp(-2.0 * (x - xc_mm) ** 2 / (w_mm * w_mm)) * _gauss_band(-yh, yh, yc_mm, w_mm) * A_mm * c
+
+    return min(max(_simpson(f, p0, p1, n), 0.0), 1.0)
+
+
+def polygon_aperture_overlap(verts, w_mm, xc_mm=0.0, yc_mm=0.0, n=64):
+    """Power fraction of a circular Gaussian (radius w, centre (xc, yc)) passing a CONVEX polygonal opening
+    ``verts`` [(x, y), ...] in order. A projected rectangle is a parallelogram. An axis-aligned rectangle
+    is separable and returns the exact erf product; otherwise the chord [y_lo(x), y_hi(x)] is linear
+    between vertex abscissae, and each piece is integrated with composite Simpson over the Gaussian's
+    reach. A degenerate (zero-area) polygon is a closed opening and passes nothing."""
+    m = len(verts)
+    area2 = sum(verts[i][0] * verts[(i + 1) % m][1] - verts[(i + 1) % m][0] * verts[i][1] for i in range(m))
+    if m < 3 or abs(area2) <= 1e-18:
+        return 0.0
+    xs = sorted({round(v[0], 12) for v in verts})
+    ys = sorted({round(v[1], 12) for v in verts})
+    if w_mm <= 1e-9:
+        return 1.0 if _point_in_convex(verts, xc_mm, yc_mm, area2) else 0.0
+    if m == 4 and len(xs) == 2 and len(ys) == 2:
+        return _gauss_band(xs[0], xs[1], xc_mm, w_mm) * _gauss_band(ys[0], ys[1], yc_mm, w_mm)
+    reach = _OVERLAP_REACH * w_mm
+    lo, hi = max(xs[0], xc_mm - reach), min(xs[-1], xc_mm + reach)
+    if hi <= lo:
+        return 0.0
+    norm = math.sqrt(2.0 / math.pi) / w_mm
+
+    def chord(x):
+        pts = []
+        for i in range(m):
+            (x0, y0), (x1, y1) = verts[i], verts[(i + 1) % m]
+            if (x0 - x) * (x1 - x) <= 0.0 and x0 != x1:
+                pts.append(y0 + (y1 - y0) * (x - x0) / (x1 - x0))
+            elif x0 == x1 == x:
+                pts += [y0, y1]
+        return (min(pts), max(pts)) if pts else (0.0, 0.0)
+
+    def f(x):
+        ylo, yhi = chord(x)
+        return norm * math.exp(-2.0 * (x - xc_mm) ** 2 / (w_mm * w_mm)) * _gauss_band(ylo, yhi, yc_mm, w_mm)
+
+    cuts = [lo] + [x for x in xs if lo < x < hi] + [hi]
+    total = sum(_simpson(f, cuts[i], cuts[i + 1], n) for i in range(len(cuts) - 1))
+    return min(max(total, 0.0), 1.0)
+
+
+def _point_in_convex(verts, x, y, area2):
+    sign = 1.0 if area2 > 0.0 else -1.0
+    m = len(verts)
+    for i in range(m):
+        (x0, y0), (x1, y1) = verts[i], verts[(i + 1) % m]
+        if sign * ((x1 - x0) * (y - y0) - (y1 - y0) * (x - x0)) < 0.0:
+            return False
+    return True
+
+
 # --- detector responsivity + readout topology (C8) --------------------------
 # A photodiode converts optical power P to a photocurrent I = R(lambda)*P, where the responsivity
 #   R(lambda) = qe(material, lambda) * lambda[nm] / 1239.8   (A/W)

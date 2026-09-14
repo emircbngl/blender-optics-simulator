@@ -164,6 +164,24 @@ def _beam_clipped(scene, segs):
                 "beam from %s misses %s clear aperture by miss_mm=%.3f (off=%.3f > ca=%.3f)"
                 % (from_name, E.name, miss, off, ca),
                 "BAD"))
+    # A beam can also land on an element's BODY outside its clear aperture: the trace intercepts it there and
+    # passes only the Gaussian tail that overlaps the opening -- it is not an escaping ray, so the replay above
+    # never sees it.
+    by_name = {o.name: o for o in elems}
+    for s in segs:
+        E = by_name.get(s.get("to"))
+        if E is None or E.optics.element_type not in tracer.APERTURE_CLIPPED:
+            continue
+        if not tracer._aperture_configured(E.optics):
+            continue
+        if tracer.aperture_transmission(scene, E, s["p1"], s["p2"], 0.0) >= 0.5:
+            continue                           # the chief ray is inside the opening
+        T = tracer.aperture_transmission(scene, E, s["p1"], s["p2"], s.get("w_mm", 0.0))
+        issues.append(_issue(
+            "beam_clipped", E.name,
+            "beam from %s lands on %s outside its clear aperture (ca=%.3f): T=%.4f passes"
+            % (s.get("from"), E.name, E.optics.clear_aperture, T),
+            "BAD"))
     return issues
 
 
@@ -172,11 +190,11 @@ def _beam_clipped(scene, segs):
 # ---------------------------------------------------------------------------
 
 def _vignetting(scene, segs):
-    """Apply the oracle-verified `_clip_T = 1 - exp(-2 a^2/w^2)` at every
-    aperture-bearing element using the per-segment incident beam radius `w_mm`
-    and the element's clear aperture. Flag when T < VIGNETTE_T.
+    """Report the clear-aperture loss the trace took at every aperture-bearing element
+    (`tracer.aperture_transmission`: the same decentred, angle- and shape-aware clip,
+    from the segment's incident radius `w_mm`). Flag when T < VIGNETTE_T.
 
-    Sanity anchors (already verified): a=w -> T=0.865, a=2w -> T=0.9997.
+    Centred at normal incidence it is `1 - exp(-2 a^2/w^2)`: a=w -> T=0.865, a=2w -> T=0.9997.
     """
     issues = []
     by_name = {o.name: o for o in scene.objects
@@ -192,7 +210,10 @@ def _vignetting(scene, segs):
         a = E.optics.clear_aperture
         if w <= 1e-9 or a <= 0.0:
             continue                       # no Gaussian / no aperture -> nothing to clip
-        T = 1.0 - math.exp(-2.0 * a * a / (w * w))
+        if tracer.aperture_transmission(scene, E, s["p1"], s["p2"], 0.0) < 0.5:
+            continue                       # chief ray outside the opening: _beam_clipped reports it
+        # the loss the trace actually took: decentre, incidence angle and aperture shape included
+        T = tracer.aperture_transmission(scene, E, s["p1"], s["p2"], w)
         if T < VIGNETTE_T:
             sev = "BAD" if T < 0.90 else "WARN"
             issues.append(_issue(

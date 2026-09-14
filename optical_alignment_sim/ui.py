@@ -225,7 +225,8 @@ class OPTICS_PT_element(_OpticsPanel, Panel):
         # Aperture shape is orthogonal to the per-type chain above: several element types carry a
         # clear aperture, and some of them (SHUTTER, CAVITY, ...) also have their own branch. Keeping
         # this a separate statement means adding a type here can never swallow that branch.
-        if et in ('APERTURE', 'DICHROIC', 'BEAMSPLITTER', 'FILTER', 'WINDOW', 'POLARIZER'):
+        from .tracer import APERTURE_CLIPPED       # every type whose clear aperture the trace clips
+        if et in APERTURE_CLIPPED:
             pcol.prop(props, "aperture_shape")
             if props.aperture_shape == 'RECTANGULAR':
                 pcol.prop(props, "aperture_half_y")

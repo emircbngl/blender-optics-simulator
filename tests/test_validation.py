@@ -798,6 +798,58 @@ check("Rect aperture -> 1-D slit as the second axis opens",
       physics.rect_aperture_transmission(0.6, 1.0e9, 1.0), physics.slit_transmission(0.6, 1.0), 1e-12,
       "separability: erf(sqrt2 b/w) -> 1")
 
+# Decentred overlap kernels (the trace's clear-aperture clip). The references below are a DIFFERENT
+# decomposition from the kernels' x-chord integral, with no hard edge inside the integrand: the ellipse
+# in polar coordinates (x = A r cos p, y = B r sin p), the parallelogram as an affine image of the unit
+# square. A plain grid over the indicator function was measured to wander +/-5e-4 around the answer,
+# so it cannot referee 1e-5.
+
+
+def _simpson1(f, a, b, n):
+    h = (b - a) / n
+    return (f(a) + f(b) + sum((4 if i % 2 else 2) * f(a + i * h) for i in range(1, n))) * h / 3.0
+
+
+def _gauss2(x, y, w):
+    return 2.0 / (math.pi * w * w) * math.exp(-2.0 * (x * x + y * y) / (w * w))
+
+
+def _ellipse_polar(A, B, w, xc, yc, nr=400, np_=256):
+    def ring(r):
+        return sum(_gauss2(A * r * math.cos(2 * math.pi * k / np_) - xc, B * r * math.sin(2 * math.pi * k / np_) - yc, w)
+                   for k in range(np_)) * (2 * math.pi / np_) * A * B * r
+    return _simpson1(ring, 0.0, 1.0, nr)
+
+
+def _parallelogram_affine(c, e1, e2, w, xc, yc, n=300):
+    det = abs(e1[0] * e2[1] - e1[1] * e2[0])
+    def row(t):
+        return _simpson1(lambda s: _gauss2(c[0] + s * e1[0] + t * e2[0] - xc, c[1] + s * e1[1] + t * e2[1] - yc, w),
+                         -1.0, 1.0, n)
+    return _simpson1(row, -1.0, 1.0, n) * det
+
+
+for _A, _B, _w, _xc, _yc in ((1.0, 1.0, 0.5, 1.0, 0.0), (1.0, 1.0, 0.5, 0.7, 0.7), (0.7071, 1.0, 0.5, 0.3, 0.6),
+                             (0.5, 0.5, 2.0, 0.3, -0.4)):
+    check("Decentred ellipse %.2fx%.2f w=%.1f at (%.1f,%.1f) == polar 2-D integral" % (_A, _B, _w, _xc, _yc),
+          physics.ellipse_aperture_overlap(_A, _B, _w, _xc, _yc), _ellipse_polar(_A, _B, _w, _xc, _yc), 2e-5,
+          "x-chord erf kernel vs polar Simpson")
+_par = [(0.9, 0.5), (-0.3, 0.5), (-0.9, -0.5), (0.3, -0.5)]         # centre 0, half-edges e1=(0.6,0), e2=(0.3,0.5)
+for _w, _xc, _yc in ((0.5, 0.0, 0.0), (0.3, 0.6, 0.4)):
+    check("Decentred parallelogram w=%.1f at (%.1f,%.1f) == affine 2-D integral" % (_w, _xc, _yc),
+          physics.polygon_aperture_overlap(_par, _w, _xc, _yc),
+          _parallelogram_affine((0.0, 0.0), (0.6, 0.0), (0.3, 0.5), _w, _xc, _yc), 2e-5,
+          "x-chord erf kernel vs affine unit-square Simpson")
+check("Centred circle kernel == 1 - exp(-2a^2/w^2)", physics.ellipse_aperture_overlap(0.3, 0.3, 0.5),
+      1.0 - math.exp(-2.0 * 0.09 / 0.25), 1e-15, "closed form")
+check("Beam centred on the rim of a large circle passes half (half-plane limit)",
+      physics.ellipse_aperture_overlap(50.0, 50.0, 0.05, 50.0, 0.0), 0.5, 2e-3,
+      "edge curvature over the beam ~ w/a -> 0")
+check("Decentred aligned rect == product of shifted erf bands",
+      physics.polygon_aperture_overlap([(1, .3), (-1, .3), (-1, -.3), (1, -.3)], 0.5, 0.4, 0.1),
+      0.25 * (math.erf(math.sqrt(2) * 0.6 / 0.5) + math.erf(math.sqrt(2) * 1.4 / 0.5))
+      * (math.erf(math.sqrt(2) * 0.2 / 0.5) + math.erf(math.sqrt(2) * 0.4 / 0.5)), 1e-12, "separable Gaussian")
+
 print("=" * 60)
 n_pass = sum(_checks)
 n_total = len(_checks)
