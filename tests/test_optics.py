@@ -2319,6 +2319,91 @@ other = _mk("RT_anc_other", (8, 0, 0)); other.optics.is_optical = True
 mounts.set_anchor(elem, other)
 check("anchor cycle rejected", (not mounts.set_anchor(other, elem)) and mounts.anchor_would_cycle(other, elem))
 
+print("[mount base pose follows moves made outside the knobs (B5/B9)]")
+_b5m = eg.mirror("RT_b5_M", (0, 0, 0), (1, 0, 0), (0, 1, 0))
+optics_api.set_mount("RT_b5_M", "KM100")
+bpy.context.view_layer.update()
+_b5tip = next(d for d in _b5m.optics.dofs if d.kind in ('TIP', 'TILT'))
+_b5home = _b5m.matrix_world.translation.copy()
+_b5m.location.z += 5.0                                    # moved by hand (G Z 5)
+bpy.context.view_layer.update()
+_b5tip.current = 0.5
+_b5tip.current = 0.0
+bpy.context.view_layer.update()
+check("B5: a hand move survives a knob turn and return",
+      (_b5m.matrix_world.translation - (_b5home + Vector((0, 0, 5)))).length < 1e-4,
+      "at %s, home %s" % (tuple(_b5m.matrix_world.translation), tuple(_b5home)))
+_b5rot = _b5m.matrix_world.to_3x3().copy()
+_b5m.rotation_euler.z += math.radians(30.0)                # rotated by hand (R Z 30)
+bpy.context.view_layer.update()
+_b5want = _b5m.matrix_world.copy()
+_b5tip.current = 0.5
+_b5tip.current = 0.0
+bpy.context.view_layer.update()
+check("B5: a hand rotation survives a knob turn and return",
+      max(abs(_b5m.matrix_world[r][c] - _b5want[r][c]) for r in range(3) for c in range(4)) < 1e-4,
+      "moved from the hand pose by %.2e" % max(abs(_b5m.matrix_world[r][c] - _b5want[r][c])
+                                                for r in range(3) for c in range(4)))
+_b5tip.current = 0.5
+bpy.context.view_layer.update()
+check("B5: the knob still tips the hand-rotated mount",
+      (_b5m.matrix_world.to_3x3() @ Vector((0, 0, 1)) - _b5want.to_3x3() @ Vector((0, 0, 1))).length > 1e-3)
+_b5tip.current = 0.0
+bpy.context.view_layer.update()
+_b5p = bpy.data.objects.new("RT_b5_parent", None); sc.collection.objects.link(_b5p)
+_b5m.parent = _b5p
+_b5before = _b5m.matrix_world.translation.copy()
+_b5p.location.x += 10.0                                    # the holder assembly moves
+bpy.context.view_layer.update()
+_b5tip.current = 0.5
+_b5tip.current = 0.0
+bpy.context.view_layer.update()
+check("B5: a parent move survives a knob turn and return",
+      (_b5m.matrix_world.translation - (_b5before + Vector((10, 0, 0)))).length < 1e-4,
+      "at %s" % (tuple(_b5m.matrix_world.translation),))
+_b9a = _mk("RT_b9_anchor", (100, 0, 0))
+_b9f = _mk("RT_b9_follow", (120, 0, 0)); _b9f.optics.is_optical = True
+bpy.context.view_layer.update()
+mounts.set_anchor(_b9f, _b9a); mounts.compose_pose(_b9f)
+_b9f.location.y += 7.0                                     # drag the follower itself
+bpy.context.view_layer.update()
+mounts.compose_pose(_b9f)                                  # the live tick recomposes followers
+check("B9: a dragged follower stays where it was dropped",
+      (_b9f.matrix_world.translation - Vector((120, 7, 0))).length < 1e-4,
+      str(tuple(_b9f.matrix_world.translation)))
+_b9a.location.x += 20.0
+bpy.context.view_layer.update()
+mounts.compose_pose(_b9f)
+check("B9: the dropped follower still follows its anchor",
+      (_b9f.matrix_world.translation - Vector((140, 7, 0))).length < 1e-4,
+      str(tuple(_b9f.matrix_world.translation)))
+_b9d = _b9f.copy(); sc.collection.objects.link(_b9d)       # Shift+D keeps the props, then G
+_b9d.location.y += 15.0
+bpy.context.view_layer.update()
+mounts.compose_pose(_b9d)
+check("B9: a moved duplicate does not snap back onto its original",
+      (_b9d.matrix_world.translation - Vector((140, 22, 0))).length < 1e-4,
+      str(tuple(_b9d.matrix_world.translation)))
+_b9o = _mk("RT_b9_other", (0, 80, 0))
+bpy.context.view_layer.update()
+_b9d.optics.anchor = _b9o                                  # picked in the panel, not via set_anchor
+bpy.context.view_layer.update()
+check("B9: picking a new anchor in the panel does not move the element",
+      (_b9d.matrix_world.translation - Vector((140, 22, 0))).length < 1e-4,
+      str(tuple(_b9d.matrix_world.translation)))
+_b9o.location.z += 4.0
+bpy.context.view_layer.update()
+mounts.compose_pose(_b9d)
+check("B9: ... and the element then follows the new anchor",
+      (_b9d.matrix_world.translation - Vector((140, 22, 4))).length < 1e-4,
+      str(tuple(_b9d.matrix_world.translation)))
+bpy.data.objects.remove(_b9a, do_unlink=True)              # delete the anchor
+check("B9: a deleted anchor leaves no pointer", _b9f.optics.anchor is None)
+mounts.compose_pose(_b9f)
+check("B9: deleting the anchor does not move its follower",
+      (_b9f.matrix_world.translation - Vector((140, 7, 0))).length < 1e-4,
+      str(tuple(_b9f.matrix_world.translation)))
+
 print("[bridge: timer-driven thread-free pump -- e2e protocol over a REAL localhost socket]")
 # The timer architecture makes the pump a plain function, so headless tests drive the FULL socket
 # path single-threaded: start -> connect -> send -> _pump() (accept+read+dispatch+write) -> recv.
