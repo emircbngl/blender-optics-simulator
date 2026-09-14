@@ -2061,6 +2061,9 @@ def interfere(beams, coherence_mm=float('inf')):
     The field of each beam carries a phase 2*pi*opl/lambda; cross terms are weighted
     by the coherence envelope (OPD vs coherence length) and the polarization overlap,
     so orthogonal polarizations do not interfere and large OPDs wash fringes out.
+    Beams at different wavelengths add in intensity only: their cross term beats at the difference
+    frequency and averages to zero over a detector's integration time (one source can emit several
+    lines -- a broadband source, a crystal's pump + harmonic -- and they reach a detector together).
     Visibility is the fringe contrast of the two strongest beams (-1 if < 2 beams)."""
     n = len(beams)
     if n == 0:
@@ -2070,10 +2073,16 @@ def interfere(beams, coherence_mm=float('inf')):
         lam_mm = wl * NM_TO_MM
         phi = (2.0 * math.pi * opl / lam_mm) if lam_mm > 0.0 else 0.0
         fields.append(with_phase(J, phi))
+
+    def _envelope(a, b):
+        if abs(beams[a][2] - beams[b][2]) > 1e-9 * max(abs(beams[a][2]), 1.0):
+            return 0.0                            # different lines: no stationary fringes
+        return fringe_envelope(abs(beams[a][1] - beams[b][1]), coherence_mm)
+
     total = sum(intensity(F) for F in fields)
     for i in range(n):
         for j in range(i + 1, n):
-            g = fringe_envelope(abs(beams[i][1] - beams[j][1]), coherence_mm)
+            g = _envelope(i, j)
             dot = fields[i][0] * fields[j][0].conjugate() + fields[i][1] * fields[j][1].conjugate()
             total += 2.0 * g * dot.real
     vis = -1.0
@@ -2081,7 +2090,7 @@ def interfere(beams, coherence_mm=float('inf')):
         order = sorted(range(n), key=lambda k: intensity(fields[k]), reverse=True)
         a, b = order[0], order[1]
         denom = intensity(fields[a]) + intensity(fields[b])
-        g = fringe_envelope(abs(beams[a][1] - beams[b][1]), coherence_mm)
+        g = _envelope(a, b)
         Ja, Jb = beams[a][0], beams[b][0]
         overlap = abs(Ja[0] * Jb[0].conjugate() + Ja[1] * Jb[1].conjugate())
         vis = (2.0 * g * overlap / denom) if denom > 1e-12 else 0.0
@@ -2201,6 +2210,13 @@ if __name__ == "__main__":
     Io, Vo = interfere(bo)
     if not (close(Io, 2.0, 1e-6) and close(Vo, 0.0, 1e-6)):
         fails.append("interfere orthogonal Io=%.3f Vo=%.3f" % (Io, Vo))
+
+    # different wavelengths from one source do not interfere: I = I1+I2, V = 0 (a zero-OPD pair at
+    # one wavelength gives 4x, so this is the cross term switching off, not the beams missing)
+    bw = [(jones_linear(0.0, 1.0), 0.0, 532.0), (jones_linear(0.0, 1.0), 0.0, 1064.0)]
+    Iw, Vw = interfere(bw)
+    if not (close(Iw, 2.0, 1e-6) and close(Vw, 0.0, 1e-6)):
+        fails.append("interfere two wavelengths Iw=%.3f Vw=%.3f" % (Iw, Vw))
 
     # Fresnel: normal incidence |rs|=|rp|=0.2 (glass 4%); Brewster rp~0; metal 45deg s-p phase
     rs0, rp0 = fresnel_reflect(1.0, 1.5, 0.0)

@@ -712,6 +712,75 @@ _spdc = _wls_to_detector('SPDC', 405.0)
 check("SPDC crystal emits degenerate down-converted light (405 -> 810 nm)",
       any(abs(w - 810.0) < 1.0 for w in _spdc), str(_spdc))
 
+print("[a detector reads the power that reaches it (Jones amplitude == segment power)]")
+# alignment.measure reads power from |J|^2, so every child whose power is scaled (a crystal's conversion
+# efficiency, a prism's Fresnel loss) must scale its amplitude too, and a detector's shared-frame projection
+# must not drop an obliquely arriving beam's power. Before this held, the green doubler's two detectors each
+# read 1.0 from a 1.0 W pump, and 38 segments across the bundled benches carried an amplitude that disagreed with their power.
+from optical_alignment_sim import examples_builtin as _exb
+_jbad, _read_bad = [], []
+for _kind in _exb.EXAMPLES:
+    for _o in list(sc.objects):
+        if getattr(_o, "optics", None) and _o.optics.is_optical:
+            bpy.data.objects.remove(_o, do_unlink=True)
+    optics_api.build_example(_kind)
+    _js = scan._trace(sc)
+    for _s in _js:
+        _j = _s.get("jones")
+        if _j and abs(physics.intensity((complex(_j[0], _j[1]), complex(_j[2], _j[3]))) - _s["power"]) > 5.1e-5:
+            _jbad.append("%s:%s->%s %s" % (_kind, _s["from"], _s["to"], _s["kind"]))   # power is round(.., 4)
+    for _d in sorted({_s["to"] for _s in _js if _s.get("to")}):
+        _do = sc.objects.get(_d)
+        if _do is None or _do.optics.element_type not in ('DETECTOR', 'PHOTODIODE', 'POWER_METER'):
+            continue
+        _arr = [_s for _s in _js if _s["to"] == _d]
+        _groups = {(_s.get("src_id"), round(_s["wavelength"], 6)) for _s in _arr}
+        if len(_groups) == len(_arr):        # no two beams share a source AND a line -> nothing can interfere
+            _got, _want = alignment.measure(_js, _d)[0], sum(_s["power"] for _s in _arr)
+            if abs(_got - _want) > 5e-4:
+                _read_bad.append("%s:%s read %.4f, %.4f arrives" % (_kind, _d, _got, _want))
+check("every traced segment's |J|^2 equals its power, on every bundled bench", not _jbad,
+      "%d: %s" % (len(_jbad), _jbad[:4]))
+# the benches miss branches (THG/SFG/DFG/OPO, Pellin-Broca/Amici/Littrow/routing prisms): build each one alone
+_jbranch = []
+for _proc, _pump, _l2 in (("SHG", 1064.0, 532.0), ("THG", 1064.0, 532.0), ("SFG", 1064.0, 1550.0),
+                          ("DFG", 800.0, 1550.0), ("OPO", 532.0, 800.0), ("SPDC", 405.0, 532.0)):
+    for _pmt in ("TYPE1", "TYPE2"):
+        for _o in list(sc.objects):
+            if getattr(_o, "optics", None) and _o.optics.is_optical:
+                bpy.data.objects.remove(_o, do_unlink=True)
+        _sx = eg.source("JB_S", (-80, 0, 0), (1, 0, 0), coll=_nlc); _sx.optics.wavelength = _pump
+        eg.crystal("JB_X", (0, 0, 0), (1, 0, 0), coll=_nlc, nl_process=_proc, nl_lambda2_nm=_l2,
+                   phase_matching_type=_pmt)
+        eg.detector("JB_D", (80, 0, 0), (1, 0, 0), coll=_nlc)
+        bpy.context.view_layer.update()
+        _jbranch += ["%s/%s %s" % (_proc, _pmt, _s["kind"]) for _s in scan._trace(sc) if _s.get("jones") and abs(
+            physics.intensity((complex(_s["jones"][0], _s["jones"][1]), complex(_s["jones"][2], _s["jones"][3])))
+            - _s["power"]) > 5.1e-5]
+for _pt in ("EQUILATERAL", "LITTROW", "PELLIN_BROCA", "AMICI", "RIGHT_ANGLE", "PENTA", "DOVE", "ROOF", "RHOMBOID"):
+    for _o in list(sc.objects):
+        if getattr(_o, "optics", None) and _o.optics.is_optical:
+            bpy.data.objects.remove(_o, do_unlink=True)
+    eg.source("JB_S", (-120, 0, 0), (1, 0, 0), coll=_nlc)
+    eg.prism("JB_P", (0, 0, 0), (1, 0, 0), coll=_nlc, prism_type=_pt)
+    bpy.context.view_layer.update()
+    _jbranch += ["%s %s" % (_pt, _s["kind"]) for _s in scan._trace(sc) if _s.get("jones") and abs(
+        physics.intensity((complex(_s["jones"][0], _s["jones"][1]), complex(_s["jones"][2], _s["jones"][3])))
+        - _s["power"]) > 5.1e-5]
+check("|J|^2 == power through every chi(2) process and every prism type", not _jbranch, str(_jbranch[:6]))
+check("a detector with no interfering beams reads exactly the power arriving", not _read_bad, str(_read_bad[:4]))
+for _o in list(sc.objects):
+    if getattr(_o, "optics", None) and _o.optics.is_optical:
+        bpy.data.objects.remove(_o, do_unlink=True)
+optics_api.build_example("green_doubler")
+_gd = scan._trace(sc)
+_gdr = (alignment.measure(_gd, "GD_Green")[0], alignment.measure(_gd, "GD_IR")[0])
+check("green doubler: SHG detector reads the converted 0.4, IR detector the residual 0.6 (not 1.0 each)",
+      abs(_gdr[0] - 0.4) < 1e-6 and abs(_gdr[1] - 0.6) < 1e-6, "%.4f / %.4f" % _gdr)
+_ib = physics.interfere([(physics.jones_linear(0.0, 1.0), 0.0, 532.0), (physics.jones_linear(0.0, 1.0), 0.0, 1064.0)])
+check("two wavelengths from one source add in intensity (no cross term): I=2, V=0",
+      abs(_ib[0] - 2.0) < 1e-9 and abs(_ib[1]) < 1e-9, str(_ib))
+
 # TRUE o/e SPATIAL double refraction (opt-in; full physics in tests/_verify_birefringence.py). A calcite
 # crystal forks the ray into an ordinary + extraordinary beam, the e-beam displaced by L*tan(rho). Off the
 # default path (oe_split default OFF) so the baselines stay byte-identical.
