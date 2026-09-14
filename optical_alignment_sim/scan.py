@@ -192,7 +192,9 @@ def beam_profile_data(scene, det_name="", samples=24):
     elems = []
     z0 = 0.0
     for s in chain:
-        L = (Vector(s["p2"]) - Vector(s["p1"])).length
+        L = s.get("length_mm")                         # physical mm (p1/p2 are world units)
+        if L is None:
+            L = (Vector(s["p2"]) - Vector(s["p1"])).length * geometry.mm_per_unit(scene)
         qd = s.get("qd")
         if qd and L > 1e-9:
             q_end = complex(qd[0], qd[1])
@@ -478,6 +480,8 @@ def _fringe_array(det, segs, size_mm, px, exposure=0.0, read_noise=0.0, well_dep
     if not beams:
         return None, 0
     c, n, u, v = _detector_plane(det)
+    _scenes = getattr(det, "users_scene", ()) or ()
+    mmpu = geometry.mm_per_unit(_scenes[0] if _scenes else bpy.context.scene)   # the grid is mm; hits are world
     half = size_mm * 0.5
     ax = np.linspace(-half, half, px)
     uu, vv = np.meshgrid(ax, ax)
@@ -515,8 +519,8 @@ def _fringe_array(det, segs, size_mm, px, exposure=0.0, read_noise=0.0, well_dep
             qd = s.get("qd")
             if qd:
                 hit = Vector(s["p2"])
-                du = uu - (hit - c).dot(u)
-                dv = vv - (hit - c).dot(v)
+                du = uu - (hit - c).dot(u) * mmpu
+                dv = vv - (hit - c).dot(v) * mmpu
                 rho2 = du * du + dv * dv
                 qz = complex(qd[0], qd[1])
                 R = physics.beam_roc(qz)

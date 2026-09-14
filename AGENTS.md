@@ -57,7 +57,10 @@ python3 tools/job.py wait optics
 several hundred checks — and it exits with the *number of failures*, so read the
 `REGRESSION PASS (n/n checks)` line rather than trusting a count quoted here: it
 moves with every PR, and a stale number in this file has already gone unnoticed
-once. `test_validation.py` and `test_mesh_health.py` run the same way.
+once. `test_validation.py`, `test_units.py` and `test_mesh_health.py` run the same way.
+`test_units.py` builds the same physical bench in a declared millimetre scene and a declared metre
+scene and requires every user-visible output to agree in mm; run it after touching anything that
+reads a segment's `p1`/`p2`, an object's location, or places geometry.
 Everything named `tests/_verify_*.py`, `_plot_*.py`, `_render_*.py` is a manual
 tool, not part of CI — do not treat those as the test suite.
 

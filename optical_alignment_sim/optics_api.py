@@ -31,7 +31,7 @@ def _scene():
 def _beam_path_json(segs):
     return [{
         "from": s["from"], "to": s["to"],
-        "p1": [round(x, 3) for x in s["p1"]], "p2": [round(x, 3) for x in s["p2"]],
+        "p1": [round(x, 6) for x in s["p1"]], "p2": [round(x, 6) for x in s["p2"]],   # world units: 1e-3 m = 1 mm
         "kind": s["kind"], "power": s["power"],
         "wavelength": s["wavelength"], "parent": s["parent"],
     } for s in segs]
@@ -189,7 +189,7 @@ def get_state():
             detectors.append(obj.name)
         ports = [{
             "name": p.name, "role": p.role,
-            "world_pos": [round(x, 4) for x in geometry.world_port(obj, p.local_position)],
+            "world_pos": [round(x, 6) for x in geometry.world_port(obj, p.local_position)],
             "world_normal": [round(x, 4) for x in geometry.world_normal(obj, p.local_normal)],
             "clear_aperture": round(p.clear_aperture, 3),
         } for p in op.ports]
@@ -204,7 +204,7 @@ def get_state():
         m = obj.matrix_world
         elements.append({
             "name": obj.name, "type": op.element_type,
-            "world_center": [round(x, 4) for x in m.translation],
+            "world_center": [round(x, 6) for x in m.translation],
             "matrix_world": [[round(m[r][c], 6) for c in range(4)] for r in range(4)],
             "ports": ports,
             "mount": {"type": op.mount_type, "preset": op.mount_preset, "dofs": dofs,
@@ -1321,22 +1321,24 @@ def tolerance_scan(elements=None, target="", sigma_pos_mm=0.1, sigma_ang_deg=0.0
     if p0 is None:
         return {"error": "no beam reaches target '%s' in the nominal trace" % target}
     saved = [(ob, tuple(ob.location), tuple(ob.rotation_euler)) for ob in objs]
+    mmpu = geometry.mm_per_unit(scene)                  # sigma and the reported walk are mm; poses are world units
+    sig_u = sigma_pos_mm / mmpu
     rng = np.random.default_rng(int(seed))
     d2r = math.pi / 180.0
     walks = []
     try:
         for _ in range(int(n)):
             for ob, loc, rot in saved:
-                ob.location = (loc[0] + rng.normal(0.0, sigma_pos_mm),
-                               loc[1] + rng.normal(0.0, sigma_pos_mm),
-                               loc[2] + rng.normal(0.0, sigma_pos_mm))
+                ob.location = (loc[0] + rng.normal(0.0, sig_u),
+                               loc[1] + rng.normal(0.0, sig_u),
+                               loc[2] + rng.normal(0.0, sig_u))
                 ob.rotation_euler = (rot[0] + rng.normal(0.0, sigma_ang_deg * d2r),
                                      rot[1] + rng.normal(0.0, sigma_ang_deg * d2r),
                                      rot[2] + rng.normal(0.0, sigma_ang_deg * d2r))
             bpy.context.view_layer.update()
             p = _arrival(_trace(scene))
             if p is not None:
-                walks.append(math.sqrt(sum((p[i] - p0[i]) ** 2 for i in range(3))))
+                walks.append(math.sqrt(sum((p[i] - p0[i]) ** 2 for i in range(3))) * mmpu)
     finally:
         for ob, loc, rot in saved:
             ob.location = loc
@@ -1616,7 +1618,7 @@ def build_example(kind='mach_zehnder'):
     res = trace_beam()
     out = {"built": kind, "collection": name, "segments": res["segments"]}
     mismatch = geometry.unit_scale_mismatch(_scene())
-    if mismatch:                                # the bench is mm-authored; say so, do not rescale it
+    if mismatch and geometry.mm_per_unit(_scene()) == 1.0:   # a DECLARED scene is built at physical size: no mismatch
         out["warning"] = mismatch
     return out
 
@@ -1646,7 +1648,7 @@ def add_component(key, location=(0.0, 0.0, 0.0)):
         return {"error": msg}
     out = {"name": obj.name, "msg": msg}
     mismatch = geometry.unit_scale_mismatch(_scene())
-    if mismatch:
+    if mismatch and geometry.mm_per_unit(_scene()) == 1.0:   # a DECLARED scene places parts at physical size
         out["warning"] = mismatch
     return out
 

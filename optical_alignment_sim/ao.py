@@ -360,7 +360,10 @@ def zonal_wavefront_at(scene, element_name, segs, px=128, detrend=True, weight='
         return None
     w = best.get("w_mm", 0.0) or 0.0
     wl = best.get("wavelength", 632.8) or 632.8
-    out = tracer.surface_imprint_field(E, p2, d, w, wl, px=px, detrend=detrend, weight=weight, rho_max=rho_max)
+    # the imprint samples E's mesh in the trace's millimetre space (_build_world_bvhtree scales by _mmpu), so the
+    # hit point must be in it too -- p2 is world units
+    out = tracer.surface_imprint_field(E, p2 * tracer._mmpu, d, w, wl, px=px, detrend=detrend, weight=weight,
+                                       rho_max=rho_max)
     if out is not None:
         out["element"] = element_name
         out["wavelength_nm"] = wl

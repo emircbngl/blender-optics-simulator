@@ -299,7 +299,7 @@ class OPTICS_OT_place_relative(Operator):
             direction = ((ref.matrix_world.to_3x3() @ unit).normalized()
                          if self.frame == 'REFERENCE' else Vector(unit))
             origin = ref.matrix_world.translation.copy()
-        target = origin + direction * self.distance
+        target = origin + direction * (self.distance / geometry.mm_per_unit(context.scene))   # distance is mm
         _, _, scl = act.matrix_world.decompose()
         rot = (ref.matrix_world.to_quaternion() if self.align_rotation
                else act.matrix_world.to_quaternion())
@@ -373,9 +373,9 @@ class OPTICS_OT_place_relative_xyz(Operator):
         if ref is None or ref is active or not (getattr(ref, "optics", None) and ref.optics.is_optical):
             self.report({'ERROR'}, "Pick an optical reference other than the active element")
             return {'CANCELLED'}
-        offset = Vector(self.offset_mm)
+        offset = Vector(self.offset_mm) / geometry.mm_per_unit(context.scene)             # offset is mm
         if self.frame == 'REFERENCE_LOCAL':
-            offset = ref.matrix_world.to_3x3() @ offset
+            offset = ref.matrix_world.to_quaternion() @ offset   # the reference's axes, not its (unit) scale
         target = ref.matrix_world.translation + offset
         _, _, scale = active.matrix_world.decompose()
         rotation = (ref.matrix_world.to_quaternion() if self.align_rotation

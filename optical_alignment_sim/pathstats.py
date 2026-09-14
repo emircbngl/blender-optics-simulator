@@ -14,6 +14,10 @@ import math
 
 
 def _segment_length(seg):
+    """Physical length in mm. The tracer stores it as ``length_mm``; p1/p2 are WORLD units, which differ from
+    millimetres in a scene that declares its unit scale, so they are only the fallback for hand-built lists."""
+    if seg.get("length_mm") is not None:
+        return float(seg["length_mm"])
     p1, p2 = seg.get("p1"), seg.get("p2")
     if p1 is None or p2 is None or len(p1) != 3 or len(p2) != 3:
         return 0.0

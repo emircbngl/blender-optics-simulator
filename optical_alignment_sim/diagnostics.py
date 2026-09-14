@@ -112,6 +112,7 @@ def _beam_clipped(scene, segs):
     hard miss -- the beam walked off the optic.
     """
     issues = []
+    mmpu = geometry.mm_per_unit(scene)
     elems = [o for o in scene.objects
              if getattr(o, "optics", None) and o.optics.is_optical]
     # only escaping segments can hide a dropped-ray clip; a segment that already
@@ -142,9 +143,9 @@ def _beam_clipped(scene, segs):
             if hit is None:
                 continue
             H, t = hit
+            t, off = t * mmpu, (H - sp).length * mmpu    # world units -> mm, to meet ca and _MAX_CLIP_T
             if t > _MAX_CLIP_T:
                 continue                       # absurd far crossing -> divergence, not a clip
-            off = (H - sp).length
             if best is None or t < best[0]:
                 best = (t, E, off, ca)
         if best is None:
@@ -489,7 +490,8 @@ def _relay_spacing(scene, segs):
         ideal = f1 + f2
         if abs(ideal) < 1e-6:                     # f1 == -f2 -> no afocal spacing exists; skip
             continue
-        d = (Vector(s["p2"]) - Vector(s["p1"])).length
+        d = s["length_mm"] if s.get("length_mm") is not None else (
+            (Vector(s["p2"]) - Vector(s["p1"])).length * geometry.mm_per_unit(scene))
         err = d - ideal
         if abs(err) > _RELAY_BAND * abs(ideal):   # not plausibly an afocal relay -> not our call
             continue
@@ -589,7 +591,7 @@ def _back_reflection_and_ghost_hits(scene, segs):
             ca = op.clear_aperture or src.optics.clear_aperture or 12.0
             # perpendicular distance from the source exit point to the ghost ray line; within the
             # exit aperture -> the ghost re-enters the laser.
-            off = ((sp - p1) - (sp - p1).dot(d) * d).length
+            off = ((sp - p1) - (sp - p1).dot(d) * d).length * geometry.mm_per_unit(scene)   # mm, like ca
             if off <= max(ca, 0.0) + 1.0 and (sp - p1).dot(d) > 0.0:
                 issues.append(_issue(
                     "back_reflection", sname,
@@ -737,7 +739,7 @@ def _fringe_disambiguation(scene, segs):
             # spot overlap at the hit plane: beyond touching 1/e^2 circles the visibility is
             # negligible. A recombined interferometer lands both arms on one spot (sep ~ 0)
             # and passes through. Radii absent/zero -> gate off (geometric-only trace).
-            sep = (pair[0]["p2"] - pair[1]["p2"]).length
+            sep = (Vector(pair[0]["p2"]) - Vector(pair[1]["p2"])).length * geometry.mm_per_unit(scene)   # mm, like w
             ra, rb = pair[0].get("w_mm", 0.0), pair[1].get("w_mm", 0.0)
             if ra > 0.0 and rb > 0.0 and sep >= ra + rb:
                 continue

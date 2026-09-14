@@ -215,6 +215,33 @@ def _addon_owned(obj):
     return any(c.name in owned_colls for c in obj.users_collection)
 
 
+def _scale_transform_fcurves(obj, factor):
+    """Scale an object's location / scale keyframes by ``factor`` -- otherwise the first frame change replays
+    the unscaled keys and undoes the conversion. Blender 4.4+ keeps F-curves in a slotted action's channelbag
+    (5.x removed Action.fcurves); 4.2 still has Action.fcurves."""
+    ad = getattr(obj, "animation_data", None)
+    action = getattr(ad, "action", None) if ad else None
+    if action is None:
+        return
+    fcurves = None
+    try:
+        from bpy_extras import anim_utils
+        if hasattr(anim_utils, "action_get_channelbag_for_slot"):
+            bag = anim_utils.action_get_channelbag_for_slot(action, getattr(ad, "action_slot", None))
+            fcurves = bag.fcurves if bag is not None else None
+    except (ImportError, AttributeError, TypeError):
+        fcurves = None
+    if fcurves is None:
+        fcurves = getattr(action, "fcurves", ())
+    for fc in fcurves:
+        if fc.data_path in ("location", "scale"):
+            for kp in fc.keyframe_points:
+                kp.co.y *= factor
+                kp.handle_left.y *= factor
+                kp.handle_right.y *= factor
+            fc.update()
+
+
 def convert_scene_to_mm(scene):
     """Put the scene on the add-on's millimetre convention WITHOUT resizing anything physically.
 
@@ -240,15 +267,20 @@ def convert_scene_to_mm(scene):
     if geometry.unit_scale_mismatch(scene) is None:
         return {"ok": True, "factor": 1.0, "scaled": 0, "skipped": 0, "was_scale_length": was,
                 "msg": "scene already on the millimetre convention"}
+    # A scene that DECLARED its units already holds the add-on's geometry at physical size (the builders
+    # divide by mm-per-unit), so it is not mm-authored and must scale with everything else -- skipping it
+    # shrank a declared bench a thousandfold and read its 326 mm path as 0.326.
+    declared = geometry.mm_per_unit(scene) != 1.0
     scaled = skipped = 0
     for obj in scene.objects:
         if obj.parent is not None:            # children ride their parent's transform
             continue
-        if _addon_owned(obj):
+        if _addon_owned(obj) and not declared:
             skipped += 1
             continue
         obj.scale = tuple(s * factor for s in obj.scale)
         obj.location = tuple(c * factor for c in obj.location)
+        _scale_transform_fcurves(obj, factor)
         scaled += 1
     us.system = 'METRIC'
     us.scale_length = geometry.ADDON_SCALE_LENGTH

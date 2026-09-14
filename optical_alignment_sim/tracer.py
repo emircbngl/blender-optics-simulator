@@ -216,6 +216,7 @@ def _seg(ray, p2, to_obj, sn=None):
     qd = physics.q_propagate(ray.q, physics.abcd_free(seg_len)) if ray.q is not None else None
     return {
         "p1": ray.p1 / _mmpu, "p2": p2 / _mmpu, "kind": ray.kind,
+        "length_mm": seg_len,                                  # p1/p2 are world units; this is physical
         "from": ray.from_obj.name if ray.from_obj else None,
         "to": to_obj.name if to_obj else None,
         "power": round(ray.power, 4), "wavelength": ray.wl, "parent": ray.parent,
@@ -1056,6 +1057,7 @@ def _glass_seg(ray, p2, E, n_glass, kind):
     qd = physics.q_propagate(ray.q, physics.abcd_free(seg_len)) if ray.q is not None else None
     return {
         "p1": ray.p1 / _mmpu, "p2": p2 / _mmpu, "kind": kind,
+        "length_mm": seg_len,
         "from": ray.from_obj.name if ray.from_obj else None,
         "to": E.name if E else None,
         "power": round(ray.power, 4), "wavelength": ray.wl, "parent": ray.parent,

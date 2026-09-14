@@ -12,7 +12,7 @@ from bpy.types import Operator
 from bpy.props import FloatProperty
 from mathutils import Vector
 
-from . import tracer, beamcolor
+from . import tracer, beamcolor, geometry
 
 BEAM_COLL = "COL_BEAMS"
 BEAM_MAT = "OPTICS_BEAM"
@@ -43,7 +43,7 @@ def _segments_sig(segs, oob=None, scale=None):
     rows = []
     for s in segs:
         rows.append((
-            tuple(round(c, 3) for pt in (s["p1"], s["p2"]) for c in pt),
+            tuple(round(c, 6) for pt in (s["p1"], s["p2"]) for c in pt),   # world units: 1e-3 m would hide a mm move
             s.get("kind"), s.get("wavelength"), s.get("m2"),
             round(s.get("w_mm") or 0.0, 6),
             tuple(round(v, 6) for v in (s.get("qd") or ())),
@@ -202,6 +202,7 @@ def bake_beams(context, scale=None):
     coll = beam_collection(scene)
     n = 0
     oob = getattr(scene.optics, "oob_display", 'FALSE_COLOR')
+    mmpu = geometry.mm_per_unit(scene)                 # w(z) is in mm; the tubes are built in world units
     for i, s in enumerate(tracer.cached_segments):
         mat = beam_material(s.get("wavelength"), oob)  # per-segment color: SHG green != pump IR
         if mat is None:                                # hidden by the invisible-beam mode (IR/UV)
@@ -211,11 +212,12 @@ def bake_beams(context, scale=None):
         if qd is not None:                              # taper to the real Gaussian w(z) along the segment
             q2 = complex(qd[0], qd[1]); wl = s.get("wavelength", 633.0)
             m2 = s.get("m2", 1.0)                          # B1: physical radius = sqrt(m2)*beam_radius(q)
-            L = (p2 - p1).length
+            L = s.get("length_mm") if s.get("length_mm") is not None else (p2 - p1).length * mmpu
             r1 = _vis_radius(physics.beam_radius_m2(q2 - L, wl, m2), s["kind"], scale)   # w at p1
             r2 = _vis_radius(s.get("w_mm") or physics.beam_radius_m2(q2, wl, m2), s["kind"], scale)  # w at p2
         else:                                           # no Gaussian -> the fallback (thinner for SPLIT_T)
             r1 = r2 = _vis_radius(0.0, s["kind"], scale)
+        r1, r2 = r1 / mmpu, r2 / mmpu
         if _make_taper(context, "BEAM_%02d" % i, p1, p2, r1, r2, mat, coll):
             n += 1
     _baked_sig = _segments_sig(tracer.cached_segments, oob, scale)
