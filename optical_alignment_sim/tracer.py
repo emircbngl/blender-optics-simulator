@@ -303,38 +303,109 @@ def _child(ray, E, H, d, power, kind, idx, t, jones=None, q=None, evec=None, abe
                 ghost_depth=ray.ghost_depth)
 
 
-def _clip_T(ray, E, t):
-    """Gaussian power transmission through the element's clear aperture.
+# Elements whose clear aperture clips the beam, and whose BODY intercepts it. One rule for all of them: the
+# element interacts wherever its body is, and the beam passes only through its clear aperture. Terminals
+# (the detector's active area is a separate question), prisms (their faces are the geometry), SLIT and
+# KNIFE_EDGE (their own 1-D kernels), sources and the multi-port CIRCULATOR are not in it.
+APERTURE_CLIPPED = ('APERTURE', 'PINHOLE', 'MIRROR', 'PRISM_MIRROR', 'DEFORMABLE_MIRROR', 'LENS', 'OBJECTIVE',
+                    'BEAMSPLITTER', 'DICHROIC', 'FILTER', 'PASSTHROUGH', 'POLARIZER', 'WAVEPLATE', 'ATTENUATOR',
+                    'SHUTTER', 'ISOLATOR', 'GRATING', 'RETROREFLECTOR', 'CAVITY', 'ABERRATOR', 'AOM', 'CRYSTAL')
 
-    CIRCULAR (the default, and what every element did before aperture_shape existed) is the round
-    stop: T = 1 - exp(-2 a^2/w^2). SQUARE / RECTANGULAR use the separable product of the VERIFIED 1-D
-    erf slit kernel (physics.rect_aperture_transmission) -- a square dichroic or BS cube already has a
-    square MESH, and only its optical aperture was still the circle inscribed in it, discarding the
-    light a real square optic passes at its corners.
 
-    The beam is rotationally symmetric, so the aperture's roll about the optical axis does not enter."""
-    if ray.q is None:
+def _aperture_configured(op):
+    """CIRCULAR keeps its historical reading of zero: "no clear aperture configured", so nothing clips and
+    the element keeps its old (port) gate. A SQUARE / RECTANGULAR the user chose is configured even at zero
+    -- zero area means SHUT."""
+    return getattr(op, 'aperture_shape', 'CIRCULAR') != 'CIRCULAR' or op.clear_aperture > 0.0
+
+
+def _aperture_frame(E, sn):
+    """Orthonormal in-plane axes (e1, e2) of E's aperture on the surface with normal sn: the element's local
+    +X projected onto the plane (local +Y if +X is along the normal), and sn x e1."""
+    R = E.matrix_world.to_3x3()
+    for local in ((1.0, 0.0, 0.0), (0.0, 1.0, 0.0)):
+        ax = R @ Vector(local)
+        ax = ax - sn * ax.dot(sn)
+        if ax.length > 1e-6:
+            e1 = ax.normalized()
+            return e1, sn.cross(e1).normalized()
+    e1 = sn.orthogonal().normalized()
+    return e1, sn.cross(e1).normalized()
+
+
+def _aperture_gate_mm(E, sp, sn, port_ca):
+    """Radius (mm) about the aperture centre sp within which a ray crossing the surface interacts with E.
+
+    The body: its local bounding box projected onto the aperture axes, reduced to the circle inscribed in it
+    (so a round optic's gate is its own radius, not the box corner, and a beam passing beside it still does).
+    Never smaller than the opening's circumscribed radius or the port's clear aperture, so the opening is
+    always reachable."""
+    op = E.optics
+    a = max(op.clear_aperture, 0.0)
+    b = max(getattr(op, 'aperture_half_y', a), 0.0) if op.aperture_shape == 'RECTANGULAR' else a
+    opening = math.hypot(a, b) if op.aperture_shape != 'CIRCULAR' else a
+    e1, e2 = _aperture_frame(E, sn)
+    M = E.matrix_world
+    ext = [0.0, 0.0, 0.0, 0.0]                     # +e1, -e1, +e2, -e2 reach of the body from sp
+    for corner in getattr(E, "bound_box", ()):
+        rel = (M @ Vector(corner)) * _mmpu - sp
+        u, v = rel.dot(e1), rel.dot(e2)
+        ext[0], ext[1] = max(ext[0], u), max(ext[1], -u)
+        ext[2], ext[3] = max(ext[2], v), max(ext[3], -v)
+    return max(min(ext), opening, port_ca)
+
+
+def _clip_T(ray, E, t, H=None, sp=None, sn=None):
+    """Gaussian power transmission through the element's clear aperture, as the incoming beam sees it.
+
+    With the hit point H, aperture centre sp and surface normal sn, the aperture is projected along the beam
+    into its transverse frame: a circle at incidence theta is an ellipse (a cos(theta), a), a square or
+    rectangle a parallelogram, and the chief ray's offset from the aperture centre is kept -- a decentred beam
+    is clipped harder, and one that lands on the body outside the opening is blocked. Without them (the
+    legacy call) the beam is centred at normal incidence: CIRCULAR T = 1 - exp(-2 a^2/w^2), SQUARE /
+    RECTANGULAR the separable erf product. A ray carrying no Gaussian is a point: 1 inside, 0 outside."""
+    return _aperture_T(E, ray.dir, _w_at(ray, t), H, sp, sn)
+
+
+def aperture_transmission(scene, E, p1, p2, w_mm):
+    """The clip `trace_scene` applied to a traced segment p1 -> p2 (world units) landing on E with incident
+    radius w_mm -- the same geometry, for diagnostics to report the loss the trace actually took."""
+    mmpu = geometry.mm_per_unit(scene)
+    sp, sn, _ca = interaction_surface(E)
+    if sp is None:
         return 1.0
-    w = physics.beam_radius_m2(physics.q_propagate(ray.q, physics.abcd_free(t)), ray.wl, ray.m2)
-    if w <= 1e-9:
+    d = Vector(p2) - Vector(p1)
+    if d.length < 1e-12:
         return 1.0
-    a = E.optics.clear_aperture
-    # Dispatch on shape FIRST. A zero half-width on a shape the user explicitly chose means the
-    # opening has zero area -- it blocks -- and routing that through the kernel is the whole point
-    # of rect_aperture_transmission's zero case. Testing `a <= 0` before this returned 1.0 and
-    # passed the full beam through a closed stop, and left an axis asymmetry: aperture_half_y = 0
-    # blocked while clear_aperture = 0 did not, though the UI allows zero for both.
-    shape = getattr(E.optics, 'aperture_shape', 'CIRCULAR')
-    if shape == 'SQUARE':
-        return physics.rect_aperture_transmission(a, a, w)
-    if shape == 'RECTANGULAR':
-        return physics.rect_aperture_transmission(a, getattr(E.optics, 'aperture_half_y', a), w)
-    # CIRCULAR keeps its historical reading of zero: "no clear aperture configured", so nothing
-    # clips. Changing that would alter every existing scene that never set the field, which is a
-    # separate decision from giving the new shapes a sane closed state.
-    if a <= 0.0:
+    return _aperture_T(E, d.normalized(), w_mm, Vector(p2) * mmpu, sp * mmpu, sn)
+
+
+def _aperture_T(E, d, w, H=None, sp=None, sn=None):
+    op = E.optics
+    if not _aperture_configured(op):
         return 1.0
-    return 1.0 - math.exp(-2.0 * a * a / (w * w))
+    a = op.clear_aperture
+    shape = getattr(op, 'aperture_shape', 'CIRCULAR')
+    b = getattr(op, 'aperture_half_y', a) if shape == 'RECTANGULAR' else a
+    if H is None or sp is None or sn is None:
+        if shape == 'CIRCULAR':
+            return physics.ellipse_aperture_overlap(a, a, w)
+        return physics.polygon_aperture_overlap([(a, b), (-a, b), (-a, -b), (a, -b)], w)
+    cos_i = abs(d.dot(sn))
+    if cos_i < 1e-6:
+        return 0.0                                  # grazing: nothing passes through the opening
+    e1, e2 = _aperture_frame(E, sn)
+    sperp = sn - d * d.dot(sn)
+    u = sperp.normalized() if sperp.length > 1e-9 else (e1 - d * e1.dot(d)).normalized()
+    v = d.cross(u).normalized()
+    off = H - sp
+    xc, yc = off.dot(u), off.dot(v)
+    if shape == 'CIRCULAR':
+        # the in-plane direction along the plane of incidence shortens by cos(theta) and lands on u; the
+        # direction perpendicular to it lies in both planes and is unchanged (v)
+        return physics.ellipse_aperture_overlap(a * cos_i, a, w, xc, yc)
+    corners = [e1 * sa * a + e2 * sb * b for sa, sb in ((1, 1), (-1, 1), (-1, -1), (1, -1))]
+    return physics.polygon_aperture_overlap([(c.dot(u), c.dot(v)) for c in corners], w, xc, yc)
 
 
 def _ghost_reflectance(E, ray, sn):
@@ -1049,6 +1120,9 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 port_surfaces.append((_wp(E, p.local_position),
                                       geometry.world_normal(E, p.local_normal),
                                       p.clear_aperture or E.optics.clear_aperture))
+        if (E.optics.element_type in APERTURE_CLIPPED and surface[0] is not None
+                and _aperture_configured(E.optics)):
+            surface = (surface[0], surface[1], _aperture_gate_mm(E, surface[0], surface[1], surface[2]))
         record = (E, surface, port_surfaces)
         geometry_table.append(record)
         element_by_name.setdefault(E.name, record)
@@ -1127,6 +1201,19 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
         segments.append(_seg(ray, H, E, sn))
         et = E.optics.element_type
         op = E.optics
+
+        if et in APERTURE_CLIPPED and _aperture_configured(op):
+            # the beam reaching the element is clipped by its clear aperture before the element acts on it;
+            # a ray that lands on the body outside the opening ends here
+            sp = element_by_name[E.name][1][0]
+            Tc = _clip_T(ray, E, t, H, sp, sn) if sp is not None else 1.0
+            if Tc < 1.0:
+                if ray.power * Tc < 1e-4:
+                    continue
+                s_amp = math.sqrt(max(Tc, 0.0))
+                ray.power *= Tc
+                ray.jones = physics.scale(ray.jones, s_amp) if ray.jones else ray.jones
+                ray.evec = (tuple(c * s_amp for c in ray.evec) if ray.evec is not None else None)
 
         if et in ('CRYSTAL', 'WAVEPLATE') and getattr(op, 'oe_split', False):
             # TRUE ordinary/extraordinary SPATIAL double refraction (A-tier birefringence; opt-in, default
@@ -1316,9 +1403,7 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 stack.append(_child(ray, E, H, ray.dir, ray.power, 'TRANSMIT', idx, t))
             continue
         if et == 'APERTURE':
-            Tc = _clip_T(ray, E, t)
-            stack.append(_child(ray, E, H, ray.dir, ray.power * Tc, 'TRANSMIT', idx, t,
-                                jones=physics.scale(J, math.sqrt(Tc)) if J else None))
+            stack.append(_child(ray, E, H, ray.dir, ray.power, 'TRANSMIT', idx, t))   # clipped above
             continue
         if et == 'SLIT':
             # 1-D (anisotropic) clip: scale power by the verified slit erf along the clipped axis. The path is
@@ -1569,9 +1654,7 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             stack.append(_child(ray, E, H, ray.dir, pT, 'TRANSMIT', idx, t,
                                 jones=physics.scale(J, math.sqrt(max(onward * T, 0.0))) if J else None))
         elif et == 'PINHOLE':
-            Tc = _clip_T(ray, E, t)
-            stack.append(_child(ray, E, H, ray.dir, ray.power * Tc, 'TRANSMIT', idx, t,
-                                jones=physics.scale(J, math.sqrt(Tc)) if J else None))
+            stack.append(_child(ray, E, H, ray.dir, ray.power, 'TRANSMIT', idx, t))   # clipped above
         elif et == 'CAVITY':
             # Fabry-Perot etalon: wavelength-dependent Airy transmission
             T = physics.airy_transmission(ray.wl, op.cavity_spacing_mm, op.reflectivity)
