@@ -557,7 +557,168 @@ class OPTICS_OT_normalize_import(Operator):
         return {'FINISHED'}
 
 
+# --- Design: pure solves and the tolerance scan, from the UI ------------------------------------------
+
+def _show_design(context, lines):
+    context.window_manager.optics_design_result = "\n".join(lines)
+
+
+class _DesignSolve:
+    """A pure design calculator: the dialog shows the answer as the inputs change; OK keeps it in the panel.
+    Nothing in the scene changes."""
+    bl_options = {'REGISTER'}
+
+    def solve(self):
+        raise NotImplementedError
+
+    def lines(self, res):
+        raise NotImplementedError
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self, width=360)
+
+    def check(self, context):
+        return True                          # redraw the live answer whenever an input changes
+
+    def draw(self, context):
+        layout = self.layout
+        for name in self.__annotations__:
+            layout.prop(self, name)
+        res = self.solve()
+        box = layout.box()
+        for line in (self.lines(res) if res.get("ok") else [res.get("error", "no solution")]):
+            box.label(text=line)
+
+    def execute(self, context):
+        res = self.solve()
+        if not res.get("ok"):
+            _show_design(context, [res.get("error", "no solution")])
+            self.report({'WARNING'}, res.get("error", "no solution"))
+            return {'CANCELLED'}
+        _show_design(context, self.lines(res))
+        return {'FINISHED'}
+
+
+class OPTICS_OT_design_telescope(_DesignSolve, Operator):
+    bl_idname = "optics.design_telescope"
+    bl_label = "Telescope / Beam Expander"
+    bl_description = "Afocal two-lens telescope: lens separation and magnification from two focal lengths"
+
+    f1: FloatProperty(name="f1 (mm)", default=50.0)
+    f2: FloatProperty(name="f2 (mm)", default=200.0)
+
+    def solve(self):
+        from . import optics_api
+        return optics_api.design_telescope(self.f1, self.f2)
+
+    def lines(self, res):
+        return ["Telescope (%s): lenses %.2f mm apart" % (res["type"], res["sep"]),
+                "Magnification %.4g   beam expansion %.4gx" % (res["magnification"], res["beam_expansion"])]
+
+
+class OPTICS_OT_design_4f(_DesignSolve, Operator):
+    bl_idname = "optics.design_4f"
+    bl_label = "4f Relay"
+    bl_description = "4f relay: object, lens and image spacings and magnification from two focal lengths"
+
+    f1: FloatProperty(name="f1 (mm)", default=100.0)
+    f2: FloatProperty(name="f2 (mm)", default=100.0)
+
+    def solve(self):
+        from . import optics_api
+        return optics_api.design_4f(self.f1, self.f2)
+
+    def lines(self, res):
+        a, b, c = res["seps"]
+        return ["4f relay: %.2f | %.2f | %.2f mm (total %.2f mm)" % (a, b, c, res["total_length"]),
+                "Transverse magnification %.4g" % res["transverse_mag"]]
+
+
+class OPTICS_OT_mode_match(_DesignSolve, Operator):
+    bl_idname = "optics.mode_match"
+    bl_label = "Mode Match"
+    bl_description = ("Single thin lens that images an input Gaussian waist onto a target waist "
+                      "(fiber or cavity coupling); lengths in mm, wavelength in nm")
+
+    w0_in: FloatProperty(name="Input waist (mm)", default=0.3, min=0.0)
+    s_in: FloatProperty(name="Input waist to lens (mm)", default=100.0)
+    w0_t: FloatProperty(name="Target waist (mm)", default=0.3, min=0.0)
+    z_t: FloatProperty(name="Lens to target waist (mm)", default=100.0)
+    wavelength_nm: FloatProperty(name="Wavelength (nm)", default=632.8, min=0.0)
+    m2: FloatProperty(name="M²", default=1.0, min=1.0)
+
+    def solve(self):
+        from . import optics_api
+        return optics_api.mode_match(self.w0_in, self.s_in, self.w0_t, self.z_t, self.wavelength_nm, m2=self.m2)
+
+    def lines(self, res):
+        return ["Lens f = %.1f mm, input waist %.1f mm before it" % (res["f"], res["s_lens"]),
+                "Achieved waist %.4g mm at %.1f mm, coupling %.4f" % (res["achieved_w0"], res["achieved_z"],
+                                                                     res["coupling"])]
+
+
+def _detector_items(self, context):
+    from . import tracer
+    scene = getattr(context, "scene", None) or bpy.context.scene
+    names = sorted(o.name for o in scene.objects
+                   if getattr(o, "optics", None) and o.optics.is_optical and o.optics.element_type in tracer.TERMINAL)
+    return [(n, n, "") for n in names] or [('', "(no detector)", "")]
+
+
+class OPTICS_OT_tolerance_scan(Operator):
+    bl_idname = "optics.tolerance_scan"
+    bl_label = "Tolerance Scan"
+    bl_description = ("Monte-Carlo alignment tolerance: perturb the selected elements' poses and report how far "
+                      "the beam walks at the target. Poses and the trace are restored afterwards")
+    bl_options = {'REGISTER'}
+
+    target: EnumProperty(name="Target", items=_detector_items)
+    sigma_pos_mm: FloatProperty(name="Position sigma (mm)", default=0.1, min=0.0)
+    sigma_ang_deg: FloatProperty(name="Angle sigma (deg, per axis)", default=0.05, min=0.0)
+    n: IntProperty(name="Samples", default=200, min=1, max=100000)
+    seed: IntProperty(name="Seed", default=0)
+    tol_mm: FloatProperty(name="Yield tolerance (mm, 0 = off)", default=0.0, min=0.0)
+
+    @staticmethod
+    def _members(context):
+        return [o.name for o in getattr(context, "selected_objects", ())
+                if getattr(o, "optics", None) and o.optics.is_optical]
+
+    @classmethod
+    def poll(cls, context):
+        if not cls._members(context):
+            cls.poll_message_set("Select the elements to perturb")
+            return False
+        return True
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self, width=360)
+
+    def execute(self, context):
+        from . import optics_api
+        res = optics_api.tolerance_scan(self._members(context), target=self.target,
+                                        sigma_pos_mm=self.sigma_pos_mm, sigma_ang_deg=self.sigma_ang_deg,
+                                        n=self.n, seed=self.seed, tol_mm=self.tol_mm or None)
+        if not res.get("ok"):
+            _show_design(context, [res.get("error", "tolerance scan failed")])
+            self.report({'WARNING'}, res.get("error", "tolerance scan failed"))
+            return {'CANCELLED'}
+        rms = res.get("pointing_rms_mm")
+        lines = ["Tolerance at %s, %d samples: hit rate %.3f" % (self.target, res["n"], res["hit_rate"])]
+        if rms is not None:
+            lines.append("Walk RMS %.4g mm, p95 %.4g mm, max %.4g mm"
+                         % (rms, res["pointing_p95_mm"], res["pointing_max_mm"]))
+        if "yield" in res:
+            lines.append("Yield within %.3g mm: %.3f" % (res["tol_mm"], res["yield"]))
+        _show_design(context, lines)
+        return {'FINISHED'}
+
+
 _classes = (
+    OPTICS_OT_design_telescope,
+    OPTICS_OT_design_4f,
+    OPTICS_OT_mode_match,
+    OPTICS_OT_tolerance_scan,
     OPTICS_OT_diagnose,
     OPTICS_OT_propose_corrections,
     OPTICS_OT_fix_diagnosis,

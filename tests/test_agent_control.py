@@ -571,6 +571,71 @@ check('Render Sequence passes its settings to render_sequence',
       result == {'FINISHED'} and calls and calls[0]['frames'] == 3 and calls[0]['motion'] == 'HERO'
       and calls[0]['engine'] == 'CYCLES' and calls[0]['fps'] == 12 and calls[0]['out_dir'] is None, str(calls))
 
+# Design sub-panel: the pure design solves and the tolerance scan are reachable from the UI.
+wm = bpy.context.window_manager
+check('Design panel exists', hasattr(ui, 'OPTICS_PT_design'))
+if hasattr(bpy.ops.optics, 'design_telescope') and hasattr(ui, 'OPTICS_PT_design'):
+    fields = set()
+    ui.OPTICS_PT_design.draw(SimpleNamespace(layout=Layout(fields)), bpy.context)
+    check('Design panel offers telescope, 4f, mode match and tolerance scan',
+          {'optics.design_telescope', 'optics.design_4f', 'optics.mode_match', 'optics.tolerance_scan'} <= fields,
+          str(sorted(fields)))
+    fields = set()
+    dialog = SimpleNamespace(layout=Layout(fields), f1=50.0, f2=200.0,
+                             __annotations__=operators.OPTICS_OT_design_telescope.__annotations__)
+    dialog.solve = lambda: operators.OPTICS_OT_design_telescope.solve(dialog)
+    dialog.lines = lambda res: operators.OPTICS_OT_design_telescope.lines(dialog, res)
+    operators.OPTICS_OT_design_telescope.draw(dialog, bpy.context)
+    check('the design dialog draws its inputs', {'f1', 'f2'} <= fields, str(sorted(fields)))
+    before = len(bpy.data.objects)
+    check('telescope design runs', bpy.ops.optics.design_telescope(f1=50.0, f2=200.0) == {'FINISHED'})
+    check('telescope result is shown: 250 mm apart, 4x expansion',
+          '250' in wm.optics_design_result and '4' in wm.optics_design_result, wm.optics_design_result)
+    check('a design solve adds nothing to the scene', len(bpy.data.objects) == before)
+    check('4f design runs and reports total length 500 mm',
+          bpy.ops.optics.design_4f(f1=50.0, f2=200.0) == {'FINISHED'} and '500' in wm.optics_design_result,
+          wm.optics_design_result)
+    check('mode match solves a reachable target (f = 1048.2 mm)',
+          bpy.ops.optics.mode_match(w0_in=0.3, s_in=100.0, w0_t=0.3, z_t=100.0, wavelength_nm=632.8) == {'FINISHED'}
+          and '1048.2' in wm.optics_design_result, wm.optics_design_result)
+    check('mode match says so when no real lens reaches the target',
+          bpy.ops.optics.mode_match(w0_in=0.5, s_in=0.0, w0_t=0.1, z_t=100.0, wavelength_nm=1064.0) == {'CANCELLED'}
+          and 'no real lens' in wm.optics_design_result, wm.optics_design_result)
+    clear()
+    eg.source('TS2', (-80, 0, 0), (1, 0, 0))
+    tm = eg.mirror('TM', (0, 0, 0), (1, 0, 0), (0, 1, 0))
+    eg.detector('TD', (0, 120, 0), (0, 1, 0))
+    bpy.context.view_layer.update()
+    pose = tm.matrix_world.copy()
+    with bpy.context.temp_override(selected_objects=[tm], object=tm, active_object=tm):
+        result = bpy.ops.optics.tolerance_scan(target='TD', sigma_pos_mm=0.1, sigma_ang_deg=0.05, n=20, seed=1)
+    check('tolerance scan runs on the selection against a detector',
+          result == {'FINISHED'} and 'RMS' in wm.optics_design_result, wm.optics_design_result)
+    check('tolerance scan leaves the pose as it was',
+          max(abs(tm.matrix_world[i][j] - pose[i][j]) for i in range(4) for j in range(4)) < 1e-6)
+
+# A keyed shutter drives the trace frame by frame with Blender's own keyframes (no helper needed).
+clear()
+scene = bpy.context.scene
+scene.optics.live_enabled = False
+eg.source('KS', (-80, 0, 0), (1, 0, 0))
+shutter = eg._inline('KSh', (0, 0, 0), (1, 0, 0), None, 'SHUTTER', 'wp')
+eg.detector('KD', (80, 0, 0), (1, 0, 0))
+bpy.context.view_layer.update()
+shutter.optics.shutter_open = True
+shutter.keyframe_insert('optics.shutter_open', frame=1)
+shutter.optics.shutter_open = False
+shutter.keyframe_insert('optics.shutter_open', frame=10)
+def reaches_detector():
+    return any(seg['to'] == 'KD' and seg['power'] > 0 for seg in api._trace(scene))
+scene.frame_set(1)
+open_frame = reaches_detector()
+scene.frame_set(10)
+closed_frame = reaches_detector()
+scene.frame_set(1)
+check('a keyed shutter is open on frame 1 and closed on frame 10', open_frame and not closed_frame,
+      str((open_frame, closed_frame)))
+
 failed = len(checks) - sum(checks)
 print("AGENT CONTROL %s (%d/%d checks)" % ("PASS" if failed == 0 else "FAIL",
                                             sum(checks), len(checks)), flush=True)
