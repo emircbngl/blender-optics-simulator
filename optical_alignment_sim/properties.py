@@ -955,11 +955,16 @@ def register():
     bpy.types.WindowManager.optics_diagnosis_warn = IntProperty(options={'SKIP_SAVE'})
     bpy.types.WindowManager.optics_diagnosis_revision = IntProperty(default=-1, options={'SKIP_SAVE'})
     bpy.types.WindowManager.optics_scene_revision = IntProperty(options={'SKIP_SAVE'})
+    # Propose Corrections keeps its own list: Diagnose must not wipe it, nor it Diagnose's.
+    bpy.types.WindowManager.optics_correction_cache = CollectionProperty(
+        type=OpticalDiagnosisCacheItem, options={'SKIP_SAVE'})
+    bpy.types.WindowManager.optics_correction_revision = IntProperty(default=-1, options={'SKIP_SAVE'})
 
 
 def unregister():
     for name in ("optics_scene_revision", "optics_diagnosis_revision",
-                 "optics_diagnosis_warn", "optics_diagnosis_bad", "optics_diagnosis_cache"):
+                 "optics_diagnosis_warn", "optics_diagnosis_bad", "optics_diagnosis_cache",
+                 "optics_correction_cache", "optics_correction_revision"):
         if hasattr(bpy.types.WindowManager, name):
             delattr(bpy.types.WindowManager, name)
     if hasattr(bpy.types.Scene, "optics"):

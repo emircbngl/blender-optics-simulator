@@ -216,7 +216,7 @@ for mismatch in (0, 1, 10, 100):
 
 from optical_alignment_sim import operators
 bpy.context.view_layer.update()
-operators._store_diagnosis(bpy.context.window_manager, [dict(issue='crossed_polarizer',
+operators._store_corrections(bpy.context.window_manager, [dict(issue='crossed_polarizer',
     element='D', suggested_fix='Adjust the analyzer', tool='set_param', severity='WARN')])
 old_analyzer = bpy.data.objects['D'].optics.analyzer
 result = bpy.ops.optics.fix_diagnosis(index=0)
@@ -397,6 +397,37 @@ check('a saved mount preset keeps the step', any(abs(d.get('step', -1) - 0.25) <
 check('get_state reports each knob step',
       any(abs(d.get('step', -1) - 0.25) < 1e-6
           for e in api.get_state()['elements'] if e['name'] == 'K' for d in e['mount']['dofs']))
+
+# Diagnose and Propose Corrections keep their own lists, and selecting an object does not stale them.
+clear()
+api.build_example('mach_zehnder')
+wm = bpy.context.window_manager
+tilted = next(o for o in bpy.context.scene.objects if o.optics.is_optical and o.optics.element_type == 'MIRROR')
+tilted.rotation_euler.z += 0.05
+bpy.context.view_layer.update()
+bpy.ops.optics.diagnose()
+diagnosed = [i.issue for i in wm.optics_diagnosis_cache]
+bpy.ops.optics.propose_corrections()
+# a Diagnose record carries no suggested fix; a proposal does, so an overwrite is visible here
+check('Propose Corrections keeps the Diagnose list',
+      diagnosed and [i.issue for i in wm.optics_diagnosis_cache] == diagnosed
+      and not any(i.suggested_fix for i in wm.optics_diagnosis_cache), str(diagnosed))
+corrections = [i.suggested_fix for i in getattr(wm, 'optics_correction_cache', ())]
+check('Propose Corrections fills its own list', corrections and all(corrections), str(corrections))
+bpy.ops.optics.diagnose()
+check('Diagnose keeps the Corrections list',
+      corrections and [i.suggested_fix for i in getattr(wm, 'optics_correction_cache', ())] == corrections)
+tilted.select_set(True)
+bpy.context.view_layer.update()
+check('selecting an object leaves both lists current',
+      wm.optics_diagnosis_revision == wm.optics_scene_revision
+      and getattr(wm, 'optics_correction_revision', -2) == wm.optics_scene_revision)
+check('Fix is available after selecting an object', bpy.ops.optics.fix_diagnosis.poll())
+tilted.rotation_euler.z += 0.01
+bpy.context.view_layer.update()
+check('moving an optic marks both lists out of date',
+      wm.optics_diagnosis_revision != wm.optics_scene_revision
+      and getattr(wm, 'optics_correction_revision', wm.optics_scene_revision) != wm.optics_scene_revision)
 
 failed = len(checks) - sum(checks)
 print("AGENT CONTROL %s (%d/%d checks)" % ("PASS" if failed == 0 else "FAIL",

@@ -21,8 +21,7 @@ SOURCE_TYPES = {'SOURCE', 'FIBER_COLLIMATOR'}
 DETECTOR_TYPES = {'DETECTOR', 'PHOTODIODE', 'POWER_METER', 'WAVEFRONT_SENSOR'}
 
 
-def _store_diagnosis(wm, records):
-    cache = wm.optics_diagnosis_cache
+def _fill_cache(cache, records):
     cache.clear()
     ordered = sorted(records, key=lambda item: 0 if item.get("severity") == 'BAD' else 1)
     for record in ordered:
@@ -35,9 +34,19 @@ def _store_diagnosis(wm, records):
         item.tool = str(record.get("tool", "") or "")
         item.maybe_intentional_if = str(record.get("maybe_intentional_if", "") or "")
         item.fault_confidence = float(record.get("fault_confidence", 1.0) or 0.0)
+
+
+def _store_diagnosis(wm, records):
+    cache = wm.optics_diagnosis_cache
+    _fill_cache(cache, records)
     wm.optics_diagnosis_bad = sum(item.severity == 'BAD' for item in cache)
     wm.optics_diagnosis_warn = sum(item.severity == 'WARN' for item in cache)
     wm.optics_diagnosis_revision = wm.optics_scene_revision
+
+
+def _store_corrections(wm, records):
+    _fill_cache(wm.optics_correction_cache, records)
+    wm.optics_correction_revision = wm.optics_scene_revision
 
 
 class OPTICS_OT_diagnose(Operator):
@@ -66,7 +75,7 @@ class OPTICS_OT_propose_corrections(Operator):
         if not result.get("ok"):
             self.report({'ERROR'}, result.get("error", "Correction proposal failed"))
             return {'CANCELLED'}
-        _store_diagnosis(context.window_manager, result.get("proposals", ()))
+        _store_corrections(context.window_manager, result.get("proposals", ()))
         return {'FINISHED'}
 
 
@@ -81,25 +90,25 @@ class OPTICS_OT_fix_diagnosis(Operator):
     @classmethod
     def poll(cls, context):
         wm = context.window_manager
-        if wm.optics_diagnosis_revision != wm.optics_scene_revision:
-            cls.poll_message_set("Scene changed — re-run Diagnose")
+        if wm.optics_correction_revision != wm.optics_scene_revision:
+            cls.poll_message_set("Scene changed — re-run Propose Corrections")
             return False
-        return bool(wm.optics_diagnosis_cache)
+        return bool(wm.optics_correction_cache)
 
     def draw(self, context):
-        item = context.window_manager.optics_diagnosis_cache[self.index]
+        item = context.window_manager.optics_correction_cache[self.index]
         if item.fault_confidence < 0.5:
             self.layout.label(text="Often intentional: %s" % item.maybe_intentional_if,
                               icon='INFO')
         self.layout.label(text=item.suggested_fix or "Review the affected element.")
 
     def invoke(self, context, event):
-        if self.index < 0 or self.index >= len(context.window_manager.optics_diagnosis_cache):
+        if self.index < 0 or self.index >= len(context.window_manager.optics_correction_cache):
             return {'CANCELLED'}
         return context.window_manager.invoke_props_dialog(self, width=520)
 
     def execute(self, context):
-        item = context.window_manager.optics_diagnosis_cache[self.index]
+        item = context.window_manager.optics_correction_cache[self.index]
         obj = context.scene.objects.get(item.element)
         if obj is not None:
             for selected in context.selected_objects:

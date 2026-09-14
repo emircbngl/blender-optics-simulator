@@ -541,9 +541,9 @@ class OPTICS_PT_corrections(_OpticsPanel, Panel):
         layout = self.layout
         layout.operator("optics.propose_corrections", text="Propose Corrections", icon='LIGHT')
         wm = context.window_manager
-        fresh = wm.optics_diagnosis_revision == wm.optics_scene_revision
+        fresh = wm.optics_correction_revision == wm.optics_scene_revision
         col = layout.column(align=True); col.enabled = fresh
-        for index, item in enumerate(wm.optics_diagnosis_cache):
+        for index, item in enumerate(wm.optics_correction_cache):
             if not item.suggested_fix:
                 continue
             box = col.box()
@@ -555,8 +555,8 @@ class OPTICS_PT_corrections(_OpticsPanel, Panel):
                 box.operator("optics.fix_diagnosis", text="Review and Fix…").index = index
             else:
                 box.operator("optics.fix_diagnosis", text="Select Element…", icon='RESTRICT_SELECT_OFF').index = index
-        if len(wm.optics_diagnosis_cache) and not fresh:
-            layout.label(text="Scene changed — re-run Diagnose", icon='ERROR')
+        if len(wm.optics_correction_cache) and not fresh:
+            layout.label(text="Scene changed — re-run Propose Corrections", icon='ERROR')
 
 
 class OPTICS_PT_optical_report(_OpticsPanel, Panel):
