@@ -93,6 +93,14 @@ _MAX_CLIP_T = 1.0e5          # mm: reject absurd far-plane crossings outright
 _MAX_MISS_RATIO = 4.0        # off must be <= ca * this to count as a near-miss clip
 
 
+def _source_root(src_id):
+    """The source a segment belongs to. A nonlinear mode carries (parent src_id, mode) so its
+    signal and idler stay mutually incoherent; its power still comes from the parent source."""
+    while isinstance(src_id, tuple):
+        src_id = src_id[0]
+    return src_id
+
+
 def _issue(kind, element, detail, severity):
     return {"kind": kind, "element": element, "detail": detail, "severity": severity}
 
@@ -292,11 +300,11 @@ def _dark_and_orphan(scene, segs):
                if o.optics.element_type in ('SOURCE', 'FIBER_COLLIMATOR')
                or o.optics.is_source]
     terminal_names = {o.name for o in terminals}
-    reaching_terminal = {s.get("src_id", -1) for s in segs
+    reaching_terminal = {_source_root(s.get("src_id", -1)) for s in segs
                          if s.get("to") in terminal_names}
     for src in sources:
         # the src_ids this source emitted = segments whose `from` is this source
-        emitted = {s.get("src_id", -1) for s in segs if s.get("from") == src.name}
+        emitted = {_source_root(s.get("src_id", -1)) for s in segs if s.get("from") == src.name}
         if not emitted:
             continue                       # source emitted nothing traceable -> not our concern here
         if emitted.isdisjoint(reaching_terminal):

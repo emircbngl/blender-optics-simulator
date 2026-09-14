@@ -26,6 +26,12 @@ EXTEND_MM = 150.0          # how far an escaping ray is drawn
 # overlay reads this; handlers write it
 cached_segments = []
 
+
+class TraceSegments(list):
+    """A trace result that remembers the live signature of the scene it was traced from, so a
+    Live-off cache is dropped when an input changes, not on every depsgraph update."""
+    __slots__ = ("scene_sig",)
+
 # Elements whose beam interaction happens at the REFLECT port plane (not the IN plane).
 REFLECTIVE = ('MIRROR', 'PRISM_MIRROR', 'BEAMSPLITTER', 'DICHROIC', 'GRATING', 'RETROREFLECTOR',
               'DEFORMABLE_MIRROR')
@@ -1969,7 +1975,13 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             stack.append(_child(ray, E, H, ray.dir, ray.power * onward, 'TRANSMIT', idx, t,
                                 jones=physics.scale(J, math.sqrt(onward)) if J else None))
 
-    return segments
+    out = TraceSegments(segments)
+    try:
+        from . import handlers
+        out.scene_sig = handlers._signature(scene)
+    except Exception:
+        out.scene_sig = None
+    return out
 
 
 # --- operators --------------------------------------------------------------

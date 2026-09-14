@@ -166,10 +166,10 @@ def on_diagnosis_revision_update(scene, depsgraph=None):
     """Invalidate cached UI diagnostics without inspecting the dependency graph."""
     for wm in bpy.data.window_managers:
         wm.optics_scene_revision += 1
-    # With Live disabled there is no deferred trace to refresh the shared cache. Clearing it
-    # makes read buttons (Power Budget, sensor panels, and API consumers) fail closed instead
-    # of presenting a previous scene as current. During a live trace `_recomputing` protects
-    # the freshly written cache from this invalidation callback.
+    # With Live disabled there is no deferred trace to refresh the shared cache. Dropping a
+    # stale one makes read buttons (Power Budget, sensor panels, and API consumers) fail closed
+    # instead of presenting a previous scene as current. During a live trace `_recomputing`
+    # protects the freshly written cache from this invalidation callback.
     baking = False
     try:
         from . import bake
@@ -177,6 +177,18 @@ def on_diagnosis_revision_update(scene, depsgraph=None):
     except Exception:
         pass
     if not _recomputing and not baking and not getattr(getattr(scene, "optics", None), "live_enabled", False):
+        _drop_stale_cache(scene)
+
+
+def _drop_stale_cache(scene):
+    """Drop the cache only when an input it was traced from changed. Selecting an object or
+    any other update the tracer does not read keeps an explicit Trace Now on screen; a cache
+    without a recorded signature (copied or filtered) cannot be vouched for and is dropped."""
+    segs = tracer.cached_segments
+    if not segs:
+        return
+    sig = getattr(segs, "scene_sig", None)
+    if sig is None or sig != _signature(scene):
         tracer.cached_segments = []
 
 
@@ -218,7 +230,7 @@ def on_frame_change(scene, depsgraph=None):
     if scene.optics.live_enabled:
         _deferred_trace()
     else:
-        tracer.cached_segments = []
+        _drop_stale_cache(scene)
 
 
 @persistent

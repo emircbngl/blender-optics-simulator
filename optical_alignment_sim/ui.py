@@ -134,7 +134,7 @@ class OPTICS_PT_element(_OpticsPanel, Panel):
             col.prop(props, "focal_length")
         if et == 'BEAMSPLITTER':
             col.prop(props, "split_ratio")
-        if et in ('MIRROR', 'PRISM_MIRROR', 'DEFORMABLE_MIRROR', 'RETROREFLECTOR', 'CAVITY'):
+        if et in ('MIRROR', 'PRISM_MIRROR', 'DEFORMABLE_MIRROR', 'RETROREFLECTOR', 'CAVITY', 'GRATING'):
             col.prop(props, "reflectivity")
         col.prop(props, "mount_type")
         for dof in props.dofs:

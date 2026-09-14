@@ -188,7 +188,7 @@ def _default_specs_for_type(etype, obj):
     if etype == 'ABERRATOR':
         return [("IN", "IN", minus), ("OUT", "OUT", plus)]
     # These supported element types used to return an empty list for an unrecognised
-    # imported mesh. Give Astra a safe, explicit axial fallback instead of reporting
+    # imported mesh. Give an agent a safe, explicit axial fallback instead of reporting
     # "finished" with a stale/empty port set. Special builder geometry can still be
     # corrected by selecting a face and using the visible port picker.
     if etype in ('OBJECTIVE', 'AOM', 'PRISM', 'SLIT', 'KNIFE_EDGE'):

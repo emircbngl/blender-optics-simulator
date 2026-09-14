@@ -223,6 +223,48 @@ check('manual correction selects its element without changing optical settings',
       result == {'FINISHED'} and bpy.context.object.name == 'D'
       and bpy.context.object.optics.analyzer == old_analyzer)
 
+check('grating diffraction efficiency is editable without Advanced',
+      'reflectivity' in seen['GRATING'], str(sorted(seen['GRATING'])))
+
+# Live off: an explicit Trace Now stays until something the trace read changes.
+clear()
+api.build_example('mach_zehnder')
+scene = bpy.context.scene
+scene.optics.live_enabled = False
+bpy.context.view_layer.update()
+bpy.ops.optics.trace_now()
+traced = len(tracer.cached_segments)
+optic = next(o for o in scene.objects if o.optics.is_optical and o.optics.element_type == 'MIRROR')
+optic.select_set(True)
+bpy.context.view_layer.update()
+after_select = len(tracer.cached_segments)
+optic.hide_render = not optic.hide_render
+bpy.context.view_layer.update()
+after_unrelated = len(tracer.cached_segments)
+optic.location.x += 1.0
+bpy.context.view_layer.update()
+check('live-off trace survives selecting an object', traced > 0 and after_select == traced,
+      "%d -> %d" % (traced, after_select))
+check('live-off trace survives a change the tracer does not read', after_unrelated == traced,
+      "%d -> %d" % (traced, after_unrelated))
+check('live-off trace is dropped when an optic moves', len(tracer.cached_segments) == 0,
+      str(len(tracer.cached_segments)))
+
+# Converted light reaching a detector still belongs to its source (coherence ids are tuples).
+clear()
+eg.source('S', (-80, 0, 0), (1, 0, 0), wavelength=532)
+eg.crystal('X', (0, 0, 0), (1, 0, 0), nl_process='OPO', nl_lambda2_nm=800, crystal_length_mm=10)
+pump_block = eg.optical_filter('F', (40, 0, 0), (1, 0, 0))
+pump_block.optics.filt_type = 'LP'
+pump_block.optics.cut_nm = 700
+eg.detector('D', (80, 0, 0), (1, 0, 0))
+bpy.context.view_layer.update()
+arrivals = [s for s in api._trace(scene) if s['to'] == 'D']
+issues = [i.get('id') or i.get('kind') or i.get('code') for i in api.diagnose().get('diagnostics', [])]
+check('OPO signal/idler reach the detector with the pump blocked',
+      arrivals and all(s['wavelength'] > 700 for s in arrivals), str(arrivals))
+check('converted light is not reported as an orphaned source', 'orphan_source' not in issues, str(issues))
+
 failed = len(checks) - sum(checks)
 print("AGENT CONTROL %s (%d/%d checks)" % ("PASS" if failed == 0 else "FAIL",
                                             sum(checks), len(checks)), flush=True)
