@@ -974,7 +974,7 @@ check("prism design wavelength sits at minimum deviation",
       "trace=%.3f analytic=%.3f" % (_d0 or -1, physics.prism_min_deviation(physics.sellmeier_n(589.3, 'N-SF11'), 60.0)))
 # The checks above measure the deviation as a 3-D angle, which a prism tipped out of the bench plane passes
 # unchanged -- and it was: mapping the incoming beam onto the axis left the roll free, the equilateral prism's
-# apex stood 33.6 deg off vertical, and the spectrum left the table at ~31 deg. Hold the PLANE, per type.
+# apex stood ~33 deg off vertical, and the spectrum left the table at ~31 deg. Hold the PLANE, per type.
 _plane_bad = []
 for _pt in ("EQUILATERAL", "LITTROW", "PELLIN_BROCA", "AMICI", "RIGHT_ANGLE", "PENTA", "DOVE", "ROOF", "RHOMBOID"):
     for _o in list(sc.objects):

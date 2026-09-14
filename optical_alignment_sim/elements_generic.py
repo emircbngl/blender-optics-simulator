@@ -237,7 +237,7 @@ def _roll_bar_vertical(R, axis, bar_local=(1.0, 0.0, 0.0)):
     """Roll ``R`` about the world incoming-beam ``axis`` so the prism's BAR (local +X, the apex edge; the
     folds and the dispersion live in local YZ) stands vertical. Mapping the incoming beam onto ``axis`` alone
     leaves that roll free, and rotation_difference picks whatever is shortest -- which tilted an equilateral
-    prism's apex 33.6 deg off vertical and threw its spectrum 31 deg out of the bench plane. Of the two
+    prism's apex ~33 deg off vertical and threw its spectrum ~31 deg out of the bench plane. Of the two
     vertical directions the nearer one is taken, so a prism that was already upright is untouched and the
     side it deviates to is kept. A beam travelling vertically leaves R as it is."""
     a = Vector(axis).normalized()
