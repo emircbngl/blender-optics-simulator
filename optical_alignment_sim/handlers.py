@@ -14,6 +14,7 @@ _recomputing = False
 _dirty = False
 _last_sig = None
 _pending_scene = None       # the scene whose depsgraph update armed the deferred trace
+_rendering = False          # a render job is running (render_init .. render_complete / render_cancel)
 
 # Physics-affecting INPUT properties the tracer/physics read. They MUST be in the live
 # signature so editing e.g. a wavelength or reflectivity re-traces -- without this the live
@@ -225,6 +226,8 @@ def on_frame_change(scene, depsgraph=None):
     global _last_sig, _pending_scene
     if scene is None or not getattr(scene, "optics", None):
         return
+    if _rendering and _render_writes_unsafe(scene):
+        return
     _pending_scene = scene
     _last_sig = None
     if scene.optics.live_enabled:
@@ -233,12 +236,54 @@ def on_frame_change(scene, depsgraph=None):
         _drop_stale_cache(scene)
 
 
+def _is_background():
+    return bpy.app.background
+
+
+def _render_writes_unsafe(scene):
+    """While rendering, Blender runs frame_change and render handlers on one thread and draws the
+    viewport from another; a handler changing data the viewport reads can crash Blender unless
+    Render > Lock Interface is on (bpy.app.handlers, "Note on Altering Data"). A background render
+    has no viewport to race."""
+    return not _is_background() and not scene.render.use_lock_interface
+
+
+def beams_need_render_lock(scene):
+    """Baked beams on a bench with animated optics, rendered with the interface unlocked: the render
+    keeps the beams as baked, so the Render panel says so before the user renders. Only an action on
+    an optical object counts (drivers, constraints and animated parents are not inspected)."""
+    if not _render_writes_unsafe(scene):
+        return False
+    if not any(o.name.startswith("BEAM_") for o in scene.objects):
+        return False
+    return any(o.animation_data is not None and o.animation_data.action is not None
+               for o in scene.objects if getattr(o, "optics", None) and o.optics.is_optical)
+
+
+@persistent
+def on_render_init(scene, *args):
+    global _rendering
+    _rendering = True
+    if (scene is not None and _render_writes_unsafe(scene)
+            and any(o.name.startswith("BEAM_") for o in scene.objects)):
+        print("[optics] Render > Lock Interface is off: beams stay as baked for this render. "
+              "Turn Lock Interface on to re-bake them per frame, or bake the frame first.")
+
+
+@persistent
+def on_render_done(scene, *args):
+    global _rendering
+    _rendering = False
+
+
 @persistent
 def on_render_pre(scene, depsgraph=None):
     """Rebuild renderable beam meshes for the frame Blender is about to render."""
     if scene is None or not getattr(scene, "optics", None):
         return
     if not any(o.name.startswith("BEAM_") for o in scene.objects):
+        return
+    if _render_writes_unsafe(scene):
         return
     # bake.ensure_beams is context-based. Blender normally renders the active scene,
     # but a queued multi-scene render can call this callback for another scene; skip in
@@ -285,6 +330,11 @@ def register():
         bpy.app.handlers.frame_change_post.append(on_frame_change)
     if on_render_pre not in bpy.app.handlers.render_pre:
         bpy.app.handlers.render_pre.append(on_render_pre)
+    if on_render_init not in bpy.app.handlers.render_init:
+        bpy.app.handlers.render_init.append(on_render_init)
+    for done in (bpy.app.handlers.render_complete, bpy.app.handlers.render_cancel):
+        if on_render_done not in done:
+            done.append(on_render_done)
 
 
 def unregister():
@@ -297,6 +347,11 @@ def unregister():
         bpy.app.handlers.frame_change_post.remove(on_frame_change)
     if on_render_pre in bpy.app.handlers.render_pre:
         bpy.app.handlers.render_pre.remove(on_render_pre)
+    if on_render_init in bpy.app.handlers.render_init:
+        bpy.app.handlers.render_init.remove(on_render_init)
+    for done in (bpy.app.handlers.render_complete, bpy.app.handlers.render_cancel):
+        if on_render_done in done:
+            done.remove(on_render_done)
     try:
         if bpy.app.timers.is_registered(_deferred_trace):
             bpy.app.timers.unregister(_deferred_trace)

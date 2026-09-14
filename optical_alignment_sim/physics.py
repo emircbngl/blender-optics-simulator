@@ -915,6 +915,29 @@ def chi2_shg_type2_efficiency(eta_lin, frac_o=0.5, n_steps=400, dkL=0.0):
     return min(2.0 * min(fo, 1.0 - fo), 2.0 * abs(a_2) ** 2)
 
 
+# Unpolarized Type-II. MODEL ASSUMPTION (derived here, not taken from a source; UNVERIFIED): a
+# depolarized beam is a constant-intensity ensemble of pure polarization states uniform on the Poincare
+# sphere -- the same no-intensity-fluctuation picture the tracer uses for polarized sources. The ordinary
+# fraction is fo = (1 + s1)/2 with s1 uniform on [-1, 1] (Archimedes), so the conversion is the plain
+# average over s1, independent of how the crystal is rolled. Thermal (Gaussian) light has a different
+# fourth-order moment and is NOT described by this.
+def type2_unpolarized_static_efficiency(eff):
+    """Average of the static Type-II efficiency min(eff*4fo(1-fo), 2min(fo,1-fo)) over the ensemble above.
+    With s = |s1|, 4fo(1-fo) = 1-s^2 and 2min(fo,1-fo) = 1-s; the cap binds for s > s* = 1/eff - 1, so
+    <eta> = eff*(s* - s*^3/3) + (1-s*)^2/2, which is 2/3*eff whenever eff <= 1/2."""
+    eff = min(max(float(eff), 0.0), 1.0)
+    if eff <= 0.0:
+        return 0.0
+    s = min(1.0 / eff - 1.0, 1.0)
+    return eff * (s - s ** 3 / 3.0) + 0.5 * (1.0 - s) ** 2
+
+
+def chi2_shg_type2_unpolarized_efficiency(eta_lin, dkL=0.0, n=16):
+    """Ensemble average of ``chi2_shg_type2_efficiency`` over the unpolarized ensemble above: the integral
+    over s in [0, 1] of eta(fo = (1+s)/2) (the efficiency is symmetric in fo <-> 1-fo), by Simpson's rule."""
+    return _simpson(lambda s: chi2_shg_type2_efficiency(eta_lin, 0.5 * (1.0 + s), dkL=dkL), 0.0, 1.0, n)
+
+
 # Crystal-material catalog: effective nonlinear coefficient deff (pm/V, order-of-magnitude
 # literature values) + a SIMPLE LINEAR phase-mismatch temperature model dk(T) ~ dk_dT*(T - T_pm).
 # The dk_dT slope is a HONEST PLACEHOLDER (deg-1 per mm) tuned only to give a realistic sinc^2(T)

@@ -42,11 +42,11 @@ TERMINAL = ('DETECTOR', 'PHOTODIODE', 'POWER_METER', 'WAVEFRONT_SENSOR', 'BEAM_D
 
 class _Ray:
     __slots__ = ('p1', 'dir', 'power', 'depth', 'from_obj', 'wl', 'kind', 'parent',
-                 'jones', 'opl', 'q', 'src_id', 'coh', 'evec', 'aberr', 'm2', 'ghost_depth')
+                 'jones', 'opl', 'q', 'src_id', 'coh', 'evec', 'aberr', 'm2', 'ghost_depth', 'unpol')
 
     def __init__(self, p1, d, power, depth, from_obj, wl, kind, parent,
                  jones=None, opl=0.0, q=None, src_id=-1, coh=1.0e12, evec=None, aberr=None,
-                 m2=1.0, ghost_depth=0):
+                 m2=1.0, ghost_depth=0, unpol=False):
         self.p1 = p1
         self.dir = d.normalized()
         self.power = power
@@ -64,6 +64,7 @@ class _Ray:
         self.aberr = aberr          # Zernike wavefront-error coeffs (waves) or None (=flat)
         self.m2 = m2                # beam-quality factor (B1): physical radius = sqrt(m2)*beam_radius(q)
         self.ghost_depth = ghost_depth  # A9: how many parasitic back-reflections deep this ray is
+        self.unpol = unpol          # half of an UNPOL source's incoherent H+V pair, not yet polarized by an element
 
 
 def _find_port(props, role):
@@ -271,7 +272,7 @@ def _jones_at_power(J, power):
 
 
 def _child(ray, E, H, d, power, kind, idx, t, jones=None, q=None, evec=None, aberr=None,
-            wl=None, coherence_id=None):
+            wl=None, coherence_id=None, unpol=None):
     """Construct a continuation ray: carry polarization/coherence, advance the optical
     path length, and propagate the Gaussian beam q through the free space to E (and
     through E's focal power when it is a lens).
@@ -339,7 +340,9 @@ def _child(ray, E, H, d, power, kind, idx, t, jones=None, q=None, evec=None, abe
                 jones=nj, opl=ray.opl + t, q=q,
                 src_id=(ray.src_id if coherence_id is None else coherence_id), coh=ray.coh, evec=nev,
                 aberr=(aberr if aberr is not None else ray.aberr), m2=child_m2,
-                ghost_depth=ray.ghost_depth)
+                ghost_depth=ray.ghost_depth,
+                # a converted beam (fresh q) is born polarized; a polarizing element passes unpol=False
+                unpol=(bool(unpol) if unpol is not None else (ray.unpol and not fresh_q)))
 
 
 # Elements whose clear aperture clips the beam, and whose BODY intercepts it. One rule for all of them: the
@@ -1220,7 +1223,8 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                     js = physics.scale(jv, math.sqrt(sw))
                     stack.append(_Ray(P, D, pw * sw, 0, src, wl_i, 'SOURCE', -1,
                                       jones=js, opl=0.0, q=q0, src_id=sid, coh=coh0,
-                                      evec=physics.field_from_jones(js, D), m2=m2))
+                                      evec=physics.field_from_jones(js, D), m2=m2,
+                                      unpol=(sp.pol_type == 'UNPOL')))
                     sid += 1
 
     segments = []
@@ -1284,8 +1288,8 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 evec_e = (complex(pol_e[0]), complex(pol_e[1]), complex(pol_e[2]))
             L = getattr(op, 'oe_length_mm', 10.0)
             Hoff = H + Vector(walk) * (L * math.tan(math.radians(rho)))         # fixed slab displacement
-            stack.append(_child(ray, E, H, ray.dir, ray.power * fo, 'SPLIT_O', idx, t, evec=evec_o))
-            stack.append(_child(ray, E, Hoff, ray.dir, ray.power * fe, 'SPLIT_E', idx, t, evec=evec_e))
+            stack.append(_child(ray, E, H, ray.dir, ray.power * fo, 'SPLIT_O', idx, t, evec=evec_o, unpol=False))
+            stack.append(_child(ray, E, Hoff, ray.dir, ray.power * fe, 'SPLIT_E', idx, t, evec=evec_e, unpol=False))
             continue
 
         if et == 'CRYSTAL':
@@ -1339,16 +1343,27 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 je = sum(field[i] * extraordinary[i] for i in range(3))
                 norm = abs(jo)**2 + abs(je)**2
                 fo = abs(jo)**2 / norm if norm > 0 else 0.5
-                if getattr(op, 'use_chi2_solver', False):
-                    drive = 2.0e-4 * deff**2 * L_mm**2 * op.nl_pump_power_W
-                    eff = physics.chi2_shg_type2_efficiency(drive, fo, dkL=dk * L_mm)
+                if ray.unpol:
+                    # One half of an unpolarized pair: its own H or V state is a tracing basis, not
+                    # the beam's polarization. Use the ensemble average (physics: constant-intensity
+                    # states uniform on the Poincare sphere), which does not depend on crystal roll;
+                    # the residual stays unpolarized.
+                    if getattr(op, 'use_chi2_solver', False):
+                        drive = 2.0e-4 * deff**2 * L_mm**2 * op.nl_pump_power_W
+                        eff = physics.chi2_shg_type2_unpolarized_efficiency(drive, dkL=dk * L_mm)
+                    else:
+                        eff = physics.type2_unpolarized_static_efficiency(eff)
                 else:
-                    eff = min(eff * 4 * fo * (1-fo), 2 * min(fo, 1-fo))
-                # Equal photon consumption at the fundamental removes eff/2 from each component.
-                jo *= math.sqrt(max(fo-eff/2, 0)/fo) if fo > 1e-15 else 0
-                je *= math.sqrt(max(1-fo-eff/2, 0)/(1-fo)) if 1-fo > 1e-15 else 0
-                residual = tuple(jo*ordinary[i] + je*extraordinary[i] for i in range(3))
-                pump_jones = physics.jones_from_field(residual, ray.dir)
+                    if getattr(op, 'use_chi2_solver', False):
+                        drive = 2.0e-4 * deff**2 * L_mm**2 * op.nl_pump_power_W
+                        eff = physics.chi2_shg_type2_efficiency(drive, fo, dkL=dk * L_mm)
+                    else:
+                        eff = min(eff * 4 * fo * (1-fo), 2 * min(fo, 1-fo))
+                    # Equal photon consumption at the fundamental removes eff/2 from each component.
+                    jo *= math.sqrt(max(fo-eff/2, 0)/fo) if fo > 1e-15 else 0
+                    je *= math.sqrt(max(1-fo-eff/2, 0)/(1-fo)) if 1-fo > 1e-15 else 0
+                    residual = tuple(jo*ordinary[i] + je*extraordinary[i] for i in range(3))
+                    pump_jones = physics.jones_from_field(residual, ray.dir)
                 harmonic_jones = physics.jones_from_field(tuple(complex(x) for x in extraordinary), ray.dir)
 
             def _q_at(wl_out):
@@ -1662,15 +1677,16 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 ev_r, ev_t = physics.pbs_split(ray.evec, ray.dir, sn)
                 pr = sum((c * c.conjugate()).real for c in ev_r)
                 pt = sum((c * c.conjugate()).real for c in ev_t)
-                stack.append(_child(ray, E, H, geometry.reflect(ray.dir, sn), pr, 'SPLIT_R', idx, t, evec=ev_r))
-                stack.append(_child(ray, E, H, ray.dir, pt, 'SPLIT_T', idx, t, evec=ev_t))
+                stack.append(_child(ray, E, H, geometry.reflect(ray.dir, sn), pr, 'SPLIT_R', idx, t, evec=ev_r,
+                                    unpol=False))
+                stack.append(_child(ray, E, H, ray.dir, pt, 'SPLIT_T', idx, t, evec=ev_t, unpol=False))
             elif op.is_pbs and J:                          # no 3-D field: legacy beam-frame Jones split
                 Jr = physics.scale(physics.apply(physics.PBS_REFLECT, J), 1j)
                 Jt = physics.apply(physics.PBS_TRANSMIT, J)
                 stack.append(_child(ray, E, H, geometry.reflect(ray.dir, sn),
-                                    physics.intensity(Jr), 'SPLIT_R', idx, t, jones=Jr))
+                                    physics.intensity(Jr), 'SPLIT_R', idx, t, jones=Jr, unpol=False))
                 stack.append(_child(ray, E, H, ray.dir,
-                                    physics.intensity(Jt), 'SPLIT_T', idx, t, jones=Jt))
+                                    physics.intensity(Jt), 'SPLIT_T', idx, t, jones=Jt, unpol=False))
             else:
                 r = op.split_ratio
                 if ray.evec is not None:
@@ -1709,11 +1725,12 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 else:                                          # ROCHON: ordinary undeviated, extraordinary deflected
                     do = ray.dir
                     de = (Matrix.Rotation(2.0 * half, 3, ax) @ ray.dir).normalized()
-                stack.append(_child(ray, E, H, do, physics.intensity(Jo), 'POL_O', idx, t, jones=Jo))
-                stack.append(_child(ray, E, H, de, physics.intensity(Je), 'POL_E', idx, t, jones=Je))
+                stack.append(_child(ray, E, H, do, physics.intensity(Jo), 'POL_O', idx, t, jones=Jo, unpol=False))
+                stack.append(_child(ray, E, H, de, physics.intensity(Je), 'POL_E', idx, t, jones=Je, unpol=False))
             else:
                 Jp = physics.apply(physics.M_polarizer(op.pol_axis_deg, op.extinction), J)
-                stack.append(_child(ray, E, H, ray.dir, physics.intensity(Jp), 'TRANSMIT', idx, t, jones=Jp))
+                stack.append(_child(ray, E, H, ray.dir, physics.intensity(Jp), 'TRANSMIT', idx, t, jones=Jp,
+                                    unpol=False))
         elif et == 'WAVEPLATE' and J:
             ret = op.retardance_deg * (op.design_wl / ray.wl) if ray.wl > 0 else op.retardance_deg
             wc = getattr(op, 'waveplate_crystal', 'NONE')      # opt-in real birefringence dispersion
