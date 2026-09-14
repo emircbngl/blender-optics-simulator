@@ -15,6 +15,7 @@ _dirty = False
 _last_sig = None
 _pending_scene = None       # the scene whose depsgraph update armed the deferred trace
 _rendering = False          # a render job is running (render_init .. render_complete / render_cancel)
+_revision_sig = None        # live signature behind the current optics_scene_revision
 
 # Physics-affecting INPUT properties the tracer/physics read. They MUST be in the live
 # signature so editing e.g. a wavelength or reflectivity re-traces -- without this the live
@@ -164,9 +165,18 @@ def on_depsgraph_update(scene, depsgraph=None):
 
 @persistent
 def on_diagnosis_revision_update(scene, depsgraph=None):
-    """Invalidate cached UI diagnostics without inspecting the dependency graph."""
-    for wm in bpy.data.window_managers:
-        wm.optics_scene_revision += 1
+    """Invalidate cached UI diagnostics without inspecting the dependency graph: only a change
+    the tracer reads (the live signature) makes Diagnose and Corrections out of date, so selecting
+    an object, or Fix… selecting the affected element, leaves them current."""
+    global _revision_sig
+    try:
+        sig = _signature(scene) if getattr(scene, "optics", None) else None
+    except Exception:
+        sig = None                      # cannot tell what changed: treat it as a change
+    if sig is None or sig != _revision_sig:
+        _revision_sig = sig
+        for wm in bpy.data.window_managers:
+            wm.optics_scene_revision += 1
     # With Live disabled there is no deferred trace to refresh the shared cache. Dropping a
     # stale one makes read buttons (Power Budget, sensor panels, and API consumers) fail closed
     # instead of presenting a previous scene as current. During a live trace `_recomputing`
@@ -178,10 +188,10 @@ def on_diagnosis_revision_update(scene, depsgraph=None):
     except Exception:
         pass
     if not _recomputing and not baking and not getattr(getattr(scene, "optics", None), "live_enabled", False):
-        _drop_stale_cache(scene)
+        _drop_stale_cache(scene, sig)
 
 
-def _drop_stale_cache(scene):
+def _drop_stale_cache(scene, sig_now=None):
     """Drop the cache only when an input it was traced from changed. Selecting an object or
     any other update the tracer does not read keeps an explicit Trace Now on screen; a cache
     without a recorded signature (copied or filtered) cannot be vouched for and is dropped."""
@@ -189,7 +199,7 @@ def _drop_stale_cache(scene):
     if not segs:
         return
     sig = getattr(segs, "scene_sig", None)
-    if sig is None or sig != _signature(scene):
+    if sig is None or sig != (sig_now if sig_now is not None else _signature(scene)):
         tracer.cached_segments = []
 
 
