@@ -68,7 +68,7 @@ def compute_residual(scene, segs, obj):
         d = (Vector(s_in["p2"]) - p1)
         if d.length > 1e-9:
             in_center = geometry.world_port(obj, ip.local_position)
-            pos_err = geometry.perpendicular_distance(in_center, p1, d.normalized())
+            pos_err = geometry.perpendicular_distance(in_center, p1, d.normalized()) * geometry.mm_per_unit(scene)
 
     s_out = _seg_out(segs, obj.name)
     if s_out and s_out["to"]:

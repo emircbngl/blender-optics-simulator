@@ -354,7 +354,12 @@ def add_component(key, location=(0.0, 0.0, 0.0)):
         try:
             path = resolve_mesh(e)
             obj = import_mesh(path)
-            obj.location = location
+            # vendor CAD is millimetre-authored, and `location` is millimetres (the API's unit); a scene that
+            # declared its unit scale needs both expressed in its units, exactly as the generic builders do
+            mmpu = geometry.mm_per_unit(bpy.context.scene)
+            obj.location = tuple(c / mmpu for c in location)
+            if mmpu != 1.0:
+                obj.scale = tuple(s / mmpu for s in obj.scale)
             obj.name = name
             obj.optics.is_optical = True
             if e.get("element_type"):
@@ -438,7 +443,7 @@ class OPTICS_OT_add_from_library(Operator):
         # A component is built at 1 unit = 1 mm. In a scene on another unit scale it lands
         # visibly wrong, and the old behaviour was to say nothing at all about why.
         mismatch = geometry.unit_scale_mismatch(context.scene)
-        if mismatch:
+        if mismatch and geometry.mm_per_unit(context.scene) == 1.0:   # declared scenes place parts at physical size
             self.report({'WARNING'}, "Added %s, but %s" % (obj.name, mismatch))
         else:
             self.report({'INFO'}, "Added %s (%d ports)" % (obj.name, len(obj.optics.ports)))

@@ -684,9 +684,12 @@ def _show(context, coll_name):
     # to be on that convention for the bench to read correctly. Forcing it is right; doing it
     # silently was not -- a user who had set metres lost that setting with no message. Report it.
     was = (sc.unit_settings.scale_length, sc.unit_settings.length_unit)
-    sc.unit_settings.system = 'METRIC'
-    sc.unit_settings.scale_length = geometry.ADDON_SCALE_LENGTH   # 1 unit = 1 mm (add-on convention)
-    sc.unit_settings.length_unit = 'MILLIMETERS'
+    if geometry.mm_per_unit(sc) == 1.0:
+        sc.unit_settings.system = 'METRIC'
+        sc.unit_settings.scale_length = geometry.ADDON_SCALE_LENGTH   # 1 unit = 1 mm (add-on convention)
+        sc.unit_settings.length_unit = 'MILLIMETERS'
+    # else: the scene DECLARED its units, the builders placed the bench at physical size in them, and forcing
+    # 0.001 now would shrink it a thousandfold under a declaration that is still on
     now = (sc.unit_settings.scale_length, sc.unit_settings.length_unit)
     unit_note = ("scene units changed from %g/%s to mm — the examples and the tracer both "
                  "measure in millimetres" % (was[0], was[1])) if was != now else None

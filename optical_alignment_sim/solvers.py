@@ -152,7 +152,7 @@ def aperture_miss(segs, obj):
     hit = _crossing_for(segs, obj, c, n)
     if hit is None:
         return None
-    miss = hit - c
+    miss = (hit - c) * geometry.mm_per_unit(obj.users_scene[0] if obj.users_scene else bpy.context.scene)  # mm
     return Vector((miss.dot(u), miss.dot(v)))
 
 

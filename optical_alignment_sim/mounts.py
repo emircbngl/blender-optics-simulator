@@ -92,6 +92,12 @@ def dof_world(B: Matrix, dof):
     return pivot_w, axis_w.normalized()
 
 
+def _mm_per_unit_of(obj):
+    from . import geometry
+    scenes = getattr(obj, "users_scene", ()) or ()
+    return geometry.mm_per_unit(scenes[0] if scenes else bpy.context.scene)
+
+
 def compose_pose(obj):
     """Recompute obj.matrix_world from base_pose + current DOF values.
 
@@ -117,8 +123,8 @@ def compose_pose(obj):
             R = Matrix.Rotation(math.radians(dof.current), 4, axis_w)
             T = Matrix.Translation(pivot_w)
             M = T @ R @ T.inverted()
-        else:  # TRANS_*
-            M = Matrix.Translation(axis_w * dof.current)
+        else:  # TRANS_*  (current is millimetres; the pose is in world units)
+            M = Matrix.Translation(axis_w * (dof.current / _mm_per_unit_of(obj)))
         pose = M @ pose
     obj.matrix_world = pose
 
