@@ -429,6 +429,51 @@ check('moving an optic marks both lists out of date',
       wm.optics_diagnosis_revision != wm.optics_scene_revision
       and getattr(wm, 'optics_correction_revision', wm.optics_scene_revision) != wm.optics_scene_revision)
 
+# set_dof: the API/MCP way to turn one knob, by value or by its own step.
+clear()
+eg.source('TS', (-80, 0, 0), (1, 0, 0))
+turned = eg.mirror('T', (0, 0, 0), (1, 0, 0), (0, 1, 0))
+api.set_mount('T', 'KM100')
+bpy.context.view_layer.update()
+set_dof = getattr(api, 'set_dof', None)
+check('optics_api exposes set_dof', callable(set_dof))
+if callable(set_dof):
+    tip_i, tip_d = next((i, d) for i, d in enumerate(turned.optics.dofs) if d.kind == 'TIP')
+    pose0 = turned.matrix_world.copy()
+    r = set_dof('T', 'tip', value=0.4)
+    check('set_dof sets a knob by kind', r.get('ok') and abs(tip_d.current - 0.4) < 1e-6 and r.get('clamped') is False,
+          str(r))
+    check('set_dof moves the mount', max(abs(turned.matrix_world[i][j] - pose0[i][j])
+                                         for i in range(3) for j in range(3)) > 1e-4)
+    check('set_dof re-traces', r.get('segments', 0) > 0 and tracer.cached_segments, str(r))
+    tip_d.step = 0.25
+    r = set_dof('T', tip_i, steps=-2)
+    check('set_dof steps by the knob step, by index', r.get('ok') and abs(tip_d.current - (-0.1)) < 1e-6, str(r))
+    r = set_dof('T', 'TIP', value=tip_d.max_val + 10.0)
+    check('set_dof clamps to the range and says so',
+          r.get('ok') and r.get('clamped') is True and abs(tip_d.current - tip_d.max_val) < 1e-6, str(r))
+    check('set_dof rejects an unknown kind', 'error' in set_dof('T', 'WOBBLE', value=1.0))
+    check('set_dof rejects an index out of range', 'error' in set_dof('T', 99, value=1.0))
+    check('set_dof needs exactly one of value / steps',
+          'error' in set_dof('T', 'TIP') and 'error' in set_dof('T', 'TIP', value=1.0, steps=1))
+    check('set_dof rejects a non-finite value', 'error' in set_dof('T', 'TIP', value=float('nan')))
+    eg.detector('NoKnobs', (0, 90, 0), (0, 1, 0))
+    r = set_dof('NoKnobs', 'TIP', value=0.0)
+    check('set_dof rejects an element without knobs', 'error' in r and 'no adjustment' in r['error'], str(r))
+    check('set_dof rejects an unknown element', 'error' in set_dof('nope', 'TIP', value=0.0))
+    set_dof('T', 'TIP', value=0.0)
+    bpy.context.view_layer.update()
+    home = turned.matrix_world.translation.copy()
+    turned.location.z += 5.0                               # moved by hand before the agent turns the knob
+    bpy.context.view_layer.update()
+    set_dof('T', 'TIP', value=0.7)
+    set_dof('T', 'TIP', value=0.0)
+    bpy.context.view_layer.update()
+    check('a hand move survives set_dof', (turned.matrix_world.translation - home).length > 4.99
+          and abs(turned.matrix_world.translation.z - (home.z + 5.0)) < 1e-4,
+          str(tuple(turned.matrix_world.translation)))
+    check('capabilities lists set_dof as a write', 'set_dof' in api.capabilities()['control_contract']['write'])
+
 failed = len(checks) - sum(checks)
 print("AGENT CONTROL %s (%d/%d checks)" % ("PASS" if failed == 0 else "FAIL",
                                             sum(checks), len(checks)), flush=True)

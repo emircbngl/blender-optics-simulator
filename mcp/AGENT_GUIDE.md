@@ -57,7 +57,9 @@ scope (`capabilities()['scope_map']`). Say so when it matters.
 - **design (pure math)** — `design_telescope`, `design_4f`, `mode_match` (no scene change).
 - **place / assemble** — `place_relative`, `make_cage/tube/rail`, `place_on_grid/rail`, `set_grid`, `dress_bench`.
 - **trace / measure** — `trace_beam`, `path_statistics`, `scan`, `bake_beams`, `clear_beams`.
-- **align (mutates DOFs)** — `align_all`, `align_element`, `auto_align`, `tilt_null` — on demand only.
+- **align (mutates DOFs)** — `align_all`, `align_element`, `auto_align`, `tilt_null`, `reset_mount` — on demand only.
+  `set_dof(name, dof, value | steps)` turns one knob explicitly (index or kind; degrees or mm; clamped, and
+  `clamped` says so); read `get_state()` mount.dofs for the range and step first.
 - **adaptive optics + surface figure** — `ao_command`, `ao_close_loop(_recon)`, `ao_kolmogorov`, `zonal_render`,
   `pyramid_wfs`, `get_wavefront`, `ao_measure`, `sensor_capture`, `turbulence_screen`.
 - **analysis / phenomena (off-trace, on-demand — never touch the live trace)** — `wave_psf`, `aberrated_psf`,

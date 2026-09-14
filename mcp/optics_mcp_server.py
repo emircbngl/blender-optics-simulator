@@ -363,6 +363,19 @@ def reset_mount(name: str) -> str:
 
 
 @mcp.tool()
+def set_dof(name: str, dof: int | str, value: float | None = None, steps: float | None = None) -> str:
+    """TURN ONE MOUNT KNOB explicitly: set an adjustment DOF of element `name` to `value`, or move it by
+    `steps` of its own step size. `dof` is the DOF index or kind ('TIP', 'TILT', 'ROT', 'TRANS_X/Y/Z');
+    read the element's mount.dofs in get_state() first. Units: degrees for rotation, mm for translation.
+    Pass exactly one of value / steps. Clamped to the DOF's [min, max] (`clamped` reports it); the pose is
+    recomposed (a hand move is kept) and the bench re-traced. Returns {ok, name, dof, index, unit,
+    requested, current, clamped, min, max, step, segments}."""
+    if isinstance(dof, str) and dof.strip().isdigit():
+        dof = int(dof)
+    return _fmt(_call("set_dof", name=name, dof=dof, value=value, steps=steps))
+
+
+@mcp.tool()
 def build_bench(spec: dict) -> str:
     """Compile a DECLARATIVE bench spec into a full built + traced + diagnosed bench in ONE call -- the
     alternative to hand-sequencing many add_component/place_relative calls. spec = {name, elements:

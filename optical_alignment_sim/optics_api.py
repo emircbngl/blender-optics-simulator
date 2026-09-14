@@ -65,7 +65,7 @@ _TOOL_GROUPS = {
     "trace / measure": ["trace_beam", "path_statistics", "scan", "bake_beams", "clear_beams",
                         "tolerance_scan", "monte_carlo_tissue"],
     "align (mutates DOFs -- on demand only)": ["align_all", "align_element", "auto_align", "tilt_null",
-                                               "reset_mount"],
+                                               "reset_mount", "set_dof"],
     "adaptive optics + surface figure": [
         "ao_command", "ao_close_loop", "ao_close_loop_recon", "ao_kolmogorov", "zonal_render", "pyramid_wfs",
         "turbulence_screen", "propagate_turbulent"],
@@ -156,7 +156,8 @@ def capabilities():
         "control_contract": {
             "protocol": "inspect -> decide -> mutate -> verify",
             "read": ["get_state", "inspect_beam", "inspect_element", "diagnose", "propose_corrections"],
-            "write": ["set_param", "set_mount", "place_relative", "align_element", "align_all", "auto_align"],
+            "write": ["set_param", "set_mount", "set_dof", "place_relative", "align_element", "align_all",
+                      "auto_align"],
             "verify": ["trace_beam", "path_statistics", "check_mechanics", "get_state", "diagnose"],
             "mutations_are_explicit": True,
             "advisories_are_not_commands": True,
@@ -1508,6 +1509,61 @@ def reset_mount(name):
     mounts.compose_pose(obj)
     tracer.cached_segments = _trace(scene)
     return {"ok": True, "name": name, "zeroed": n, "segments": len(tracer.cached_segments)}
+
+
+def set_dof(name, dof, value=None, steps=None):
+    """TURN ONE MOUNT KNOB, explicitly: set an adjustment DOF to `value`, or move it by `steps` of its own
+    step size (the UI's - / + step; see get_state()["elements"][i]["mount"]["dofs"]). `dof` is the DOF's
+    index or its kind ('TIP', 'TILT', 'ROT', 'TRANS_X' / 'TRANS_Y' / 'TRANS_Z', case-insensitive; a kind
+    carried by two DOFs must be given by index). Units are the DOF's own: degrees for rotation, mm for
+    translation. Pass exactly one of value / steps. The result is clamped to the DOF's [min, max]
+    (`clamped` says whether it was), the pose is recomposed from the base pose -- a move made by hand
+    before is kept -- and the bench is re-traced. Returns {ok, name, dof, index, unit, requested, current,
+    clamped, min, max, step, segments} or {error}."""
+    scene = _scene()
+    obj = scene.objects.get(name)
+    if not obj:
+        return {"error": "object not found: %s" % name}
+    props = getattr(obj, "optics", None)
+    if props is None or not props.is_optical:
+        return {"error": "'%s' is not an optical element" % name}
+    if not len(props.dofs):
+        return {"error": "'%s' has no adjustment DOFs (no mount preset applied)" % name}
+    kinds = [d.kind for d in props.dofs]
+    if isinstance(dof, bool) or not isinstance(dof, (int, str)):
+        return {"error": "dof must be an index or a kind, one of %s" % kinds}
+    if isinstance(dof, int):
+        if not 0 <= dof < len(props.dofs):
+            return {"error": "dof index %d out of range 0..%d (%s)" % (dof, len(props.dofs) - 1, kinds)}
+        index = dof
+    else:
+        matches = [i for i, k in enumerate(kinds) if k == dof.strip().upper()]
+        if not matches:
+            return {"error": "'%s' has no %s DOF; it has %s" % (name, dof, kinds)}
+        if len(matches) > 1:
+            return {"error": "'%s' has %d %s DOFs (indices %s); pass the index" % (name, len(matches), dof, matches)}
+        index = matches[0]
+    if (value is None) == (steps is None):
+        return {"error": "pass exactly one of value or steps"}
+    try:
+        amount = float(value if value is not None else steps)
+    except (TypeError, ValueError):
+        return {"error": "value / steps must be a number"}
+    if not math.isfinite(amount):
+        return {"error": "value / steps must be finite"}
+    d = props.dofs[index]
+    requested = amount if value is not None else d.current + amount * d.step
+    clamped = requested < d.min_val or requested > d.max_val  # decided before float32 storage rounds it
+    d.current = min(max(requested, d.min_val), d.max_val)     # the DOF update recomposes the pose
+    mounts.compose_pose(obj)
+    tracer.cached_segments = _trace(scene)
+    out = {"ok": True, "name": name, "dof": d.kind, "index": index,
+           "unit": "deg" if d.kind in ('TIP', 'TILT', 'ROT') else "mm",
+           "requested": requested, "current": d.current, "clamped": clamped,
+           "min": d.min_val, "max": d.max_val, "step": d.step, "segments": len(tracer.cached_segments)}
+    if not props.base_pose_set:
+        out["warning"] = "no coarse pose is set, so the knob does not move the element (set_mount first)"
+    return out
 
 
 def align_element(name):

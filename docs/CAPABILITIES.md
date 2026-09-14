@@ -28,7 +28,8 @@ code). Every shipped formula is covered by the repository's physics and Blender 
 - **Trace / measure:** `trace_beam`, `scan`, `bake_beams`, `clear_beams`.
 - **Path statistics:** `path_statistics` returns each detector arrival's route, geometric length and phase OPL.
   Group delay/GDD are explicitly not modeled.
-- **Align (mutates DOFs, on demand):** `align_all`, `align_element`, `auto_align`, `tilt_null`.
+- **Align (mutates DOFs, on demand):** `align_all`, `align_element`, `auto_align`, `tilt_null`, `reset_mount`,
+  `set_dof` (turn one knob by value or by its step, clamped to its range).
 - **Adaptive optics + surface figure:** `ao_command`, `ao_close_loop`, `ao_close_loop_recon`, `ao_kolmogorov`,
   `zonal_render`.
 - **Render / export:** `render`, `render_sequence`, `export_svg`.
