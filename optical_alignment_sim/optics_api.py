@@ -15,6 +15,7 @@ import os
 import tempfile
 
 import bpy
+from mathutils import Matrix as _Matrix, Vector as _Vector
 
 from . import tracer, alignment, mounts, geometry, solvers, design, physics, pathstats
 from . import diagnostics as _diagnostics
@@ -152,12 +153,23 @@ def capabilities():
     except Exception:
         examples = []
     return {
+        "control_contract": {
+            "protocol": "inspect -> decide -> mutate -> verify",
+            "read": ["get_state", "inspect_beam", "inspect_element", "diagnose", "propose_corrections"],
+            "write": ["set_param", "set_mount", "place_relative", "align_element", "align_all", "auto_align"],
+            "verify": ["trace_beam", "path_statistics", "check_mechanics", "get_state", "diagnose"],
+            "mutations_are_explicit": True,
+            "advisories_are_not_commands": True,
+            "freshness": "Every read listed above traces the current scene. A failed or stale read must return an error, never a previous-scene result.",
+            "units": "Distance arguments use millimetres. Raw world_center, matrix_world, ports.world_pos and beam_path p1/p2 use Blender world units; multiply positions by coordinate_units.mm_per_world_unit. Path statistics with _mm suffix use physical millimetres.",
+        },
         "scope": "A physics-verified optical bench an AI can BUILD, INSPECT, ALIGN, SENSE and RENDER over MCP. "
                  "Geometric single-ray tracer + analytic overlays: Jones/Stokes polarization, Fresnel/Snell, "
                  "Gaussian-beam q/ABCD, 15-Noll-Zernike adaptive optics, nonlinear chi(2), prisms/Sellmeier, "
                  "gratings, detectors, fiber circulator, and surface-figure imprint + dense zonal wavefront.",
         "how_it_works": "Property-driven: each element carries optics properties; the generic tracer applies the "
-                        "physics. Loop = get_state() -> act -> the beam re-traces live. Every formula is oracle-verified.",
+                        "physics. Loop = get_state() -> act -> the beam re-traces live. Validation covers selected "
+                        "formulas and scenes; inspect model limitations before interpreting results.",
         "tool_count": len(fns),
         "tool_groups": _TOOL_GROUPS,
         "other_tools": other,
@@ -219,12 +231,19 @@ def get_state():
                 "reflectivity": round(op.reflectivity, 3), "wavelength": round(op.wavelength, 3),
                 "refractive_index": round(op.refractive_index, 4),
             },
+            "editable_params": list(_PARAMS_BY_TYPE.get(op.element_type, ("clear_aperture",))),
             "misalignment": {"pos_err_mm": round(op.misalign_pos_mm, 4),
                              "ang_err_deg": round(op.misalign_ang_deg, 4),
                              "state": op.align_state, "detail": op.align_detail},
         })
     return {
         "units": "mm", "scale_length": scene.unit_settings.scale_length,
+        "coordinate_units": {
+            "world_center": "blender_world_units", "matrix_world": "blender_world_units",
+            "ports.world_pos": "blender_world_units", "beam_path.p1/p2": "blender_world_units",
+            "mm_per_world_unit": geometry.mm_per_unit(scene),
+            "physical_distances": "mm",
+        },
         "engine_eevee_id": _render.resolve_eevee_id(),
         "elements": elements, "sources": sources, "detectors": detectors,
         "beam_path": _beam_path_json(tracer.cached_segments), "report": report,
@@ -627,8 +646,9 @@ def export_report(filepath=None, title="Optical Bench Report", with_render=False
             return ""
 
     state = get_state() or {}
-    dash = inspect_all() or {}
-    diag = diagnose() or {}
+    segments = list(tracer.cached_segments)
+    dash = _inspect_all_from_segments(_scene(), segments)
+    diag = {"diagnostics": state.get("diagnostics", [])}
     prof = beam_profile() if any(True for _o in _scene().objects
                                  if getattr(_o, "optics", None) and getattr(_o.optics, "is_optical", False)) else {}
     rows = dash.get("elements", [])
@@ -1320,7 +1340,13 @@ def tolerance_scan(elements=None, target="", sigma_pos_mm=0.1, sigma_ang_deg=0.0
     p0 = _arrival(_trace(scene))
     if p0 is None:
         return {"error": "no beam reaches target '%s' in the nominal trace" % target}
-    saved = [(ob, tuple(ob.location), tuple(ob.rotation_euler)) for ob in objs]
+    # Store the complete world matrix. Reading/writing rotation_euler silently drops angular
+    # perturbations on objects whose rotation_mode is QUATERNION, which made a tolerance scan
+    # report RMS=0 for a visibly rotated mount. Matrix perturbations also preserve arbitrary
+    # parent transforms and restore the exact original pose byte-for-byte.
+    saved = [(ob, ob.matrix_world.copy(), ob.matrix_basis.copy(), ob.rotation_mode,
+              tuple(ob.location), tuple(ob.scale), tuple(ob.rotation_euler),
+              tuple(ob.rotation_quaternion), tuple(ob.rotation_axis_angle)) for ob in objs]
     mmpu = geometry.mm_per_unit(scene)                  # sigma and the reported walk are mm; poses are world units
     sig_u = sigma_pos_mm / mmpu
     rng = np.random.default_rng(int(seed))
@@ -1328,21 +1354,49 @@ def tolerance_scan(elements=None, target="", sigma_pos_mm=0.1, sigma_ang_deg=0.0
     walks = []
     try:
         for _ in range(int(n)):
-            for ob, loc, rot in saved:
-                ob.location = (loc[0] + rng.normal(0.0, sig_u),
-                               loc[1] + rng.normal(0.0, sig_u),
-                               loc[2] + rng.normal(0.0, sig_u))
-                ob.rotation_euler = (rot[0] + rng.normal(0.0, sigma_ang_deg * d2r),
-                                     rot[1] + rng.normal(0.0, sigma_ang_deg * d2r),
-                                     rot[2] + rng.normal(0.0, sigma_ang_deg * d2r))
+            for ob, M0, _B0, _mode, _loc, _scale, _euler, _quat, _axis_angle in saved:
+                delta = _Vector((rng.normal(0.0, sig_u),
+                                 rng.normal(0.0, sig_u),
+                                 rng.normal(0.0, sig_u)))
+                # Independent world-axis rotation-vector components have the stated sigma.
+                # A scalar Gaussian angle on a random unit axis would reduce each axis variance
+                # by three and understate the requested angular manufacturing tolerance.
+                axis = _Vector(tuple(rng.normal(0.0, sigma_ang_deg * d2r) for _ in range(3)))
+                angle = axis.length
+                if angle < 1.0e-15:
+                    axis = _Vector((0.0, 0.0, 1.0))
+                R = _Matrix.Rotation(angle, 3, axis.normalized()) @ M0.to_3x3()
+                M = M0.copy()
+                M.translation = M0.translation + delta
+                for r in range(3):
+                    for c in range(3):
+                        M[r][c] = R[r][c]
+                ob.matrix_world = M
             bpy.context.view_layer.update()
             p = _arrival(_trace(scene))
             if p is not None:
                 walks.append(math.sqrt(sum((p[i] - p0[i]) ** 2 for i in range(3))) * mmpu)
     finally:
-        for ob, loc, rot in saved:
+        for ob, M0, B0, mode, loc, scale, euler, quat, axis_angle in saved:
+            # Restore the original RNA transform values. Blender may round-trip an Euler
+            # representation by a few ulps when a temporary world matrix is assigned;
+            # restoring the original channels avoids changing the nominal bench the scan
+            # promised to leave untouched. The saved matrix remains a fallback for a
+            # parented object whose local channels cannot represent the original basis.
             ob.location = loc
-            ob.rotation_euler = rot
+            ob.scale = scale
+            if mode == 'QUATERNION':
+                ob.rotation_quaternion = quat
+            elif mode == 'AXIS_ANGLE':
+                ob.rotation_axis_angle = axis_angle
+            else:
+                ob.rotation_euler = euler
+            # Check the complete world transform. A parented object's translation can survive
+            # while its temporary quaternion/scale remains changed, which would make a scan
+            # that claims to be off-trace alter the bench silently.
+            if max(abs(float(ob.matrix_world[r][c] - M0[r][c]))
+                   for r in range(4) for c in range(4)) > 1.0e-7:
+                ob.matrix_world = M0
         bpy.context.view_layer.update()
         tracer.cached_segments = _trace(scene)
 
@@ -1351,15 +1405,19 @@ def tolerance_scan(elements=None, target="", sigma_pos_mm=0.1, sigma_ang_deg=0.0
     out = {
         "ok": True, "elements": names, "target": target,
         "sigma_pos_mm": sigma_pos_mm, "sigma_ang_deg": sigma_ang_deg, "n": n, "seed": int(seed),
+        "angular_model": "independent Gaussian world rotation-vector components; sigma_ang_deg per axis",
         "hit_rate": round(len(walks) / n, 4) if n else 0.0,
         "pointing_rms_mm": round(float(np.sqrt(np.mean(w ** 2))), 5) if w.size else None,
         "pointing_mean_mm": round(float(w.mean()), 5) if w.size else None,
         "pointing_p95_mm": round(float(np.percentile(w, 95)), 5) if w.size else None,
         "pointing_max_mm": round(float(w.max()), 5) if w.size else None,
     }
-    if tol_mm is not None and w.size:
+    if tol_mm is not None:
         out["tol_mm"] = tol_mm
-        out["yield"] = round(float(np.mean(w <= tol_mm)), 4)
+        # Yield is a property of all trials. A missed target is a failed trial, not an
+        # omitted sample from the denominator (the old conditional mean could report 100%
+        # yield when only 29.5% of rays reached the target).
+        out["yield"] = round(float(np.count_nonzero(w <= tol_mm) / n), 4) if w.size else 0.0
     return out
 
 
@@ -1570,7 +1628,18 @@ def bake_beams(scale=None):
     (None = the scene's Beam width scale). It is a display scale on the real Gaussian w(z),
     not a radius in mm: the removed `radius` argument claimed to be one but never reached a
     segment carrying a Gaussian, which is every segment a source produces."""
-    return {"baked": _bake.bake_beams(bpy.context, scale=scale),
+    if scale is not None:
+        try:
+            scale = float(scale)
+        except (TypeError, ValueError):
+            return {"error": "scale must be a finite number > 0"}
+        if not math.isfinite(scale) or scale <= 0.0:
+            return {"error": "scale must be finite and > 0"}
+    try:
+        baked = _bake.bake_beams(bpy.context, scale=scale)
+    except ValueError as exc:
+        return {"error": str(exc)}
+    return {"baked": baked,
             "scale": _bake._scene_scale(_scene()) if scale is None else float(scale)}
 
 
@@ -2335,12 +2404,16 @@ def inspect_all():
     issues}. The AI's single-glance numeric overview of the entire scene. READ-ONLY -- byte-identical."""
     scene = _scene()
     tracer.cached_segments = _trace(scene)
+    return _inspect_all_from_segments(scene, tracer.cached_segments)
+
+
+def _inspect_all_from_segments(scene, segments):
     elems = [o for o in scene.objects if getattr(o, "optics", None) and getattr(o.optics, "is_optical", False)]
     rows = []
     for o in elems:
         nm = o.name
-        be = _inspect_beam_from_segments(nm, tracer.cached_segments)
-        el = _inspect_element_from_segments(nm, tracer.cached_segments)
+        be = _inspect_beam_from_segments(nm, segments)
+        el = _inspect_element_from_segments(nm, segments)
         if not isinstance(be, dict):
             be = {}
         if not isinstance(el, dict):
@@ -2354,7 +2427,7 @@ def inspect_all():
             "polarization": pol.get("kind") if isinstance(pol, dict) else pol,
             "n_beams": be.get("n_beams"), "outputs": el.get("outputs"),
         })
-    diag = _diagnose_from_segments(scene, tracer.cached_segments)
+    diag = _diagnose_from_segments(scene, segments)
     issues = diag.get("diagnostics") if isinstance(diag, dict) else None
     worst = None
     if issues:

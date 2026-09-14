@@ -28,24 +28,50 @@ _SIG_PROPS = (
     "extinction", "design_wl", "pass_type", "cut_nm", "filt_type", "cut_lo_nm",
     "cut_hi_nm", "od", "lines_per_mm", "grating_order", "coating", "cavity_spacing_mm",
     "analyzer", "shutter_open", "aperture_shape", "aperture_half_y", "back_surface",
+    # These are inputs too. Leaving them out makes a live/API read look successful while
+    # the trace still represents the previous scene (M² was the most visible example).
+    "m2", "crystal_material", "crystal_length_mm", "crystal_temp_C", "nl_process",
+    "nl_efficiency", "nl_lambda2_nm", "poling_period_um", "nl_walkoff_mm",
+    "phase_matching_type", "pm_scheme", "use_chi2_solver", "nl_pump_power_W",
+    "oe_split", "oe_material", "oe_axis_deg", "oe_length_mm", "sensor_px",
+    "pixel_size_um", "sensor_exposure", "sensor_read_noise", "sensor_well_depth",
 )
 
 
 def _signature(scene):
     """Cheap hash of optical objects' world transforms + knob values + physics input params.
     Used to skip recompute only when nothing the tracer reads changed."""
-    vals = []
+    from .optics_api import _PARAMS_BY_TYPE
+    vals = [scene.as_pointer()]
     for o in scene.objects:
         op = getattr(o, "optics", None)
         if op and op.is_optical:
+            # Names are part of the public state: a detector rename changes every segment's
+            # `to` field even when its geometry is identical.
+            vals.append(o.name)
+            for port in op.ports:
+                vals.extend((port.name, port.role, tuple(port.local_position),
+                             tuple(port.local_normal), port.clear_aperture))
             m = o.matrix_world
-            vals += [round(m[r][c], 4) for r in range(3) for c in range(4)]   # full rotation + position
+            vals += [float(m[r][c]) for r in range(3) for c in range(4)]   # full rotation + position
             vals += [round(d.current, 4) for d in op.dofs]
-            for name in _SIG_PROPS:
+            for name in sorted(set(_SIG_PROPS) | set(_PARAMS_BY_TYPE.get(op.element_type, ()))):
                 v = getattr(op, name, None)
-                vals.append(round(v, 6) if isinstance(v, float) else v)
+                vals.append(tuple(v) if hasattr(v, "__len__") and not isinstance(v, str) else v)
             vals += [round(x, 6) for x in op.aberr_spec]      # Zernike inject (FloatVectorProperty)
             vals += [round(x, 6) for x in op.dm_command]      # DM correction command
+    # Unit interpretation lives on the scene, not on an element. Include it in the same
+    # digest so changing the declaration cannot leave a millimetre readout backed by an old
+    # metre-scale trace.
+    sop = getattr(scene, "optics", None)
+    vals += [
+        bool(getattr(sop, "scene_units_authoritative", False)),
+        round(float(getattr(scene.unit_settings, "scale_length", 1.0)), 9),
+        getattr(scene.unit_settings, "length_unit", ""),
+    ]
+    if sop:
+        vals.extend((sop.trace_mode, sop.order_csv, sop.max_segments, sop.max_depth,
+                     sop.model_ghosts, sop.ghost_floor, sop.max_ghost_depth))
     return hash(tuple(vals))
 
 
@@ -96,6 +122,7 @@ def _deferred_trace():
                 max_segments=scene.optics.max_segments,
                 max_depth=scene.optics.max_depth)
         except Exception as e:          # a transient/degenerate trace must not kill the live timer
+            tracer.cached_segments = []
             print("[optics] live trace error:", e)     # leave _last_sig unchanged -> retried on next edit
             return None
         tracer.cached_segments = segs
@@ -139,6 +166,30 @@ def on_diagnosis_revision_update(scene, depsgraph=None):
     """Invalidate cached UI diagnostics without inspecting the dependency graph."""
     for wm in bpy.data.window_managers:
         wm.optics_scene_revision += 1
+    # With Live disabled there is no deferred trace to refresh the shared cache. Dropping a
+    # stale one makes read buttons (Power Budget, sensor panels, and API consumers) fail closed
+    # instead of presenting a previous scene as current. During a live trace `_recomputing`
+    # protects the freshly written cache from this invalidation callback.
+    baking = False
+    try:
+        from . import bake
+        baking = bool(getattr(bake, "_baking", False))
+    except Exception:
+        pass
+    if not _recomputing and not baking and not getattr(getattr(scene, "optics", None), "live_enabled", False):
+        _drop_stale_cache(scene)
+
+
+def _drop_stale_cache(scene):
+    """Drop the cache only when an input it was traced from changed. Selecting an object or
+    any other update the tracer does not read keeps an explicit Trace Now on screen; a cache
+    without a recorded signature (copied or filtered) cannot be vouched for and is dropped."""
+    segs = tracer.cached_segments
+    if not segs:
+        return
+    sig = getattr(segs, "scene_sig", None)
+    if sig is None or sig != _signature(scene):
+        tracer.cached_segments = []
 
 
 def set_live(enabled):
@@ -164,10 +215,62 @@ def set_live(enabled):
 
 
 @persistent
+def on_frame_change(scene, depsgraph=None):
+    """Keep keyed optical properties/poses and the live cache in lockstep.
+
+    Blender's frame changes do not necessarily produce an optical-property update, so a keyed
+    shutter or mirror can otherwise leave the overlay and readouts on frame 1 while the mesh is
+    visibly on frame N. A frame is an explicit state boundary: force one fresh trace here.
+    """
+    global _last_sig, _pending_scene
+    if scene is None or not getattr(scene, "optics", None):
+        return
+    _pending_scene = scene
+    _last_sig = None
+    if scene.optics.live_enabled:
+        _deferred_trace()
+    else:
+        _drop_stale_cache(scene)
+
+
+@persistent
+def on_render_pre(scene, depsgraph=None):
+    """Rebuild renderable beam meshes for the frame Blender is about to render."""
+    if scene is None or not getattr(scene, "optics", None):
+        return
+    if not any(o.name.startswith("BEAM_") for o in scene.objects):
+        return
+    # bake.ensure_beams is context-based. Blender normally renders the active scene,
+    # but a queued multi-scene render can call this callback for another scene; skip in
+    # that case rather than baking the active scene's beams into the wrong file.
+    if getattr(bpy.context, "scene", None) is not scene:
+        return
+    # ensure_beams re-traces and compares the bake signature, so animation renders cannot
+    # reuse frame-1 tubes after a keyed shutter/mirror change.
+    try:
+        from . import bake
+        bake.ensure_beams(bpy.context)
+    except Exception as exc:
+        print("[optics] render beam bake error:", exc)
+
+
+@persistent
 def on_load_post(*args):
     # bpy.context is unreliable inside load_post; inspect the loaded scenes directly.
-    global _last_sig
+    global _last_sig, _pending_scene, _dirty
     _last_sig = None
+    _pending_scene = None
+    _dirty = False
+    # RNA pointers from the previous .blend are invalid after a load. Never let a timer
+    # dereference one; the next explicit/live trace repopulates the cache for the new file.
+    tracer.cached_segments = []
+    try:
+        from . import bake
+        bake._baked_sig = None
+        bake._baked_scale = None
+        bake._baking = False
+    except Exception:
+        pass
     want_live = any(getattr(s, "optics", None) and s.optics.live_enabled
                     for s in bpy.data.scenes)
     set_live(want_live)
@@ -178,6 +281,10 @@ def register():
         bpy.app.handlers.load_post.append(on_load_post)
     if on_diagnosis_revision_update not in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.append(on_diagnosis_revision_update)
+    if on_frame_change not in bpy.app.handlers.frame_change_post:
+        bpy.app.handlers.frame_change_post.append(on_frame_change)
+    if on_render_pre not in bpy.app.handlers.render_pre:
+        bpy.app.handlers.render_pre.append(on_render_pre)
 
 
 def unregister():
@@ -186,6 +293,10 @@ def unregister():
         bpy.app.handlers.load_post.remove(on_load_post)
     if on_diagnosis_revision_update in bpy.app.handlers.depsgraph_update_post:
         bpy.app.handlers.depsgraph_update_post.remove(on_diagnosis_revision_update)
+    if on_frame_change in bpy.app.handlers.frame_change_post:
+        bpy.app.handlers.frame_change_post.remove(on_frame_change)
+    if on_render_pre in bpy.app.handlers.render_pre:
+        bpy.app.handlers.render_pre.remove(on_render_pre)
     try:
         if bpy.app.timers.is_registered(_deferred_trace):
             bpy.app.timers.unregister(_deferred_trace)

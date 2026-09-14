@@ -7,6 +7,9 @@ and only on explicit request (bake / render).
 """
 from __future__ import annotations
 
+import math
+from contextlib import contextmanager
+
 import bpy
 from bpy.types import Operator
 from bpy.props import FloatProperty
@@ -23,6 +26,19 @@ BEAM_MAT = "OPTICS_BEAM"
 FALLBACK_RADIUS_MM = 0.6
 
 _baked_sig = None       # signature of the segments currently baked (so renders never use a stale bake)
+_baked_scale = None     # explicit display scale used for the current bake; None means scene setting
+_baking = False         # suppress cache invalidation while Blender creates the beam meshes
+
+
+@contextmanager
+def _bake_guard():
+    """Keep cache invalidation out of the mesh-construction transaction."""
+    global _baking
+    _baking = True
+    try:
+        yield
+    finally:
+        _baking = False
 
 
 def _scene_scale(scene):
@@ -100,6 +116,7 @@ def beam_material(wl_nm=None, mode='FALSE_COLOR'):
 
 
 def clear_baked(scene):
+    global _baked_sig, _baked_scale
     # collect BEAM_* both in COL_BEAMS and anywhere in the scene (renamed/moved collections),
     # and free the per-segment Mesh datablock too (do_unlink leaves it a 0-user orphan otherwise)
     targets = {}
@@ -118,6 +135,8 @@ def clear_baked(scene):
         if mesh is not None and mesh.users == 0:
             bpy.data.meshes.remove(mesh)
         n += 1
+    _baked_sig = None
+    _baked_scale = None
     return n
 
 
@@ -182,15 +201,21 @@ def _vis_radius(w_mm, kind, scale=1.0):
     return r * scale * (0.6 if kind == 'SPLIT_T' else 1.0)
 
 
-def bake_beams(context, scale=None):
+def _bake_beams_impl(context, scale=None):
     """Bake the traced beams into meshes. `scale` multiplies every tube's radius (None = the
     scene's beam_radius_scale). It is a display scale on the real w(z), not a radius in mm --
     the old `radius` argument claimed to be one but never reached a Gaussian segment."""
-    global _baked_sig
+    global _baked_sig, _baked_scale
     from . import physics
     scene = context.scene
     if scale is None:
         scale = _scene_scale(scene)
+    try:
+        scale = float(scale)
+    except (TypeError, ValueError):
+        raise ValueError("beam width scale must be a finite number > 0")
+    if not math.isfinite(scale) or scale <= 0.0:
+        raise ValueError("beam width scale must be finite and > 0")
     # always re-trace: baking the current geometry (not a possibly-stale cache from before the
     # last edit, e.g. with live mode off) is the whole point of a fresh bake
     tracer.cached_segments = tracer.trace_scene(
@@ -221,7 +246,14 @@ def bake_beams(context, scale=None):
         if _make_taper(context, "BEAM_%02d" % i, p1, p2, r1, r2, mat, coll):
             n += 1
     _baked_sig = _segments_sig(tracer.cached_segments, oob, scale)
+    _baked_scale = scale if scale != _scene_scale(scene) else None
     return n
+
+
+def bake_beams(context, scale=None):
+    """Bake beams while keeping the traced cache coherent with the new meshes."""
+    with _bake_guard():
+        return _bake_beams_impl(context, scale=scale)
 
 
 def ensure_beams(context):
@@ -236,9 +268,12 @@ def ensure_beams(context):
     c = bpy.data.collections.get(BEAM_COLL)
     have = c is not None and any(o.name.startswith("BEAM_") for o in c.objects)
     oob = getattr(scene.optics, "oob_display", 'FALSE_COLOR')
-    if have and _segments_sig(segs, oob, _scene_scale(scene)) == _baked_sig:
+    # Preserve a scale explicitly chosen for the current bake through render-time re-bakes.
+    # Calling bake_beams() without a scale resets this override to the scene setting.
+    effective_scale = _baked_scale if _baked_scale is not None else _scene_scale(scene)
+    if have and _segments_sig(segs, oob, effective_scale) == _baked_sig:
         return len(c.objects)
-    return bake_beams(context)
+    return bake_beams(context, scale=effective_scale)
 
 
 class OPTICS_OT_bake_beams(Operator):

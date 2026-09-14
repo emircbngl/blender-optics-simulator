@@ -837,14 +837,21 @@ def chi2_shg_efficiency(eta_lin, dkL, n_steps=400):
     if S <= 0.0:
         return 0.0
     delta = dkL / S                                  # normalized mismatch Delta_k*L_NL
-    ds = S / int(n_steps)
+    # Resolve the phase slip itself, not only the nonlinear length. A fixed 400-point
+    # grid aliases large |dkL| and can turn a strongly mismatched crystal into a false
+    # high-conversion result. Keep the historical grid near phase match and enforce a
+    # conservative <=1-radian phase increment when the mismatch is large.
+    steps = max(int(n_steps), int(math.ceil(abs(float(dkL)))), int(math.ceil(S * 10)))
+    if steps > 200000 or not math.isfinite(S):
+        raise ValueError("chi2 integration exceeds the supported resolution budget")
+    ds = S / steps
 
     def _deriv(a1, a2, s):
         e = cmath.exp(-1j * delta * s)
         return (1j * a1.conjugate() * a2 * e, 1j * a1 * a1 * e.conjugate())
 
     a1, a2 = complex(1.0, 0.0), complex(0.0, 0.0)
-    for k in range(int(n_steps)):
+    for k in range(steps):
         s = k * ds
         k1 = _deriv(a1, a2, s)
         k2 = _deriv(a1 + 0.5 * ds * k1[0], a2 + 0.5 * ds * k1[1], s + 0.5 * ds)
@@ -866,9 +873,9 @@ def chi2_solve(deff_pm_V, L_mm, P_W, dk_per_mm=0.0, prefactor=2.0e-4, n_steps=40
     return chi2_shg_efficiency(eta_lin, dk_per_mm * L_mm, n_steps=n_steps)
 
 
-def chi2_shg_type2_efficiency(eta_lin, frac_o=0.5, n_steps=400):
+def chi2_shg_type2_efficiency(eta_lin, frac_o=0.5, n_steps=400, dkL=0.0):
     """TYPE-II SHG conversion efficiency (o+e -> e) from the THREE-wave coupled equations with pump depletion, at
-    perfect phase match. Unlike Type-I (two identical fundamental photons), the harmonic consumes ONE ordinary +
+    phase mismatch ``dkL`` (zero by default). Unlike Type-I (two identical fundamental photons), the harmonic consumes ONE ordinary +
     ONE extraordinary photon, so when the input pump splits unevenly the conversion SATURATES at the WEAKER
     polarization (Manley-Rowe): the maximum harmonic power fraction is ``2*min(frac_o, 1-frac_o)``.
 
@@ -883,21 +890,29 @@ def chi2_shg_type2_efficiency(eta_lin, frac_o=0.5, n_steps=400):
     if S <= 0.0:
         return 0.0
     fo = min(max(frac_o, 0.0), 1.0)
-    ds = S / int(n_steps)
+    steps = max(int(n_steps), int(math.ceil(abs(dkL))), int(math.ceil(S * 10)))
+    if steps > 200000 or not math.isfinite(S):
+        raise ValueError("chi2 integration exceeds the supported resolution budget")
+    ds = S / steps
+    delta = dkL / S
     a_o, a_e, a_2 = complex(math.sqrt(fo)), complex(math.sqrt(1.0 - fo)), complex(0.0)
 
-    def _d(ao, ae, a2):
-        return (1j * ae.conjugate() * a2, 1j * ao.conjugate() * a2, 1j * ao * ae)
+    def _d(ao, ae, a2, z):
+        phase = cmath.exp(-1j * delta * z)
+        return (1j * ae.conjugate() * a2 * phase,
+                1j * ao.conjugate() * a2 * phase,
+                1j * ao * ae * phase.conjugate())
 
-    for _ in range(int(n_steps)):
-        k1 = _d(a_o, a_e, a_2)
-        k2 = _d(a_o + 0.5 * ds * k1[0], a_e + 0.5 * ds * k1[1], a_2 + 0.5 * ds * k1[2])
-        k3 = _d(a_o + 0.5 * ds * k2[0], a_e + 0.5 * ds * k2[1], a_2 + 0.5 * ds * k2[2])
-        k4 = _d(a_o + ds * k3[0], a_e + ds * k3[1], a_2 + ds * k3[2])
+    for k in range(steps):
+        z = k * ds
+        k1 = _d(a_o, a_e, a_2, z)
+        k2 = _d(a_o + 0.5 * ds * k1[0], a_e + 0.5 * ds * k1[1], a_2 + 0.5 * ds * k1[2], z + ds/2)
+        k3 = _d(a_o + 0.5 * ds * k2[0], a_e + 0.5 * ds * k2[1], a_2 + 0.5 * ds * k2[2], z + ds/2)
+        k4 = _d(a_o + ds * k3[0], a_e + ds * k3[1], a_2 + ds * k3[2], z + ds)
         a_o += ds / 6.0 * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0])
         a_e += ds / 6.0 * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1])
         a_2 += ds / 6.0 * (k1[2] + 2 * k2[2] + 2 * k3[2] + k4[2])
-    return min(1.0, 2.0 * abs(a_2) ** 2)
+    return min(2.0 * min(fo, 1.0 - fo), 2.0 * abs(a_2) ** 2)
 
 
 # Crystal-material catalog: effective nonlinear coefficient deff (pm/V, order-of-magnitude

@@ -73,7 +73,7 @@ curated `optics_api` facade.
   <img src="docs/img/ai-loop.svg" width="92%" alt="The agent loop: READ the bench (get_state, inspect_beam, inspect_element, diagnose, detect_phenomena, propose_corrections) → JUDGE advisory corrections by user intent (refuse / partial / accept) → ACT (set_param, align, ao_close_loop) → RE-TRACE → read again. The trace is byte-identical until you act.">
 </p>
 
-1. In Blender: **Optics ▸ Simulation ▸ Start MCP Bridge** (exposes every public `optics_api`
+1. In Blender: **Optics ▸ Present ▸ Tools & Integration ▸ Start MCP Bridge** (exposes every public `optics_api`
    function on `127.0.0.1:9765`).
 2. Run the bridge server in [`mcp/`](mcp/README.md) and wire it into your MCP client.
 
@@ -704,8 +704,8 @@ nothing phones home otherwise.
   appear (source polarization, waveplate angle, lens focal length, …).
 - **Mount & Adjustment** — *Apply Mount Preset* (e.g. KM100CP/M), *Set Coarse Pose*, drive the
   tip/tilt knobs.
-- **Simulation** — toggle *Live simulation*; the beam updates as you move parts. *Start MCP Bridge*
-  to let an external agent drive the scene.
+- **Simulation** — toggle *Live simulation*; the beam updates as you move parts. Start the external
+  agent bridge from **Present ▸ Tools & Integration ▸ Start MCP Bridge**.
 - **Alignment Report** — *Update Report* / *Align* / *Align All*; detectors show measured power,
   polarization, and fringe visibility.
 - **Adaptive Optics** — *Run AO Loop* to sense a wavefront and drive a deformable mirror flat.

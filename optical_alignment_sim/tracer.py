@@ -26,6 +26,12 @@ EXTEND_MM = 150.0          # how far an escaping ray is drawn
 # overlay reads this; handlers write it
 cached_segments = []
 
+
+class TraceSegments(list):
+    """A trace result that remembers the live signature of the scene it was traced from, so a
+    Live-off cache is dropped when an input changes, not on every depsgraph update."""
+    __slots__ = ("scene_sig",)
+
 # Elements whose beam interaction happens at the REFLECT port plane (not the IN plane).
 REFLECTIVE = ('MIRROR', 'PRISM_MIRROR', 'BEAMSPLITTER', 'DICHROIC', 'GRATING', 'RETROREFLECTOR',
               'DEFORMABLE_MIRROR')
@@ -264,7 +270,8 @@ def _jones_at_power(J, power):
     return physics.scale(J, math.sqrt(max(power, 0.0) / norm))
 
 
-def _child(ray, E, H, d, power, kind, idx, t, jones=None, q=None, evec=None, aberr=None, wl=None):
+def _child(ray, E, H, d, power, kind, idx, t, jones=None, q=None, evec=None, aberr=None,
+            wl=None, coherence_id=None):
     """Construct a continuation ray: carry polarization/coherence, advance the optical
     path length, and propagate the Gaussian beam q through the free space to E (and
     through E's focal power when it is a lens).
@@ -330,7 +337,7 @@ def _child(ray, E, H, d, power, kind, idx, t, jones=None, q=None, evec=None, abe
     child_m2 = 1.0 if fresh_q else ray.m2
     return _Ray(H, d, power, ray.depth + 1, E, (wl if wl is not None else ray.wl), kind, idx,
                 jones=nj, opl=ray.opl + t, q=q,
-                src_id=ray.src_id, coh=ray.coh, evec=nev,
+                src_id=(ray.src_id if coherence_id is None else coherence_id), coh=ray.coh, evec=nev,
                 aberr=(aberr if aberr is not None else ray.aberr), m2=child_m2,
                 ghost_depth=ray.ghost_depth)
 
@@ -1315,6 +1322,35 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             else:
                 eff = getattr(op, 'nl_efficiency', 0.4) * pm_eff
 
+            # Type-II requires both ordinary and extraordinary pump components.
+            # Convention: crystal local Y projected perpendicular to the ray is the o axis.
+            # The tensor orientation is a model convention, not a full anisotropic solver.
+            pump_jones = ray.jones
+            harmonic_jones = None
+            if proc == 'SHG' and pmt == 'TYPE2':
+                ordinary = E.matrix_world.to_3x3() @ Vector((0, 1, 0))
+                ordinary -= ray.dir * ordinary.dot(ray.dir)
+                if ordinary.length < 1e-10:
+                    ordinary = Vector(physics.transverse_basis(ray.dir)[0])
+                ordinary.normalize()
+                extraordinary = ray.dir.cross(ordinary).normalized()
+                field = ray.evec or physics.field_from_jones(ray.jones, ray.dir)
+                jo = sum(field[i] * ordinary[i] for i in range(3))
+                je = sum(field[i] * extraordinary[i] for i in range(3))
+                norm = abs(jo)**2 + abs(je)**2
+                fo = abs(jo)**2 / norm if norm > 0 else 0.5
+                if getattr(op, 'use_chi2_solver', False):
+                    drive = 2.0e-4 * deff**2 * L_mm**2 * op.nl_pump_power_W
+                    eff = physics.chi2_shg_type2_efficiency(drive, fo, dkL=dk * L_mm)
+                else:
+                    eff = min(eff * 4 * fo * (1-fo), 2 * min(fo, 1-fo))
+                # Equal photon consumption at the fundamental removes eff/2 from each component.
+                jo *= math.sqrt(max(fo-eff/2, 0)/fo) if fo > 1e-15 else 0
+                je *= math.sqrt(max(1-fo-eff/2, 0)/(1-fo)) if 1-fo > 1e-15 else 0
+                residual = tuple(jo*ordinary[i] + je*extraordinary[i] for i in range(3))
+                pump_jones = physics.jones_from_field(residual, ray.dir)
+                harmonic_jones = physics.jones_from_field(tuple(complex(x) for x in extraordinary), ray.dir)
+
             def _q_at(wl_out):
                 """Tier-1 MODELING CHOICE (not an oracle-verified law): seed the converted beam with a
                 fresh Gaussian waist equal to the pump's spot size at the crystal, at the new wl."""
@@ -1344,8 +1380,10 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 # pump; TYPE-0 keeps the pump pol; TYPE-II is treated as TYPE-I for the single harmonic.
                 hj = (physics.jones_linear(90.0) if (pmt in ('TYPE1', 'TYPE2') and ray.jones)
                       else ray.jones)
+                if harmonic_jones is not None:
+                    hj = harmonic_jones
                 stack.append(_child(ray, E, H, ray.dir, ray.power * (1.0 - eff), 'TRANSMIT', idx, t,
-                                    jones=_jones_at_power(ray.jones, ray.power * (1.0 - eff))))  # residual pump
+                                    jones=_jones_at_power(pump_jones, ray.power * (1.0 - eff))))  # residual pump
                 stack.append(_child(ray, E, _emit_pt(woff), ray.dir, ray.power * eff, proc, idx, t,
                                     jones=_jones_at_power(hj, ray.power * eff), q=_q_at(wco), wl=wco))
             elif proc in ('SFG', 'DFG'):
@@ -1358,7 +1396,7 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                     stack.append(_child(ray, E, _emit_pt(woff), ray.dir, ray.power * eff, proc, idx, t,
                                         jones=_jones_at_power(hj, ray.power * eff), q=_q_at(wco), wl=wco))
                 else:
-                    continue                                 # no physical child -> pump dumped
+                    stack.append(_child(ray, E, H, ray.dir, ray.power, 'TRANSMIT', idx, t))
             elif proc == 'OPO':
                 # pump splits into a seeded signal (l2) + the energy-conserving idler.
                 wsig = l2
@@ -1370,12 +1408,16 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                     ji = physics.jones_linear(90.0 if pmt == 'TYPE2' else 0.0) if ray.jones else None
                     stack.append(_child(ray, E, H, ray.dir, ray.power * (1.0 - eff), 'TRANSMIT', idx, t,
                                         jones=_jones_at_power(ray.jones, ray.power * (1.0 - eff))))  # residual pump
-                    stack.append(_child(ray, E, _emit_pt(0.0), ray.dir, ray.power * eff * 0.5, 'SIGNAL',
-                                        idx, t, jones=_jones_at_power(js, ray.power * eff * 0.5), q=_q_at(wsig), wl=wsig))
-                    stack.append(_child(ray, E, _emit_pt(woff), ray.dir, ray.power * eff * 0.5, 'IDLER',
-                                        idx, t, jones=_jones_at_power(ji, ray.power * eff * 0.5), q=_q_at(widl), wl=widl))
+                    signal_fraction = ray.wl / wsig
+                    idler_fraction = ray.wl / widl
+                    stack.append(_child(ray, E, _emit_pt(0.0), ray.dir, ray.power * eff * signal_fraction, 'SIGNAL',
+                                        idx, t, jones=_jones_at_power(js, ray.power * eff * signal_fraction), q=_q_at(wsig), wl=wsig,
+                                        coherence_id=(ray.src_id, 'SIGNAL')))
+                    stack.append(_child(ray, E, _emit_pt(woff), ray.dir, ray.power * eff * idler_fraction, 'IDLER',
+                                        idx, t, jones=_jones_at_power(ji, ray.power * eff * idler_fraction), q=_q_at(widl), wl=widl,
+                                        coherence_id=(ray.src_id, 'IDLER')))
                 else:
-                    continue
+                    stack.append(_child(ray, E, H, ray.dir, ray.power, 'TRANSMIT', idx, t))
             elif proc == 'SPDC':
                 wco = physics.nl_child_wavelength('SPDC', ray.wl)   # degenerate 2*lam
                 q_conv = _q_at(wco)
@@ -1385,9 +1427,11 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 stack.append(_child(ray, E, H, ray.dir, ray.power * (1.0 - eff), 'TRANSMIT', idx, t,
                                     jones=_jones_at_power(ray.jones, ray.power * (1.0 - eff))))  # residual pump
                 stack.append(_child(ray, E, H, ray.dir, ray.power * eff * 0.5, 'SIGNAL', idx, t,
-                                    jones=_jones_at_power(js, ray.power * eff * 0.5), q=q_conv, wl=wco))
+                                    jones=_jones_at_power(js, ray.power * eff * 0.5), q=q_conv, wl=wco,
+                                    coherence_id=(ray.src_id, 'SIGNAL')))
                 stack.append(_child(ray, E, _emit_pt(woff), ray.dir, ray.power * eff * 0.5, 'IDLER', idx, t,
-                                    jones=_jones_at_power(ji, ray.power * eff * 0.5), q=q_conv, wl=wco))
+                                    jones=_jones_at_power(ji, ray.power * eff * 0.5), q=q_conv, wl=wco,
+                                    coherence_id=(ray.src_id, 'IDLER')))
             continue                                         # NONE / unhandled: pump dumped
 
         if et == 'CIRCULATOR':
@@ -1931,7 +1975,13 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             stack.append(_child(ray, E, H, ray.dir, ray.power * onward, 'TRANSMIT', idx, t,
                                 jones=physics.scale(J, math.sqrt(onward)) if J else None))
 
-    return segments
+    out = TraceSegments(segments)
+    try:
+        from . import handlers
+        out.scene_sig = handlers._signature(scene)
+    except Exception:
+        out.scene_sig = None
+    return out
 
 
 # --- operators --------------------------------------------------------------

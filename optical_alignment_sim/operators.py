@@ -112,8 +112,11 @@ class OPTICS_OT_fix_diagnosis(Operator):
             return bpy.ops.optics.auto_align()
         if item.tool == 'place_relative':
             return bpy.ops.optics.place_relative('INVOKE_DEFAULT')
-        self.report({'ERROR'}, "No interactive operator is available for tool: %s" % item.tool)
-        return {'CANCELLED'}
+        if obj is not None:
+            self.report({'INFO'}, "Selected %s — adjust its settings in Setup > Element" % obj.name)
+            return {'FINISHED'}
+        self.report({'INFO'}, item.suggested_fix or "Review the bench settings")
+        return {'FINISHED'}
 
 
 # --- shared port helpers ----------------------------------------------------
@@ -184,6 +187,16 @@ def _default_specs_for_type(etype, obj):
         return [("IN", "IN", "+Z"), ("REFLECT", "REFLECT", "+Z")]
     if etype == 'ABERRATOR':
         return [("IN", "IN", minus), ("OUT", "OUT", plus)]
+    # These supported element types used to return an empty list for an unrecognised
+    # imported mesh. Give an agent a safe, explicit axial fallback instead of reporting
+    # "finished" with a stale/empty port set. Special builder geometry can still be
+    # corrected by selecting a face and using the visible port picker.
+    if etype in ('OBJECTIVE', 'AOM', 'PRISM', 'SLIT', 'KNIFE_EDGE'):
+        return [("IN", "IN", minus), ("OUT", "OUT", plus)]
+    if etype == 'BEAM_DUMP':
+        return [("IN", "IN", minus)]
+    if etype == 'CIRCULATOR':
+        return [("P1", "IN", "+X"), ("P2", "IN", "+Y"), ("P3", "IN", "-X")]
     return []
 
 
@@ -489,11 +502,33 @@ class OPTICS_OT_normalize_import(Operator):
         obj.select_set(True)
         context.view_layer.objects.active = obj
 
+        # Applying rotation/scale and moving the origin changes the object's local frame.
+        # Optical ports are stored in that frame, so snapshot their WORLD geometry and
+        # re-express it after the normalization. Without this, the visible mesh stayed put
+        # while IN/OUT/REFLECT planes jumped (and their normals rotated) on the next trace.
+        port_world = []
+        props = getattr(obj, "optics", None)
+        if props is not None:
+            M0 = obj.matrix_world.copy()
+            for p in props.ports:
+                wp = M0 @ Vector(p.local_position)
+                wn = M0.to_3x3() @ Vector(p.local_normal)
+                port_world.append((p, wp, wn))
+
         if obj.data and obj.data.users > 1:          # transform_apply rejects multi-user data
             obj.data = obj.data.copy()
         bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
         if self.set_origin_center:
             bpy.ops.object.origin_set(type='ORIGIN_CENTER_OF_VOLUME')
+
+        if port_world:
+            inv = obj.matrix_world.inverted()
+            inv3 = obj.matrix_world.to_3x3().inverted()
+            for p, wp, wn in port_world:
+                p.local_position = inv @ wp
+                local_n = inv3 @ wn
+                if local_n.length > 1.0e-12:
+                    p.local_normal = local_n.normalized()
 
         mx = max(obj.dimensions)
         if self.expected_size_mm > 0.0:
