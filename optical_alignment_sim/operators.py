@@ -9,6 +9,7 @@ from __future__ import annotations
 import bpy
 from bpy.types import Operator
 from bpy.props import EnumProperty, StringProperty, BoolProperty, FloatProperty, IntProperty
+from mathutils import Vector
 
 from . import geometry, presets
 from .properties import PORT_ROLES
@@ -127,6 +128,37 @@ def _add_port(props, name, role, local_pos, local_normal, ca=12.7):
     return p
 
 
+# Front-surface optics: the beam turns ON a coated face (the builders put IN and REFLECT on it, #25/#29), not on an
+# internal plane. PRISM_MIRROR / BEAMSPLITTER cubes and the corner cube keep their internal-plane layout.
+FLAT_REFLECTIVE = ('MIRROR', 'DICHROIC', 'GRATING', 'DEFORMABLE_MIRROR')
+AUTOPLACED_KEY = "optics_reflect_autoplaced"
+
+
+def _largest_flat_face(obj):
+    """(center, normal) in local space of the largest coplanar group of mesh faces, preferring faces that look
+    along local +Z (the convention every builder and the port presets use for the optical face). Falls back to
+    the largest flat group facing any way; None for a mesh with no faces."""
+    me = getattr(obj, "data", None)
+    polys = getattr(me, "polygons", None)
+    if not polys:
+        return None
+    groups = {}
+    for p in polys:
+        n = p.normal
+        if n.length < 1e-9 or p.area <= 0.0:
+            continue
+        key = (round(n.x, 3), round(n.y, 3), round(n.z, 3), round(p.center.dot(n), 3))
+        g = groups.setdefault(key, [0.0, Vector((0.0, 0.0, 0.0)), n.copy()])
+        g[0] += p.area
+        g[1] += p.center * p.area
+    if not groups:
+        return None
+    facing_z = {k: g for k, g in groups.items() if g[2].z > 0.999}
+    pool = facing_z or groups
+    area, weighted, n = max(pool.values(), key=lambda g: g[0])
+    return weighted / area, n.normalized()
+
+
 def _default_specs_for_type(etype, obj):
     """Fallback port specs when the name prefix is unknown, keyed by element type."""
     ax = geometry.longest_axis(obj)
@@ -189,6 +221,16 @@ def do_auto_detect(obj):
     # prefix, use the type's default ports, not the lens layout (which builds a bogus REFLECT plane).
     if specs is None or (etype and etype != props.element_type):
         specs = _default_specs_for_type(props.element_type, obj)
+    if props.element_type in FLAT_REFLECTIVE and (etype is None or etype == props.element_type):
+        face = _largest_flat_face(obj)
+        if face is not None:
+            center, normal = face
+            props.ports.clear()
+            ca = props.clear_aperture if props.clear_aperture > 0.0 else 12.7
+            _add_port(props, "IN", 'IN', center, normal, ca)             # the beam enters where it turns
+            _add_port(props, "REFLECT", 'REFLECT', center, normal, ca)
+            obj[AUTOPLACED_KEY] = True                                   # a guess until the user confirms it
+            specs = None
     if specs:
         _populate_ports_from_specs(obj, props, specs)
     props.is_source = props.element_type in SOURCE_TYPES
@@ -344,12 +386,17 @@ class OPTICS_OT_auto_detect_ports(Operator):
         return context.object is not None
 
     def execute(self, context):
-        n = do_auto_detect(context.object)
+        obj = context.object
+        n = do_auto_detect(obj)
         if n == 0:
             self.report({'WARNING'},
-                        "No ports detected - set an element type or use 'Add port from face'")
+                        "No ports detected - set an element type or pick faces with IN Face / Reflect Face")
             return {'CANCELLED'}
-        self.report({'INFO'}, "Detected %d ports" % n)
+        if obj.get(AUTOPLACED_KEY):
+            self.report({'WARNING'}, "Detected %d ports. The reflecting surface was put on the largest flat face "
+                        "facing +Z -- confirm it is the coated face, or select that face and press Reflect Face" % n)
+        else:
+            self.report({'INFO'}, "Detected %d ports" % n)
         return {'FINISHED'}
 
 
@@ -397,10 +444,24 @@ class OPTICS_OT_pick_port_from_face(Operator):
         props = obj.optics
         props.is_optical = True
         name = self.port_name or self.role
-        _add_port(props, name, self.role, center, normal,
-                  props.clear_aperture if props.clear_aperture > 0.0 else 12.7)
-        props.ports_index = len(props.ports) - 1
-        self.report({'INFO'}, "Added port '%s' from face" % name)
+        ca = props.clear_aperture if props.clear_aperture > 0.0 else 12.7
+        # Re-picking a face REPLACES the port of that name: appending left the auto-detected one first in the
+        # list, and the tracer reads the first REFLECT/IN it finds, so the user's choice silently did nothing.
+        existing = next((i for i, p in enumerate(props.ports) if p.name == name), None)
+        if existing is not None:
+            port = props.ports[existing]
+            port.role, port.local_position, port.local_normal = self.role, center, normal
+            props.ports_index = existing
+        else:
+            _add_port(props, name, self.role, center, normal, ca)
+            props.ports_index = len(props.ports) - 1
+        if self.role == 'REFLECT' and props.element_type in FLAT_REFLECTIVE:
+            for p in props.ports:                                       # front-surface: IN sits on the same face
+                if p.role == 'IN':
+                    p.local_position, p.local_normal = center, normal
+            if AUTOPLACED_KEY in obj:
+                del obj[AUTOPLACED_KEY]
+        self.report({'INFO'}, "%s port '%s' from face" % ("Moved" if existing is not None else "Added", name))
         return {'FINISHED'}
 
 
