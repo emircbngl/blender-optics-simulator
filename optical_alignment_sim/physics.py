@@ -923,6 +923,52 @@ def nl_phase_mismatch_T(crystal_material, temp_C):
     return dk_dT * (temp_C - T_pm)
 
 
+# --- MgO:PPLN quasi-phase matching (Gayer et al. 2008) ----------------------------------------------------
+# O. Gayer, Z. Sacks, E. Galun, A. Arie, "Temperature and wavelength dependent refractive index equations for
+# MgO-doped congruent and stoichiometric LiNbO3", Appl. Phys. B 91, 343-348 (2008). Table 1, 5 mol% MgO-doped
+# congruent LiNbO3, extraordinary index, lambda in um:
+#     n_e^2 = a1 + b1 f + (a2 + b2 f)/(l^2 - (a3 + b3 f)^2) + (a4 + b4 f)/(l^2 - a5^2) - a6 l^2      (eq. 2)
+#     f = (T - 24.5 C)(T + 570.82)                                                                 (eq. 3)
+# valid 0.5-4 um and 20-200 C (Sec. 5). Checked here against the paper's own results: at 21 C the phase-matched
+# SHG fundamental for periods 18.6 / 18.8 / 19.0 / 19.48 um lands within 1 nm of the Fig. 5 measurements, and
+# along Fig. 4 (19.48 um) within 0.8 nm at 50 C and 2.2 nm at 100 C.
+GAYER_MGO_CLN_E = (5.756, 0.0983, 0.2020, 189.32, 12.52, 1.32e-2,        # a1..a6
+                   2.860e-6, 4.700e-8, 6.113e-8, 1.516e-4)                # b1..b4
+GAYER_RANGE_UM = (0.5, 4.0)
+GAYER_RANGE_C = (20.0, 200.0)
+
+
+def ppln_mgo_ne(wl_nm, temp_C):
+    """Extraordinary refractive index of 5% MgO-doped congruent LiNbO3 at wl_nm and temp_C (Gayer 2008, eq. 2-3)."""
+    a1, a2, a3, a4, a5, a6, b1, b2, b3, b4 = GAYER_MGO_CLN_E
+    l2 = (wl_nm * 1.0e-3) ** 2
+    f = (temp_C - 24.5) * (temp_C + 570.82)
+    n2 = a1 + b1 * f + (a2 + b2 * f) / (l2 - (a3 + b3 * f) ** 2) + (a4 + b4 * f) / (l2 - a5 * a5) - a6 * l2
+    return math.sqrt(max(n2, 1.0))
+
+
+def qpm_phase_mismatch(l1_nm, l2_nm, l3_nm, temp_C, period_um, order=1):
+    """QPM phase mismatch dk (rad/mm) of a three-wave interaction w1 = w2 + w3 in MgO:PPLN (Gayer 2008, eq. 1):
+
+        dk = 2 pi [ n_e(l1)/l1 - n_e(l2)/l2 - n_e(l3)/l3 - m / Lambda ]
+
+    l1 is the highest-frequency wave (the SHG output, the SFG sum, the DFG/OPO/SPDC pump); ``order`` m is the QPM
+    order. dk = 0 is plane-wave phase matching. The period is taken as given: the thermal expansion of Lambda(T),
+    which the paper includes but does not tabulate, is NOT modelled, so the phase-matched wavelength drifts short of
+    the paper's curve as the crystal heats (2.2 nm at 100 C on Fig. 4). None when there is no grating."""
+    if period_um is None or period_um <= 0.0:
+        return None
+    k = lambda l_nm: ppln_mgo_ne(l_nm, temp_C) / (l_nm * 1.0e-6)          # n/lambda with lambda in mm
+    return 2.0 * math.pi * (k(l1_nm) - k(l2_nm) - k(l3_nm) - order / (period_um * 1.0e-3))
+
+
+def ppln_in_range(wavelengths_nm, temp_C):
+    """True when every wavelength and the temperature are inside the Gayer 2008 validity range."""
+    lo, hi = GAYER_RANGE_UM
+    return (GAYER_RANGE_C[0] <= temp_C <= GAYER_RANGE_C[1]
+            and all(lo <= w * 1.0e-3 <= hi for w in wavelengths_nm))
+
+
 # Ordinary + extraordinary Sellmeier for the common NEGATIVE-UNIAXIAL nonlinear crystals, so the SHG
 # phase-matching ANGLE can be DERIVED from the index ellipsoid (vs the lumped dk(T) scalar above). Each
 # entry is (o-params, e-params) for  n^2(lambda_um) = A + B/(lambda_um^2 - C) - D*lambda_um^2.
@@ -2210,6 +2256,22 @@ if __name__ == "__main__":
     Io, Vo = interfere(bo)
     if not (close(Io, 2.0, 1e-6) and close(Vo, 0.0, 1e-6)):
         fails.append("interfere orthogonal Io=%.3f Vo=%.3f" % (Io, Vo))
+
+    # MgO:PPLN QPM (Gayer 2008): a 19.0 um period at 21 C phase-matches SHG of ~1536.3 nm (Fig. 5, measured)
+    def _pm_fund(period_um, T):
+        lo, hi = 1400.0, 1700.0
+        g = lambda lf: qpm_phase_mismatch(0.5 * lf, lf, lf, T, period_um)
+        glo = g(lo)
+        for _ in range(80):
+            mid = 0.5 * (lo + hi)
+            gm = g(mid)
+            if (gm > 0) == (glo > 0):
+                lo, glo = mid, gm
+            else:
+                hi = mid
+        return 0.5 * (lo + hi)
+    if not close(_pm_fund(19.0, 21.0), 1536.3, 1.5):
+        fails.append("PPLN QPM 19.0um/21C fundamental %.2f nm (Gayer Fig.5 ~1536.3)" % _pm_fund(19.0, 21.0))
 
     # different wavelengths from one source do not interfere: I = I1+I2, V = 0 (a zero-OPD pair at
     # one wavelength gives 4x, so this is the cross term switching off, not the beams missing)

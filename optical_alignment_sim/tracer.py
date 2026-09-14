@@ -229,6 +229,21 @@ def _seg(ray, p2, to_obj, sn=None):
     }
 
 
+def _ppln_three_waves(proc, wl, l2):
+    """(l1, l2, l3) in nm for a three-wave process w1 = w2 + w3 (l1 the highest frequency), or None when the process
+    is not a single three-wave interaction (THG is cascaded) or has no physical output."""
+    if proc == 'SHG':
+        return (wl * 0.5, wl, wl)
+    if proc == 'SPDC':
+        return (wl, 2.0 * wl, 2.0 * wl)
+    if proc in ('SFG', 'DFG', 'OPO') and l2:
+        out = physics.nl_child_wavelength(proc, wl, l2)
+        if out is None:
+            return None
+        return (out, wl, l2) if proc == 'SFG' else (wl, l2, out)
+    return None
+
+
 def _aberr_combine(base, vec, sign):
     """base (or None=flat) +/- the element's Zernike vector -> a fresh 15-coeff list."""
     out = list(base) if base else [0.0] * physics.N_ZERNIKE
@@ -1281,7 +1296,15 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             # -> SHG/SPDC + the Bell pump-dump stay byte-identical. A TEMPERATURE scan rides this curve.
             mat = getattr(op, 'crystal_material', 'BBO')
             L_mm = getattr(op, 'crystal_length_mm', 10.0)
-            dk = physics.nl_phase_mismatch_T(mat, getattr(op, 'crystal_temp_C', 25.0))
+            temp_C = getattr(op, 'crystal_temp_C', 25.0)
+            # MgO:PPLN is quasi-phase-matched: dk follows from the real dispersion n_e(lambda, T) of all three waves
+            # and the poling period (Gayer et al. 2008), so the period, the pump wavelength and the temperature each
+            # set the conversion. Other materials keep the lumped dk(T) placeholder, as documented on it.
+            waves = _ppln_three_waves(proc, ray.wl, l2) if (mat or '').upper() == 'PPLN' else None
+            dk = (physics.qpm_phase_mismatch(waves[0], waves[1], waves[2], temp_C,
+                                             getattr(op, 'poling_period_um', 0.0)) if waves else None)
+            if dk is None:
+                dk = physics.nl_phase_mismatch_T(mat, temp_C)
             pm_eff = physics.phase_match_efficiency(dk, L_mm)
             if getattr(op, 'use_chi2_solver', False):
                 # chi(2) TENSOR SOLVER (opt-in): the conversion efficiency from the full Manley-Rowe

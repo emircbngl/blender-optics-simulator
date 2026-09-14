@@ -876,6 +876,42 @@ def _glasses_in_use(E, wl, scene):
     return out
 
 
+def _ppln_qpm(scene, segs):
+    """A MgO:PPLN crystal converts only near quasi-phase matching, and the tracer now computes that from the real
+    dispersion (Gayer et al. 2008). Two things a user must hear: the interaction is not phase-matched -- with the
+    period that WOULD match at this temperature, Lambda = m / (n1/l1 - n2/l2 - n3/l3) -- or it sits outside the
+    0.5-4 um / 20-200 C range the dispersion equation was fitted over."""
+    issues = []
+    seen = set()
+    by_name = {o.name: o for o in scene.objects if getattr(o, "optics", None) and o.optics.is_optical}
+    for s in segs:
+        E = by_name.get(s.get("to"))
+        if E is None or E.name in seen or E.optics.element_type != 'CRYSTAL':
+            continue
+        op = E.optics
+        if (op.crystal_material or '').upper() != 'PPLN' or op.nl_process in ('NONE', 'THG'):
+            continue
+        waves = tracer._ppln_three_waves(op.nl_process, s.get("wavelength", 0.0), op.nl_lambda2_nm)
+        if not waves or op.poling_period_um <= 0.0:
+            continue
+        seen.add(E.name)
+        T = op.crystal_temp_C
+        if not physics.ppln_in_range(waves, T):
+            issues.append(_issue("qpm_out_of_range", E.name,
+                "%s: MgO:PPLN dispersion used outside its fitted range (0.5-4 um, 20-200 C): waves %s nm at %.1f C"
+                % (E.name, "/".join("%.1f" % w for w in waves), T), "WARN"))
+        dk = physics.qpm_phase_mismatch(waves[0], waves[1], waves[2], T, op.poling_period_um)
+        eta = physics.phase_match_efficiency(dk, op.crystal_length_mm)
+        if eta < 0.5:
+            k = sum(sgn * physics.ppln_mgo_ne(w, T) / (w * 1.0e-3) for sgn, w in zip((1, -1, -1), waves))  # 1/um
+            match = (1.0 / k) if k > 0.0 else None
+            issues.append(_issue("qpm_mismatch", E.name,
+                "%s: %s at %s nm is not quasi-phase-matched (sinc^2 = %.3g at %.1f C, period %.3f um)%s"
+                % (E.name, op.nl_process, "/".join("%.1f" % w for w in waves), eta, T, op.poling_period_um,
+                   ("; the period that matches at this temperature is %.3f um" % match) if match else ""), "WARN"))
+    return issues
+
+
 def _glass_extrapolation(scene, segs):
     """A refractive index read outside its glass's Sellmeier-fit window is an extrapolation, not a measured
     index -- at 10.6 um N-BK7 comes out n = 3.9 and a lens focuses 16 mm after itself with nothing said.
@@ -940,6 +976,7 @@ def _run_diagnostics_from_segments(scene, segs):
     out += _fringe_disambiguation(scene, segs)
     out += _beam_underfills_figure(scene, segs)
     out += _glass_extrapolation(scene, segs)
+    out += _ppln_qpm(scene, segs)
     out += _mirror_back_hits(scene, segs)
     return out
 
@@ -969,6 +1006,16 @@ def run_diagnostics(scene):
 # --------------------------------------------------------------------------- #
 
 _CORRECTION_SUGGESTIONS = {
+    "qpm_mismatch": {
+        "action": "Set the poling period to the matching value given, or tune the crystal temperature (a TEMPERATURE scan traces the sinc^2 curve).",
+        "tool": "set_param",
+        "maybe_intentional_if": "the crystal is deliberately detuned (a temperature or wavelength scan, a spectral filter by phase matching).",
+        "confidence": 0.6},
+    "qpm_out_of_range": {
+        "action": "Keep the interacting wavelengths within 0.5-4 um and the crystal within 20-200 C, or treat the conversion as an extrapolation.",
+        "tool": None,
+        "maybe_intentional_if": "never -- but a scan may briefly step outside the fitted range.",
+        "confidence": 0.6},
     "glass_extrapolated": {
         "action": "Choose a glass whose Sellmeier window covers the wavelength (e.g. FUSED_SILICA / CaF2 for UV, CaF2 / ZnSe / GE / SI for the IR) with set_param, or check the design wavelength.",
         "tool": "set_param",

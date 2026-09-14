@@ -1218,7 +1218,8 @@ def crystal(name, loc, beam_dir, coll=None, size=14.0, nl_process='NONE',
     A PPLN (QPM) crystal grows fine alternating poling-domain stripes along the beam axis (D3): with
     ``ppln_show_stripes`` they are literal alternating slabs (the hero look); set it False for a flat
     tinted band (performance). ``oven`` adds a simple temperature-control housing around the slab. All of
-    this is COSMETIC -- the QPM trace reads ``poling_period_um``, not the stripe mesh, so the ports (hence
+    this is COSMETIC -- the QPM trace reads ``poling_period_um`` (dk from the MgO:PPLN dispersion of Gayer et al.
+    2008, see physics.qpm_phase_mismatch), not the stripe mesh, so the ports (hence
     the trace) are byte-identical whether or not the stripes are drawn. ``crystal_length_mm`` defaults to
     the slab's physical +Z extent so the sinc^2(dk*L/2) overlay uses the geometry the user sees."""
     o = _cube(name, (size * 0.6, size * 0.6, size), coll)
