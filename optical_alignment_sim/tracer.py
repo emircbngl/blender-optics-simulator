@@ -1479,6 +1479,8 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             else:
                 stack.append(_child(ray, E, H, nd, ray.power * op.reflectivity, 'REFLECT', idx, t, jones=None))
         elif et in ('MIRROR', 'PRISM_MIRROR'):
+            if ray.dir.dot(sn) > 0.0 and getattr(op, 'back_surface', 'ABSORB') == 'ABSORB':
+                continue                                   # arrived on the substrate side: lost at the ground back
             nd = geometry.reflect(ray.dir, sn)
             # SURFACE-FIGURE IMPRINT (opt-in, default off): sample E's actual mesh over the Gaussian
             # footprint and stamp its Zernike surface figure onto the reflected wavefront (sign +1, like

@@ -2193,7 +2193,7 @@ _ELEMENT_ROLE = {
 _PARAMS_BY_TYPE = {
     'SOURCE': ["wavelength", "waist_um", "m2", "linewidth_nm"],
     'LENS': ["focal_length", "lens_type", "clear_aperture", "design_wl"],
-    'MIRROR': ["reflectivity", "mirror_curve", "radius_curv", "clear_aperture"],
+    'MIRROR': ["reflectivity", "mirror_curve", "radius_curv", "clear_aperture", "back_surface"],
     'DEFORMABLE_MIRROR': ["reflectivity", "clear_aperture"],
     'BEAMSPLITTER': ["split_ratio", "is_pbs", "bs_form"],
     'WAVEPLATE': ["retardance_deg", "fast_axis_deg", "design_wl", "waveplate_crystal", "waveplate_order"],

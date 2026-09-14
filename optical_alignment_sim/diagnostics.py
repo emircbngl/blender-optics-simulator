@@ -358,9 +358,13 @@ def _energy_budget(scene, segs):
     issues = []
     n = len(segs)
     children = [[] for _ in range(n)]
+    # A prism's in-glass legs (kind GLASS) are drawn as segments parented to the incoming beam, alongside the
+    # exit ray that carries the same light onward. They are the element's interior, not a second branch:
+    # counting them as children double-counted the power (a dispersing prism "created" 3.6x its input) and
+    # counting them as leaves broke the global budget. Leave them out of both.
     for i, s in enumerate(segs):
         p = s.get("parent", -1)
-        if 0 <= p < n:
+        if 0 <= p < n and s.get("kind") != 'GLASS':
             children[p].append(i)
 
     # per-node conservation: a parent's power must cover the sum of its children. The
@@ -391,7 +395,7 @@ def _energy_budget(scene, segs):
     # here as an unaccounted residual (the budget hole).
     src_power = sum(s.get("power", 0.0) for s in segs if s.get("kind") == 'SOURCE')
     leaf_power = sum(s.get("power", 0.0)
-                     for i, s in enumerate(segs) if not children[i])
+                     for i, s in enumerate(segs) if not children[i] and s.get("kind") != 'GLASS')
     if src_power > 1e-9:
         residual = src_power - (leaf_power + absorbed)
         if abs(residual) > ENERGY_EPS * max(src_power, 1.0):
@@ -847,6 +851,80 @@ def _beam_underfills_figure(scene, segs):
 # public entry point
 # ---------------------------------------------------------------------------
 
+def _glasses_in_use(E, wl, scene):
+    """(glass, wavelength) pairs the tracer evaluates a Sellmeier index for when a beam at wl reaches E."""
+    op = E.optics
+    et = op.element_type
+    out = []
+    if et == 'LENS':
+        g = getattr(op, 'lens_glass', 'N-BK7')
+        out += [(g, wl), (g, getattr(op, 'design_wl', 633.0))]       # f scales by (n(design)-1)/(n(wl)-1)
+    elif et == 'PRISM':
+        out.append((getattr(op, 'prism_glass', 'N-SF11'), wl))
+        if getattr(op, 'prism_type', '') == 'AMICI':
+            out.append((getattr(op, 'prism_glass2', 'N-SF11'), wl))
+    if et == 'WAVEPLATE' and getattr(op, 'waveplate_crystal', 'NONE') != 'NONE':
+        wc = op.waveplate_crystal
+        out += [(wc + sfx, w) for sfx in ('_O', '_E') for w in (wl, op.design_wl)]
+    if et in ('CRYSTAL', 'WAVEPLATE') and getattr(op, 'oe_split', False):
+        out += [(getattr(op, 'oe_material', 'CALCITE') + sfx, wl) for sfx in ('_O', '_E')]
+    sg = getattr(op, 'surface_glass', 'NONE')
+    if sg != 'NONE' and getattr(scene.optics, 'model_ghosts', False):
+        out.append((sg, wl))
+    return out
+
+
+def _glass_extrapolation(scene, segs):
+    """A refractive index read outside its glass's Sellmeier-fit window is an extrapolation, not a measured
+    index -- at 10.6 um N-BK7 comes out n = 3.9 and a lens focuses 16 mm after itself with nothing said.
+    physics.sellmeier_in_range has always been able to tell; this is where the bench hears it."""
+    issues = []
+    by_name = {o.name: o for o in scene.objects if getattr(o, "optics", None) and o.optics.is_optical}
+    seen = {}
+    for s in segs:
+        E = by_name.get(s.get("to"))
+        wl = s.get("wavelength") or 0.0
+        if E is None or wl <= 0.0:
+            continue
+        for glass, w in _glasses_in_use(E, wl, scene):
+            if w > 0.0 and not physics.sellmeier_in_range(w, glass):
+                seen.setdefault((E.name, glass), set()).add(round(w, 3))
+    for (name, glass), wls in sorted(seen.items()):
+        lo, hi = physics.GLASS_RANGE_UM[glass]
+        w = sorted(wls)
+        issues.append(_issue("glass_extrapolated", name,
+            "%s: the %s index at %s nm is extrapolated outside its Sellmeier window %.2f-%.2f um (n=%.3f)"
+            % (name, glass, ", ".join("%g" % x for x in w), lo, hi, physics.sellmeier_n(w[0], glass)), "WARN"))
+    return issues
+
+
+def _mirror_back_hits(scene, segs):
+    """A beam arriving on a mirror's SUBSTRATE side (against the coated face's outward normal). With
+    back_surface ABSORB the trace ends it there -- say so, or it reads as a mysteriously dark detector.
+    With IDEAL it reflects as if it hit the coating, which a real front-surface mirror does not do."""
+    issues = []
+    by_name = {o.name: o for o in scene.objects
+               if getattr(o, "optics", None) and o.optics.is_optical
+               and o.optics.element_type in ('MIRROR', 'PRISM_MIRROR')}
+    for s in segs:
+        E = by_name.get(s.get("to"))
+        if E is None:
+            continue
+        _sp, sn, _ca = tracer.interaction_surface(E)
+        d = Vector(s["p2"]) - Vector(s["p1"])
+        if sn is None or d.length < 1e-12 or d.normalized().dot(sn) <= 0.0:
+            continue
+        if getattr(E.optics, 'back_surface', 'ABSORB') == 'ABSORB':
+            issues.append(_issue("mirror_back_hit", E.name,
+                "beam from %s hits the back (substrate side) of %s and is absorbed there -- the coated face "
+                "points the other way" % (s.get("from"), E.name), "BAD"))
+        else:
+            issues.append(_issue("mirror_back_hit", E.name,
+                "beam from %s hits the back (substrate side) of %s and reflects as if coated "
+                "(back_surface = IDEAL)" % (s.get("from"), E.name), "WARN"))
+    return issues
+
+
 def _run_diagnostics_from_segments(scene, segs):
     out = []
     out += _beam_clipped(scene, segs)
@@ -859,6 +937,8 @@ def _run_diagnostics_from_segments(scene, segs):
     out += _back_reflection_and_ghost_hits(scene, segs)
     out += _fringe_disambiguation(scene, segs)
     out += _beam_underfills_figure(scene, segs)
+    out += _glass_extrapolation(scene, segs)
+    out += _mirror_back_hits(scene, segs)
     return out
 
 
@@ -887,6 +967,16 @@ def run_diagnostics(scene):
 # --------------------------------------------------------------------------- #
 
 _CORRECTION_SUGGESTIONS = {
+    "glass_extrapolated": {
+        "action": "Choose a glass whose Sellmeier window covers the wavelength (e.g. FUSED_SILICA / CaF2 for UV, CaF2 / ZnSe / GE / SI for the IR) with set_param, or check the design wavelength.",
+        "tool": "set_param",
+        "maybe_intentional_if": "a wavelength sweep briefly steps past the window and the out-of-window points are not used.",
+        "confidence": 0.7},
+    "mirror_back_hit": {
+        "action": "Turn the mirror around so its coated face meets the beam (rotate 180 deg about its vertical axis), or set back_surface to IDEAL if a back-side reflection is really meant.",
+        "tool": "set_param",
+        "maybe_intentional_if": "the mirror is a deliberate beam block at that position.",
+        "confidence": 0.8},
     "beam_clipped": {
         "action": "Re-center the beam on the element (align_element / auto_align) or widen the element's clear aperture (set_param).",
         "tool": "align_element",
