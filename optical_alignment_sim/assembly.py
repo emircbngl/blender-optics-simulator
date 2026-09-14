@@ -547,9 +547,68 @@ class OPTICS_OT_clear_anchor(Operator):
         return {'FINISHED'}
 
 
+class OPTICS_OT_make_support(Operator):
+    bl_idname = "optics.make_support"
+    bl_label = "Group Selected"
+    bl_description = ("Put the selected collinear optics on one shared support: a cage (4 rods + one post), "
+                      "a lens tube (one barrel), or a dovetail rail. The optics do not move")
+    bl_options = {'REGISTER', 'UNDO'}
+
+    kind: EnumProperty(name="Support", items=[('CAGE', "Cage", "Shared 4-rod cage"),
+                                              ('TUBE', "Lens Tube", "One SM lens-tube barrel"),
+                                              ('RAIL', "Rail", "Carriers on one dovetail rail")],
+                       default='CAGE')
+    cage_size: EnumProperty(name="Cage size", items=[('16', "16 mm", ""), ('30', "30 mm", ""), ('60', "60 mm", "")],
+                            default='30')
+    thread: EnumProperty(name="Thread", items=[('SM05', "SM05 (1/2 in)", ""), ('SM1', "SM1 (1 in)", ""),
+                                               ('SM2', "SM2 (2 in)", "")], default='SM1')
+    family: EnumProperty(name="Rail family", items=[('RLA', "RLA", ""), ('X95', "X95", "")], default='RLA')
+
+    @staticmethod
+    def _members(context):
+        return [o for o in getattr(context, "selected_objects", ())
+                if getattr(o, "optics", None) and o.optics.is_optical]
+
+    @classmethod
+    def poll(cls, context):
+        if not cls._members(context):
+            cls.poll_message_set("Select the optical elements to group")
+            return False
+        return True
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+    def draw(self, context):
+        layout = self.layout
+        layout.prop(self, "kind")
+        if self.kind == 'CAGE':
+            layout.prop(self, "cage_size")
+        elif self.kind == 'TUBE':
+            layout.prop(self, "thread")
+        else:
+            layout.prop(self, "family")
+        layout.label(text="%d selected element(s)" % len(self._members(context)))
+
+    def execute(self, context):
+        from . import optics_api
+        names = [o.name for o in self._members(context)]
+        if self.kind == 'CAGE':
+            res = optics_api.make_cage(names, size_mm=int(self.cage_size))
+        elif self.kind == 'TUBE':
+            res = optics_api.make_tube(names, thread=self.thread)
+        else:
+            res = optics_api.make_rail(names, family=self.family)
+        if not res.get("ok"):
+            self.report({'ERROR'}, res.get("error", "Could not group the selection"))
+            return {'CANCELLED'}
+        self.report({'INFO'}, "Grouped %d element(s)" % len(names))
+        return {'FINISHED'}
+
+
 _classes = (OPTICS_OT_swap_part, OPTICS_OT_place_relative, OPTICS_OT_place_relative_xyz,
             OPTICS_OT_place_on_grid_dialog, OPTICS_OT_place_on_rail_dialog,
-            OPTICS_OT_create_anchor, OPTICS_OT_clear_anchor)
+            OPTICS_OT_create_anchor, OPTICS_OT_clear_anchor, OPTICS_OT_make_support)
 
 
 def register():
