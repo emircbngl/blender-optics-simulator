@@ -358,9 +358,13 @@ def _energy_budget(scene, segs):
     issues = []
     n = len(segs)
     children = [[] for _ in range(n)]
+    # A prism's in-glass legs (kind GLASS) are drawn as segments parented to the incoming beam, alongside the
+    # exit ray that carries the same light onward. They are the element's interior, not a second branch:
+    # counting them as children double-counted the power (a dispersing prism "created" 3.6x its input) and
+    # counting them as leaves broke the global budget. Leave them out of both.
     for i, s in enumerate(segs):
         p = s.get("parent", -1)
-        if 0 <= p < n:
+        if 0 <= p < n and s.get("kind") != 'GLASS':
             children[p].append(i)
 
     # per-node conservation: a parent's power must cover the sum of its children. The
@@ -391,7 +395,7 @@ def _energy_budget(scene, segs):
     # here as an unaccounted residual (the budget hole).
     src_power = sum(s.get("power", 0.0) for s in segs if s.get("kind") == 'SOURCE')
     leaf_power = sum(s.get("power", 0.0)
-                     for i, s in enumerate(segs) if not children[i])
+                     for i, s in enumerate(segs) if not children[i] and s.get("kind") != 'GLASS')
     if src_power > 1e-9:
         residual = src_power - (leaf_power + absorbed)
         if abs(residual) > ENERGY_EPS * max(src_power, 1.0):

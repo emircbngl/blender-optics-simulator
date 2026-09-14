@@ -972,6 +972,52 @@ check("prism fans the spectrum: blue (450) bends MORE than red (650)",
 check("prism design wavelength sits at minimum deviation",
       _d0 is not None and abs(_d0 - physics.prism_min_deviation(physics.sellmeier_n(589.3, 'N-SF11'), 60.0)) < 1e-2,
       "trace=%.3f analytic=%.3f" % (_d0 or -1, physics.prism_min_deviation(physics.sellmeier_n(589.3, 'N-SF11'), 60.0)))
+# The checks above measure the deviation as a 3-D angle, which a prism tipped out of the bench plane passes
+# unchanged -- and it was: mapping the incoming beam onto the axis left the roll free, the equilateral prism's
+# apex stood ~33 deg off vertical, and the spectrum left the table at ~31 deg. Hold the PLANE, per type.
+_plane_bad = []
+for _pt in ("EQUILATERAL", "LITTROW", "PELLIN_BROCA", "AMICI", "RIGHT_ANGLE", "PENTA", "DOVE", "ROOF", "RHOMBOID"):
+    for _o in list(sc.objects):
+        if getattr(getattr(_o, "optics", None), "is_optical", False):
+            bpy.data.objects.remove(_o, do_unlink=True)
+    eg.source("PL_S", (-150, 0, 0), _PV((1, 0, 0)), _pcoll).optics.wavelength = 450.0
+    _pp = eg.prism("PL_P", (0, 0, 0), _PV((1, 0, 0)), _pcoll, prism_type=_pt)
+    bpy.context.view_layer.update()
+    _bar = (_pp.matrix_world.to_3x3() @ _PV((1, 0, 0))).normalized()
+    _outside = [s for s in scan._trace(sc) if s.get("kind") != 'GLASS']
+    _tilt = max(abs(s["p2"][2] - s["p1"][2]) / max((_PV(s["p2"]) - _PV(s["p1"])).length, 1e-9) for s in _outside)
+    # ROOF models its two roof faces as separate reflections offset along the ridge, so its exit rides ~3.7 mm
+    # along the (now vertical) bar -- parallel to the table, displaced; every other type stays at z=0
+    _dz = 0.0 if _pt == 'ROOF' else max(abs(s["p2"][2]) for s in _outside)
+    if abs(abs(_bar.z) - 1.0) > 1e-4 or _tilt > 1e-5 or _dz > 1e-3:   # float32 leaves ~1e-5 mm; the bug was 77 mm
+        _plane_bad.append("%s bar=%s tilt=%.2e dz=%.4f" % (_pt, tuple(round(c, 3) for c in _bar), _tilt, _dz))
+check("every prism type folds / disperses in the bench plane (bar vertical, beams parallel to the table)",
+      not _plane_bad, str(_plane_bad))
+for _o in list(sc.objects):
+    if getattr(getattr(_o, "optics", None), "is_optical", False):
+        bpy.data.objects.remove(_o, do_unlink=True)
+eg.source("PL_S", (-150, 0, 0), _PV((1, 0, 0)), _pcoll).optics.wavelength = 450.0
+eg.prism("PL_P", (0, 0, 0), _PV((1, 0, 0)), _pcoll, prism_type='EQUILATERAL', roll_deg=8.0)
+bpy.context.view_layer.update()
+_rs = scan._trace(sc)
+_rex = [s for s in _rs if s.get("from") == "PL_P" and s.get("kind") == "TRANSMIT"]
+check("roll_deg still turns the prism off minimum deviation, and keeps it in the plane",
+      bool(_rex) and max(abs(s["p2"][2] - s["p1"][2]) for s in _rs) < 1e-3
+      and abs(math.degrees(math.acos(max(-1.0, min(1.0, (_PV(_rex[-1]["p2"]) - _PV(_rex[-1]["p1"])).normalized()
+                                                     .dot(_PV((1, 0, 0))))))) - (_db or 0.0)) > 0.05,
+      str(len(_rex)))
+for _kind in ("prism", "beam_router"):
+    for _o in list(sc.objects):
+        if getattr(getattr(_o, "optics", None), "is_optical", False):
+            bpy.data.objects.remove(_o, do_unlink=True)
+    optics_api.build_example(_kind)
+    _ks = scan._trace(sc)
+    _scr = "PRISM_Screen" if _kind == "prism" else "ROUTE_Screen"
+    _kd = optics_api.diagnose().get("diagnostics", [])
+    check("%s example: every line reaches the screen and diagnose raises no energy_violation / beam_clipped" % _kind,
+          not any(s.get("to") is None for s in _ks) and any(s.get("to") == _scr for s in _ks)
+          and not any(x["kind"] in ("energy_violation", "beam_clipped") for x in _kd),
+          "escaping=%d diag=%s" % (sum(1 for s in _ks if s.get("to") is None), [x["kind"] for x in _kd]))
 for _o in list(_pcoll.objects):
     eg.drop_example_object(_o)
 bpy.data.collections.remove(_pcoll)
