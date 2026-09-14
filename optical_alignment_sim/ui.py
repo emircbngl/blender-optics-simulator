@@ -35,6 +35,17 @@ def _advanced_enabled():
     return bool(prefs and prefs.show_advanced)
 
 
+def _draw_knob(layout, obj, index, dof):
+    """One knob: - / slider / +. Each press turns it by the DOF's own step."""
+    unit = "deg" if dof.kind in ('TIP', 'TILT', 'ROT') else "mm"
+    row = layout.row(align=True)
+    op = row.operator("optics.nudge_dof", text="", icon='REMOVE')
+    op.name, op.index, op.direction = obj.name, index, -1
+    row.prop(dof, "current", text="%s (%s)" % (dof.kind, unit), slider=True)
+    op = row.operator("optics.nudge_dof", text="", icon='ADD')
+    op.name, op.index, op.direction = obj.name, index, 1
+
+
 # A proposal can name a perfectly valid MCP/API tool without having a matching modal Blender
 # operator. Do not render a clickable Fix button for those records: the old UI let the user click
 # through to "No interactive operator" and made an advisory look like an action.
@@ -137,9 +148,8 @@ class OPTICS_PT_element(_OpticsPanel, Panel):
         if et in ('MIRROR', 'PRISM_MIRROR', 'DEFORMABLE_MIRROR', 'RETROREFLECTOR', 'CAVITY', 'GRATING'):
             col.prop(props, "reflectivity")
         col.prop(props, "mount_type")
-        for dof in props.dofs:
-            unit = "deg" if dof.kind in ('TIP', 'TILT', 'ROT') else "mm"
-            col.prop(dof, "current", text="%s Current (%s)" % (dof.kind, unit), slider=True)
+        for index, dof in enumerate(props.dofs):
+            _draw_knob(col, obj, index, dof)
         row = col.row(align=True)
         row.operator("optics.tag_element", text="Tag Element", icon='CHECKMARK')
         row.operator("optics.auto_detect_ports", text="Detect Ports", icon='FILE_REFRESH')
@@ -374,8 +384,10 @@ class OPTICS_PT_mount(_OpticsPanel, Panel):
         for index, dof in enumerate(props.dofs):
             row = box.row(align=True); row.label(text=dof.kind)
             row.operator("optics.remove_dof", text="", icon='X').index = index
+            _draw_knob(box, obj, index, dof)
             ranges = box.row(align=True)
             ranges.prop(dof, "min_val", text="Range Minimum"); ranges.prop(dof, "max_val", text="Range Maximum")
+            ranges.prop(dof, "step", text="Step")
         if not _advanced_enabled(): return
         mbox = body.box(); header = mbox.row(align=True)
         header.label(text="Mechanical Limits", icon='CONSTRAINT')
