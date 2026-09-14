@@ -612,6 +612,11 @@ class OPTICS_PT_render(_OpticsPanel, Panel):
     def draw(self, context):
         layout = self.layout; row = layout.row(align=True)
         row.operator("optics.bake_beams", text="Beams to Mesh", icon='OUTLINER_OB_MESH'); row.operator("optics.clear_baked", text="Clear Baked", icon='X')
+        from . import handlers
+        if handlers.beams_need_render_lock(context.scene):
+            box = layout.box()
+            box.label(text="Animated optics: renders keep the baked beams", icon='ERROR')
+            box.prop(context.scene.render, "use_lock_interface", text="Lock Interface (re-bake per frame)")
         layout.label(text="Camera"); grid = layout.grid_flow(columns=4, align=True)
         for preset in ('HERO', 'TOP', 'FRONT', 'SIDE'): grid.operator("optics.set_camera", text=preset.title()).preset = preset
         layout.label(text="Background"); layout.prop(context.scene.optics, "bg_preset", text=""); layout.prop(context.scene.optics, "realistic_optics")

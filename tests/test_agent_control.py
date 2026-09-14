@@ -265,6 +265,103 @@ check('OPO signal/idler reach the detector with the pump blocked',
       arrivals and all(s['wavelength'] > 700 for s in arrivals), str(arrivals))
 check('converted light is not reported as an orphaned source', 'orphan_source' not in issues, str(issues))
 
+# Unpolarized Type-II: a depolarized constant-intensity beam is a uniform ensemble of pure states on
+# the Poincare sphere, so the conversion is the ensemble average and cannot depend on crystal roll.
+import random
+from mathutils import Matrix
+rng = random.Random(7)
+def random_pure_fo():
+    # uniform on the sphere: normalised 3-D Gaussian Stokes direction; s1 is the o/e component
+    x, y, z = (rng.gauss(0.0, 1.0) for _ in range(3))
+    return 0.5 * (1.0 + x / math.sqrt(x * x + y * y + z * z))
+samples = [random_pure_fo() for _ in range(20000)]
+for eff in (0.3, 0.8):
+    mc = sum(min(eff * 4 * fo * (1 - fo), 2 * min(fo, 1 - fo)) for fo in samples) / len(samples)
+    got = physics.type2_unpolarized_static_efficiency(eff)
+    check('static unpolarized Type-II matches a Monte-Carlo pure-state average (eff=%s)' % eff,
+          abs(got - mc) < 5e-3, str((got, mc)))
+check('static unpolarized Type-II is 2/3 of balanced below the cap',
+      abs(physics.type2_unpolarized_static_efficiency(0.3) - 0.2) < 1e-12)
+for drive in (0.05, 2.0):
+    mc = sum(physics.chi2_shg_type2_efficiency(drive, fo) for fo in samples[:400]) / 400
+    got = physics.chi2_shg_type2_unpolarized_efficiency(drive)
+    check('solver unpolarized Type-II matches a Monte-Carlo pure-state average (drive=%s)' % drive,
+          abs(got - mc) < 0.03 * max(mc, 1e-9), str((got, mc)))
+
+def unpol_type2(roll_deg=0.0, before=None, solver=False):
+    clear()
+    s = eg.source('S', (-80, 0, 0), (1, 0, 0), wavelength=1064)
+    s.optics.pol_type = 'UNPOL'
+    if before == 'POLARIZER':
+        eg.polarizer('P', (-40, 0, 0), (1, 0, 0)).optics.pol_axis_deg = 0.0
+    elif before == 'HWP':
+        eg.waveplate('W', (-40, 0, 0), (1, 0, 0), kind='HWP', fast_axis=22.5)
+    x = eg.crystal('X', (0, 0, 0), (1, 0, 0), nl_process='SHG', phase_matching_type='TYPE2',
+                   crystal_length_mm=10, use_chi2_solver=solver)
+    x.matrix_world = Matrix.Rotation(math.radians(roll_deg), 4, 'X') @ x.matrix_world
+    eg.detector('D', (80, 0, 0), (1, 0, 0))
+    bpy.context.view_layer.update()
+    hits = [h for h in api._trace(bpy.context.scene) if h['to'] == 'D']
+    return sum(h['power'] for h in hits if h['kind'] == 'SHG'), sum(h['power'] for h in hits)
+
+rolls = [unpol_type2(r) for r in (0.0, 22.5, 45.0)]
+expected = physics.type2_unpolarized_static_efficiency(0.4)
+# segment powers are rounded to 4 decimals (tracer _seg)
+check('unpolarized Type-II SHG does not depend on crystal roll',
+      len({shg for shg, _ in rolls}) == 1 and abs(rolls[0][0] - expected) < 1e-4, str((rolls, expected)))
+check('unpolarized Type-II SHG conserves power', all(abs(tot - 1.0) < 1e-4 for _, tot in rolls), str(rolls))
+check('a half-wave plate keeps the beam unpolarized', abs(unpol_type2(0.0, 'HWP')[0] - expected) < 1e-4,
+      str(unpol_type2(0.0, 'HWP')))
+check('a polarizer along the o axis leaves no Type-II conversion', unpol_type2(0.0, 'POLARIZER')[0] < 1e-6,
+      str(unpol_type2(0.0, 'POLARIZER')))
+solver_rolls = [unpol_type2(r, solver=True)[0] for r in (0.0, 45.0)]
+check('solver unpolarized Type-II SHG does not depend on crystal roll',
+      solver_rolls[0] > 0 and abs(solver_rolls[0] - solver_rolls[1]) < 1e-9, str(solver_rolls))
+
+# Render handlers must not change data during an interactive render unless the interface is locked
+# (bpy.app.handlers "Note on Altering Data"); the Render panel says so before the user renders.
+from optical_alignment_sim import handlers
+clear()
+api.build_example('mach_zehnder')
+scene = bpy.context.scene
+scene.frame_set(1)
+moving = next(o for o in scene.objects if o.optics.is_optical and o.optics.element_type == 'MIRROR')
+moving.keyframe_insert('location', frame=1)
+bpy.context.view_layer.update()
+api.bake_beams()
+def beams_marked():
+    return any(o.get('render_probe') for o in scene.objects if o.name.startswith('BEAM_'))
+next(o for o in scene.objects if o.name.startswith('BEAM_'))['render_probe'] = 1
+moving.location.x += 3.0
+bpy.context.view_layer.update()
+original_background = handlers._is_background
+try:
+    handlers._is_background = lambda: False
+    scene.render.use_lock_interface = False
+    check('render lock warning shows for baked beams on an animated bench',
+          handlers.beams_need_render_lock(scene))
+    fields = set()
+    ui.OPTICS_PT_render.draw(SimpleNamespace(layout=Layout(fields)), bpy.context)
+    check('render panel offers Lock Interface inline', 'use_lock_interface' in fields, str(sorted(fields)))
+    handlers.on_render_init(scene)
+    handlers._last_sig = 'unchanged'
+    handlers.on_frame_change(scene)
+    handlers.on_render_pre(scene)
+    check('unlocked render: frame change leaves live state alone', handlers._last_sig == 'unchanged')
+    check('unlocked render: baked beams are not rebuilt', beams_marked())
+    handlers.on_render_done(scene)
+    scene.render.use_lock_interface = True
+    check('no render lock warning once the interface is locked', not handlers.beams_need_render_lock(scene))
+    handlers.on_render_init(scene)
+    handlers.on_frame_change(scene)
+    handlers.on_render_pre(scene)
+    handlers.on_render_done(scene)
+    check('locked render: frame change re-arms the live trace', handlers._last_sig != 'unchanged')
+    check('locked render: moved optics re-bake their beams', not beams_marked())
+finally:
+    handlers._is_background = original_background
+    scene.render.use_lock_interface = False
+
 failed = len(checks) - sum(checks)
 print("AGENT CONTROL %s (%d/%d checks)" % ("PASS" if failed == 0 else "FAIL",
                                             sum(checks), len(checks)), flush=True)
