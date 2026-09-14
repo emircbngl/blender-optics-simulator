@@ -231,7 +231,7 @@ class OPTICS_PT_element(_OpticsPanel, Panel):
             if props.aperture_shape == 'RECTANGULAR':
                 pcol.prop(props, "aperture_half_y")
         if et in ('MIRROR', 'PRISM_MIRROR'):
-            pcol.prop(props, "coating"); pcol.prop(props, "mirror_curve")
+            pcol.prop(props, "coating"); pcol.prop(props, "back_surface"); pcol.prop(props, "mirror_curve")
             if props.mirror_curve != 'FLAT': pcol.prop(props, "radius_curv")
             ibx = pcol.box(); ibx.prop(props, "imprint_surface")
             ibx.label(text="Surface figure → reflected wavefront", icon='MOD_WAVE')

@@ -358,9 +358,13 @@ def _energy_budget(scene, segs):
     issues = []
     n = len(segs)
     children = [[] for _ in range(n)]
+    # A prism's in-glass legs (kind GLASS) are drawn as segments parented to the incoming beam, alongside the
+    # exit ray that carries the same light onward. They are the element's interior, not a second branch:
+    # counting them as children double-counted the power (a dispersing prism "created" 3.6x its input) and
+    # counting them as leaves broke the global budget. Leave them out of both.
     for i, s in enumerate(segs):
         p = s.get("parent", -1)
-        if 0 <= p < n:
+        if 0 <= p < n and s.get("kind") != 'GLASS':
             children[p].append(i)
 
     # per-node conservation: a parent's power must cover the sum of its children. The
@@ -391,7 +395,7 @@ def _energy_budget(scene, segs):
     # here as an unaccounted residual (the budget hole).
     src_power = sum(s.get("power", 0.0) for s in segs if s.get("kind") == 'SOURCE')
     leaf_power = sum(s.get("power", 0.0)
-                     for i, s in enumerate(segs) if not children[i])
+                     for i, s in enumerate(segs) if not children[i] and s.get("kind") != 'GLASS')
     if src_power > 1e-9:
         residual = src_power - (leaf_power + absorbed)
         if abs(residual) > ENERGY_EPS * max(src_power, 1.0):
@@ -894,6 +898,33 @@ def _glass_extrapolation(scene, segs):
     return issues
 
 
+def _mirror_back_hits(scene, segs):
+    """A beam arriving on a mirror's SUBSTRATE side (against the coated face's outward normal). With
+    back_surface ABSORB the trace ends it there -- say so, or it reads as a mysteriously dark detector.
+    With IDEAL it reflects as if it hit the coating, which a real front-surface mirror does not do."""
+    issues = []
+    by_name = {o.name: o for o in scene.objects
+               if getattr(o, "optics", None) and o.optics.is_optical
+               and o.optics.element_type in ('MIRROR', 'PRISM_MIRROR')}
+    for s in segs:
+        E = by_name.get(s.get("to"))
+        if E is None:
+            continue
+        _sp, sn, _ca = tracer.interaction_surface(E)
+        d = Vector(s["p2"]) - Vector(s["p1"])
+        if sn is None or d.length < 1e-12 or d.normalized().dot(sn) <= 0.0:
+            continue
+        if getattr(E.optics, 'back_surface', 'ABSORB') == 'ABSORB':
+            issues.append(_issue("mirror_back_hit", E.name,
+                "beam from %s hits the back (substrate side) of %s and is absorbed there -- the coated face "
+                "points the other way" % (s.get("from"), E.name), "BAD"))
+        else:
+            issues.append(_issue("mirror_back_hit", E.name,
+                "beam from %s hits the back (substrate side) of %s and reflects as if coated "
+                "(back_surface = IDEAL)" % (s.get("from"), E.name), "WARN"))
+    return issues
+
+
 def _run_diagnostics_from_segments(scene, segs):
     out = []
     out += _beam_clipped(scene, segs)
@@ -907,6 +938,7 @@ def _run_diagnostics_from_segments(scene, segs):
     out += _fringe_disambiguation(scene, segs)
     out += _beam_underfills_figure(scene, segs)
     out += _glass_extrapolation(scene, segs)
+    out += _mirror_back_hits(scene, segs)
     return out
 
 
@@ -940,6 +972,11 @@ _CORRECTION_SUGGESTIONS = {
         "tool": "set_param",
         "maybe_intentional_if": "a wavelength sweep briefly steps past the window and the out-of-window points are not used.",
         "confidence": 0.7},
+    "mirror_back_hit": {
+        "action": "Turn the mirror around so its coated face meets the beam (rotate 180 deg about its vertical axis), or set back_surface to IDEAL if a back-side reflection is really meant.",
+        "tool": "set_param",
+        "maybe_intentional_if": "the mirror is a deliberate beam block at that position.",
+        "confidence": 0.8},
     "beam_clipped": {
         "action": "Re-center the beam on the element (align_element / auto_align) or widen the element's clear aperture (set_param).",
         "tool": "align_element",

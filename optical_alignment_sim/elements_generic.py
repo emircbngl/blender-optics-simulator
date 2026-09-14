@@ -233,6 +233,30 @@ def _roll_upright(R, n):
     return R @ Matrix.Rotation(ang, 3, 'Z')
 
 
+def _roll_bar_vertical(R, axis, bar_local=(1.0, 0.0, 0.0)):
+    """Roll ``R`` about the world incoming-beam ``axis`` so the prism's BAR (local +X, the apex edge; the
+    folds and the dispersion live in local YZ) stands vertical. Mapping the incoming beam onto ``axis`` alone
+    leaves that roll free, and rotation_difference picks whatever is shortest -- which tilted an equilateral
+    prism's apex ~33 deg off vertical and threw its spectrum ~31 deg out of the bench plane. Of the two
+    vertical directions the nearer one is taken, so a prism that was already upright is untouched and the
+    side it deviates to is kept. A beam travelling vertically leaves R as it is."""
+    a = Vector(axis).normalized()
+    up = Vector((0.0, 0.0, 1.0))
+    t = up - a * a.dot(up)
+    if t.length < 1e-6:
+        return R
+    t.normalize()
+    b = R @ Vector(bar_local)
+    b = b - a * a.dot(b)
+    if b.length < 1e-9:
+        return R
+    b.normalize()
+    if b.dot(t) < 0.0:
+        t = -t
+    ang = math.atan2(b.cross(t).dot(a), b.dot(t))
+    return Matrix.Rotation(ang, 3, a) @ R
+
+
 # --- procedural optic-mesh helpers ------------------------------------------
 # These build realistic optic meshes (curved lenses, real bores, corner-cube facets, ruled grating,
 # etc.) as a SINGLE object centred at the origin with +Z as the optical/face axis -- exactly the frame
@@ -1357,6 +1381,7 @@ def prism(name, loc, axis, coll=None, prism_type='EQUILATERAL', apex_deg=60.0,
         # orient: map the local incoming-beam direction onto the world ``axis`` (so axis = the incoming beam).
         d_in_local = g["d_in"]
         R = Vector(d_in_local).normalized().rotation_difference(Vector(axis).normalized()).to_matrix()
+        R = _roll_bar_vertical(R, axis)                     # folds in the bench plane, not tipped out of it
         if roll_deg:                                        # roll about the optical (incoming-beam) axis
             R = R @ Matrix.Rotation(math.radians(roll_deg), 3, Vector(d_in_local).normalized())
         # place so the ENTRY-FACE CENTER lands at ``loc`` (a beam aimed at loc along axis hits the entry face).
@@ -1445,6 +1470,7 @@ def prism(name, loc, axis, coll=None, prism_type='EQUILATERAL', apex_deg=60.0,
     # orient: map the local incoming-beam direction onto the world axis (so `axis` = the incoming beam).
     # Optional ``roll_deg`` rolls the prism about its bar axis (local X) for off-min-deviation studies.
     R = Vector(d_in_local).rotation_difference(Vector(axis).normalized()).to_matrix()
+    R = _roll_bar_vertical(R, axis)                         # spectrum in the bench plane, not tipped out of it
     if roll_deg:
         R = R @ Matrix.Rotation(math.radians(roll_deg), 3, Vector((1.0, 0.0, 0.0)))
     # place the prism so its ENTRY-FACE CENTER lands at ``loc`` (not the mesh centroid), so a beam aimed at
