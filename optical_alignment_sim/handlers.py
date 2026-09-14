@@ -43,7 +43,7 @@ _SIG_PROPS = (
 def _signature(scene):
     """Cheap hash of optical objects' world transforms + knob values + physics input params.
     Used to skip recompute only when nothing the tracer reads changed."""
-    from .optics_api import _PARAMS_BY_TYPE
+    from . import param_schema
     vals = [scene.as_pointer()]
     for o in scene.objects:
         op = getattr(o, "optics", None)
@@ -57,7 +57,7 @@ def _signature(scene):
             m = o.matrix_world
             vals += [float(m[r][c]) for r in range(3) for c in range(4)]   # full rotation + position
             vals += [round(d.current, 4) for d in op.dofs]
-            for name in sorted(set(_SIG_PROPS) | set(_PARAMS_BY_TYPE.get(op.element_type, ()))):
+            for name in sorted(set(_SIG_PROPS) | set(param_schema.names(op.element_type))):
                 v = getattr(op, name, None)
                 vals.append(tuple(v) if hasattr(v, "__len__") and not isinstance(v, str) else v)
             vals += [round(x, 6) for x in op.aberr_spec]      # Zernike inject (FloatVectorProperty)

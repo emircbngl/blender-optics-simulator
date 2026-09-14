@@ -17,7 +17,7 @@ import tempfile
 import bpy
 from mathutils import Matrix as _Matrix, Vector as _Vector
 
-from . import tracer, alignment, mounts, geometry, solvers, design, physics, pathstats
+from . import tracer, alignment, mounts, geometry, solvers, design, physics, pathstats, param_schema
 from . import diagnostics as _diagnostics
 from . import optomech as _optomech
 from . import operators as _ops
@@ -232,7 +232,7 @@ def get_state():
                 "reflectivity": round(op.reflectivity, 3), "wavelength": round(op.wavelength, 3),
                 "refractive_index": round(op.refractive_index, 4),
             },
-            "editable_params": list(_PARAMS_BY_TYPE.get(op.element_type, ("clear_aperture",))),
+            "editable_params": param_schema.names(op.element_type),
             "misalignment": {"pos_err_mm": round(op.misalign_pos_mm, 4),
                              "ang_err_deg": round(op.misalign_ang_deg, 4),
                              "state": op.align_state, "detail": op.align_detail},
@@ -2317,26 +2317,6 @@ _ELEMENT_ROLE = {
     'BEAM_DUMP': "absorbs the beam (terminal trap)",
 }
 
-_PARAMS_BY_TYPE = {
-    'SOURCE': ["wavelength", "waist_um", "m2", "linewidth_nm"],
-    'LENS': ["focal_length", "lens_type", "clear_aperture", "design_wl"],
-    'MIRROR': ["reflectivity", "mirror_curve", "radius_curv", "clear_aperture", "back_surface"],
-    'DEFORMABLE_MIRROR': ["reflectivity", "clear_aperture"],
-    'BEAMSPLITTER': ["split_ratio", "is_pbs", "bs_form"],
-    'WAVEPLATE': ["retardance_deg", "fast_axis_deg", "design_wl", "waveplate_crystal", "waveplate_order"],
-    'POLARIZER': ["pol_axis_deg", "polarizer_type"],
-    'SHUTTER': ["shutter_open", "clear_aperture"],
-    'APERTURE': ["clear_aperture", "aperture_shape", "aperture_half_y"],
-    'PRISM': ["refractive_index", "prism_design_wl", "split_angle_deg"],
-    'CRYSTAL': ["nl_process", "nl_efficiency", "crystal_material", "crystal_temp_C", "crystal_length_mm",
-                "nl_lambda2_nm", "poling_period_um", "nl_walkoff_mm"],
-    'DETECTOR': ["clear_aperture", "analyzer"],
-    'WAVEFRONT_SENSOR': ["clear_aperture"],
-    'CIRCULATOR': ["isolation_db", "element_transmittance"],
-    'ISOLATOR': ["isolation_db"],
-    'PASSTHROUGH': ["refractive_index", "clear_aperture"],
-    'WINDOW': ["ar_reflectance", "clear_aperture"],
-}
 
 
 def _inspect_beam_from_segments(element, segs):
@@ -2408,7 +2388,7 @@ def _inspect_element_from_segments(name, segs):
     op = obj.optics
     et = op.element_type
     params = {}
-    for attr in _PARAMS_BY_TYPE.get(et, ["clear_aperture"]):
+    for attr in param_schema.current(op):
         v = getattr(op, attr, None)
         if v is None or v == "" or (isinstance(v, float) and abs(v) < 1e-12 and attr not in ("split_ratio",)):
             continue
