@@ -1370,7 +1370,8 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             # from the NEXT port P(i+1) in the cycle (P1->P2->P3->...->P1). It is non-reciprocal: a ray into
             # P2 exits P3, NOT back to P1 -- the defining property. A small ISOLATION leak goes to the
             # PREVIOUS port P(i-1) at power T * 10^(-isolation_db/10) (physics.db_to_linear, the standard
-            # dB->linear). Pol-INDEPENDENT at the ray level: the polarization state is unchanged while its
+            # dB->linear), and that leak is TAKEN FROM the through path, T * (1 - 10^(-dB/10)), so the two
+            # outputs never sum past T (an ideal 20 dB device used to emit 1.00 + 0.01). Pol-INDEPENDENT at the ray level: the polarization state is unchanged while its
             # amplitude tracks the power bookkeeping (a real
             # free-space circulator is PBS+Faraday+HWP, but the chief-ray topology just routes ports). This is
             # a pure ROUTING topology over the existing port machinery -- NO new optical formula but the
@@ -1392,10 +1393,11 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 # main child: through power from P(i+1) along its outward normal; polarization state unchanged.
                 Pn = _wp(E, nxt.local_position)
                 Dn = geometry.world_normal(E, nxt.local_normal)
-                jn = (ray.jones if T_thru == 1.0 else
-                      physics.scale(ray.jones, math.sqrt(T_thru)) if ray.jones else None)
+                T_main = T_thru * max(1.0 - iso_lin, 0.0)  # the leak below leaves the input, not thin air
+                jn = physics.scale(ray.jones, math.sqrt(T_main)) if ray.jones else None
                 t_eff = t + (Pn - H).length
-                stack.append(_child(ray, E, Pn, Dn, ray.power * T_thru, 'CIRC_OUT', idx, t_eff, jones=jn))
+                if ray.power * T_main >= 1e-9:
+                    stack.append(_child(ray, E, Pn, Dn, ray.power * T_main, 'CIRC_OUT', idx, t_eff, jones=jn))
                 # isolation child: the small directivity leak from P(i-1). Same energy bookkeeping as the
                 # through path scaled by the dB ratio; pol carried unchanged (sqrt for the field amplitude).
                 if prv is not nxt and ray.power * T_thru * iso_lin >= 1e-9:

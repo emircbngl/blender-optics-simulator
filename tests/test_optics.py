@@ -3220,14 +3220,26 @@ for _entry in ("P1", "P2", "P3"):
     _iso = next((s for s in _outs if s["kind"] == "CIRC_ISO"), None)
     _c6_route[_entry] = (_c6_exit_port(_main["p1"]) if _main else None, _main["power"] if _main else None,
                          _c6_exit_port(_iso["p1"]) if _iso else None, _iso["power"] if _iso else None)
-check("C6 cyclic route: P1->P2, P2->P3, P3->P1 (the wrap), each at full through power",
+# The through power used to be the full 1.0 WITH a 0.01 leak on top -- 1.01 out of 1.0 in, which diagnose
+# flagged as an energy_violation on the real bench. The leak is now taken from the through path.
+check("C6 cyclic route: P1->P2, P2->P3, P3->P1 (the wrap), each at through power 1 - 10^(-20/10) = 0.99",
       _c6_route["P1"][0] == "P2" and _c6_route["P2"][0] == "P3" and _c6_route["P3"][0] == "P1"
-      and all(abs(_c6_route[k][1] - 1.0) < 1e-6 for k in _c6_route), str(_c6_route))
+      and all(abs(_c6_route[k][1] - 0.99) < 1e-6 for k in _c6_route), str(_c6_route))
+check("C6 energy: through + isolation leak = the input for a lossless circulator (not 1.01)",
+      all(abs(_c6_route[k][1] + _c6_route[k][3] - 1.0) < 1e-6 for k in _c6_route), str(_c6_route))
 check("C6 NON-RECIPROCAL: P2->P3 (a reciprocal device would send P2->P1)",
       _c6_route["P2"][0] == "P3" and _c6_route["P2"][0] != "P1")
 check("C6 isolation leak -> PREVIOUS port at power*10^(-20/10): P1->P3, P2->P1, P3->P2 @ 0.01",
       _c6_route["P1"][2] == "P3" and _c6_route["P2"][2] == "P1" and _c6_route["P3"][2] == "P2"
       and all(abs(_c6_route[k][3] - 0.01) < 1e-6 for k in _c6_route), str(_c6_route))
+# 0 dB is documented as "full leak": everything to the previous port, nothing onward (it used to emit 1 + 1)
+_hub.optics.isolation_db = 0.0
+bpy.context.view_layer.update()
+_segs0 = tracer.trace_scene(sc, mode=sc.optics.trace_mode, max_segments=sc.optics.max_segments,
+                            max_depth=sc.optics.max_depth)
+_out0 = {s["kind"]: s["power"] for s in _segs0 if s.get("from") == "C6_H"}
+check("C6 at 0 dB isolation sends the input to the previous port and nothing onward (not 1 + 1)",
+      abs(_out0.get("CIRC_ISO", 0.0) - 1.0) < 1e-6 and _out0.get("CIRC_OUT", 0.0) < 1e-6, str(_out0))
 for _o in list(_cc.objects):
     eg.drop_example_object(_o)
 bpy.data.collections.remove(_cc)
