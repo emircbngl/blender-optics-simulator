@@ -845,6 +845,36 @@ check("Centred circle kernel == 1 - exp(-2a^2/w^2)", physics.ellipse_aperture_ov
 check("Beam centred on the rim of a large circle passes half (half-plane limit)",
       physics.ellipse_aperture_overlap(50.0, 50.0, 0.05, 50.0, 0.0), 0.5, 2e-3,
       "edge curvature over the beam ~ w/a -> 0")
+# MgO:PPLN quasi-phase matching, Gayer et al., Appl. Phys. B 91, 343 (2008), Table 1 + eqs. 1-3. The anchors are the
+# paper's own results, read off its figures (reading uncertainty ~0.5 nm): Fig. 5 measured phase-matched SHG
+# fundamentals at 21 C, and Fig. 4 for the 19.48 um crystal against temperature. The period's thermal expansion is
+# not modelled (not tabulated in the paper), so the Fig. 4 tolerance widens with temperature.
+
+
+def _ppln_fund(period_um, T):
+    lo, hi = 1400.0, 1700.0
+    g = lambda lf: physics.qpm_phase_mismatch(0.5 * lf, lf, lf, T, period_um)
+    glo = g(lo)
+    for _ in range(80):
+        mid = 0.5 * (lo + hi)
+        gm = g(mid)
+        if (gm > 0) == (glo > 0):
+            lo, glo = mid, gm
+        else:
+            hi = mid
+    return 0.5 * (lo + hi)
+
+
+for _P, _l in ((18.6, 1522.0), (18.8, 1529.4), (19.0, 1536.3), (19.48, 1552.0)):
+    check("PPLN QPM: %.2f um at 21 C phase-matches SHG of the Fig.5 measurement" % _P, _ppln_fund(_P, 21.0), _l, 1.5,
+          "Gayer 2008 Fig. 5 (experimental)")
+check("PPLN QPM: 19.48 um at 50 C on the Fig.4 measurement", _ppln_fund(19.48, 50.0), 1557.0, 1.5, "Gayer 2008 Fig. 4")
+check("PPLN QPM: 19.48 um at 100 C on the Fig.4 measurement (period expansion not modelled)",
+      _ppln_fund(19.48, 100.0), 1565.0, 3.0, "Gayer 2008 Fig. 4")
+_wv = (775.0, 1550.0, 1550.0)
+_kk = sum(sg * physics.ppln_mgo_ne(w, 40.0) / (w * 1.0e-3) for sg, w in zip((1, -1, -1), _wv))
+check("PPLN QPM: the closed-form matching period 1/(n1/l1-n2/l2-n3/l3) zeroes dk",
+      physics.qpm_phase_mismatch(_wv[0], _wv[1], _wv[2], 40.0, 1.0 / _kk), 0.0, 1e-9, "eq. 1")
 check("Decentred aligned rect == product of shifted erf bands",
       physics.polygon_aperture_overlap([(1, .3), (-1, .3), (-1, -.3), (1, -.3)], 0.5, 0.4, 0.1),
       0.25 * (math.erf(math.sqrt(2) * 0.6 / 0.5) + math.erf(math.sqrt(2) * 1.4 / 0.5))

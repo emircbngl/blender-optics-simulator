@@ -191,7 +191,11 @@ class OPTICS_PT_element(_OpticsPanel, Panel):
         elif et == 'CAVITY': pcol.prop(props, "cavity_spacing_mm")
         elif et == 'CRYSTAL':
             pcol.prop(props, "nl_process")
-            if props.nl_process != 'NONE': pcol.prop(props, "nl_efficiency")
+            if props.nl_process != 'NONE':
+                pcol.prop(props, "crystal_material"); pcol.prop(props, "crystal_length_mm"); pcol.prop(props, "crystal_temp_C")
+                if props.nl_process in ('SFG', 'DFG', 'OPO'): pcol.prop(props, "nl_lambda2_nm")
+                if props.crystal_material == 'PPLN': pcol.prop(props, "poling_period_um")
+                pcol.prop(props, "nl_efficiency")
         elif et == 'OBJECTIVE':
             pcol.prop(props, "obj_correction"); pcol.prop(props, "obj_mag")
             pcol.prop(props, "obj_na"); pcol.prop(props, "obj_wd"); pcol.prop(props, "obj_long_wd")

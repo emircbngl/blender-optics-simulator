@@ -781,6 +781,40 @@ _ib = physics.interfere([(physics.jones_linear(0.0, 1.0), 0.0, 532.0), (physics.
 check("two wavelengths from one source add in intensity (no cross term): I=2, V=0",
       abs(_ib[0] - 2.0) < 1e-9 and abs(_ib[1]) < 1e-9, str(_ib))
 
+print("[MgO:PPLN is quasi-phase-matched from real dispersion: period, pump and temperature set the conversion]")
+# Before: the poling period never entered the physics -- 6.5, 30 and 1000 um all converted the same 0.400, and so did
+# 780, 1064 and 1550 nm pumps. dk now follows Gayer et al. 2008 (physics.qpm_phase_mismatch).
+_q_wv = (775.0, 1550.0, 1550.0)
+_q_P = 1.0 / sum(sg * physics.ppln_mgo_ne(w, 40.0) / (w * 1.0e-3) for sg, w in zip((1, -1, -1), _q_wv))
+
+
+def _ppln_shg(pump_nm, period, temp):
+    for _o in list(sc.objects):
+        if getattr(_o, "optics", None) and _o.optics.is_optical:
+            bpy.data.objects.remove(_o, do_unlink=True)
+    _s = eg.source("PQ_S", (-80, 0, 0), (1, 0, 0), coll=_nlc); _s.optics.wavelength = pump_nm
+    eg.crystal("PQ_X", (0, 0, 0), (1, 0, 0), coll=_nlc, nl_process='SHG', crystal_material='PPLN', pm_scheme='QPM',
+               phase_matching_type='TYPE0', crystal_temp_C=temp, poling_period_um=period, crystal_length_mm=20.0)
+    eg.detector("PQ_D", (80, 0, 0), (1, 0, 0), coll=_nlc)
+    bpy.context.view_layer.update()
+    _ss = scan._trace(sc)
+    return sum(x["power"] for x in _ss if x["to"] == "PQ_D" and abs(x["wavelength"] - pump_nm / 2) < 0.5)
+
+
+_q_on = _ppln_shg(1550.0, _q_P, 40.0)
+_q_off = _ppln_shg(1550.0, _q_P + 0.2, 40.0)
+check("PPLN at its matching period converts the full nl_efficiency (0.4); 0.2 um off it barely converts",
+      abs(_q_on - 0.4) < 1e-4 and _q_off < 0.01, "on %.4f off %.4f (period %.4f um)" % (_q_on, _q_off, _q_P))
+check("...and detuning the pump (1555 nm) or the oven (45 C) collapses it too",
+      _ppln_shg(1555.0, _q_P, 40.0) < 0.05 and _ppln_shg(1550.0, _q_P, 45.0) < 0.05)
+_ppln_shg(1550.0, _q_P + 0.2, 40.0)
+_q_dg = [x for x in optics_api.diagnose().get("diagnostics", []) if x["kind"] == "qpm_mismatch"]
+check("diagnose names the period that would phase-match (qpm_mismatch)",
+      len(_q_dg) == 1 and ("%.3f um" % _q_P) in _q_dg[0]["detail"], str([x["detail"] for x in _q_dg]))
+_ppln_shg(900.0, 5.0, 40.0)                                  # SHG at 450 nm: below the 0.5 um fitted range
+check("diagnose flags a PPLN interaction outside the dispersion's fitted range (qpm_out_of_range)",
+      any(x["kind"] == "qpm_out_of_range" for x in optics_api.diagnose().get("diagnostics", [])))
+
 # TRUE o/e SPATIAL double refraction (opt-in; full physics in tests/_verify_birefringence.py). A calcite
 # crystal forks the ray into an ordinary + extraordinary beam, the e-beam displaced by L*tan(rho). Off the
 # default path (oe_split default OFF) so the baselines stay byte-identical.
