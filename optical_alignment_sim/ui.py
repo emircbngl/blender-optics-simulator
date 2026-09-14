@@ -306,7 +306,15 @@ class OPTICS_PT_assemble(_OpticsPanel, Panel):
     bl_parent_id = "OPTICS_PT_place"
     bl_order = 30
     bl_options = {'DEFAULT_CLOSED'}
-    def draw(self, context): pass
+    def draw(self, context):
+        layout = self.layout
+        layout.operator("optics.make_support", text="Group Selected…", icon='LINKED')
+        layout.label(text="Cage, lens tube or rail for the selected collinear optics")
+        obj = getattr(context, "object", None)
+        props = getattr(obj, "optics", None) if obj is not None else None
+        if props and props.is_optical:
+            item = props.bl_rna.properties["support_system"].enum_items.get(props.support_system)
+            layout.label(text="Active element: %s" % (item.name if item else props.support_system), icon='MOD_BUILD')
 
 
 class OPTICS_PT_mount(_OpticsPanel, Panel):
@@ -381,6 +389,17 @@ class OPTICS_PT_trace(_OpticsPanel, Panel):
         row = layout.row(align=True)
         row.operator("optics.trace_now", text="Trace Now", icon='TRACKING')
         row.operator("optics.clear_beams", text="Clear Beams", icon='X')
+        from . import geometry
+        if geometry.unit_scale_mismatch(context.scene):
+            # a wrong unit scale silently scales every distance: show it whenever it applies, not behind Advanced
+            warn = layout.box().column(align=True)
+            if props.scene_units_authoritative:
+                warn.label(text="Working in declared scene units", icon='CHECKMARK')
+                warn.label(text="Opto-mech hardware unsupported here", icon='ERROR')
+            else:
+                warn.label(text="Scene is not on the mm convention", icon='ERROR')
+                warn.operator("optics.convert_scene_units", icon='MOD_LENGTH')
+            warn.prop(props, "scene_units_authoritative")
 
 
 class OPTICS_PT_trace_settings(_OpticsPanel, Panel):
@@ -399,15 +418,6 @@ class OPTICS_PT_trace_settings(_OpticsPanel, Panel):
             col.prop(props, "line_width")
             col.prop(props, "show_ports")
             col.prop(props, "beam_radius_scale")
-            if geometry.unit_scale_mismatch(context.scene):
-                warn = col.box().column(align=True)
-                if props.scene_units_authoritative:
-                    warn.label(text="Working in declared scene units", icon='CHECKMARK')
-                    warn.label(text="Opto-mech hardware unsupported here", icon='ERROR')
-                else:
-                    warn.label(text="Scene is not on the mm convention", icon='ERROR')
-                    warn.operator("optics.convert_scene_units", icon='MOD_LENGTH')
-                warn.prop(props, "scene_units_authoritative")
             col.prop(props, "oob_display")
             col.prop(props, "auto_color")
             col.prop(props, "max_segments")
@@ -518,7 +528,12 @@ class OPTICS_PT_optical_report(_OpticsPanel, Panel):
     _ICON = {'OK': 'CHECKMARK', 'WARN': 'ERROR', 'BAD': 'CANCEL', 'UNKNOWN': 'QUESTION'}
     def draw(self, context):
         from . import pathstats, tracer
-        layout = self.layout; scene = context.scene; col = layout.column(align=True)
+        layout = self.layout; scene = context.scene
+        row = layout.row(align=True)
+        row.operator("optics.refresh_report", text="Refresh Report", icon='FILE_REFRESH')
+        row.operator("optics.align_all", text="Align All", icon='CON_TRACKTO')
+        row.operator("optics.auto_align", text="Auto-align", icon='AUTO')
+        col = layout.column(align=True)
         terminal_names = [o.name for o in scene.objects
                           if getattr(o, "optics", None) and o.optics.element_type in tracer.TERMINAL
                           and o.optics.element_type != 'BEAM_DUMP']
@@ -592,7 +607,10 @@ class OPTICS_PT_sequence(_OpticsPanel, Panel):
     bl_parent_id = "OPTICS_PT_present"
     bl_order = 10
     bl_options = {'DEFAULT_CLOSED'}
-    def draw(self, context): pass
+    def draw(self, context):
+        layout = self.layout
+        layout.operator("optics.render_sequence", text="Render Sequence…", icon='RENDER_ANIMATION')
+        layout.label(text="PNG frames (+ mp4 with ffmpeg); Blender is busy until done")
 
 
 class OPTICS_PT_export(_OpticsPanel, Panel):

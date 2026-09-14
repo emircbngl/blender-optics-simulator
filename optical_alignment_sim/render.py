@@ -8,7 +8,7 @@ import math
 
 import bpy
 from bpy.types import Operator
-from bpy.props import EnumProperty
+from bpy.props import EnumProperty, FloatProperty, IntProperty, StringProperty
 from mathutils import Vector
 
 from . import bake
@@ -498,7 +498,42 @@ class OPTICS_OT_reset_render_style(Operator):
         return {'FINISHED'}
 
 
+class OPTICS_OT_render_sequence(Operator):
+    bl_idname = "optics.render_sequence"
+    bl_label = "Render Sequence"
+    bl_description = ("Render a PNG sequence of the bench (camera orbit or fixed hero view) and encode an mp4 "
+                      "when ffmpeg is installed. Blender is busy until every frame is written")
+    bl_options = {'REGISTER'}
+
+    frames: IntProperty(name="Frames", default=48, min=2, max=2000)
+    motion: EnumProperty(name="Camera", items=[('ORBIT', "Orbit", "Camera circles the bench"),
+                                               ('HERO', "Fixed", "Hero view for every frame")], default='ORBIT')
+    engine: EnumProperty(name="Engine", items=[('EEVEE', "EEVEE", "Fast preview"),
+                                               ('CYCLES', "Cycles", "Realistic, slow")], default='EEVEE')
+    turns: FloatProperty(name="Turns", default=1.0, min=0.0)
+    elevation: FloatProperty(name="Elevation", default=0.55, description="Camera height relative to its distance")
+    fps: IntProperty(name="FPS", default=24, min=1, max=240)
+    out_dir: StringProperty(name="Folder", subtype='DIR_PATH', default="",
+                            description="Where to write the frames (empty = a new temporary folder)")
+
+    def invoke(self, context, event):
+        return context.window_manager.invoke_props_dialog(self)
+
+    def execute(self, context):
+        from . import optics_api
+        res = optics_api.render_sequence(frames=self.frames, motion=self.motion, out_dir=self.out_dir or None,
+                                         engine=self.engine, turns=self.turns, elevation=self.elevation,
+                                         fps=self.fps)
+        if res.get("error"):
+            self.report({'ERROR'}, res["error"])
+            return {'CANCELLED'}
+        self.report({'INFO'}, "Wrote %s frames to %s%s" % (res.get("frames"), res.get("dir"),
+                                                          " and %s" % res["video"] if res.get("video") else ""))
+        return {'FINISHED'}
+
+
 _classes = (
+    OPTICS_OT_render_sequence,
     OPTICS_OT_set_camera,
     OPTICS_OT_render_preview,
     OPTICS_OT_render_final,

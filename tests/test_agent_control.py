@@ -474,6 +474,103 @@ if callable(set_dof):
           str(tuple(turned.matrix_world.translation)))
     check('capabilities lists set_dof as a write', 'set_dof' in api.capabilities()['control_contract']['write'])
 
+# Every optics operator is reachable from a panel, and no leaf panel is empty (P3).
+import importlib, inspect, pkgutil
+from optical_alignment_sim import optics_api as _api_for_reach
+clear()
+eg.source('RS', (-80, 0, 0), (1, 0, 0))
+reach_obj = eg.mirror('RM', (0, 0, 0), (1, 0, 0), (0, 1, 0))
+eg.detector('RD', (0, 80, 0), (0, 1, 0))
+api.set_mount('RM', 'KM100')
+reach_obj.optics.mech.add()
+operators._store_corrections(bpy.context.window_manager, [dict(issue='x', element='RM', suggested_fix='f',
+                                                               tool='align_element', severity='WARN')])
+bpy.context.view_layer.update()
+registered = set()
+for module_info in pkgutil.iter_modules(oas.__path__):
+    module = importlib.import_module("optical_alignment_sim." + module_info.name)
+    for _n, cls in inspect.getmembers(module, inspect.isclass):
+        if issubclass(cls, bpy.types.Operator) and getattr(cls, "bl_idname", "").startswith("optics."):
+            registered.add(cls.bl_idname)
+panels = [c for _n, c in inspect.getmembers(ui, inspect.isclass)
+          if issubclass(c, bpy.types.Panel) and c.__module__ == ui.__name__]
+parents = {getattr(c, "bl_parent_id", "") for c in panels}
+drawn_ops, items = set(), {c.bl_idname: 0 for c in panels}
+class ReachLayout:
+    operator_context = 'INVOKE_DEFAULT'; use_property_split = False; use_property_decorate = False
+    enabled = True; alert = False; active = True; scale_y = 1.0
+    def __init__(self, pid): self.pid = pid
+    def child(self, *a, **k): return ReachLayout(self.pid)
+    column = row = box = grid_flow = split = column_flow = child
+    def _item(self, *a, **k): items[self.pid] += 1
+    prop = label = template_list = menu = prop_search = _item
+    def operator(self, name, **k):
+        drawn_ops.add(name); items[self.pid] += 1
+        return SimpleNamespace()
+    def separator(self, *a, **k): pass
+for advanced in (False, True):
+    ui._advanced_enabled = (lambda a=advanced: a)
+    for et, *_ in properties.ELEMENT_TYPES:
+        if et == 'NONE':
+            continue
+        reach_obj.optics.element_type = et
+        ctx = SimpleNamespace(object=reach_obj, active_object=reach_obj, selected_objects=[reach_obj],
+                              scene=bpy.context.scene, window_manager=bpy.context.window_manager,
+                              workspace=bpy.data.workspaces[0], preferences=bpy.context.preferences, region=None)
+        for panel in panels:
+            if hasattr(panel, "poll") and not panel.poll(ctx):
+                continue
+            inst = SimpleNamespace(layout=ReachLayout(panel.bl_idname),
+                                   **{k: getattr(panel, k) for k in dir(panel) if k.startswith('_') and not k.startswith('__')})
+            panel.draw(inst, ctx)
+ui._advanced_enabled = original_advanced
+reach_obj.optics.element_type = 'MIRROR'
+IN_PREFERENCES = {'optics.apply_update', 'optics.install_update', 'optics.check_updates'}
+unreachable = sorted(registered - drawn_ops - IN_PREFERENCES)
+check('every optics operator is drawn in a panel', not unreachable, str(unreachable))
+empty = sorted(pid for pid, n in items.items() if n == 0 and pid not in parents)
+check('no leaf panel is empty', not empty, str(empty))
+scene = bpy.context.scene
+scene.optics.scene_units_authoritative = False
+old_scale = scene.unit_settings.scale_length
+scene.unit_settings.scale_length = 1.0                     # a metre-scale scene, off the add-on's mm convention
+ui._advanced_enabled = lambda: False
+try:
+    fields = set()
+    ui.OPTICS_PT_trace.draw(SimpleNamespace(layout=Layout(fields)), bpy.context)
+    check('a metre-scale scene shows Convert Scene Units without Advanced',
+          'optics.convert_scene_units' in fields, str(sorted(fields)))
+finally:
+    ui._advanced_enabled = original_advanced
+    scene.unit_settings.scale_length = old_scale
+
+# The new panel operators do what they say.
+clear()
+eg.source('GS', (-120, 0, 0), (1, 0, 0))
+g1 = eg.lens('G1', (-40, 0, 0), (1, 0, 0))
+g2 = eg.lens('G2', (40, 0, 0), (1, 0, 0))
+bpy.context.view_layer.update()
+for o in bpy.context.scene.objects:
+    o.select_set(o.name in ('G1', 'G2'))
+with bpy.context.temp_override(selected_objects=[g1, g2], object=g1, active_object=g1):
+    result = bpy.ops.optics.make_support(kind='CAGE', cage_size='30')
+check('Group Selected puts the selection on one cage',
+      result == {'FINISHED'} and g1.optics.support_system == 'CAGE_30' and g2.optics.support_system == 'CAGE_30'
+      and g1.optics.cage_id and g1.optics.cage_id == g2.optics.cage_id,
+      str((result, g1.optics.support_system, g2.optics.support_system)))
+with bpy.context.temp_override(selected_objects=[]):
+    check('Group Selected needs a selection', not bpy.ops.optics.make_support.poll())
+calls = []
+original_sequence = api.render_sequence
+api.render_sequence = lambda **kw: calls.append(kw) or {"frames": kw["frames"], "dir": "/tmp/x", "video": None}
+try:
+    result = bpy.ops.optics.render_sequence(frames=3, motion='HERO', engine='CYCLES', fps=12)
+finally:
+    api.render_sequence = original_sequence
+check('Render Sequence passes its settings to render_sequence',
+      result == {'FINISHED'} and calls and calls[0]['frames'] == 3 and calls[0]['motion'] == 'HERO'
+      and calls[0]['engine'] == 'CYCLES' and calls[0]['fps'] == 12 and calls[0]['out_dir'] is None, str(calls))
+
 failed = len(checks) - sum(checks)
 print("AGENT CONTROL %s (%d/%d checks)" % ("PASS" if failed == 0 else "FAIL",
                                             sum(checks), len(checks)), flush=True)
