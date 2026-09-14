@@ -497,6 +497,16 @@ class OpticalElementProps(PropertyGroup):
     coating: EnumProperty(name="Mirror coating",
         items=[('DIELECTRIC', "Dielectric (ideal)", ""), ('AL', "Aluminum", ""),
                ('AG', "Silver", ""), ('AU', "Gold", "")], default='DIELECTRIC')
+    # What a front-surface mirror does with a beam that arrives on its SUBSTRATE side. The coating is on the
+    # REFLECT port's outward face; before this existed every mirror reflected a back-side beam at full power
+    # as if it had hit the coating. A second-surface model (refract in, reflect off the coating from inside,
+    # thickness offset, Fresnel ghost) is a planned third option -- not listed until it does something.
+    back_surface: EnumProperty(name="Back surface",
+        items=[('ABSORB', "Absorbing", "A beam arriving on the substrate side is lost there (a ground back, as "
+                "on most lab mirrors); diagnose reports it"),
+               ('IDEAL', "Ideal (reflects)", "A beam arriving on the substrate side reflects as if it hit the "
+                "coating -- the behaviour before this setting existed")],
+        default='ABSORB')
     design_wl: FloatProperty(name="Design wavelength (nm)", default=633.0, min=1.0)  # spec point; 0 would null a waveplate
     # The lens substrate glass — drives its chromatic focal shift f ~ 1/(n(lambda)-1). Default N-BK7
     # matches the prior hardcoded behaviour, so existing scenes trace byte-identical; pick the real

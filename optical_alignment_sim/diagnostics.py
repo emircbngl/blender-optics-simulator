@@ -851,6 +851,33 @@ def _beam_underfills_figure(scene, segs):
 # public entry point
 # ---------------------------------------------------------------------------
 
+def _mirror_back_hits(scene, segs):
+    """A beam arriving on a mirror's SUBSTRATE side (against the coated face's outward normal). With
+    back_surface ABSORB the trace ends it there -- say so, or it reads as a mysteriously dark detector.
+    With IDEAL it reflects as if it hit the coating, which a real front-surface mirror does not do."""
+    issues = []
+    by_name = {o.name: o for o in scene.objects
+               if getattr(o, "optics", None) and o.optics.is_optical
+               and o.optics.element_type in ('MIRROR', 'PRISM_MIRROR')}
+    for s in segs:
+        E = by_name.get(s.get("to"))
+        if E is None:
+            continue
+        _sp, sn, _ca = tracer.interaction_surface(E)
+        d = Vector(s["p2"]) - Vector(s["p1"])
+        if sn is None or d.length < 1e-12 or d.normalized().dot(sn) <= 0.0:
+            continue
+        if getattr(E.optics, 'back_surface', 'ABSORB') == 'ABSORB':
+            issues.append(_issue("mirror_back_hit", E.name,
+                "beam from %s hits the back (substrate side) of %s and is absorbed there -- the coated face "
+                "points the other way" % (s.get("from"), E.name), "BAD"))
+        else:
+            issues.append(_issue("mirror_back_hit", E.name,
+                "beam from %s hits the back (substrate side) of %s and reflects as if coated "
+                "(back_surface = IDEAL)" % (s.get("from"), E.name), "WARN"))
+    return issues
+
+
 def _run_diagnostics_from_segments(scene, segs):
     out = []
     out += _beam_clipped(scene, segs)
@@ -863,6 +890,7 @@ def _run_diagnostics_from_segments(scene, segs):
     out += _back_reflection_and_ghost_hits(scene, segs)
     out += _fringe_disambiguation(scene, segs)
     out += _beam_underfills_figure(scene, segs)
+    out += _mirror_back_hits(scene, segs)
     return out
 
 
@@ -891,6 +919,11 @@ def run_diagnostics(scene):
 # --------------------------------------------------------------------------- #
 
 _CORRECTION_SUGGESTIONS = {
+    "mirror_back_hit": {
+        "action": "Turn the mirror around so its coated face meets the beam (rotate 180 deg about its vertical axis), or set back_surface to IDEAL if a back-side reflection is really meant.",
+        "tool": "set_param",
+        "maybe_intentional_if": "the mirror is a deliberate beam block at that position.",
+        "confidence": 0.8},
     "beam_clipped": {
         "action": "Re-center the beam on the element (align_element / auto_align) or widen the element's clear aperture (set_param).",
         "tool": "align_element",
