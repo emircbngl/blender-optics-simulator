@@ -2246,6 +2246,60 @@ for et, nm in (('PHOTODIODE', 'RT_PD'), ('POWER_METER', 'RT_PM'), ('WAVEFRONT_SE
     operators.do_auto_detect(d)
     check("auto-detect keeps %s is_detector" % et, d.optics.is_detector and not d.optics.is_source, et)
 
+print("[Detect Ports puts a front-surface mirror's REFLECT on its coated face, and Reflect Face can move it]")
+# Before: Detect Ports gave a MIRROR an OUT on +Y and a REFLECT at the mesh CENTRE with normal (IN+OUT) -- a
+# 45-degree internal plane. A user's 6 mm disc turned the beam 3 mm inside the glass, off in the wrong direction,
+# and re-detecting a builder mirror broke a working one. Picking the face afterwards appended a second REFLECT
+# that the tracer never read.
+_c5_clear()
+from mathutils import Vector
+import bmesh as _dpbm
+_dpme = bpy.data.meshes.new("DP_disc"); _dpb = _dpbm.new()
+_dpbm.ops.create_cone(_dpb, cap_ends=True, segments=48, radius1=12.7, radius2=12.7, depth=6.0)
+_dpb.to_mesh(_dpme); _dpb.free()
+_dpd = bpy.data.objects.new("DP_disc", _dpme); sc.collection.objects.link(_dpd)
+_dpd.optics.is_optical = True; _dpd.optics.element_type = 'MIRROR'
+operators.do_auto_detect(_dpd)
+_dpd.matrix_world = Vector((0, 0, 1)).rotation_difference(Vector((-1, 1, 0)).normalized()).to_matrix().to_4x4()
+elements_generic.source("DP_S", (-150, 0, 0), Vector((1, 0, 0)))
+elements_generic.detector("DP_D", (0, 150, 0), Vector((0, 1, 0)))
+bpy.context.view_layer.update()
+_dpr = [p for p in _dpd.optics.ports if p.role == 'REFLECT']
+_dps = scan._trace(sc)
+_dph = next((x for x in _dps if x["to"] == "DP_disc"), None)
+_dpn = (_dpd.matrix_world.to_3x3() @ Vector((0, 0, 1))).normalized()
+_dpoff = (Vector(_dph["p2"]) - _dpd.matrix_world @ Vector((0, 0, 3.0))).dot(_dpn) if _dph else None
+check("Detect Ports on a user's disc: one REFLECT, on the +Z face (z=3), normal +Z, flagged as a guess",
+      len(_dpr) == 1 and abs(_dpr[0].local_position[2] - 3.0) < 1e-4 and abs(_dpr[0].local_normal[2] - 1.0) < 1e-4
+      and bool(_dpd.get(operators.AUTOPLACED_KEY)), str([(tuple(p.local_position), tuple(p.local_normal)) for p in _dpr]))
+check("...and the beam turns ON the coated face and reaches the detector",
+      _dpoff is not None and abs(_dpoff) < 1e-3 and any(x["to"] == "DP_D" for x in _dps), "turn offset %s" % _dpoff)
+_c5_clear()
+_dpm = elements_generic.mirror("DP_M", (0, 0, 0), Vector((1, 0, 0)), Vector((0, 1, 0)))
+_dpbefore = sorted((p.role, tuple(round(c, 4) for c in p.local_position), tuple(round(c, 4) for c in p.local_normal))
+                   for p in _dpm.optics.ports)
+operators.do_auto_detect(_dpm)
+_dpafter = sorted((p.role, tuple(round(c, 4) + 0.0 for c in p.local_position), tuple(round(c, 4) + 0.0 for c in p.local_normal))
+                  for p in _dpm.optics.ports)
+check("re-running Detect Ports on a builder mirror keeps its IN/REFLECT on the coated face (it used to break it)",
+      _dpafter == _dpbefore, "%s -> %s" % (_dpbefore, _dpafter))
+# pick a different face as REFLECT: it must MOVE the REFLECT (and the IN with it), not add a second one
+_c5_clear()
+_dpd2 = bpy.data.objects.new("DP_disc2", _dpme.copy()); sc.collection.objects.link(_dpd2)
+_dpd2.optics.is_optical = True; _dpd2.optics.element_type = 'MIRROR'
+operators.do_auto_detect(_dpd2)
+_back = next(i for i, pl in enumerate(_dpd2.data.polygons) if pl.normal.z < -0.999)
+_dpd2.data.polygons.active = _back
+bpy.context.view_layer.objects.active = _dpd2
+bpy.ops.optics.pick_port_from_face(role='REFLECT')
+_dpr2 = [p for p in _dpd2.optics.ports if p.role == 'REFLECT']
+_dpi2 = [p for p in _dpd2.optics.ports if p.role == 'IN']
+check("Reflect Face replaces the guessed REFLECT (one port, on the picked face), moves IN with it, clears the flag",
+      len(_dpr2) == 1 and abs(_dpr2[0].local_position[2] + 3.0) < 1e-4 and abs(_dpr2[0].local_normal[2] + 1.0) < 1e-4
+      and all(abs(p.local_position[2] + 3.0) < 1e-4 for p in _dpi2) and operators.AUTOPLACED_KEY not in _dpd2,
+      str([(p.role, tuple(p.local_position)) for p in _dpd2.optics.ports]))
+_c5_clear()
+
 print("[anchor / mount base-pose: no jump, no cycle]")
 def _mk(nm, loc):
     o = bpy.data.objects.new(nm, None); o.location = loc
