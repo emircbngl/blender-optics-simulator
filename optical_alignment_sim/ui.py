@@ -6,6 +6,8 @@ import textwrap
 import bpy
 from bpy.types import Panel, UIList
 
+from . import param_schema
+
 
 def _mark_expensive_operators():
     """Keep long-running UI actions explicit before their classes are registered."""
@@ -33,6 +35,22 @@ def _advanced_enabled():
     from .prefs import get_prefs
     prefs = get_prefs()
     return bool(prefs and prefs.show_advanced)
+
+
+# Field labels that need units or wording the property name does not carry.
+_FIELD_TEXT = {"clear_aperture": "Clear Radius (mm)", "shutter_open": "Open", "pol_type": "Source Polarization",
+               "design_wl": "Design Wavelength (nm)"}
+
+
+def _display_value(props, name):
+    value = getattr(props, name)
+    rna = props.bl_rna.properties[name]
+    if rna.type == 'ENUM':
+        item = rna.enum_items.get(value)
+        return item.name if item else str(value)
+    if isinstance(value, float):
+        return "%g" % value
+    return str(value)
 
 
 def _draw_knob(layout, obj, index, dof):
@@ -136,132 +154,40 @@ class OPTICS_PT_element(_OpticsPanel, Panel):
         et = props.element_type
         col.use_property_split = True
         col.use_property_decorate = False
-        col.prop(props, "clear_aperture", text="Clear Radius (mm)")
-        if et in ('SOURCE', 'FIBER_COLLIMATOR'):
-            col.prop(props, "wavelength")
-            col.prop(props, "waist_um")
-            col.prop(props, "pol_angle")
-        if et == 'LENS':
-            col.prop(props, "focal_length")
-        if et == 'BEAMSPLITTER':
-            col.prop(props, "split_ratio")
-        if et in ('MIRROR', 'PRISM_MIRROR', 'DEFORMABLE_MIRROR', 'RETROREFLECTOR', 'CAVITY', 'GRATING'):
-            col.prop(props, "reflectivity")
+        for name in param_schema.visible(props, "essentials"):
+            col.prop(props, name, text=_FIELD_TEXT.get(name, ""))
+        if et == 'OBJECTIVE':
+            tube_length = {'FINITE_160': 160.0, 'FINITE_195': 195.0}.get(props.obj_correction, props.obj_tube_ref)
+            col.label(text="f_obj = %.2f mm  (M = f_tube/f_obj)" % (tube_length / max(props.obj_mag, 1e-6)),
+                      icon='IMAGE_BACKGROUND')
+        elif et == 'AOM':
+            theta = (633e-9 * props.aom_freq_mhz * 1e6 / max(props.aom_sound_mps, 1.0)) * 1e3
+            col.label(text="Deflection %.2f mrad @633 nm  (+%.0f MHz shift)" % (theta, props.aom_freq_mhz),
+                      icon='IMAGE_BACKGROUND')
+        elif et == 'WAVEFRONT_SENSOR':
+            col.label(text="Wavefront RMS: %.3f waves" % props.wf_rms, icon='IMAGE_BACKGROUND')
+        elif et == 'ABERRATOR':
+            abx = col.box(); abx.label(text="Injected Aberration (waves)", icon='MOD_NOISE')
+            abx.prop(props, "aberr_spec", index=3, text="Defocus")
+            abx.prop(props, "aberr_spec", index=5, text="Astigmatism")
+            abx.prop(props, "aberr_spec", index=7, text="Coma")
+            abx.prop(props, "aberr_spec", index=10, text="Spherical")
         col.prop(props, "mount_type")
         for index, dof in enumerate(props.dofs):
             _draw_knob(col, obj, index, dof)
         row = col.row(align=True)
         row.operator("optics.tag_element", text="Tag Element", icon='CHECKMARK')
         row.operator("optics.auto_detect_ports", text="Detect Ports", icon='FILE_REFRESH')
-        if props.element_type in ('MIRROR', 'DICHROIC', 'GRATING', 'DEFORMABLE_MIRROR'):
+        if et in ('MIRROR', 'DICHROIC', 'GRATING', 'DEFORMABLE_MIRROR'):
             # where the beam turns decides the path length; a guessed coated face must be easy to correct
             frow = col.row(align=True)
             frow.operator("optics.pick_port_from_face", text="Reflect Face", icon='MOD_MIRROR').role = 'REFLECT'
             if obj.get("optics_reflect_autoplaced"):
                 col.label(text="Coated face guessed (largest flat +Z face) — confirm with Reflect Face", icon='ERROR')
         col.operator("optics.normalize_import", text="Normalize Import", icon='MOD_MESHDEFORM')
-        pcol = col.column(align=True)
-        pcol.label(text="Optical Settings")
-        et = props.element_type
-        if et == 'LENS':
-            pcol.prop(props, "lens_type")
-            pcol.prop(props, "design_wl", text="Design Wavelength (nm)")
-        if et == 'PRISM_MIRROR': pcol.prop(props, "prism_angle")
-        if et in ('LENS', 'WAVEPLATE', 'PASSTHROUGH'): pcol.prop(props, "refractive_index")
-        if et in ('SOURCE', 'FIBER_COLLIMATOR'):
-            pcol.prop(props, "pol_type", text="Source Polarization")
-            if props.pol_type == 'CIRCULAR': pcol.prop(props, "handedness")
-            pcol.prop(props, "linewidth_nm")
-            pcol.prop(props, "bandwidth_nm")
-            pcol.prop(props, "m2")
-        elif et == 'WAVEPLATE':
-            pcol.prop(props, "waveplate_order")
-            pcol.prop(props, "retardance_deg")
-            pcol.prop(props, "fast_axis_deg")
-            pcol.prop(props, "design_wl", text="Design Wavelength (nm)")
-        elif et == 'POLARIZER':
-            pcol.prop(props, "polarizer_type")
-            if props.polarizer_type in ('WOLLASTON', 'ROCHON'): pcol.prop(props, "split_angle_deg")
-            pcol.prop(props, "pol_axis_deg")
-            pcol.prop(props, "extinction")
-        elif et == 'BEAMSPLITTER':
-            pcol.prop(props, "bs_form"); pcol.prop(props, "is_pbs")
-        elif et == 'DICHROIC':
-            pcol.prop(props, "pass_type"); pcol.prop(props, "cut_nm")
-        elif et == 'FILTER':
-            pcol.prop(props, "filt_type")
-            if props.filt_type == 'BP':
-                pcol.prop(props, "cut_lo_nm"); pcol.prop(props, "cut_hi_nm")
-            elif props.filt_type == 'LP': pcol.prop(props, "cut_lo_nm")
-            elif props.filt_type == 'SP': pcol.prop(props, "cut_hi_nm")
-            else: pcol.prop(props, "od")
-        elif et == 'GRATING':
-            pcol.prop(props, "lines_per_mm"); pcol.prop(props, "grating_order")
-        elif et == 'ATTENUATOR': pcol.prop(props, "od")
-        elif et == 'SHUTTER': pcol.prop(props, "shutter_open", text="Open")
-        elif et == 'CAVITY': pcol.prop(props, "cavity_spacing_mm")
-        elif et == 'CRYSTAL':
-            pcol.prop(props, "nl_process")
-            if props.nl_process != 'NONE':
-                pcol.prop(props, "crystal_material"); pcol.prop(props, "crystal_length_mm"); pcol.prop(props, "crystal_temp_C")
-                if props.nl_process in ('SFG', 'DFG', 'OPO'): pcol.prop(props, "nl_lambda2_nm")
-                if props.crystal_material == 'PPLN': pcol.prop(props, "poling_period_um")
-                pcol.prop(props, "phase_matching_type")
-                pcol.prop(props, "pm_scheme")
-                pcol.prop(props, "use_chi2_solver")
-                if props.use_chi2_solver:
-                    pcol.prop(props, "nl_pump_power_W")
-                else:
-                    pcol.prop(props, "nl_efficiency")
-        elif et == 'OBJECTIVE':
-            pcol.prop(props, "obj_correction"); pcol.prop(props, "obj_mag")
-            pcol.prop(props, "obj_na"); pcol.prop(props, "obj_wd"); pcol.prop(props, "obj_long_wd")
-            if props.obj_correction == 'INFINITY': pcol.prop(props, "obj_tube_ref")
-            tube_length = {'FINITE_160': 160.0, 'FINITE_195': 195.0}.get(props.obj_correction, props.obj_tube_ref)
-            pcol.label(text="f_obj = %.2f mm  (M = f_tube/f_obj)" % (tube_length / max(props.obj_mag, 1e-6)), icon='IMAGE_BACKGROUND')
-        elif et == 'AOM':
-            pcol.prop(props, "aom_freq_mhz"); pcol.prop(props, "aom_sound_mps"); pcol.prop(props, "aom_efficiency")
-            theta = (633e-9 * props.aom_freq_mhz * 1e6 / max(props.aom_sound_mps, 1.0)) * 1e3
-            pcol.label(text="Deflection %.2f mrad @633 nm  (+%.0f MHz shift)" % (theta, props.aom_freq_mhz), icon='IMAGE_BACKGROUND')
-        elif et in ('DETECTOR', 'PHOTODIODE', 'POWER_METER'):
-            pcol.prop(props, "analyzer")
-            sbox = pcol.box(); sbox.label(text="Sensor", icon='IMAGE_BACKGROUND')
-            srow = sbox.row(align=True)
-            srow.prop(props, "sensor_px", text="Resolution")
-            srow.prop(props, "pixel_size_um", text="Pitch (µm)")
-            sbox.prop(props, "sensor_exposure")
-            if props.sensor_exposure > 0.0:
-                sbox.prop(props, "sensor_read_noise"); sbox.prop(props, "sensor_well_depth")
-        elif et == 'ABERRATOR':
-            abx = pcol.box(); abx.label(text="Injected Aberration (waves)", icon='MOD_NOISE')
-            abx.prop(props, "aberr_spec", index=3, text="Defocus")
-            abx.prop(props, "aberr_spec", index=5, text="Astigmatism")
-            abx.prop(props, "aberr_spec", index=7, text="Coma")
-            abx.prop(props, "aberr_spec", index=10, text="Spherical")
-        elif et == 'WAVEFRONT_SENSOR':
-            pcol.label(text="Wavefront RMS: %.3f waves" % props.wf_rms, icon='IMAGE_BACKGROUND')
-            zrow = pcol.row(align=True)
-            zrow.prop(props, "imprint_zonal_px", text="Zonal Pixels")
-            zrow.operator("optics.wfs_zonal_render", text="Sensor Render", icon='IMAGE_BACKGROUND')
-        # Aperture shape is orthogonal to the per-type chain above: several element types carry a
-        # clear aperture, and some of them (SHUTTER, CAVITY, ...) also have their own branch. Keeping
-        # this a separate statement means adding a type here can never swallow that branch.
-        from .tracer import APERTURE_CLIPPED       # every type whose clear aperture the trace clips
-        if et in APERTURE_CLIPPED:
-            pcol.prop(props, "aperture_shape")
-            if props.aperture_shape == 'RECTANGULAR':
-                pcol.prop(props, "aperture_half_y")
-        if et in ('MIRROR', 'PRISM_MIRROR'):
-            pcol.prop(props, "coating"); pcol.prop(props, "back_surface"); pcol.prop(props, "mirror_curve")
-            if props.mirror_curve != 'FLAT': pcol.prop(props, "radius_curv")
-            ibx = pcol.box(); ibx.prop(props, "imprint_surface")
-            ibx.label(text="Surface figure → reflected wavefront", icon='MOD_WAVE')
-            zrow = ibx.row(align=True)
-            zrow.prop(props, "imprint_zonal_px", text="Zonal Pixels")
-            zrow.operator("optics.wfs_zonal_render", text="Sensor Render", icon='IMAGE_BACKGROUND')
         if not _advanced_enabled():
             return
-
+        # Advanced hides only technical fields; every physics parameter is in the panel or in More.
         box = col.box()
         box.label(text="Ports", icon='EMPTY_ARROWS')
         box.template_list("OPTICS_UL_ports", "", props, "ports", props, "ports_index", rows=3)
@@ -278,11 +204,36 @@ class OPTICS_PT_element(_OpticsPanel, Panel):
             pc.prop(port, "local_normal")
             pc.prop(port, "clear_aperture", text="Clear Aperture (mm)")
 
-        pcol.prop(props, "ar_coated")
-        if props.ar_coated:
-            pcol.prop(props, "ar_reflectance")
-        pcol.prop(props, "coating_reflectance")
-        pcol.prop(props, "element_transmittance")
+
+class OPTICS_PT_element_more(_OpticsPanel, Panel):
+    """The rest of the selected type's parameters. Collapsed by default; Blender remembers it open."""
+    bl_label = "More"
+    bl_idname = "OPTICS_PT_element_more"
+    bl_parent_id = "OPTICS_PT_element"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    @classmethod
+    def poll(cls, context):
+        obj = getattr(context, "object", None)
+        return obj is not None and obj.optics.is_optical
+
+    def draw(self, context):
+        obj = context.object
+        props = obj.optics
+        col = self.layout.column()
+        col.use_property_split = True
+        col.use_property_decorate = False
+        shown = param_schema.visible(props, "more")
+        for name in shown:
+            col.prop(props, name, text=_FIELD_TEXT.get(name, ""))
+        if "imprint_zonal_px" in shown:
+            col.operator("optics.wfs_zonal_render", text="Sensor Render", icon='IMAGE_BACKGROUND')
+        info = param_schema.INFO.get(props.element_type, ())
+        if info:
+            box = col.box()
+            box.label(text="Part data (not used by the trace)", icon='INFO')
+            for name in info:
+                box.label(text="%s: %s" % (props.bl_rna.properties[name].name, _display_value(props, name)))
 
 
 class OPTICS_PT_library(_OpticsPanel, Panel):
@@ -669,7 +620,7 @@ class OPTICS_PT_tools_integration(_OpticsPanel, Panel):
 _classes = (
     OPTICS_UL_ports,
     OPTICS_PT_setup, OPTICS_PT_place, OPTICS_PT_simulate, OPTICS_PT_inspect, OPTICS_PT_present,
-    OPTICS_PT_element, OPTICS_PT_library,
+    OPTICS_PT_element, OPTICS_PT_element_more, OPTICS_PT_library,
     OPTICS_PT_parts, OPTICS_PT_relative_placement, OPTICS_PT_anchoring, OPTICS_PT_assemble, OPTICS_PT_mount, OPTICS_PT_bench_dressing,
     OPTICS_PT_trace, OPTICS_PT_trace_settings, OPTICS_PT_measurements, OPTICS_PT_adaptive_optics,
     OPTICS_PT_diagnostics, OPTICS_PT_corrections, OPTICS_PT_optical_report,

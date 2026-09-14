@@ -80,6 +80,9 @@ jobs:
       - name: Agent control contract and nonlinear/tolerance witnesses
         run: xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_agent_control.py
 
+      - name: Parameter schema (every input of every element type is in its schema and drawn)
+        run: xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_param_schema.py
+
       - name: Mesh health (elements bare + mounts dressed, render-free)
         # numeric leg of the mount/element structural audit: non-manifold/loose-vert gate per
         # element mesh, BVH contact gate per dressed mount part. No renders in CI by design --

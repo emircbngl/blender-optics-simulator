@@ -61,6 +61,9 @@ once. `test_validation.py`, `test_units.py` and `test_mesh_health.py` run the sa
 `test_units.py` builds the same physical bench in a declared millimetre scene and a declared metre
 scene and requires every user-visible output to agree in mm; run it after touching anything that
 reads a segment's `p1`/`p2`, an object's location, or places geometry.
+`test_param_schema.py` perturbs every property of every element type and requires each one that changes
+the result to be in `optical_alignment_sim/param_schema.py` and drawn in the Element panel or its More
+panel with Advanced off; add a new element parameter to the schema, not straight into `ui.py`.
 Everything named `tests/_verify_*.py`, `_plot_*.py`, `_render_*.py` is a manual
 tool, not part of CI — do not treat those as the test suite.
 
