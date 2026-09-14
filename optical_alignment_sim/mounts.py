@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 import json
 import math
+import struct
 
 import bpy
 from bpy.types import Operator
@@ -37,6 +38,41 @@ def base_matrix(props) -> Matrix:
 def store_base_matrix(props, M: Matrix):
     props.base_pose = [M[r][c] for r in range(4) for c in range(4)]
     props.base_pose_set = True
+    _store_composed(props)            # a new base accepts the object's current matrix as intended
+
+
+def _parent_frame(obj) -> Matrix:
+    if obj.parent is None:
+        return Matrix.Identity(4)
+    return obj.parent.matrix_world @ obj.matrix_parent_inverse
+
+
+def _flat32(M: Matrix):
+    # RNA float arrays are float32: compare what was stored with what storing now would give
+    return [struct.unpack('f', struct.pack('f', M[r][c]))[0] for r in range(4) for c in range(4)]
+
+
+def _store_composed(props):
+    obj = props.id_data
+    props.composed_pose = _flat32(obj.matrix_basis)
+    props.composed_frame = _flat32(_parent_frame(obj))
+    props.composed_pose_set = True
+
+
+def _moved_outside_knobs(obj, props) -> Matrix | None:
+    """The world-space move D (now = D @ then) made outside the knobs since the last compose, or None.
+    It compares the transform channels and the parent frame, not matrix_world: Blender re-derives
+    matrix_world from float32 Euler channels, which near gimbal lock differs from the matrix
+    compose_pose wrote by ~3e-5 and would read as a move on every knob step."""
+    if not props.composed_pose_set:
+        return None                   # a file from before this was stored: nothing to compare with
+    basis, frame = obj.matrix_basis, _parent_frame(obj)
+    if list(props.composed_pose) == _flat32(basis) and list(props.composed_frame) == _flat32(frame):
+        return None
+    f, g = props.composed_pose, props.composed_frame
+    then = (Matrix((g[0:4], g[4:8], g[8:12], g[12:16])) @
+            Matrix((f[0:4], f[4:8], f[8:12], f[12:16])))
+    return (frame @ basis) @ then.inverted()
 
 
 def _effective_base(props) -> Matrix:
@@ -107,9 +143,22 @@ def compose_pose(obj):
     props = obj.optics
     if not props.base_pose_set:
         return
-    B = base_matrix(props)
     anchor = getattr(props, "anchor", None)
-    if anchor is not None and anchor is not obj:
+    if anchor is obj:
+        anchor = None
+    if props.composed_pose_set and props.composed_anchor != (anchor.name if anchor else ""):
+        # The anchor changed outside set_anchor/clear_anchor (picked in the panel, or deleted,
+        # which Blender reports as None): base_pose is still in the old frame. Keep the world base
+        # the element had and re-express it in the new one.
+        f = props.composed_base
+        store_world_base(props, Matrix((f[0:4], f[4:8], f[8:12], f[12:16])))
+    D = _moved_outside_knobs(obj, props)
+    if D is not None:
+        # Moving the base by a rigid D moves every knob pivot and axis with it, so the composed
+        # pose becomes exactly D @ pose: the object stays where it was put and the knobs keep working.
+        store_world_base(props, D @ _effective_base(props))
+    B = base_matrix(props)
+    if anchor is not None:
         B = anchor.matrix_world @ B
     pose = B.copy()
     # Apply rotations first (about the base pivot), then translations, so the two
@@ -127,6 +176,9 @@ def compose_pose(obj):
             M = Matrix.Translation(axis_w * (dof.current / _mm_per_unit_of(obj)))
         pose = M @ pose
     obj.matrix_world = pose
+    _store_composed(props)
+    props.composed_base = _flat32(B)
+    props.composed_anchor = anchor.name if anchor else ""
 
 
 def capture_base_pose(obj):
@@ -150,8 +202,8 @@ def set_anchor(obj, anchor):
         store_base_matrix(props, obj.matrix_world.copy())
     Bw = _effective_base(props)                      # current WORLD base (folds any EXISTING anchor)
     rel = anchor.matrix_world.inverted() @ Bw        # express it in the NEW anchor's frame
+    props.anchor = anchor                            # pointer first: its update recomposes
     store_base_matrix(props, rel)
-    props.anchor = anchor
     compose_pose(obj)
     return True
 
@@ -163,8 +215,8 @@ def clear_anchor(obj):
     if anchor is None:
         return False
     Bw = anchor.matrix_world @ base_matrix(props)    # relative base -> world base
+    props.anchor = None                              # pointer first: its update recomposes
     store_base_matrix(props, Bw)
-    props.anchor = None
     compose_pose(obj)
     return True
 

@@ -259,6 +259,28 @@ class OpticalElementProps(PropertyGroup):
                  0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0),
     )
     base_pose_set: BoolProperty(default=False)
+    # The transform channels (matrix_basis) and parent frame compose_pose last wrote, or that a
+    # base write accepted. Different ones mean the object was moved outside the knobs: by hand, by
+    # its parent, as a duplicate. compose_pose folds that move into the base instead of snapping back.
+    composed_pose: FloatVectorProperty(
+        name="Composed basis", size=16,
+        default=(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+                 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0),
+    )
+    composed_frame: FloatVectorProperty(
+        name="Composed parent frame", size=16,
+        default=(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+                 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0),
+    )
+    # The WORLD base and the anchor (by name) at the last compose: if the anchor then changes
+    # without set_anchor/clear_anchor (picked in the panel, or deleted), the element keeps this base.
+    composed_base: FloatVectorProperty(
+        name="Composed world base", size=16,
+        default=(1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0,
+                 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0),
+    )
+    composed_anchor: StringProperty(default="")
+    composed_pose_set: BoolProperty(default=False)
     dofs: CollectionProperty(type=AdjustmentDOF)
     dofs_index: IntProperty(default=0)
     mech: CollectionProperty(type=MechLink)

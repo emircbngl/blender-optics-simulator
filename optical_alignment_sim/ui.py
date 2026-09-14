@@ -366,7 +366,6 @@ class OPTICS_PT_mount(_OpticsPanel, Panel):
         row = body.row(align=True)
         row.operator("optics.capture_base_pose", text="Capture Base Pose", icon='EMPTY_AXIS')
         row.operator("optics.zero_dofs", text="Zero DOFs", icon='LOOP_BACK')
-        body.label(text="After moving by hand: Capture Base Pose", icon='INFO')
         box = body.box(); hdr = box.row(align=True)
         hdr.label(text="Adjustment DOFs (knobs)", icon='CON_ROTLIKE')
         hdr.operator("optics.define_dof", text="Add DOF", icon='ADD')
