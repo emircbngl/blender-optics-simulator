@@ -263,7 +263,7 @@ def serialize_mount(obj):
         "pivot": "OPTIC_CENTER",
         "clear_aperture_mm": props.clear_aperture,
         "dofs": [{"kind": d.kind, "axis": _axis_label(d.axis_local),
-                  "min": d.min_val, "max": d.max_val} for d in props.dofs],
+                  "min": d.min_val, "max": d.max_val, "step": d.step} for d in props.dofs],
     }
 
 
@@ -329,6 +329,8 @@ def apply_preset(obj, key):
         nd.pivot_local = pivot_local
         nd.min_val = d.get("min", -4.0)
         nd.max_val = d.get("max", 4.0)
+        if "step" in d:
+            nd.step = d["step"]
         nd.current = 0.0
     store_world_base(props, obj.matrix_world.copy())   # anchor-aware: don't double-apply an anchor
     return True, "applied '%s' (%d DOFs)" % (key, len(props.dofs))
@@ -530,6 +532,32 @@ class OPTICS_OT_zero_dofs(Operator):
         return {'FINISHED'}
 
 
+class OPTICS_OT_nudge_dof(Operator):
+    bl_idname = "optics.nudge_dof"
+    bl_label = "Step Knob"
+    bl_description = "Turn this knob by its step size (set the step in Mount & Adjustment)"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    name: StringProperty(default="", options={'SKIP_SAVE'})
+    index: IntProperty(default=-1, options={'SKIP_SAVE'})
+    direction: IntProperty(default=1, options={'SKIP_SAVE'})
+
+    def execute(self, context):
+        obj = bpy.data.objects.get(self.name) if self.name else context.object
+        dofs = obj.optics.dofs if obj is not None and getattr(obj, "optics", None) else ()
+        if not 0 <= self.index < len(dofs):
+            self.report({'ERROR'}, "No knob %d on %s" % (self.index, obj.name if obj else "the selection"))
+            return {'CANCELLED'}
+        d = dofs[self.index]
+        target = d.current + (1.0 if self.direction >= 0 else -1.0) * d.step
+        d.current = min(max(target, d.min_val), d.max_val)   # the update recomposes the pose
+        if d.current != target:
+            self.report({'INFO'}, "%s is at its range limit (%g)" % (d.kind, d.current))
+        if not obj.optics.base_pose_set:
+            self.report({'WARNING'}, "Set a coarse pose to activate knobs")
+        return {'FINISHED'}
+
+
 class OPTICS_OT_pick_pivot(Operator):
     bl_idname = "optics.pick_pivot"
     bl_label = "Set Pivot"
@@ -674,6 +702,7 @@ _classes = (
     OPTICS_OT_define_dof,
     OPTICS_OT_remove_dof,
     OPTICS_OT_zero_dofs,
+    OPTICS_OT_nudge_dof,
     OPTICS_OT_pick_pivot,
     OPTICS_OT_save_mount_preset,
     OPTICS_OT_add_mech_link,

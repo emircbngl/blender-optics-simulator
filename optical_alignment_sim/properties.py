@@ -211,6 +211,10 @@ class AdjustmentDOF(PropertyGroup):
     current: FloatProperty(
         name="Current", default=0.0, update=_dof_update,
         description="Current adjustment in degrees for rotation or millimeters for translation (default 0)")
+    step: FloatProperty(
+        name="Step", default=0.01, min=0.0, precision=4,
+        description="How far one - / + press turns this knob, in its own unit: degrees for rotation, "
+                    "millimeters for translation (default 0.01)")
 
 
 class MechLink(PropertyGroup):

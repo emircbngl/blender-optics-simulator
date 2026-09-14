@@ -96,6 +96,7 @@ class Layout:
     def operator(self, name, **kw):
         namespace, op = name.split('.')
         getattr(getattr(bpy.ops, namespace), op).get_rna_type()
+        self.fields.add(name)
         return SimpleNamespace()
     def label(self, **kw): pass
     def template_list(self, *a, **kw): pass
@@ -361,6 +362,41 @@ try:
 finally:
     handlers._is_background = original_background
     scene.render.use_lock_interface = False
+
+# Fine-step knobs (Harca-Yita, 31 Aug): each DOF carries its own step; - / + turn it by one step.
+clear()
+knob_mirror = eg.mirror('K', (0, 0, 0), (1, 0, 0), (0, 1, 0))
+api.set_mount('K', 'KM100')
+bpy.context.view_layer.update()
+bpy.context.view_layer.objects.active = knob_mirror
+tip_index, tip = next((i, d) for i, d in enumerate(knob_mirror.optics.dofs) if d.kind == 'TIP')
+check('a DOF has a step size, 0.01 by default', abs(getattr(tip, 'step', -1) - 0.01) < 1e-9)
+tip.step = 0.25
+pose0 = knob_mirror.matrix_world.copy()
+bpy.ops.optics.nudge_dof(name='K', index=tip_index, direction=1)
+check('+ turns the knob by one step', abs(tip.current - 0.25) < 1e-6, str(tip.current))
+check('+ moves the mount', max(abs(knob_mirror.matrix_world[r][c] - pose0[r][c])
+                               for r in range(3) for c in range(3)) > 1e-4)
+bpy.ops.optics.nudge_dof(name='K', index=tip_index, direction=-1)
+check('- returns the knob and the pose', abs(tip.current) < 1e-6 and
+      max(abs(knob_mirror.matrix_world[r][c] - pose0[r][c]) for r in range(3) for c in range(4)) < 1e-5)
+tip.current = tip.max_val - 0.1
+bpy.ops.optics.nudge_dof(name='K', index=tip_index, direction=1)
+check('a step past the range stops at the limit', abs(tip.current - tip.max_val) < 1e-6, str(tip.current))
+fields = set()
+ui.OPTICS_PT_element.draw(SimpleNamespace(layout=Layout(fields)), SimpleNamespace(object=knob_mirror))
+check('element panel offers - / + beside each knob', 'optics.nudge_dof' in fields and 'current' in fields)
+fields = set()
+ui.OPTICS_PT_mount.draw(SimpleNamespace(layout=Layout(fields)), SimpleNamespace(object=knob_mirror))
+check('mount panel edits the step and turns the knob', {'step', 'current', 'optics.nudge_dof'} <= fields,
+      str(sorted(fields)))
+from optical_alignment_sim import mounts
+saved = mounts.serialize_mount(knob_mirror)
+check('a saved mount preset keeps the step', any(abs(d.get('step', -1) - 0.25) < 1e-9 for d in saved['dofs']),
+      str(saved['dofs']))
+check('get_state reports each knob step',
+      any(abs(d.get('step', -1) - 0.25) < 1e-6
+          for e in api.get_state()['elements'] if e['name'] == 'K' for d in e['mount']['dofs']))
 
 failed = len(checks) - sum(checks)
 print("AGENT CONTROL %s (%d/%d checks)" % ("PASS" if failed == 0 else "FAIL",

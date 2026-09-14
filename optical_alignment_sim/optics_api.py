@@ -209,7 +209,7 @@ def get_state():
             "kind": d.kind, "axis": [round(x, 3) for x in d.axis_local],
             "pivot": [round(x, 3) for x in d.pivot_local],
             "min": round(d.min_val, 3), "max": round(d.max_val, 3),
-            "current": round(d.current, 4),
+            "current": round(d.current, 4), "step": round(d.step, 6),
         } for d in op.dofs]
         mech = [{"kind": l.kind, "target": l.target.name if l.target else None,
                  "state": l.state, "detail": l.detail} for l in op.mech]
