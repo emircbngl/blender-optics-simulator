@@ -1116,6 +1116,7 @@ _ROUTING_FOLDS = {
     'PENTA':       ('FOLD1', 'FOLD2'),          # 2 reflections -> constant 90 deg, tilt-invariant, parity preserved
     'ROOF':        ('FOLD1', 'FOLD2'),          # 2 reflections off a 90 deg roof -> retro-ish, parity flip
     'RHOMBOID':    ('FOLD1', 'FOLD2'),          # 2 PARALLEL reflections -> pure lateral offset, output parallel
+    'PORRO':       ('FOLD1', 'FOLD2'),          # 2 reflections off 90 deg legs -> 180 deg return, sideways offset
 }
 
 
