@@ -123,6 +123,9 @@ def main():
     _camera(scene, (0.0, -1.0, 0.16), os.path.join(outdir, '03_side.png'))
     _camera(scene, (0.20, -0.90, 0.34), os.path.join(outdir, '04_closeup_gimbal_flip.png'))
 
+    render.clear_render_style(scene)
+    bpy.ops.wm.save_as_mainfile(filepath=os.path.join(outdir, "optomechanics-showcase.blend"))
+
     inline = [laser, wp, flip_in, lens, rail_lens, km, gm, det]
     print(json.dumps({"stations": 11, "segments": trace['segments'], "bad": 0,
                       "validate_issues": 0,

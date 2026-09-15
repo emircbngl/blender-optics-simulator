@@ -286,9 +286,22 @@ def apply_preset(obj, key):
     data = get_library().get(key)
     if not data:
         return False, "preset '%s' not found" % key
+    from .hardware_catalog import PRODUCTS
+    product = PRODUCTS.get(key)
+    if product and product['family'] not in ('PLATFORM', 'IRIS'):
+        lo, hi, _ = geometry.local_bounds(obj)
+        diameter = max(hi.x-lo.x, hi.y-lo.y)
+        if diameter > product['diameter'] + .01:
+            return False, "%s accepts optics up to %.2f mm; this optic is %.2f mm" % (key, product['diameter'], diameter)
     props = obj.optics
     props.base_pose_set = False
     props.mount_preset = key
+    if "support_system" in data:
+        props.support_system = data["support_system"]
+        if props.support_system.startswith("CAGE_"):
+            props.cage_id = obj.name
+        elif props.support_system.startswith("TUBE_"):
+            props.tube_id = obj.name
     props.mount_type = data.get("mount_type", 'KINEMATIC_2AXIS')
     ca = data.get("clear_aperture_mm")
     if ca:

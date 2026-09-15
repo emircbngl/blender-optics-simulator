@@ -53,16 +53,19 @@ def render_sequence(scene, frames=48, motion='ORBIT', out_dir=None, prefix='oas_
     scene.render.image_settings.file_format = 'PNG'
 
     written = []
-    for i in range(n):
-        if str(motion).upper() == 'ORBIT':
-            a = 2.0 * math.pi * float(turns) * i / n
-            _render.set_camera_direction(scene, Vector((math.cos(a), math.sin(a), float(elevation))))
-        else:
-            _render.set_camera(scene, 'HERO')
-        path = os.path.join(out_dir, "%s%04d.png" % (prefix, i))
-        scene.render.filepath = path
-        bpy.ops.render.render(write_still=True)
-        written.append(path)
+    try:
+        for i in range(n):
+            if str(motion).upper() == 'ORBIT':
+                a = 2.0 * math.pi * float(turns) * i / n
+                _render.set_camera_direction(scene, Vector((math.cos(a), math.sin(a), float(elevation))))
+            else:
+                _render.set_camera(scene, 'HERO')
+            path = os.path.join(out_dir, "%s%04d.png" % (prefix, i))
+            scene.render.filepath = path
+            bpy.ops.render.render(write_still=True)
+            written.append(path)
+    finally:
+        _render.clear_render_style(scene)
 
     pattern = os.path.join(out_dir, prefix + "%04d.png")
     ff = shutil.which('ffmpeg')

@@ -617,6 +617,8 @@ class OPTICS_PT_render(_OpticsPanel, Panel):
         layout.label(text="Camera"); grid = layout.grid_flow(columns=4, align=True)
         for preset in ('HERO', 'TOP', 'FRONT', 'SIDE'): grid.operator("optics.set_camera", text=preset.title()).preset = preset
         layout.label(text="Background"); layout.prop(context.scene.optics, "bg_preset", text=""); layout.prop(context.scene.optics, "realistic_optics")
+        if context.scene.optics.realistic_optics:
+            layout.prop(context.scene.optics, "realistic_mechanics")
         col = layout.column(align=True)
         col.operator("optics.render_preview", text="Render Preview", icon='RENDER_STILL'); col.operator("optics.render_final", text="Render Final", icon='RENDER_RESULT'); col.operator("optics.reset_render_style", text="Reset Render Style", icon='LOOP_BACK')
 

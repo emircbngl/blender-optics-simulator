@@ -168,3 +168,7 @@ MOUNT_LIBRARY = {
         "note": "Thorlabs VC1-style fixed V-clamp for cylindrical bodies; generated dimensions are ESTIMATE.",
     },
 }
+
+# Generic families are explicitly distinct from catalog product names.
+from .hardware_catalog import mount_presets
+MOUNT_LIBRARY.update(mount_presets())
