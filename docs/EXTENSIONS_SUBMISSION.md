@@ -5,6 +5,12 @@ This is the owner-gated checklist + prep for listing **Blender Optics Simulator*
 add-on. Everything technical below is done; the actual submission (account, upload, agreeing to terms)
 is the maintainer's to make.
 
+## Submission status
+
+- Submitted, and under review by 2026-07-01, when a reviewer raised the naming rule (see *Name* below).
+- On 2026-09-15 the add-on was still absent from the public index. `https://extensions.blender.org/api/v1/extensions/` listed 1447 extensions and none matched.
+- The review state itself is visible only in the maintainer's platform account.
+
 ## Compliance status — ready
 
 | Requirement | Status |
@@ -42,8 +48,10 @@ our self-hosted channel + in-add-on updater run as before. No second build to ma
 
 ## Listing metadata (draft)
 
-- **Name:** Blender Optics Simulator (the manifest `name` now matches the product name; the `id`
-  `optical_alignment_sim` is unchanged so updates/installs are unaffected).
+- **Name:** Optics Simulator (the manifest `name`).
+  - The platform does not allow "Blender" in an extension name (rule 2.1). A reviewer flagged it on the pending submission, and v0.24.2 (2026-07-01) renamed it.
+  - The GitHub project is still *Blender Optics Simulator*.
+  - The `id` `optical_alignment_sim` is unchanged, so updates and installs are unaffected.
 - **Tagline:** Live ray tracing & auto-alignment for optical benches
 - **Tags:** `3D View`, `Render`, `Object`
 - **Description (long):** An optical bench you lay out in 3-D, trace with a live, physics-verified beam

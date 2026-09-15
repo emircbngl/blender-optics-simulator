@@ -49,15 +49,25 @@ bridge).
   PRISM, CRYSTAL, AOM, SHUTTER (binary open/closed switch).
 - **Apertures / stops:** APERTURE, PINHOLE, SLIT, KNIFE_EDGE, BEAM_DUMP.
 - **Detectors / sensing:** DETECTOR, PHOTODIODE, POWER_METER, WAVEFRONT_SENSOR, ABERRATOR, CIRCULATOR.
+- **Prism types** (`prism_type` on PRISM):
+  - Dispersing: EQUILATERAL, LITTROW, PELLIN_BROCA, AMICI.
+  - Routing (fixed plane folds): RIGHT_ANGLE, PENTA, DOVE, ROOF, RHOMBOID, PORRO.
+  - PORRO returns the beam at 180° with a sideways offset and preserves parity. The s/p phase from its total internal reflections is not modelled.
+- **Mirror substrate side** (`back_surface` on MIRROR / PRISM_MIRROR) sets what happens to a beam that arrives from behind:
+  - ABSORB (default): the beam is lost there, and diagnose reports the hit.
+  - IDEAL: the pre-setting full reflection, flagged WARN.
+  - SECOND_SURFACE: a polished substrate. The beam refracts in, reflects off the coating from inside and refracts out, with s/p Fresnel at every face. The back-face reflection becomes a ghost when `model_ghosts` is on.
+  - Not modelled on this path: multiple internal reflections, and a curved mirror's focal power.
 Catalog (`library.py`): ~60 real vendor parts (Thorlabs HeNe/mirrors/BS/waveplates/filters/iris/PD/mounts);
 meshes resolve locally or fall back to a generic mesh-free element.
 
-## 4. Example library (`build_example`, 25 kinds)
+## 4. Example library (`build_example`, 26 kinds)
 Interferometry: mach_zehnder, michelson, dhm. Quantum: hong_ou_mandel, bell, spdc_source, back_reflection,
 circulator. Frequency conv.: green_doubler, prism. Conditioning: periscope, beam_router, beam_profiler.
 Assembly: cage_system, tube_system, rail_system, hybrid_system. Imaging: microscope, quad_tracker. Active:
 aom, newton_rings. Adaptive optics + surface figure: adaptive_optics, **surface_figure / surface_figure_native
-/ surface_figure_diverging** (a figured reflector → WFS, read three ways by three beams).
+/ surface_figure_diverging** (a figured reflector → WFS, read three ways by three beams), **die** (a die face
+read as a recognizable zonal wavefront).
 
 ## 5. Physics modelled (verified)
 - **Polarization:** Jones vectors + Stokes, polarizer/waveplate/analyzer Jones matrices, Malus extinction, PBS split.
