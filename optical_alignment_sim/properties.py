@@ -682,7 +682,8 @@ class OpticalElementProps(PropertyGroup):
                ('PENTA', "Penta (constant 90 deg)", "2 reflections: 90 deg deflection INVARIANT under whole-prism tilt, parity PRESERVED"),
                ('DOVE', "Dove (image rotator)", "1 internal reflection, in-line (0 deg deviation); image ROTATES at 2x the prism roll"),
                ('ROOF', "Amici roof (retro + flip)", "2 reflections off a 90 deg roof: retro-ish, parity flip"),
-               ('RHOMBOID', "Rhomboid (lateral offset)", "2 parallel reflections: pure LATERAL OFFSET, output exactly PARALLEL to input")])
+               ('RHOMBOID', "Rhomboid (lateral offset)", "2 parallel reflections: pure LATERAL OFFSET, output exactly PARALLEL to input"),
+               ('PORRO', "Porro (180 deg return)", "In and out through the hypotenuse, 2 reflections off the legs: returns ANTIPARALLEL, displaced sideways, parity preserved")])
     apex_angle_deg: FloatProperty(name="Apex angle (deg)", default=60.0, min=1.0, max=170.0,
         description="The prism's refracting (apex) angle; 60 deg for an equilateral dispersing prism")
     prism_glass: EnumProperty(name="Prism glass", default='N-SF11',

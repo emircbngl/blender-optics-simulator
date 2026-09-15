@@ -626,6 +626,21 @@ def _routing_prism_geom(prism_type, face_mm):
         # parallelogram cross-section: a slanted bar from lower-back to upper-front.
         poly = [(-sep * 0.5 - h * 0.5, -h), (-sep * 0.5 + h * 0.5, -h),
                 (sep * 0.5 + h * 0.5, h), (sep * 0.5 - h * 0.5, h)]
+    elif prism_type == 'PORRO':
+        # Right-angle prism used through its HYPOTENUSE (local z=0, y from -h to +h; apex at (0, h)). The beam
+        # enters the lower half of the hypotenuse along +Z, folds off leg 1 (+Z -> +Y), crosses to leg 2
+        # (+Y -> -Z) and leaves through the upper half of the same face: antiparallel to the input, displaced
+        # sideways by 2q in the fold plane. Two 90-deg-apart reflections -> 180 deg return that stays
+        # antiparallel under a tilt in that plane; parity PRESERVED (even count). The folds are ideal reflections
+        # (the tracer does not test TIR; at 45 deg every catalog glass here is past its critical angle).
+        q = h * 0.5
+        d_in = Vector((0.0, 0.0, 1.0))
+        n1 = Vector((0.0, -1.0, 1.0)).normalized()                   # leg 1 (z = y + h): reflect(+Z) = +Y
+        n2 = Vector((0.0, 1.0, 1.0)).normalized()                    # leg 2 (z = h - y): reflect(+Y) = -Z
+        folds = [("FOLD1", Vector((0.0, -q, h - q)), n1), ("FOLD2", Vector((0.0, q, h - q)), n2)]
+        entry = (Vector((0.0, -q, 0.0)), Vector((0.0, 0.0, -1.0)))   # hypotenuse, lower half, normal -Z
+        exit = (Vector((0.0, q, 0.0)), Vector((0.0, 0.0, -1.0)))     # hypotenuse, upper half, beam leaves -Z
+        poly = [(-h, 0.0), (0.0, h), (h, 0.0)]
     elif prism_type == 'DOVE':
         # Trapezoid: the beam enters the tilted left face, the chief ray runs along +Z inside, TIRs off the
         # long bottom face (normal +Y) -- which leaves the chief-ray DIRECTION +Z (in-line, 0 deg deviation) --
@@ -1366,7 +1381,7 @@ def prism(name, loc, axis, coll=None, prism_type='EQUILATERAL', apex_deg=60.0,
     # --- C4 beam-ROUTING prisms (right-angle / penta / Dove / roof / rhomboid): a glass solid whose internal
     # interaction is a fixed product of PLANE REFLECTIONS (the verified reflection law), not material dispersion.
     # All geometry comes from _routing_prism_geom; the FOLD faces are carried as REFLECT ports the tracer reads. ---
-    if prism_type in ('RIGHT_ANGLE', 'PENTA', 'DOVE', 'ROOF', 'RHOMBOID'):
+    if prism_type in ('RIGHT_ANGLE', 'PENTA', 'DOVE', 'ROOF', 'RHOMBOID', 'PORRO'):
         g = _routing_prism_geom(prism_type, face_mm)
         o = _poly_prism(name, g["poly"], depth_mm, coll)
         o.data.materials.clear(); o.data.materials.append(MATS["prism"]())

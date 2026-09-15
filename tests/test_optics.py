@@ -1107,6 +1107,39 @@ _rp = _route_build('DOVE', roll_deg=15.0); _rdefl, _ = _route_defl()
 check("routing Dove: in-line (0 deg) + image rotation = 2x roll (15->30)",
       _rdefl is not None and _rdefl < 1e-2 and abs(2.0 * _rp.optics.prism_roll_deg - 30.0) < 1e-9,
       "defl=%.4f img=%.1f" % (_rdefl if _rdefl is not None else -1, 2.0 * _rp.optics.prism_roll_deg))
+# Porro: in and out through the hypotenuse, two 45 deg folds off the legs -> the beam returns antiparallel,
+# displaced sideways in the fold plane; 2 reflections -> handedness preserved (the fold-count rule above).
+_rp = _route_build('PORRO'); _rdefl, _res = _route_defl()
+check("routing Porro: returns antiparallel (180 deg deviation)",
+      _rdefl is not None and abs(_rdefl - 180.0) < 1e-2, "defl=%s" % _rdefl)
+_poff = math.hypot(_res["p1"][1], _res["p1"][2]) if _res else 0.0   # input runs along the world X axis
+check("routing Porro: output displaced sideways by half the hypotenuse (13 mm for face 26) + parity EVEN",
+      _res is not None and abs(_poff - 13.0) < 1e-2 and _rp.optics.prism_parity == 'EVEN',
+      "offset=%.3f parity=%s" % (_poff, _rp.optics.prism_parity))
+_pout = [s for s in scan._trace(sc) if s.get("from") == "RT_P" and s.get("kind") == "TRANSMIT"]
+_pn = physics.sellmeier_n(sc.objects["RT_S"].optics.wavelength, sc.objects["RT_P"].optics.prism_glass)
+_pT = (1.0 - ((_pn - 1.0) / (_pn + 1.0)) ** 2) ** 2          # two normal-incidence faces, lossless TIR folds
+check("routing Porro: throughput is the two normal-incidence Fresnel faces only",
+      _pout and abs(_pout[-1]["power"] - _pT) < 1e-3, "got %s expected %.4f" % ([s["power"] for s in _pout], _pT))
+_porro_dirs = []
+for _wl in (450.0, 800.0):
+    _route_build('PORRO')
+    sc.objects["RT_S"].optics.wavelength = _wl
+    bpy.context.view_layer.update()
+    _porro_dirs.append(_route_defl()[0])
+check("routing Porro: deviation does not depend on wavelength",
+      all(v is not None for v in _porro_dirs) and abs(_porro_dirs[0] - _porro_dirs[1]) < 1e-3, str(_porro_dirs))
+_porrodevs = []
+for _tilt in (-3.0, 3.0):                    # tilt about the axis normal to the fold plane: still antiparallel
+    _rp = _route_build('PORRO')
+    _bar = (_rp.matrix_world.to_3x3() @ _PV((1.0, 0.0, 0.0))).normalized()
+    _piv = _rp.matrix_world.translation.copy()
+    _rp.matrix_world = (_RM.Translation(_piv) @ _RM.Rotation(math.radians(_tilt), 4, _bar)
+                        @ _RM.Translation(-_piv) @ _rp.matrix_world)
+    bpy.context.view_layer.update()
+    _porrodevs.append(_route_defl()[0])
+check("routing Porro: stays antiparallel under +-3 deg tilt in its fold plane (< 1e-2 deg)",
+      all(v is not None and abs(v - 180.0) < 1e-2 for v in _porrodevs), str(_porrodevs))
 for _o in list(_rcoll.objects):
     eg.drop_example_object(_o)
 bpy.data.collections.remove(_rcoll)
