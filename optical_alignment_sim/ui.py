@@ -470,6 +470,26 @@ class OPTICS_PT_adaptive_optics(_OpticsPanel, Panel):
             elif props.element_type == 'DEFORMABLE_MIRROR': layout.operator("optics.dm_flatten", text="Flatten DM", icon='MOD_SMOOTH')
 
 
+class OPTICS_PT_design(_OpticsPanel, Panel):
+    bl_label = "Design"
+    bl_idname = "OPTICS_PT_design"
+    bl_parent_id = "OPTICS_PT_simulate"
+    bl_order = 30
+    bl_options = {'DEFAULT_CLOSED'}
+    def draw(self, context):
+        layout = self.layout
+        col = layout.column(align=True)
+        col.operator("optics.design_telescope", text="Telescope / Beam Expander…", icon='VIEW_ZOOM')
+        col.operator("optics.design_4f", text="4f Relay…", icon='ARROW_LEFTRIGHT')
+        col.operator("optics.mode_match", text="Mode Match…", icon='SHADING_SOLID')
+        layout.operator("optics.tolerance_scan", text="Tolerance Scan (selected)…", icon='FORCE_TURBULENCE')
+        result = getattr(context.window_manager, "optics_design_result", "")
+        if result:
+            box = layout.box()
+            for line in result.split("\n"):
+                box.label(text=line)
+
+
 class OPTICS_PT_diagnostics(_OpticsPanel, Panel):
     bl_label = "Diagnostics"
     bl_idname = "OPTICS_PT_diagnostics"
@@ -638,7 +658,7 @@ class OPTICS_PT_tools_integration(_OpticsPanel, Panel):
 _classes = (
     OPTICS_UL_ports,
     OPTICS_PT_setup, OPTICS_PT_place, OPTICS_PT_simulate, OPTICS_PT_inspect, OPTICS_PT_present,
-    OPTICS_PT_element, OPTICS_PT_element_more, OPTICS_PT_library,
+    OPTICS_PT_element, OPTICS_PT_element_more, OPTICS_PT_library, OPTICS_PT_design,
     OPTICS_PT_parts, OPTICS_PT_relative_placement, OPTICS_PT_anchoring, OPTICS_PT_assemble, OPTICS_PT_mount, OPTICS_PT_bench_dressing,
     OPTICS_PT_trace, OPTICS_PT_trace_settings, OPTICS_PT_measurements, OPTICS_PT_adaptive_optics,
     OPTICS_PT_diagnostics, OPTICS_PT_corrections, OPTICS_PT_optical_report,
