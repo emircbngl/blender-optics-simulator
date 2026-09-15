@@ -1135,36 +1135,55 @@ def _second_surface_reflect(stack, segments, gcfg, ray, E, H, sn, idx):
     if d1 is None:
         return
     d1 = Vector(d1)
-    T_in = physics.fresnel_transmit_power(1.0, n_s, theta_i)
     q_b = physics.q_propagate(ray.q, physics.abcd_free(t_b)) if ray.q is not None else None
-    if gcfg[0] and ray.ghost_depth < gcfg[2] and ray.power * (1.0 - T_in) >= gcfg[1]:
-        g = _Ray(B, geometry.reflect(ray.dir, sn), ray.power * (1.0 - T_in), ray.depth + 1, E, ray.wl, 'GHOST', idx,
-                 jones=_jones_at_power(ray.jones, ray.power * (1.0 - T_in)), opl=ray.opl + t_b, q=q_b,
-                 src_id=ray.src_id, coh=ray.coh, aberr=ray.aberr, m2=ray.m2,
+    # s and p cross each interface separately, as on the coated face (reflect_field): an air/glass crossing
+    # transmits power 1-|r|^2 per component, with no phase below TIR, so the field amplitudes are sqrt(1-|r|^2).
+    # Without a field (no polarization carried) the unpolarized average is the only option.
+    has_field = ray.evec is not None
+    rs_b, rp_b = physics.fresnel_reflect(1.0, n_s, theta_i)
+    if has_field:
+        ev_g, _dg = physics.reflect_field(ray.evec, ray.dir, sn, rs_b, rp_b)
+        p_g = sum((c * c.conjugate()).real for c in ev_g)
+        ev_in = physics.refract_field(ray.evec, ray.dir, d1, sn,
+                                      math.sqrt(max(0.0, 1.0 - abs(rs_b) ** 2)), math.sqrt(max(0.0, 1.0 - abs(rp_b) ** 2)))
+        p_in = sum((c * c.conjugate()).real for c in ev_in)
+    else:
+        p_in = ray.power * physics.fresnel_transmit_power(1.0, n_s, theta_i)
+        p_g = ray.power - p_in
+        ev_g = ev_in = None
+    d_g = geometry.reflect(ray.dir, sn)
+    if gcfg[0] and ray.ghost_depth < gcfg[2] and p_g >= gcfg[1]:
+        g = _Ray(B, d_g, p_g, ray.depth + 1, E, ray.wl, 'GHOST', idx,
+                 jones=(physics.jones_from_field(ev_g, d_g) if has_field else _jones_at_power(ray.jones, p_g)), opl=ray.opl + t_b, q=q_b,
+                 src_id=ray.src_id, coh=ray.coh, evec=ev_g, aberr=ray.aberr, m2=ray.m2,
                  ghost_depth=ray.ghost_depth + 1, unpol=ray.unpol)
-        g.evec = physics.field_from_jones(g.jones, g.dir) if g.jones is not None else None
         stack.append(g)
-    p_in = ray.power * T_in
-    j_in = _jones_at_power(ray.jones, p_in)
-    glass = _Ray(B, d1, p_in, ray.depth + 1, E, ray.wl, 'GLASS', idx, jones=j_in, opl=ray.opl + t_b, q=q_b,
-                 src_id=ray.src_id, coh=ray.coh, evec=(physics.field_from_jones(j_in, d1) if j_in else None),
+    glass = _Ray(B, d1, p_in, ray.depth + 1, E, ray.wl, 'GLASS', idx,
+                 jones=(physics.jones_from_field(ev_in, d1) if has_field else _jones_at_power(ray.jones, p_in)), opl=ray.opl + t_b, q=q_b,
+                 src_id=ray.src_id, coh=ray.coh, evec=ev_in,
                  aberr=ray.aberr, m2=ray.m2, ghost_depth=ray.ghost_depth, unpol=ray.unpol)
     C = B + d1 * (T / max(abs(d1.dot(sn)), 1e-9))
     leg1, opl_c, q_c = _glass_seg(glass, C, E, n_s, 'GLASS')
     segments.append(leg1)
     d2 = geometry.reflect(d1, sn)
     theta_c = math.acos(min(1.0, abs(d1.dot(sn))))
-    if getattr(op, 'coating', 'DIELECTRIC') != 'DIELECTRIC':
+    metal = getattr(op, 'coating', 'DIELECTRIC') != 'DIELECTRIC'
+    if metal:
         mc = (physics.metal_nk(op.coating, ray.wl) if getattr(op, 'dispersive_metal', False) and ray.wl > 0.0
               else physics.METALS.get(op.coating, physics.METALS['AL']))
-        rs, rp = physics.fresnel_reflect(n_s, mc, theta_c)     # the coating seen from the glass side
-        R = 0.5 * (abs(rs) ** 2 + abs(rp) ** 2)
+        rs_c, rp_c = physics.fresnel_reflect(n_s, mc, theta_c)     # the coating seen from the glass side
     else:
-        R = max(op.reflectivity, 0.0)
-    p_c = p_in * R
-    j_c = _jones_at_power(j_in, p_c)
-    inside = _Ray(C, d2, p_c, glass.depth + 1, E, ray.wl, 'GLASS', idx, jones=j_c, opl=opl_c, q=q_c,
-                  src_id=ray.src_id, coh=ray.coh, evec=(physics.field_from_jones(j_c, d2) if j_c else None),
+        a = math.sqrt(max(op.reflectivity, 0.0))
+        rs_c, rp_c = a, -a                                        # the coated face's dielectric convention
+    if has_field:
+        ev_c, _dc = physics.reflect_field(ev_in, d1, sn, rs_c, rp_c)
+        p_c = sum((c * c.conjugate()).real for c in ev_c)
+    else:
+        p_c = p_in * (0.5 * (abs(rs_c) ** 2 + abs(rp_c) ** 2))
+        ev_c = None
+    inside = _Ray(C, d2, p_c, glass.depth + 1, E, ray.wl, 'GLASS', idx,
+                  jones=(physics.jones_from_field(ev_c, d2) if has_field else _jones_at_power(ray.jones, p_c)), opl=opl_c, q=q_c,
+                  src_id=ray.src_id, coh=ray.coh, evec=ev_c,
                   aberr=ray.aberr, m2=ray.m2, ghost_depth=ray.ghost_depth, unpol=ray.unpol)
     B2 = C + d2 * (T / max(abs(d2.dot(sn)), 1e-9))
     leg2, opl_b2, q_b2 = _glass_seg(inside, B2, E, n_s, 'GLASS')
@@ -1173,11 +1192,18 @@ def _second_surface_reflect(stack, segments, gcfg, ray, E, H, sn, idx):
     if d3 is None:
         return                                                # trapped by TIR inside the substrate
     d3 = Vector(d3)
-    T_out = physics.fresnel_transmit_power(1.0, n_s, math.acos(min(1.0, abs(d3.dot(sn)))))
-    p_out = p_c * T_out
-    j_out = _jones_at_power(j_c, p_out)
-    out = _Ray(B2, d3, p_out, inside.depth + 1, E, ray.wl, 'REFLECT', idx, jones=j_out, opl=opl_b2, q=q_b2,
-               src_id=ray.src_id, coh=ray.coh, evec=(physics.field_from_jones(j_out, d3) if j_out else None),
+    theta_o = math.acos(min(1.0, abs(d3.dot(sn))))
+    if has_field:
+        rs_o, rp_o = physics.fresnel_reflect(1.0, n_s, theta_o)  # 1-|r|^2 is the same from either side
+        ev_out = physics.refract_field(ev_c, d2, d3, sn,
+                                       math.sqrt(max(0.0, 1.0 - abs(rs_o) ** 2)), math.sqrt(max(0.0, 1.0 - abs(rp_o) ** 2)))
+        p_out = sum((c * c.conjugate()).real for c in ev_out)
+    else:
+        p_out = p_c * physics.fresnel_transmit_power(1.0, n_s, theta_o)
+        ev_out = None
+    out = _Ray(B2, d3, p_out, inside.depth + 1, E, ray.wl, 'REFLECT', idx,
+               jones=(physics.jones_from_field(ev_out, d3) if has_field else _jones_at_power(ray.jones, p_out)), opl=opl_b2, q=q_b2,
+               src_id=ray.src_id, coh=ray.coh, evec=ev_out,
                aberr=ray.aberr, m2=ray.m2, ghost_depth=ray.ghost_depth, unpol=ray.unpol)
     stack.append(out)
 

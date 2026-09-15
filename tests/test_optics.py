@@ -2848,9 +2848,6 @@ if _ss is not None:
         _want = 2 * _T * (math.sin(_th) - math.cos(_th) * math.tan(_tht))
         check("second surface: sideways shift = 2T(sin th - cos th tan th_t) (4.01 mm at 45 deg, n 1.5168)",
               abs(_shift - _want) < 1e-3, "shift %.4f want %.4f" % (_shift, _want))
-    _Tf = physics.fresnel_transmit_power(1.0, _n, _th)
-    check("second surface: power = T_in * R * T_out",
-          _out and abs(_out[0]["power"] - round(_Tf * 1.0 * _Tf, 4)) < 2e-4, "%s vs %.4f" % (_out and _out[0]["power"], _Tf ** 2))
     _glen = sum(x["length_mm"] for x in _glass)
     check("second surface: two in-glass legs of T / cos th_t each, OPL advancing n per mm",
           len(_glass) == 2 and abs(_glen - 2 * _T / math.cos(_tht)) < 1e-3
@@ -2860,6 +2857,80 @@ if _ss is not None:
     _front_ab = _second_surface("ABSORB", (-150, 0, 0), (1, 0, 0))
     _key = lambda segs: [(x["from"], x["to"], x["kind"], x["power"], tuple(round(c, 6) for c in x["p2"])) for x in segs]
     check("second surface: a beam on the coated face is unchanged", _key(_front_ss) == _key(_front_ab))
+    # Polarization: each interface acts on s and p separately (the coated front face already does). Expected
+    # amplitudes from the Fresnel kernel: s/p transmit sqrt(1-|r|^2) at each air/glass crossing (no phase below
+    # TIR), the coating reflects with rs/rp seen from the glass. Checked frame-free: |E_s|^2, |E_p|^2 and |Stokes V|.
+    def _ss_pol(coating, pol_angle):
+        _c5_clear()
+        _m = eg.mirror("BK_M", (0, 0, 0), _PV((1, 0, 0)), _PV((0, 1, 0)), _bk)
+        _m.optics.back_surface = "SECOND_SURFACE"
+        _m.optics.coating = coating
+        _s = eg.source("BK_S", (150, 0, 0), _PV((-1, 0, 0)), _bk)
+        _s.optics.pol_type = "LINEAR"
+        _s.optics.pol_angle = pol_angle
+        bpy.context.view_layer.update()
+        _segs = scan._trace(sc)
+        _arr = [x for x in _segs if x["to"] == "BK_M" and x["kind"] != "GLASS"][0]
+        _o = [x for x in _segs if x["from"] == "BK_M" and x["kind"] == "REFLECT"][0]
+        return _arr, _o, _m.optics.refractive_index, _m.optics.reflectivity
+    def _sp(seg):
+        _d = (_PV(seg["p2"]) - _PV(seg["p1"])).normalized()
+        _j = seg["jones"]
+        _ev = physics.field_from_jones((complex(_j[0], _j[1]), complex(_j[2], _j[3])), tuple(_d))
+        _sh = _PV((0, 0, 1))                                   # both beams lie in XY: s is along Z
+        _ph = _d.cross(_sh)
+        return (sum(_ev[i] * _sh[i] for i in range(3)), sum(_ev[i] * _ph[i] for i in range(3)))
+    def _stokes_v(es, ep):
+        return abs(2.0 * (es.conjugate() * ep).imag) / max(abs(es) ** 2 + abs(ep) ** 2, 1e-30)
+    _pol_rows = []
+    for _coat in ("DIELECTRIC", "AL"):
+        for _pa in (0.0, 45.0, 90.0):
+            _arr, _o, _n, _Rd = _ss_pol(_coat, _pa)
+            _es, _ep = _sp(_arr)
+            _rs1, _rp1 = physics.fresnel_reflect(1.0, _n, _th)
+            _tht = math.asin(math.sin(_th) / _n)
+            if _coat == "DIELECTRIC":
+                _rcs, _rcp = math.sqrt(_Rd), -math.sqrt(_Rd)
+            else:
+                _rcs, _rcp = physics.fresnel_reflect(_n, physics.METALS["AL"], _tht)
+            _as = (1 - abs(_rs1) ** 2) * _rcs * _es
+            _ap = (1 - abs(_rp1) ** 2) * _rcp * _ep
+            _os, _op = _sp(_o)
+            _pol_rows.append((_coat, _pa, abs(_os) ** 2, abs(_as) ** 2, abs(_op) ** 2, abs(_ap) ** 2,
+                              _stokes_v(_os, _op), _stokes_v(_as, _ap)))
+    check("second surface: power = T_in * R * T_out for s and p separately (0/45/90 deg, dielectric and Al coating)",
+          all(abs(r[2] - r[3]) < 1e-5 and abs(r[4] - r[5]) < 1e-5 for r in _pol_rows),
+          str([tuple(round(v, 6) if isinstance(v, float) else v for v in r[:6]) for r in _pol_rows]))
+    check("second surface: an Al coating seen from the glass adds its s-p phase (ellipticity |V| at 45 deg)",
+          all(abs(r[6] - r[7]) < 1e-5 for r in _pol_rows) and any(r[7] > 1e-3 for r in _pol_rows),
+          str([(r[0], r[1], round(r[6], 6), round(r[7], 6)) for r in _pol_rows]))
+    # An UNPOL source is an incoherent H+V pair: the two halves together carry the s/p average of the products,
+    # 0.5 R [(1-Rs)^2 + (1-Rp)^2], which is not the square of the averaged transmission.
+    _arr, _o, _n, _Rd = _ss_pol("DIELECTRIC", 0.0)
+    sc.objects["BK_S"].optics.pol_type = "UNPOL"
+    bpy.context.view_layer.update()
+    _usegs = scan._trace(sc)
+    _uout = [x for x in _usegs if x["from"] == "BK_M" and x["kind"] == "REFLECT"]
+    _uin = sum(sum(c * c for c in x["jones"]) for x in _usegs if x["to"] == "BK_M" and x["kind"] != "GLASS")
+    _upow = sum(sum(c * c for c in x["jones"]) for x in _uout)
+    _rs1, _rp1 = physics.fresnel_reflect(1.0, _n, _th)
+    _uwant = _uin * 0.5 * _Rd * ((1 - abs(_rs1) ** 2) ** 2 + (1 - abs(_rp1) ** 2) ** 2)
+    check("second surface: an unpolarized source's two halves carry the s/p-averaged product",
+          len(_uout) == 2 and abs(_upow - _uwant) < 1e-5, "%d halves, %.6f vs %.6f" % (len(_uout), _upow, _uwant))
+    # The back-face Fresnel reflection (a GHOST with Model ghosts on) is s/p too: |rs|^2 |E_s|^2 + |rp|^2 |E_p|^2.
+    _g_prev = (sc.optics.model_ghosts, sc.optics.ghost_floor)
+    sc.optics.model_ghosts, sc.optics.ghost_floor = True, 1e-6
+    _grows = []
+    for _pa in (0.0, 90.0):
+        _arr, _o, _n, _Rd = _ss_pol("DIELECTRIC", _pa)
+        _es, _ep = _sp(_arr)
+        _g = [x for x in scan._trace(sc) if x["from"] == "BK_M" and x["kind"] == "GHOST"]
+        _rs1, _rp1 = physics.fresnel_reflect(1.0, _n, _th)
+        _gw = abs(_rs1) ** 2 * abs(_es) ** 2 + abs(_rp1) ** 2 * abs(_ep) ** 2
+        _grows.append((_pa, len(_g), sum(sum(c * c for c in x["jones"]) for x in _g), _gw))
+    sc.optics.model_ghosts, sc.optics.ghost_floor = _g_prev
+    check("second surface: the back-face ghost reflects s and p with their own Fresnel coefficients",
+          all(r[1] == 1 and abs(r[2] - r[3]) < 1e-5 for r in _grows), str([tuple(round(v, 6) for v in r) for r in _grows]))
 _c5_clear()
 _bkm = eg.mirror("BK_M", (0, 0, 0), _PV((1, 0, 0)), _PV((0, 1, 0)), _bk)
 check("mirror back_surface defaults to ABSORB and re-traces live",
