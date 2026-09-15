@@ -4,6 +4,73 @@ All notable changes to the **Blender Optics Simulator** (`optical_alignment_sim`
 here. The format follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 semantic versioning.
 
+## [Unreleased]
+
+Merged to `main` after v0.29.1 and not yet released. Most of it comes from the 2026-09-13 audit and from the
+requests on [#1](https://github.com/emircbngl/blender-optics-simulator/issues/1).
+
+### Results that change on an existing bench
+Re-run a bench saved with v0.29.1 before reusing its numbers.
+- **Detectors read the power that reaches them** (#36).
+  - Several tracer branches scaled a ray's power but not its Jones amplitude, and a detector reads |J|².
+  - Affected: χ(2) children and the residual pump, prism Fresnel losses, obliquely arriving beams.
+  - On the green doubler the two detectors read 1.0 each; they now read 0.4 and 0.6.
+  - Beams from one source at different wavelengths no longer interfere.
+- **Clear apertures clip where the beam lands** (#37).
+  - Stops and optics clip with the beam's offset, the incidence angle and the aperture shape.
+  - A beam that lands on the body outside the opening is blocked.
+  - Optics clipping is a new loss; before, vignetting was only a `diagnose()` advisory.
+- **A mirror no longer reflects a beam that hits its back** (#39, #56). New `back_surface` setting:
+  - `ABSORB` (default): the beam is lost, and diagnose reports it.
+  - `IDEAL`: the old behaviour, flagged WARN.
+  - `SECOND_SURFACE`: traces a polished substrate — refraction, the reflection off the coating from inside, s/p Fresnel at every face, and a back-face ghost.
+- **A circulator's isolation leak comes out of its through power** (#41). Before, it added power: 1.01 out for 1.0 in at 20 dB, 2.00 at 0 dB.
+- **MgO:PPLN quasi-phase matching** uses the extraordinary-index equation of Gayer et al., Appl. Phys. B 91, 343 (2008) (#44).
+  - Poling period, pump wavelength and temperature now set the conversion; before, none of them did.
+  - Thermal expansion of the period is not modelled.
+- **Nonlinear crystals** (#45, #46):
+  - Type-II SHG projects the pump onto the crystal's o/e axes.
+  - OPO splits signal/idler power by photon energy.
+  - The RK4 χ(2) step resolves the phase slip.
+  - An unpolarized beam in Type-II uses the average over polarization states. This is a modelling assumption, documented in the code.
+- **Prisms stand upright** (#38). The equilateral example had thrown its spectrum 31° out of the bench plane. False `energy_violation` findings on prisms are gone.
+
+### Fixed
+- **Declared-unit scenes** (#42): every readout and placement agrees with the millimetre scene.
+  - A CI gate builds the same benches in mm and in m and compares 32 outputs; 24 disagreed before.
+- **Mounts** (#47):
+  - A knob turn no longer snaps a hand-moved mount back to where it was.
+  - Anchored followers no longer jump when their anchor changes.
+- **Detect Ports on a user mirror mesh** puts IN and REFLECT on the coated face (#43).
+  - The guess is flagged, and **Reflect Face** is always visible.
+  - Picking a face replaces the port instead of appending another.
+- **Diagnose and Corrections** keep separate lists that stay current across selection (#49).
+- **Live state, agent contract and render safety** (#45, #46):
+  - The live signature covers names, ports, units and per-type parameters.
+  - Stale references are dropped on load.
+  - With Render ▸ Lock Interface off, render handlers no longer write scene data. Baked beams stay as baked, with a console note.
+- **A glass index read outside its Sellmeier window** raises `glass_extrapolated` (WARN) in `diagnose()` (#40).
+
+### Added
+- **Porro prism**, `prism_type = PORRO` (#55): 180° return with a sideways offset, parity preserved. The TIR s/p phase is not modelled.
+- **Knob controls** (#48, #51):
+  - Every knob has a step size and − / + buttons.
+  - `set_dof(name, dof, value=None, steps=None)` in the API and as an MCP tool.
+- **Every element parameter comes from one per-type schema** (#50).
+  - The Element panel shows the selected type's essentials, with a collapsed **More** panel.
+  - *Show Advanced Controls* now hides only technical fields such as ports.
+  - `tests/test_param_schema.py` requires every parameter that changes a result to be drawn.
+- **Panels** (#52, #53):
+  - Every operator is reachable from a panel.
+  - Assemble ▸ Group Selected… (cage / tube / rail); Sequence ▸ Render Sequence…
+  - Refresh Report / Align All / Auto-align at the top of Optical Report.
+  - A Design panel with telescope, 4f and mode-match dialogs, and Tolerance Scan.
+- **Render-only detailed optomechanics and a generic mount catalog** (#54). Skipped in declared non-millimetre scenes.
+
+### Docs and metadata
+- Tengfei Ma credited as a contributor (#35); v0.29.1 version DOI recorded (#34).
+- CAPABILITIES lists the prism types, `back_surface` and 26 examples; the extension submission notes were corrected (#59).
+
 ## [0.29.1] — The beam turns on the coating, the mount follows the glass, and a verification that finally tested something — 2026-08-21
 
 ### Fixed — the entry port marks the face, and the deformable mirror gets seated too
