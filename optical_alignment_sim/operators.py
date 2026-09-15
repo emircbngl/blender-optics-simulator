@@ -657,12 +657,25 @@ class OPTICS_OT_mode_match(_DesignSolve, Operator):
                                                                      res["coupling"])]
 
 
+# Blender stores dynamic enum values as integers, not identifiers. Keep numbers
+# stable for the registration lifetime and retain strings required by RNA.
+_detector_enum_ids = {}
+_detector_enum_items = []
+
+
 def _detector_items(self, context):
     from . import tracer
     scene = getattr(context, "scene", None) or bpy.context.scene
     names = sorted(o.name for o in scene.objects
                    if getattr(o, "optics", None) and o.optics.is_optical and o.optics.element_type in tracer.TERMINAL)
-    return [(n, n, "") for n in names] or [('', "(no detector)", "")]
+    global _detector_enum_items
+    for name in names:
+        if name not in _detector_enum_ids:
+            _detector_enum_ids[name] = len(_detector_enum_ids) + 1
+    _detector_enum_items = [(n, n, "", _detector_enum_ids[n]) for n in names]
+    if not _detector_enum_items:
+        _detector_enum_items = [('', "(no detector)", "", 0)]
+    return _detector_enum_items
 
 
 class OPTICS_OT_tolerance_scan(Operator):

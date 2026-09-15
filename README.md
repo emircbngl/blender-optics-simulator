@@ -114,7 +114,7 @@ The full surface (each also an MCP tool): `capabilities`, `get_state`, `diagnose
 `propose_corrections`, `detect_phenomena`, `inspect_beam`, `inspect_element`, `beam_profile`,
 `sensor_capture`, `ao_measure`, `get_wavefront`, `pyramid_wfs`, `zonal_render`, `coupling_efficiency`,
 `check_mechanics`, `build_example`, `trace_beam`, `path_statistics`, `tag_element`, `add_component`, `swap_part`,
-`place_relative`, `set_mount`, `set_param`, `align_element`, `align_all`, `auto_align`, `tilt_null`,
+`place_relative`, `set_mount`, `set_param`, `set_dof`, `align_element`, `align_all`, `auto_align`, `tilt_null`,
 `design_telescope`, `design_4f`, `mode_match`, `scan`, `render`, `render_sequence`, `bake_beams`,
 `clear_beams`, `export_svg`, `dress_bench`, `set_grid`, `place_on_grid`, `make_cage`, `make_tube`,
 `make_rail`, `place_on_rail`, `ao_command`, `ao_close_loop`. Call `capabilities()` first — it returns a
@@ -699,19 +699,28 @@ nothing phones home otherwise.
 
 ### From the UI
 
-- **Examples ▸** pick *Michelson* (or any of the 26) to spawn a full setup with the live beam overlay.
-- **Element** — select an object, *Tag as Optical Element*, *Auto-Detect Ports*; per-type parameters
-  appear (source polarization, waveplate angle, lens focal length, …).
-- **Mount & Adjustment** — *Apply Mount Preset* (e.g. KM100CP/M), *Set Coarse Pose*, drive the
-  tip/tilt knobs.
-- **Simulation** — toggle *Live simulation*; the beam updates as you move parts. Start the external
-  agent bridge from **Present ▸ Tools & Integration ▸ Start MCP Bridge**.
-- **Alignment Report** — *Update Report* / *Align* / *Align All*; detectors show measured power,
-  polarization, and fringe visibility.
-- **Adaptive Optics** — *Run AO Loop* to sense a wavefront and drive a deformable mirror flat.
-- **Render** — pick a camera + **Background** preset, then *EEVEE Preview* / *Cycles Final* (toggle
-  **Realistic optics** for glass + studio lighting); **Dress Bench** for the full table; **Export SVG
-  Schematic** for a publication-ready vector figure.
+Open the 3D View sidebar with **N**, then select **Optics**.
+
+- **Setup ▸ Browse Examples…** — choose *Michelson* to build a bench.
+- **Setup ▸ Element** — select an object; use **Tag Element** and **Detect Ports**.
+  Only the selected type's parameters appear. Expand **More** for the remaining parameters;
+  **Part data (not used by the trace)** is descriptive metadata.
+- **Place ▸ Mount & Adjustment** — apply a mount preset and set the coarse pose.
+  Each knob has **− / slider / +** controls (also in Element); edit **Step** in Mount & Adjustment.
+- **Place ▸ Assemble ▸ Group Selected…** — group selected optics into a cage, tube or rail.
+- **Simulate ▸ Trace** — enable live tracing; resolve the unit warning when the scene's
+  declared scale differs from the millimetre convention.
+- **Simulate ▸ Design** — telescope, 4f relay and mode-match dialogs recalculate as inputs
+  change; **Tolerance Scan (selected)** evaluates the selected elements.
+- **Inspect ▸ Optical Report** — **Refresh Report**, **Align All** and **Auto-align** are at
+  the top; detector rows show measured power, polarization and fringe visibility.
+- **Simulate ▸ Adaptive Optics** — sense a wavefront and drive a deformable mirror.
+- **Present ▸ Render** — choose a camera/background and **EEVEE Preview** or **Cycles Final**.
+  **Realistic optics** and detailed hardware prepare render materials and mount details;
+  **Reset Render Style** restores the editing appearance.
+- **Present ▸ Sequence ▸ Render Sequence…** — write PNG frames and, when ffmpeg is available,
+  an MP4. **Present ▸ Export** provides SVG export.
+- **Present ▸ Tools & Integration ▸ Start MCP Bridge** — connect an external agent.
 
 ### Headless / standalone scripts
 
