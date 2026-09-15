@@ -410,6 +410,10 @@ def _build_mount(o, coll, idx):
     """Build the mount silhouette that matches the element's mount/element type, oriented in the
     optic's local frame (local +Z is the optical axis for inline parts; the cube body for splitters).
     Returns the number of objects created. All decoration: no ports, never traced."""
+    from . import hardware_shapes
+    custom = hardware_shapes.build(o, coll, idx)
+    if custom is not None:
+        return custom
     op = o.optics
     et = op.element_type
     mt = getattr(op, "mount_type", 'FIXED')
@@ -665,9 +669,10 @@ def _build_mount(o, coll, idx):
                             Fk @ Matrix.Translation((0.0, 0.0, -1.0)), coll, "mount"), 0.7, 2)
         # The front retaining ring is the physical stop for the mirror edge; it also keeps a
         # custom-size face such as DIE_Reflector from floating in a catalog-sized KM plate bore.
+        ring_z = 2.5 if op.mount_preset.startswith("KINEMATIC_") else 3.6
         ring = _ocyl(pre + "KMretainer_" + nm, min(plate * 0.45, r_mesh + 2.0), 1.2,
-                     Fk, (0.0, 0.0, 3.6), coll, "mount")
-        _bore_local(ring, Fk, (0.0, 0.0, 3.6), r_mesh + 0.35, 4.0, axis='Z')
+                     Fk, (0.0, 0.0, ring_z), coll, "mount")
+        _bore_local(ring, Fk, (0.0, 0.0, ring_z), r_mesh + 0.35, 4.0, axis='Z')
         _bevel(ring, 0.25, 1)
         _bevel(_obox(pre + "KMback_" + nm, (plate, plate, 7.0), Fk, (0, 0, -14.0), coll, "mount"), 0.7, 2)
         # the two actuators act on PERPENDICULAR edges (one drives tilt, one drives pan) -- bottom-
@@ -994,10 +999,17 @@ def _build_cage(scene, members, board_top_z, coll, post_radius, tag, grid, creat
         mn_b, mx_b, _cb = geometry.local_bounds(m)
         r_mesh = max(mx_b.x - mn_b.x, mx_b.y - mn_b.y) * 0.5
         bore_r = min(max(r_mesh + 0.35, 6.0), plate_side * 0.45)
-        _bored_plate("%sCagePlate_%s_%d" % (BENCH_PREFIX, tag, j),
+        plate = _bored_plate("%sCagePlate_%s_%d" % (BENCH_PREFIX, tag, j),
                      plate_side, 8.9, bore_r, Matrix.Translation(m.matrix_world.translation) @ rot,
                      coll, "mount")
-        n += 1
+        rim_frame = Matrix.Translation(m.matrix_world.translation) @ rot
+        rim = _ocyl(BENCH_PREFIX + "CageRetainer_%s_%d" % (tag, j), r_mesh + .6, 2.0,
+                    rim_frame, (0, 0, 0), coll, "mount")
+        _bore_local(rim, rim_frame, (0, 0, 0), max(r_mesh-.25, 1.0), 6.0)
+        _bevel(rim, .1, 1)
+        rim.parent = plate
+        rim.matrix_parent_inverse = plate.matrix_world.inverted()
+        n += 2
     # A cage is post-mounted through one plate's bottom tapped hole.  Pick the plate closest to
     # the assembly centre, then let its actual square side set the support height.
     support = _cage_support_member(members, centroid, axis)
@@ -1108,7 +1120,7 @@ def _build_tube(scene, members, board_top_z, coll, post_radius, tag, grid, creat
         _bore_local(ring, mw, (0.0, 0.0, 0.0), min(r_mesh + 0.35, ring_outer - 0.2), 6.0, axis='Z')
         _bevel(ring, 0.25, 1)
     # one post under the barrel centroid, to beam height
-    post_top_z = centroid.z - MOUNT_DROP
+    post_top_z = centroid.z - od * .5 + .8
     h = max(post_top_z - board_top_z, 1.0)
     nh = _post_holder("tube_" + tag, centroid.x, centroid.y, board_top_z, post_radius, coll, grid)
     hs = max(h - POST_SEAT_MM, 1.0)                      # bottom on the holder floor, top unchanged
@@ -1787,7 +1799,10 @@ def support_scan(scene):
     elements = []
     for elem in elems:
         owner = elem.get("oa_owner")
-        holders = [part for part in hardware if owner is not None and part.get("oa_owner") == owner]
+        # A cage retaining ring is decoration seated in its plate; the plate carries the optic, so a
+        # defective plate bore must not be hidden by the ring sitting around the optic.
+        holders = [part for part in hardware if owner is not None and part.get("oa_owner") == owner
+                   and not part.name.startswith(BENCH_PREFIX + "CageRetainer_")]
         gap, held_by = nearest(elem, holders)
         elements.append({"name": elem.name, "held_by": held_by,
                          "gap_mm": round(gap, 3), "ok": gap <= GAP_TOL})
@@ -1947,7 +1962,9 @@ def dress(scene, post_radius=POST_RADIUS):
                 n += _periscope_clamp("%02d" % i, ox, oy, POST_RADIUS_TALL, op.x, op.y, op.z, coll, opr)
                 n += _build_mount(o, coll, i)
         else:
-            h = max((pt.z - MOUNT_DROP) - board_top_z, 1.0)
+            from .hardware_shapes import support_drop
+            drop = max(support_drop(member) for _, member in members)
+            h = max((pt.z - drop) - board_top_z, 1.0)
             # standard mounts keep the catalog Ø1/2" post at ANY length (the TR series runs to
             # 300 mm and custom lengths exist) -- the diameter is a standard, the length is not.
             # The Ø1" pillar is reserved for the vertical-fold/periscope assembly above, which is
@@ -1988,6 +2005,10 @@ def dress(scene, post_radius=POST_RADIUS):
 
 def strip(scene):
     """Remove all bench-dressing objects (and free their meshes)."""
+    from . import hardware_render
+    if "_oar_auto_bench" in scene:
+        del scene["_oar_auto_bench"]
+    hardware_render.clear(scene)
     n = 0
     _SUPPORT_SCAN_CACHE.pop(scene.as_pointer(), None)
     c = bpy.data.collections.get(BENCH_COLL)

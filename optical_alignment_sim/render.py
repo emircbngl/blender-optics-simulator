@@ -285,7 +285,10 @@ def studio_lighting(scene):
         g = bpy.data.objects.new("OPTICS_Studio_Ground", me)
         scene.collection.objects.link(g)
         g["_oa_studio"] = 1
-        g.location = (center.x, center.y, center.z - size * 0.42)
+        bottoms = [(o.matrix_world @ Vector(c)).z for o in scene.objects
+                   if o.type == 'MESH' and (o.name.startswith('BENCH_') or
+                      (getattr(o, 'optics', None) and o.optics.is_optical)) for c in o.bound_box]
+        g.location = (center.x, center.y, min(bottoms)-.5 if bottoms else center.z-size*.42)
 
 
 def clear_render_style(scene):
@@ -298,6 +301,8 @@ def clear_render_style(scene):
             if o.type == 'MESH' and o.data.materials:
                 o.data.materials[0] = bpy.data.materials.get(o["_oa_vp_mat"])   # name/"" -> mat or None
             del o["_oa_vp_mat"]
+    from . import hardware_render
+    hardware_render.clear(scene)
     _remove_studio(scene)
     if "_oa_cyc" in scene:
         try:
@@ -313,6 +318,13 @@ def clear_render_style(scene):
 def _light_and_world(scene):
     """Realistic studio (if optics.realistic_optics) else the simple sun + backdrop."""
     if getattr(getattr(scene, "optics", None), "realistic_optics", False):
+        from . import hardware_render, geometry
+        # The detail models are built in millimetres; a declared-unit scene renders without them
+        # (the Render panel says why) instead of failing the whole render.
+        if getattr(scene.optics, "realistic_mechanics", True) and geometry.mm_per_unit(scene) == 1.0:
+            hardware_render.prepare(scene)
+        else:
+            hardware_render.clear(scene)
         apply_optical_materials(scene)
         studio_lighting(scene)
     else:
@@ -354,7 +366,7 @@ def _optical_bounds(scene):
     found = False
     for o in scene.objects:
         op = getattr(o, "optics", None)
-        if op and op.is_optical:
+        if (op and op.is_optical) or (o.type == "MESH" and o.name.startswith("BENCH_")):
             found = True
             for c in o.bound_box:
                 w = o.matrix_world @ Vector(c)

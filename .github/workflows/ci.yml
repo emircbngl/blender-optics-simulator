@@ -83,6 +83,11 @@ jobs:
       - name: Parameter schema (every input of every element type is in its schema and drawn)
         run: xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_param_schema.py
 
+      - name: Render hardware detail (render-only, restores the bench) and generic mount catalog
+        run: |
+          xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_hardware_render.py
+          xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_hardware_catalog.py
+
       - name: Mesh health (elements bare + mounts dressed, render-free)
         # numeric leg of the mount/element structural audit: non-manifold/loose-vert gate per
         # element mesh, BVH contact gate per dressed mount part. No renders in CI by design --

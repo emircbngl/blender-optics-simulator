@@ -200,7 +200,7 @@ def mount_cases(G, mounts, optics_api):
             raise RuntimeError("%s: %s" % (preset, msg))
         return ob
 
-    return {
+    cases = {
         "KM100":      lambda: _preset(G.mirror("MI_M", (0, 0, Z), X, Y, _coll()), 'KM100'),
         "KM100CPM":   lambda: _preset(G.mirror("MI_M", (0, 0, Z), X, Y, _coll()), 'KM100CP/M'),
         "KS1":        lambda: _preset(G.mirror("MI_M", (0, 0, Z), X, Y, _coll()), 'KS1'),
@@ -226,6 +226,12 @@ def mount_cases(G, mounts, optics_api):
                                                                 family='X95'), ob)[1])(
                           G.lens("MI_XL", (0, 0, Z), X, _coll(), focal=250.0)),
     }
+
+    from optical_alignment_sim import hardware_catalog
+    cases.update({key: (lambda key=key: hardware_catalog.build(key,G,mounts))
+                  for key in hardware_catalog.PRODUCTS})
+    cases["CAGE30"] = lambda: hardware_catalog.build_cage30(G,mounts)
+    return cases
 
 
 def main():

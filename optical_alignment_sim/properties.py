@@ -874,6 +874,10 @@ class OpticalSceneProps(PropertyGroup):
                ('WHITE',       "White / Paper", "White backdrop for light figures"),
                ('TRANSPARENT', "Transparent",   "Alpha (PNG) background for compositing onto paper/figures")],
         default='DARK', update=_bg_update)
+    realistic_mechanics: BoolProperty(
+        name="Detailed hardware (render)",
+        description="Build render-only metal hardware, knurled knobs, springs and scales from the mount presets; simulation keeps its basic geometry",
+        default=True)
     realistic_optics: BoolProperty(
         name="Realistic optics (render)",
         description=("On render, give beam splitters/lenses/waveplates glass materials and mirrors "
