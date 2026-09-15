@@ -947,7 +947,8 @@ def _glass_extrapolation(scene, segs):
 def _mirror_back_hits(scene, segs):
     """A beam arriving on a mirror's SUBSTRATE side (against the coated face's outward normal). With
     back_surface ABSORB the trace ends it there -- say so, or it reads as a mysteriously dark detector.
-    With IDEAL it reflects as if it hit the coating, which a real front-surface mirror does not do."""
+    With IDEAL it reflects as if it hit the coating, which a real front-surface mirror does not do. With
+    SECOND_SURFACE the substrate is polished and the pass through it is modelled, so it is not a fault."""
     issues = []
     by_name = {o.name: o for o in scene.objects
                if getattr(o, "optics", None) and o.optics.is_optical
@@ -960,6 +961,8 @@ def _mirror_back_hits(scene, segs):
         d = Vector(s["p2"]) - Vector(s["p1"])
         if sn is None or d.length < 1e-12 or d.normalized().dot(sn) <= 0.0:
             continue
+        if s.get("kind") == "GLASS" or getattr(E.optics, 'back_surface', 'ABSORB') == 'SECOND_SURFACE':
+            continue                          # a polished substrate: the beam is meant to go through it
         if getattr(E.optics, 'back_surface', 'ABSORB') == 'ABSORB':
             issues.append(_issue("mirror_back_hit", E.name,
                 "beam from %s hits the back (substrate side) of %s and is absorbed there -- the coated face "

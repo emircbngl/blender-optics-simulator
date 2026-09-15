@@ -531,7 +531,11 @@ class OpticalElementProps(PropertyGroup):
         items=[('ABSORB', "Absorbing", "A beam arriving on the substrate side is lost there (a ground back, as "
                 "on most lab mirrors); diagnose reports it"),
                ('IDEAL', "Ideal (reflects)", "A beam arriving on the substrate side reflects as if it hit the "
-                "coating -- the behaviour before this setting existed")],
+                "coating -- the behaviour before this setting existed"),
+               ('SECOND_SURFACE', "Polished (second surface)", "A beam arriving on the substrate side refracts "
+                "in, crosses the substrate (thickness from the mesh, index from Refractive index / Surface glass), "
+                "reflects off the coating from inside and refracts back out: shifted sideways, with both "
+                "air/glass Fresnel losses. A curved mirror's focal power is not applied on this path")],
         default='ABSORB')
     design_wl: FloatProperty(name="Design wavelength (nm)", default=633.0, min=1.0)  # spec point; 0 would null a waveplate
     # The lens substrate glass — drives its chromatic focal shift f ~ 1/(n(lambda)-1). Default N-BK7

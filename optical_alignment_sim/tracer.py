@@ -1095,6 +1095,119 @@ def _glass_seg(ray, p2, E, n_glass, kind):
     }, opl, qd
 
 
+def _substrate_thickness_mm(E):
+    """Mirror substrate thickness behind its coated (REFLECT) face, from the mesh: the deepest bound-box
+    corner along the face normal, in millimetres."""
+    port = _find_port(E.optics, 'REFLECT')
+    if port is None:
+        return 0.0
+    n_local = Vector(port.local_normal)
+    if n_local.length < 1e-12:
+        return 0.0
+    n_local.normalize()
+    depth = max((Vector(port.local_position) - Vector(c)).dot(n_local) for c in E.bound_box)
+    return (E.matrix_world.to_3x3() @ (n_local * max(depth, 0.0))).length * _mmpu
+
+
+def _substrate_index(op, wl):
+    sg = getattr(op, 'surface_glass', 'NONE')
+    if sg != 'NONE' and wl > 0.0:
+        return max(physics.sellmeier_n(wl, sg), 1.0)
+    return max(getattr(op, 'refractive_index', 1.5168), 1.0)
+
+
+def _second_surface_reflect(stack, segments, gcfg, ray, E, H, sn, idx):
+    """A beam on a mirror's POLISHED substrate side (back_surface = SECOND_SURFACE). The trace found the hit on
+    the coated plane (H); the beam really meets the back face first. Replace the arrival segment so it ends on
+    the back face (B), refract in (Snell + Fresnel), cross the substrate to the coating, reflect there from
+    inside, cross back and refract out. The Fresnel reflection at the back face leaves the beam (a scene with
+    Model ghosts on traces it as a GHOST). Chief ray only: the substrate is a plane-parallel plate, so a curved
+    mirror's focal power is not applied on this path."""
+    op = E.optics
+    T = _substrate_thickness_mm(E)
+    n_s = _substrate_index(op, ray.wl)
+    cos_i = ray.dir.dot(sn)                                   # > 0: travelling toward the coating from behind
+    B = H - ray.dir * (T / max(cos_i, 1e-9))
+    segments[idx] = _seg(ray, B, E, sn)
+    t_b = (B - ray.p1).length
+    d1 = physics.refract_dir((ray.dir.x, ray.dir.y, ray.dir.z), (sn.x, sn.y, sn.z), 1.0, n_s)
+    theta_i = math.acos(min(1.0, cos_i))
+    if d1 is None:
+        return
+    d1 = Vector(d1)
+    q_b = physics.q_propagate(ray.q, physics.abcd_free(t_b)) if ray.q is not None else None
+    # s and p cross each interface separately, as on the coated face (reflect_field): an air/glass crossing
+    # transmits power 1-|r|^2 per component, with no phase below TIR, so the field amplitudes are sqrt(1-|r|^2).
+    # Without a field (no polarization carried) the unpolarized average is the only option.
+    has_field = ray.evec is not None
+    rs_b, rp_b = physics.fresnel_reflect(1.0, n_s, theta_i)
+    if has_field:
+        ev_g, _dg = physics.reflect_field(ray.evec, ray.dir, sn, rs_b, rp_b)
+        p_g = sum((c * c.conjugate()).real for c in ev_g)
+        ev_in = physics.refract_field(ray.evec, ray.dir, d1, sn,
+                                      math.sqrt(max(0.0, 1.0 - abs(rs_b) ** 2)), math.sqrt(max(0.0, 1.0 - abs(rp_b) ** 2)))
+        p_in = sum((c * c.conjugate()).real for c in ev_in)
+    else:
+        p_in = ray.power * physics.fresnel_transmit_power(1.0, n_s, theta_i)
+        p_g = ray.power - p_in
+        ev_g = ev_in = None
+    d_g = geometry.reflect(ray.dir, sn)
+    if gcfg[0] and ray.ghost_depth < gcfg[2] and p_g >= gcfg[1]:
+        g = _Ray(B, d_g, p_g, ray.depth + 1, E, ray.wl, 'GHOST', idx,
+                 jones=(physics.jones_from_field(ev_g, d_g) if has_field else _jones_at_power(ray.jones, p_g)), opl=ray.opl + t_b, q=q_b,
+                 src_id=ray.src_id, coh=ray.coh, evec=ev_g, aberr=ray.aberr, m2=ray.m2,
+                 ghost_depth=ray.ghost_depth + 1, unpol=ray.unpol)
+        stack.append(g)
+    glass = _Ray(B, d1, p_in, ray.depth + 1, E, ray.wl, 'GLASS', idx,
+                 jones=(physics.jones_from_field(ev_in, d1) if has_field else _jones_at_power(ray.jones, p_in)), opl=ray.opl + t_b, q=q_b,
+                 src_id=ray.src_id, coh=ray.coh, evec=ev_in,
+                 aberr=ray.aberr, m2=ray.m2, ghost_depth=ray.ghost_depth, unpol=ray.unpol)
+    C = B + d1 * (T / max(abs(d1.dot(sn)), 1e-9))
+    leg1, opl_c, q_c = _glass_seg(glass, C, E, n_s, 'GLASS')
+    segments.append(leg1)
+    d2 = geometry.reflect(d1, sn)
+    theta_c = math.acos(min(1.0, abs(d1.dot(sn))))
+    metal = getattr(op, 'coating', 'DIELECTRIC') != 'DIELECTRIC'
+    if metal:
+        mc = (physics.metal_nk(op.coating, ray.wl) if getattr(op, 'dispersive_metal', False) and ray.wl > 0.0
+              else physics.METALS.get(op.coating, physics.METALS['AL']))
+        rs_c, rp_c = physics.fresnel_reflect(n_s, mc, theta_c)     # the coating seen from the glass side
+    else:
+        a = math.sqrt(max(op.reflectivity, 0.0))
+        rs_c, rp_c = a, -a                                        # the coated face's dielectric convention
+    if has_field:
+        ev_c, _dc = physics.reflect_field(ev_in, d1, sn, rs_c, rp_c)
+        p_c = sum((c * c.conjugate()).real for c in ev_c)
+    else:
+        p_c = p_in * (0.5 * (abs(rs_c) ** 2 + abs(rp_c) ** 2))
+        ev_c = None
+    inside = _Ray(C, d2, p_c, glass.depth + 1, E, ray.wl, 'GLASS', idx,
+                  jones=(physics.jones_from_field(ev_c, d2) if has_field else _jones_at_power(ray.jones, p_c)), opl=opl_c, q=q_c,
+                  src_id=ray.src_id, coh=ray.coh, evec=ev_c,
+                  aberr=ray.aberr, m2=ray.m2, ghost_depth=ray.ghost_depth, unpol=ray.unpol)
+    B2 = C + d2 * (T / max(abs(d2.dot(sn)), 1e-9))
+    leg2, opl_b2, q_b2 = _glass_seg(inside, B2, E, n_s, 'GLASS')
+    segments.append(leg2)
+    d3 = physics.refract_dir((d2.x, d2.y, d2.z), (sn.x, sn.y, sn.z), n_s, 1.0)
+    if d3 is None:
+        return                                                # trapped by TIR inside the substrate
+    d3 = Vector(d3)
+    theta_o = math.acos(min(1.0, abs(d3.dot(sn))))
+    if has_field:
+        rs_o, rp_o = physics.fresnel_reflect(1.0, n_s, theta_o)  # 1-|r|^2 is the same from either side
+        ev_out = physics.refract_field(ev_c, d2, d3, sn,
+                                       math.sqrt(max(0.0, 1.0 - abs(rs_o) ** 2)), math.sqrt(max(0.0, 1.0 - abs(rp_o) ** 2)))
+        p_out = sum((c * c.conjugate()).real for c in ev_out)
+    else:
+        p_out = p_c * physics.fresnel_transmit_power(1.0, n_s, theta_o)
+        ev_out = None
+    out = _Ray(B2, d3, p_out, inside.depth + 1, E, ray.wl, 'REFLECT', idx,
+               jones=(physics.jones_from_field(ev_out, d3) if has_field else _jones_at_power(ray.jones, p_out)), opl=opl_b2, q=q_b2,
+               src_id=ray.src_id, coh=ray.coh, evec=ev_out,
+               aberr=ray.aberr, m2=ray.m2, ghost_depth=ray.ghost_depth, unpol=ray.unpol)
+    stack.append(out)
+
+
 def _prism_exit_ray(glass_ray, E, He, d_out, opl_exit, power, parent_idx):
     """Continuation ray leaving a prism's exit face at He along d_out, carrying the accumulated optical path
     (opl_exit, already including the glass n*L legs) and the propagated Gaussian q. Polarization is rebuilt
@@ -1564,8 +1677,12 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             else:
                 stack.append(_child(ray, E, H, nd, ray.power * op.reflectivity, 'REFLECT', idx, t, jones=None))
         elif et in ('MIRROR', 'PRISM_MIRROR'):
-            if ray.dir.dot(sn) > 0.0 and getattr(op, 'back_surface', 'ABSORB') == 'ABSORB':
+            back = ray.dir.dot(sn) > 0.0
+            if back and getattr(op, 'back_surface', 'ABSORB') == 'ABSORB':
                 continue                                   # arrived on the substrate side: lost at the ground back
+            if back and getattr(op, 'back_surface', 'ABSORB') == 'SECOND_SURFACE':
+                _second_surface_reflect(stack, segments, gcfg, ray, E, H, sn, idx)
+                continue
             nd = geometry.reflect(ray.dir, sn)
             # SURFACE-FIGURE IMPRINT (opt-in, default off): sample E's actual mesh over the Gaussian
             # footprint and stamp its Zernike surface figure onto the reflected wavefront (sign +1, like
