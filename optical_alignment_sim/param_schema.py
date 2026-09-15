@@ -51,7 +51,10 @@ _APERTURE = [("clear_aperture", None), ("aperture_shape", None), ("aperture_half
 _MIRROR = {
     "essentials": [("reflectivity", None), ("coating", None), ("back_surface", None)],
     "more": [("mirror_curve", None), ("radius_curv", _not("mirror_curve", 'FLAT')),
-             ("dispersive_metal", None)] + _APERTURE + [("imprint_surface", None), ("imprint_zonal_px", None)],
+             ("dispersive_metal", None),
+             ("surface_glass", _is("back_surface", 'SECOND_SURFACE')),
+             ("refractive_index", lambda p: p.back_surface == 'SECOND_SURFACE' and p.surface_glass == 'NONE')]
+    + _APERTURE + [("imprint_surface", None), ("imprint_zonal_px", None)],
 }
 _DETECTOR = {
     "essentials": [("analyzer", None), ("det_mode", None), ("det_material", None), ("det_gain", None)],

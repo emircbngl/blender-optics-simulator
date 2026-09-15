@@ -2814,6 +2814,52 @@ check("mirror: a beam on the substrate side is absorbed by default and diagnose 
       _bk_abs[0] is not None and _bk_abs[0] < 1e-12 and _bk_abs[1] == ["BAD"], str(_bk_abs))
 check("mirror: back_surface IDEAL keeps the old full reflection, flagged WARN",
       _bk_ideal[0] is not None and abs(_bk_ideal[0] - 1.0) < 1e-9 and _bk_ideal[1] == ["WARN"], str(_bk_ideal))
+# SECOND_SURFACE: a polished substrate. A beam from the back refracts in, crosses the 6 mm substrate, reflects
+# off the coating from inside and refracts back out: parallel to the IDEAL reflection, shifted sideways by
+# 2T(sin th - cos th tan th_t), with the two air/glass Fresnel transmissions and the in-glass path n*L.
+def _second_surface(mode="SECOND_SURFACE", src=(150, 0, 0), sdir=(-1, 0, 0)):
+    _c5_clear()
+    _m = eg.mirror("BK_M", (0, 0, 0), _PV((1, 0, 0)), _PV((0, 1, 0)), _bk)
+    try:
+        _m.optics.back_surface = mode
+    except TypeError:
+        return None
+    eg.source("BK_S", src, _PV(sdir), _bk)
+    bpy.context.view_layer.update()
+    return scan._trace(sc)
+_ss = _second_surface()
+check("mirror: back_surface offers SECOND_SURFACE", _ss is not None)
+if _ss is not None:
+    _diag = [x for x in optics_api.diagnose().get("diagnostics", []) if x["kind"] == "mirror_back_hit"]
+    check("second surface: an intended substrate-side hit is not reported as a fault", not _diag, str(_diag))
+    _ideal = _second_surface("IDEAL")
+    _out = [x for x in _ss if x["from"] == "BK_M" and x["kind"] == "REFLECT"]
+    _iout = [x for x in _ideal if x["from"] == "BK_M" and x["kind"] == "REFLECT"]
+    _glass = [x for x in _ss if x["kind"] == "GLASS" and x["to"] == "BK_M"]
+    _n = sc.objects["BK_M"].optics.refractive_index
+    _th = math.radians(45.0); _tht = math.asin(math.sin(_th) / _n); _T = 6.0
+    _dir = (_PV(_out[0]["p2"]) - _PV(_out[0]["p1"])).normalized() if _out else None
+    _idir = (_PV(_iout[0]["p2"]) - _PV(_iout[0]["p1"])).normalized() if _iout else None
+    check("second surface: output parallel to the IDEAL reflection",
+          _dir is not None and _idir is not None and _dir.dot(_idir) > 1 - 1e-9, str((_dir, _idir)))
+    if _dir is not None and _idir is not None:
+        _rel = _PV(_out[0]["p1"]) - _PV(_iout[0]["p1"])
+        _shift = (_rel - _idir * _rel.dot(_idir)).length
+        _want = 2 * _T * (math.sin(_th) - math.cos(_th) * math.tan(_tht))
+        check("second surface: sideways shift = 2T(sin th - cos th tan th_t) (4.01 mm at 45 deg, n 1.5168)",
+              abs(_shift - _want) < 1e-3, "shift %.4f want %.4f" % (_shift, _want))
+    _Tf = physics.fresnel_transmit_power(1.0, _n, _th)
+    check("second surface: power = T_in * R * T_out",
+          _out and abs(_out[0]["power"] - round(_Tf * 1.0 * _Tf, 4)) < 2e-4, "%s vs %.4f" % (_out and _out[0]["power"], _Tf ** 2))
+    _glen = sum(x["length_mm"] for x in _glass)
+    check("second surface: two in-glass legs of T / cos th_t each, OPL advancing n per mm",
+          len(_glass) == 2 and abs(_glen - 2 * _T / math.cos(_tht)) < 1e-3
+          and abs((_glass[-1]["opl"] - _glass[0]["opl"]) - _n * _glass[-1]["length_mm"]) < 1e-6,
+          "legs %s total %.4f" % ([round(x["length_mm"], 4) for x in _glass], _glen))
+    _front_ss = _second_surface("SECOND_SURFACE", (-150, 0, 0), (1, 0, 0))
+    _front_ab = _second_surface("ABSORB", (-150, 0, 0), (1, 0, 0))
+    _key = lambda segs: [(x["from"], x["to"], x["kind"], x["power"], tuple(round(c, 6) for c in x["p2"])) for x in segs]
+    check("second surface: a beam on the coated face is unchanged", _key(_front_ss) == _key(_front_ab))
 _c5_clear()
 _bkm = eg.mirror("BK_M", (0, 0, 0), _PV((1, 0, 0)), _PV((0, 1, 0)), _bk)
 check("mirror back_surface defaults to ABSORB and re-traces live",
