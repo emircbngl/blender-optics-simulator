@@ -1799,7 +1799,10 @@ def support_scan(scene):
     elements = []
     for elem in elems:
         owner = elem.get("oa_owner")
-        holders = [part for part in hardware if owner is not None and part.get("oa_owner") == owner]
+        # A cage retaining ring is decoration seated in its plate; the plate carries the optic, so a
+        # defective plate bore must not be hidden by the ring sitting around the optic.
+        holders = [part for part in hardware if owner is not None and part.get("oa_owner") == owner
+                   and not part.name.startswith(BENCH_PREFIX + "CageRetainer_")]
         gap, held_by = nearest(elem, holders)
         elements.append({"name": elem.name, "held_by": held_by,
                          "gap_mm": round(gap, 3), "ok": gap <= GAP_TOL})

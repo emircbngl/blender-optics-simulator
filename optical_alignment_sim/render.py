@@ -318,8 +318,10 @@ def clear_render_style(scene):
 def _light_and_world(scene):
     """Realistic studio (if optics.realistic_optics) else the simple sun + backdrop."""
     if getattr(getattr(scene, "optics", None), "realistic_optics", False):
-        from . import hardware_render
-        if getattr(scene.optics, "realistic_mechanics", True):
+        from . import hardware_render, geometry
+        # The detail models are built in millimetres; a declared-unit scene renders without them
+        # (the Render panel says why) instead of failing the whole render.
+        if getattr(scene.optics, "realistic_mechanics", True) and geometry.mm_per_unit(scene) == 1.0:
             hardware_render.prepare(scene)
         else:
             hardware_render.clear(scene)

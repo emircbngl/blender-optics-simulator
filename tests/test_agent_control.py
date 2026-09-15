@@ -636,6 +636,34 @@ scene.frame_set(1)
 check('a keyed shutter is open on frame 1 and closed on frame 10', open_frame and not closed_frame,
       str((open_frame, closed_frame)))
 
+# Detailed render hardware needs a millimetre scene; a declared metre scene still renders, without it.
+from optical_alignment_sim import render as render_mod
+clear()
+scene = bpy.context.scene
+scene.optics.scene_units_authoritative = True
+old_scale = scene.unit_settings.scale_length
+scene.unit_settings.scale_length = 1.0
+eg.source('DS', (-80, 0, 0), (1, 0, 0))
+eg.detector('DD', (80, 0, 0), (1, 0, 0))
+bpy.context.view_layer.update()
+scene.optics.realistic_optics = True
+try:
+    try:
+        render_mod.setup_preview(scene)
+        prepared = True
+    except Exception as exc:
+        prepared = str(exc)
+    check('a declared metre scene still prepares a realistic render', prepared is True, str(prepared))
+    fields = set()
+    ui.OPTICS_PT_render.draw(SimpleNamespace(layout=Layout(fields)), bpy.context)
+    check('the Render panel still offers Detailed hardware in a declared metre scene',
+          'realistic_mechanics' in fields, str(sorted(fields)))
+finally:
+    render_mod.clear_render_style(scene)
+    scene.optics.realistic_optics = False
+    scene.optics.scene_units_authoritative = False
+    scene.unit_settings.scale_length = old_scale
+
 failed = len(checks) - sum(checks)
 print("AGENT CONTROL %s (%d/%d checks)" % ("PASS" if failed == 0 else "FAIL",
                                             sum(checks), len(checks)), flush=True)
