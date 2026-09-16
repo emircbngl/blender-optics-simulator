@@ -7,8 +7,7 @@ semantic versioning.
 ## [0.30.0] — An OPA, group delay and GDD, a Porro prism, polished mirrors, and results that were silently wrong — 2026-09-16
 
 Everything merged after v0.29.1 (#34–#64). Most of it comes from the 2026-09-13 audit and from the requests on
-[#1](https://github.com/emircbngl/blender-optics-simulator/issues/1). Several fixes change numbers on existing benches:
-re-run a bench saved with v0.29.1 before reusing its results.
+[#1](https://github.com/emircbngl/blender-optics-simulator/issues/1).
 
 ### Results that change on an existing bench
 Re-run a bench saved with v0.29.1 before reusing its numbers.
