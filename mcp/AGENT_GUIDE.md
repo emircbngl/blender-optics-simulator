@@ -19,8 +19,9 @@ The bench has eyes — use them. Never assert what the beam is doing; **read it*
 - `ao_measure(sensor)` / `get_wavefront(sensor)` — the wavefront RMS + Zernike vector at a sensor.
 - `sensor_capture(sensor)` — what a sensor ACTUALLY captures: beam radius vs aperture, captured power & figure
   fraction, whether the aperture clip applied. (A finite sensor does NOT swallow the whole beam.)
-- `path_statistics(detector)` — every source-to-detector arrival with its route, geometric length and phase OPL.
-  It explicitly does not claim group delay/GDD.
+- `path_statistics(detector)` — every source-to-detector arrival with its route, geometric length, phase OPL and,
+  when the whole route is modelled, `group_delay_fs` / `gdd_fs2`. Otherwise `dispersion_missing` names the thin
+  element (lens, window, crystal) whose dispersion must be set by hand (`dispersion_mode='USER'`).
 - `zonal_render(sensor=…)` — a dense raw surface-figure wavefront map (the honest companion to the modal WFS).
 
 The loop is: **`get_state()` → decide → act (`set_param`/`place_relative`/`align_*`/…) → the beam re-traces →
@@ -79,8 +80,9 @@ scope (`capabilities()['scope_map']`). Say so when it matters.
 4. Physics is **property-driven** — change an element's glass/coating/focal and behaviour changes; no per-scene code.
 5. The WFS image is the **modal** 15-Zernike channel (low-pass); for high-frequency figure use the **zonal** render.
 6. `swap_part` normalizes mesh orientation — solve the right orientation empirically through the actual swap path.
-7. `phase_opl_mm` is phase-index OPL. The live tracer has no group-index/GDD model, so do not report it as
-   ultrafast time of flight.
+7. `phase_opl_mm` is phase-index OPL, not time of flight. Use `group_delay_fs` for that. It is `None` whenever
+   a thin element on the route has no dispersion model; report which element (`dispersion_missing`) instead of
+   guessing. Material dispersion only: no prism-pair or grating-pair angular GDD.
 
 ## API conventions (so the surface is predictable)
 Every tool follows these — rely on them, and keep them if you add a tool:

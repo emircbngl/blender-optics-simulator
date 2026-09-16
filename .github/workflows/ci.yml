@@ -88,6 +88,9 @@ jobs:
       - name: Animation render re-bakes beams per frame (real render pipeline)
         run: xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_render_animation.py
 
+      - name: Group delay and GDD along traced routes
+        run: xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_dispersion.py
+
       - name: Parameter schema (every input of every element type is in its schema and drawn)
         run: xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_param_schema.py
 

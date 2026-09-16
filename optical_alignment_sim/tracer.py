@@ -1071,7 +1071,7 @@ def _prism_faces(E):
     return pin, pout
 
 
-def _glass_seg(ray, p2, E, n_glass, kind):
+def _glass_seg(ray, p2, E, n_glass, kind, glass=None):
     """Emit an IN-GLASS segment from ray.p1 to p2 inside element E: the optical path advances by n*L
     (the glass index), and the dict mirrors _seg's schema so bake/overlay/digest treat it uniformly."""
     seg_len = (p2 - ray.p1).length
@@ -1092,6 +1092,9 @@ def _glass_seg(ray, p2, E, n_glass, kind):
         "qd": [qd.real, qd.imag] if qd is not None else None,
         "m2": ray.m2,
         "aberr": list(ray.aberr) if ray.aberr else None,
+        # the Sellmeier glass of this leg (None: a fixed refractive index, so no dispersion model) -- read by
+        # path statistics for the group index and GDD
+        "glass": glass,
     }, opl, qd
 
 
@@ -1163,7 +1166,7 @@ def _second_surface_reflect(stack, segments, gcfg, ray, E, H, sn, idx):
                  src_id=ray.src_id, coh=ray.coh, evec=ev_in,
                  aberr=ray.aberr, m2=ray.m2, ghost_depth=ray.ghost_depth, unpol=ray.unpol)
     C = B + d1 * (T / max(abs(d1.dot(sn)), 1e-9))
-    leg1, opl_c, q_c = _glass_seg(glass, C, E, n_s, 'GLASS')
+    leg1, opl_c, q_c = _glass_seg(glass, C, E, n_s, 'GLASS', glass=(None if getattr(op, 'surface_glass', 'NONE') == 'NONE' else op.surface_glass))
     segments.append(leg1)
     d2 = geometry.reflect(d1, sn)
     theta_c = math.acos(min(1.0, abs(d1.dot(sn))))
@@ -1186,7 +1189,7 @@ def _second_surface_reflect(stack, segments, gcfg, ray, E, H, sn, idx):
                   src_id=ray.src_id, coh=ray.coh, evec=ev_c,
                   aberr=ray.aberr, m2=ray.m2, ghost_depth=ray.ghost_depth, unpol=ray.unpol)
     B2 = C + d2 * (T / max(abs(d2.dot(sn)), 1e-9))
-    leg2, opl_b2, q_b2 = _glass_seg(inside, B2, E, n_s, 'GLASS')
+    leg2, opl_b2, q_b2 = _glass_seg(inside, B2, E, n_s, 'GLASS', glass=(None if getattr(op, 'surface_glass', 'NONE') == 'NONE' else op.surface_glass))
     segments.append(leg2)
     d3 = physics.refract_dir((d2.x, d2.y, d2.z), (sn.x, sn.y, sn.z), n_s, 1.0)
     if d3 is None:
@@ -1234,7 +1237,7 @@ _ROUTING_FOLDS = {
 }
 
 
-def _route_fold(glass_ray, E, fold_faces, segments, parent_idx, n_glass):
+def _route_fold(glass_ray, E, fold_faces, segments, parent_idx, n_glass, glass=None):
     """Fold an in-glass ray through a routing prism's internal mirror faces IN ORDER. Each fold is a single
     geometry.reflect() off the face's world normal -- the verified reflection law -- with the segment break
     taken at the face's port-plane crossing; the in-glass OPL advances by n*L per leg (_glass_seg). Returns
@@ -1244,7 +1247,7 @@ def _route_fold(glass_ray, E, fold_faces, segments, parent_idx, n_glass):
     for (fpt, fnrm) in fold_faces:
         hb = _ray_plane(ray.p1, ray.dir, fpt, fnrm)
         Hb = hb[0] if hb is not None else (ray.p1 + ray.dir * 1.0)
-        gseg, opl_b, _qd = _glass_seg(ray, Hb, E, n_glass, 'GLASS')
+        gseg, opl_b, _qd = _glass_seg(ray, Hb, E, n_glass, 'GLASS', glass=glass)
         segments.append(gseg)
         d_fold = geometry.reflect(ray.dir, fnrm)
         if ray.evec is not None:
@@ -1959,7 +1962,7 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 tir_pt = _wp(E, tirp.local_position)
                 hb = _ray_plane(glass_ray.p1, glass_ray.dir, tir_pt, tir_n)
                 Hb = hb[0] if hb is not None else (glass_ray.p1 + glass_ray.dir * 1.0)
-                gseg, opl_b, _qd = _glass_seg(glass_ray, Hb, E, n_g, 'GLASS')
+                gseg, opl_b, _qd = _glass_seg(glass_ray, Hb, E, n_g, 'GLASS', glass=getattr(op, 'prism_glass', 'N-SF11'))
                 segments.append(gseg)
                 d_fold = geometry.reflect(glass_ray.dir, tir_n)    # internal total reflection (the 90 deg fold)
                 fold_ray = _Ray(Hb, d_fold, glass_ray.power, glass_ray.depth + 1, E, ray.wl, 'GLASS', idx,
@@ -1968,7 +1971,7 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                                 unpol=glass_ray.unpol, ghost_depth=glass_ray.ghost_depth)
                 he = _ray_plane(fold_ray.p1, fold_ray.dir, exit_pt, ex_n)
                 He = he[0] if he is not None else (fold_ray.p1 + fold_ray.dir * 1.0)
-                gseg2, opl_e, _qd2 = _glass_seg(fold_ray, He, E, n_g, 'GLASS')
+                gseg2, opl_e, _qd2 = _glass_seg(fold_ray, He, E, n_g, 'GLASS', glass=getattr(op, 'prism_glass', 'N-SF11'))
                 segments.append(gseg2)
                 theta_e = math.acos(min(1.0, abs(fold_ray.dir.dot(ex_n))))
                 d_out = physics.refract_dir((fold_ray.dir.x, fold_ray.dir.y, fold_ray.dir.z),
@@ -1985,7 +1988,7 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 if he is None:
                     continue
                 He, _te = he
-                gseg, opl_e, _qd = _glass_seg(glass_ray, He, E, n_g, 'GLASS')
+                gseg, opl_e, _qd = _glass_seg(glass_ray, He, E, n_g, 'GLASS', glass=getattr(op, 'prism_glass', 'N-SF11'))
                 segments.append(gseg)
                 d_refl = geometry.reflect(glass_ray.dir, ex_n)     # coated back-reflection
                 refl_ray = _Ray(He, d_refl, glass_ray.power, glass_ray.depth + 1, E, ray.wl, 'GLASS', idx,
@@ -1996,7 +1999,7 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 if hx is None:
                     continue
                 Hx, _tx = hx
-                gseg2, opl_x, _qd2 = _glass_seg(refl_ray, Hx, E, n_g, 'GLASS')
+                gseg2, opl_x, _qd2 = _glass_seg(refl_ray, Hx, E, n_g, 'GLASS', glass=getattr(op, 'prism_glass', 'N-SF11'))
                 segments.append(gseg2)
                 en = Vector(pin[1])
                 theta_x = math.acos(min(1.0, abs(refl_ray.dir.dot(en))))
@@ -2020,7 +2023,7 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 cem_pt = _wp(E, cemp.local_position)
                 hc = _ray_plane(glass_ray.p1, glass_ray.dir, cem_pt, cem_n)
                 Hc = hc[0] if hc is not None else (glass_ray.p1 + glass_ray.dir * 1.0)
-                gseg, opl_c, _qd = _glass_seg(glass_ray, Hc, E, n_g, 'GLASS')   # crown leg (n_g)
+                gseg, opl_c, _qd = _glass_seg(glass_ray, Hc, E, n_g, 'GLASS', glass=getattr(op, 'prism_glass', 'N-SF11'))   # crown leg (n_g)
                 segments.append(gseg)
                 d_flint = physics.refract_dir((glass_ray.dir.x, glass_ray.dir.y, glass_ray.dir.z),
                                               (cem_n.x, cem_n.y, cem_n.z), n_g, n2)   # crown -> flint
@@ -2032,7 +2035,7 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                                 unpol=glass_ray.unpol, ghost_depth=glass_ray.ghost_depth)
                 he = _ray_plane(flint_ray.p1, flint_ray.dir, exit_pt, ex_n)
                 He = he[0] if he is not None else (flint_ray.p1 + flint_ray.dir * 1.0)
-                gseg2, opl_e, _qd2 = _glass_seg(flint_ray, He, E, n2, 'GLASS')      # flint leg (n2)
+                gseg2, opl_e, _qd2 = _glass_seg(flint_ray, He, E, n2, 'GLASS', glass=getattr(op, 'prism_glass2', 'N-SF11'))      # flint leg (n2)
                 segments.append(gseg2)
                 d_out = physics.refract_dir((flint_ray.dir.x, flint_ray.dir.y, flint_ray.dir.z),
                                             (ex_n.x, ex_n.y, ex_n.z), n2, 1.0)       # flint -> air
@@ -2058,11 +2061,11 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                                   geometry.world_normal(E, fp.local_normal)))
                 if not ok:
                     continue
-                folded = _route_fold(glass_ray, E, folds, segments, idx, n_g)
+                folded = _route_fold(glass_ray, E, folds, segments, idx, n_g, glass=getattr(op, 'prism_glass', 'N-SF11'))
                 # exit-face Snell glass->air
                 he = _ray_plane(folded.p1, folded.dir, exit_pt, ex_n)
                 He = he[0] if he is not None else (folded.p1 + folded.dir * 1.0)
-                gseg, opl_e, _qd = _glass_seg(folded, He, E, n_g, 'GLASS')
+                gseg, opl_e, _qd = _glass_seg(folded, He, E, n_g, 'GLASS', glass=getattr(op, 'prism_glass', 'N-SF11'))
                 segments.append(gseg)
                 theta_e = math.acos(min(1.0, abs(folded.dir.dot(ex_n))))   # in-glass exit incidence
                 d_out = physics.refract_dir((folded.dir.x, folded.dir.y, folded.dir.z),
@@ -2092,7 +2095,7 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 if he is None:
                     continue
                 He, _te = he
-                gseg, opl_e, _qd = _glass_seg(glass_ray, He, E, n_g, 'GLASS')
+                gseg, opl_e, _qd = _glass_seg(glass_ray, He, E, n_g, 'GLASS', glass=getattr(op, 'prism_glass', 'N-SF11'))
                 segments.append(gseg)
                 theta_e = math.acos(min(1.0, abs(glass_ray.dir.dot(ex_n))))   # in-glass exit incidence
                 d_out = physics.refract_dir((glass_ray.dir.x, glass_ray.dir.y, glass_ray.dir.z),

@@ -96,9 +96,10 @@ def trace_beam(mode: str = "") -> str:
 
 @mcp.tool()
 def path_statistics(detector: str = "") -> str:
-    """Read cumulative source-to-detector route lengths for each arrival. Returns
-    geometric_length_mm and the tracer's phase_opl_mm separately. Phase OPL is not
-    group delay: group index and GDD are not modeled. Empty detector = all terminals."""
+    """Read cumulative source-to-detector route lengths for each arrival: geometric_length_mm,
+    the tracer's phase_opl_mm, and group_delay_fs / gdd_fs2 from the traced glass legs plus
+    hand-set element dispersion. group_delay_fs is null when a thin element on the route has no
+    dispersion model (named in dispersion_missing). Empty detector = all terminals."""
     return _fmt(_call("path_statistics", **({"detector": detector} if detector else {})))
 
 

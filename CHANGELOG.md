@@ -69,6 +69,15 @@ Re-run a bench saved with v0.29.1 before reusing its numbers.
   - `tests/test_render_animation.py` renders a keyed shutter through Blender's render pipeline.
 
 ### Added
+- **Group delay and GDD in path statistics** (#57). Each detector arrival reports `group_delay_fs` and `gdd_fs2`:
+  - free space at c;
+  - each traced glass leg (prisms, a polished mirror substrate with a named glass) at L·n_g/c and L·GVD from its
+    Sellmeier fit, at the arrival's wavelength;
+  - plus an element's hand-set values (Element ▸ More ▸ Dispersion: *Set by hand*).
+  - A thin lens, window or crystal the trace does not follow through glass leaves the value null, and the result
+    names it in `dispersion_missing`.
+  - Material dispersion only: no prism-pair or grating-pair angular GDD. Shown in the Optical Report.
+  - `geometric_length_mm` now includes the in-glass legs; before, it left them out while the phase OPL counted them.
 - **Porro prism**, `prism_type = PORRO` (#55): 180° return with a sideways offset, parity preserved. The TIR s/p phase is not modelled.
 - **Knob controls** (#48, #51):
   - Every knob has a step size and − / + buttons.

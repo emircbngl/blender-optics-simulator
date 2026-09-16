@@ -1236,9 +1236,10 @@ _ps_arr = next(d for d in _ps_syn["detectors"] if d["detector"] == "PS_Detector"
 check("path stats rebuild source->detector route + geometric length",
       _ps_arr["route"] == ["PS_Laser", "PS_Mirror", "PS_Detector"]
       and abs(_ps_arr["geometric_length_mm"] - 22.0) < 1e-12)
-check("path stats exposes stored phase OPL and refuses group-delay overclaim",
+check("path stats exposes stored phase OPL and refuses group-delay overclaim without element data",
       abs(_ps_arr["phase_opl_mm"] - 25.0) < 1e-12
-      and _ps_syn["group_delay_available"] is False and "Group index" in _ps_syn["caveat"])
+      and _ps_syn["group_delay_available"] is False and _ps_arr["group_delay_fs"] is None
+      and "Group delay and GDD" in _ps_syn["caveat"])
 
 _c5_clear()
 _ps_coll = bpy.data.collections.new("PATH_SHUTTER_TEST"); sc.collection.children.link(_ps_coll)
