@@ -40,6 +40,10 @@ _FACE = [("ar_coated", None), ("ar_reflectance", _is("ar_coated", True)),
          ("refractive_index", lambda p: not p.ar_coated and p.surface_glass == 'NONE'),
          ("coating_reflectance", None), ("element_transmittance", None)]
 
+# dispersion bookkeeping for path statistics (never changes the trace): on every element a beam can pass or turn at
+_DISPERSION = [("dispersion_mode", None), ("user_group_delay_fs", _is("dispersion_mode", 'USER')),
+               ("user_gdd_fs2", _is("dispersion_mode", 'USER'))]
+
 _OE = [("oe_split", None), ("oe_material", _is("oe_split", True)),
        ("oe_axis_deg", _is("oe_split", True)), ("oe_length_mm", _is("oe_split", True))]
 
@@ -163,6 +167,7 @@ INFO = {
 }
 
 _SOURCE_TYPES = ('SOURCE', 'FIBER_COLLIMATOR')
+_TERMINAL_TYPES = ('DETECTOR', 'PHOTODIODE', 'POWER_METER', 'WAVEFRONT_SENSOR', 'BEAM_DUMP')
 
 
 def fields(element_type, section):
@@ -171,6 +176,8 @@ def fields(element_type, section):
     out = list(entry[section])
     if section == "more" and element_type not in _SOURCE_TYPES and element_type != 'NONE':
         out += _AS_SOURCE
+        if element_type not in _TERMINAL_TYPES:
+            out += _DISPERSION
     return out
 
 

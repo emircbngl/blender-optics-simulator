@@ -252,7 +252,8 @@ def get_state():
             tracer.cached_segments,
             [o.name for o in scene.objects
              if getattr(o, "optics", None) and o.optics.element_type in tracer.TERMINAL
-             and o.optics.element_type != 'BEAM_DUMP']),
+             and o.optics.element_type != 'BEAM_DUMP'],
+            pathstats.elements_from_objects(scene.objects)),
         # Bench breadboard grid (pitch/origin/extent + occupied holes) so an MCP agent or a
         # human knows exactly where parts seat. None when the bench is not dressed.
         "bench": _optomech.grid_info(scene),
@@ -285,12 +286,17 @@ def trace_beam(mode=None):
 
 
 def path_statistics(detector=""):
-    """Cumulative source-to-detector route lengths for every traced arrival.
+    """Cumulative source-to-detector route lengths, group delay and GDD for every traced arrival.
 
     ``phase_opl_mm`` is the phase-index optical path already accumulated by the
     tracer (including its modeled in-glass legs); ``geometric_length_mm`` is the
-    parent-chain distance. Multiple branches remain separate. This is NOT an
-    ultrafast group-delay result: group index and GDD are not modeled.
+    parent-chain distance. Multiple branches remain separate.
+
+    ``group_delay_fs`` / ``gdd_fs2`` come from the Sellmeier glass of each traced glass
+    leg (air at group index 1) plus every element whose ``dispersion_mode`` is USER.
+    They are None when something on the route is not modelled -- a thin lens, window or
+    crystal without hand-set values -- and ``dispersion_missing`` names it. Material
+    dispersion only (no prism-pair or grating-pair angular GDD).
     """
     scene = _scene()
     terminals = [o.name for o in scene.objects
@@ -301,7 +307,8 @@ def path_statistics(detector=""):
             return {"error": "detector not found or not a detector terminal: %s" % detector}
         terminals = [detector]
     tracer.cached_segments = _trace(scene)
-    return pathstats.detector_path_statistics(tracer.cached_segments, terminals)
+    return pathstats.detector_path_statistics(tracer.cached_segments, terminals,
+                                              pathstats.elements_from_objects(scene.objects))
 
 
 def _diagnose_from_segments(scene, segs):

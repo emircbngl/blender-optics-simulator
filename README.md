@@ -138,9 +138,16 @@ stats = optics_api.path_statistics()                 # all detector terminals
 one = optics_api.path_statistics("MyDetector")      # one detector
 ```
 
-The result deliberately says `group_delay_available: false`. The current tracer carries phase-index OPL;
-it does **not** model group index, group delay, or GDD, so the number must not be presented as an ultrafast
-time-of-flight result. In the UI the same phase OPL/geometric range appears under **Inspect → Optical Report**.
+Each arrival also carries **`group_delay_fs`** and **`gdd_fs2`** when the whole route is modelled:
+- free space counts at c;
+- each traced glass leg (prisms, a mirror's polished substrate with a named glass) counts L·n_g/c and L·GVD, from its Sellmeier glass at the arrival's wavelength;
+- an element whose **Dispersion** is *Set by hand* (Element ▸ More) adds its group delay and GDD.
+
+The tracer does not follow the glass of a thin lens, window, crystal or waveplate. A route through one has
+`group_delay_fs: null`, and `dispersion_missing` names the element until you set its dispersion by hand;
+`group_delay_available` is true only when every arrival is complete. This is material dispersion only: the
+angular GDD of a prism pair or grating pair is not computed. In the UI the phase OPL, geometric range, group
+delay and GDD appear under **Inspect → Optical Report**.
 
 A binary shutter is available from the component library under the key `SHUTTER`:
 

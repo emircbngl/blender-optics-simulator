@@ -559,7 +559,8 @@ class OPTICS_PT_optical_report(_OpticsPanel, Panel):
                           and o.optics.element_type != 'BEAM_DUMP']
         path_by_detector = {
             row["detector"]: row for row in
-            pathstats.detector_path_statistics(tracer.cached_segments, terminal_names)["detectors"]
+            pathstats.detector_path_statistics(tracer.cached_segments, terminal_names,
+                                               pathstats.elements_from_objects(scene.objects))["detectors"]
         }
         for obj in scene.objects:
             props = getattr(obj, "optics", None)
@@ -590,7 +591,19 @@ class OPTICS_PT_optical_report(_OpticsPanel, Panel):
                     box.label(text="Phase OPL %.3f–%.3f mm (%d arrivals)"
                               % (phase_lo, phase_hi, path_row["arrival_count"]), icon='DRIVER_DISTANCE')
                     box.label(text="Geometric path %.3f–%.3f mm" % (geom_lo, geom_hi))
-                box.label(text="Phase OPL only — group delay/GDD not modeled", icon='INFO')
+                arrivals = path_row["arrivals"]
+                if all(a["group_delay_fs"] is not None for a in arrivals):
+                    for a in arrivals[:3]:
+                        box.label(text="Group delay %.1f fs   GDD %.1f fs² (%g nm)"
+                                  % (a["group_delay_fs"], a["gdd_fs2"], a["wavelength_nm"]))
+                    if len(arrivals) > 3:
+                        box.label(text="… %d more arrivals (path_statistics)" % (len(arrivals) - 3))
+                else:
+                    missing = sorted({m for a in arrivals for m in a["dispersion_missing"]})
+                    box.label(text="Group delay/GDD: not modelled through %s" % ", ".join(missing[:3]), icon='INFO')
+                    box.label(text="Set its Dispersion by hand (Element ▸ More) to include it")
+                for note in sorted({n for a in arrivals for n in a["dispersion_notes"]})[:2]:
+                    box.label(text=note, icon='ERROR')
             if props.mech_state not in ('UNKNOWN', 'OK'): box.label(text="Mechanical: %s" % props.mech_state, icon='CONSTRAINT')
             if props.align_detail: box.label(text=props.align_detail, icon='ERROR')
         if _advanced_enabled():

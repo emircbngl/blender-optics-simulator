@@ -457,6 +457,68 @@ def sellmeier_in_range(wl_nm, glass='N-BK7'):
     return rng[0] <= lam_um <= rng[1]
 
 
+# --- group index, group delay and GDD from the Sellmeier fit ----------------------------------------
+# The tracer's OPL is the PHASE path (n * L). A pulse travels at the group velocity c/n_g and spreads with
+# the group-delay dispersion; both come from the wavelength derivatives of the same Sellmeier n(lambda):
+#   n_g  = n - lambda dn/dlambda
+#   GD   = n_g L / c
+#   GVD  = lambda^3 / (2 pi c^2) d2n/dlambda2      (per unit length; GDD = GVD * L)
+# The derivatives are taken analytically from n^2 = 1 + sum B x^2/(x^2 - C), x = lambda in micrometres.
+
+C_MM_PER_FS = 2.99792458e-4        # speed of light in vacuum, mm per femtosecond (exact SI c)
+
+
+def sellmeier_derivatives(wl_nm, glass='N-BK7'):
+    """(n, dn/dlambda [1/um], d2n/dlambda2 [1/um^2]) at wl_nm from the glass's Sellmeier fit, or None when the
+    fit gives no physical index there (n^2 outside (0, 25), where sellmeier_n clamps and the derivatives
+    would be meaningless). Out-of-window but finite values are returned; check sellmeier_in_range."""
+    b1, b2, b3, c1, c2, c3 = _GLASSES.get(glass, _GLASSES['N-BK7'])
+    x = wl_nm * 1.0e-3
+    L2 = x * x
+    n2 = 1.0
+    d1 = 0.0        # d(n^2)/d(x^2)
+    d2 = 0.0        # d2(n^2)/d(x^2)^2
+    for b, c in ((b1, c1), (b2, c2), (b3, c3)):
+        den = L2 - c
+        if abs(den) < 1e-15:
+            return None
+        n2 += b * L2 / den
+        d1 += -b * c / (den * den)
+        d2 += 2.0 * b * c / (den * den * den)
+    if not (0.0 < n2 < 25.0):
+        return None
+    n = math.sqrt(n2)
+    dn2_dx = 2.0 * x * d1
+    d2n2_dx2 = 2.0 * d1 + 4.0 * L2 * d2
+    dn_dx = dn2_dx / (2.0 * n)
+    d2n_dx2 = (d2n2_dx2 - 2.0 * dn_dx * dn_dx) / (2.0 * n)
+    return n, dn_dx, d2n_dx2
+
+
+def group_index(wl_nm, glass='N-BK7'):
+    """Group index n_g = n - lambda dn/dlambda of a Sellmeier glass, or None where the fit has no index."""
+    d = sellmeier_derivatives(wl_nm, glass)
+    if d is None:
+        return None
+    n, dn_dx, _ = d
+    return n - (wl_nm * 1.0e-3) * dn_dx
+
+
+def gvd_fs2_per_mm(wl_nm, glass='N-BK7'):
+    """Group-velocity dispersion lambda^3/(2 pi c^2) d2n/dlambda2 of a Sellmeier glass in fs^2/mm, or None."""
+    d = sellmeier_derivatives(wl_nm, glass)
+    if d is None:
+        return None
+    x = wl_nm * 1.0e-3                                   # um
+    lam3_n2 = x ** 3 * d[2]                              # um^3 * 1/um^2 = um
+    return (lam3_n2 * 1.0e-3) / (2.0 * math.pi * C_MM_PER_FS ** 2)   # um -> mm; mm / (mm/fs)^2 = fs^2/mm
+
+
+def group_delay_fs(length_mm, n_group):
+    """Group delay of a length at group index n_g: L n_g / c, in femtoseconds."""
+    return length_mm * n_group / C_MM_PER_FS
+
+
 # --- closed-form helpers for textbook validation (pure scalar functions) ----
 # Each is the standard relation exposed as a number so it can be checked DIRECTLY
 # against a textbook value (and physics_verify'd). Angles in DEGREES at this boundary.
@@ -2652,4 +2714,20 @@ if __name__ == "__main__":
         for f in fails:
             print("  -", f)
         sys.exit(1)
+    # group index / GVD: the analytic Sellmeier derivatives agree with central differences of sellmeier_n
+    for _g, _wl in (('N-BK7', 800.0), ('FUSED_SILICA', 800.0), ('N-SF11', 1030.0), ('CaF2', 1550.0)):
+        _h = 0.01
+        _np, _n0, _nm = (sellmeier_n(_wl + _h, _g), sellmeier_n(_wl, _g), sellmeier_n(_wl - _h, _g))
+        _d1 = (_np - _nm) / (2 * _h) * 1e3                       # per um
+        _d2 = (_np - 2 * _n0 + _nm) / (_h * _h) * 1e6             # per um^2
+        _a = sellmeier_derivatives(_wl, _g)
+        assert abs(_a[0] - _n0) < 1e-12, (_g, _a[0], _n0)
+        assert abs(_a[1] - _d1) < 1e-6 * max(1.0, abs(_d1)), (_g, _a[1], _d1)
+        assert abs(_a[2] - _d2) < 1e-3 * max(1.0, abs(_d2)), (_g, _a[2], _d2)
+    # normal dispersion in the visible/NIR: n_g > n and GVD > 0
+    assert group_index(800.0, 'N-BK7') > sellmeier_n(800.0, 'N-BK7')
+    assert gvd_fs2_per_mm(800.0, 'FUSED_SILICA') > 0.0
+    # fused silica passes its zero-GVD point near 1.27 um: positive below, negative well above
+    assert gvd_fs2_per_mm(1100.0, 'FUSED_SILICA') > 0.0 > gvd_fs2_per_mm(1500.0, 'FUSED_SILICA')
+    assert abs(group_delay_fs(C_MM_PER_FS, 1.0) - 1.0) < 1e-12
     print("PHYSICS SELFTEST PASSED")

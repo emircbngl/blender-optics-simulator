@@ -395,6 +395,24 @@ class OpticalElementProps(PropertyGroup):
                     "multiplied by T, so the element absorbs (1-T) of what passes through. "
                     "Generalizes the ATTENUATOR / colored-glass loss to every transmissive element. "
                     "1.0 (default) -> no absorption, byte-identical")
+    # --- group delay / GDD of what the trace does not model. Path statistics adds these to the delay and
+    # dispersion it computes from the traced glass legs; they never change the beam itself.
+    dispersion_mode: EnumProperty(name="Dispersion",
+        items=[('AUTO', "From the trace", "Group delay and GDD come from the glass legs the trace follows "
+                "(prisms, a mirror's polished substrate). A thin transmissive element has no traced glass, so "
+                "a path through it is reported as incomplete"),
+               ('USER', "Set by hand", "Add the group delay and GDD given here, on top of any glass the trace "
+                "follows in this element -- for a lens, window, crystal or chirped mirror whose dispersion the "
+                "trace does not model")],
+        default='AUTO')
+    user_group_delay_fs: FloatProperty(
+        name="Group delay (fs)", default=0.0,
+        description="Group delay this element adds beyond the traced path, in femtoseconds (for a thin "
+                    "element: the glass thickness times its group index, minus the thickness, over c)")
+    user_gdd_fs2: FloatProperty(
+        name="GDD (fs²)", default=0.0,
+        description="Group-delay dispersion this element adds, in fs² (positive for normal dispersion in glass; "
+                    "a chirped mirror or compressor can be negative)")
     # --- SURFACE-FIGURE -> WAVEFRONT IMPRINT: when a REFLECTIVE element has this ON, the reflected beam
     # carries the Zernike wavefront error imprinted by the element's ACTUAL MESH surface over the beam
     # footprint (Tier-1 GEOMETRIC OPD = 2*surface-depth deviation, fit to orthonormal Noll Zernikes, in

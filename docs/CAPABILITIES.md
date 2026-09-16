@@ -26,8 +26,9 @@ code). Every shipped formula is covered by the repository's physics and Blender 
 - **Place / assemble:** `place_relative`, `make_cage`, `make_tube`, `make_rail`, `place_on_grid`, `place_on_rail`,
   `set_grid`, `dress_bench`.
 - **Trace / measure:** `trace_beam`, `scan`, `bake_beams`, `clear_beams`.
-- **Path statistics:** `path_statistics` returns each detector arrival's route, geometric length and phase OPL.
-  Group delay/GDD are explicitly not modeled.
+- **Path statistics:** `path_statistics` returns each detector arrival's route, geometric length, phase OPL and group
+  delay / GDD. These come from the Sellmeier glass of traced glass legs plus hand-set element dispersion, and are
+  null when a thin element on the route has no dispersion model. Material dispersion only.
 - **Align (mutates DOFs, on demand):** `align_all`, `align_element`, `auto_align`, `tilt_null`, `reset_mount`,
   `set_dof` (turn one knob by value or by its step, clamped to its range).
 - **Adaptive optics + surface figure:** `ao_command`, `ao_close_loop`, `ao_close_loop_recon`, `ao_kolmogorov`,
@@ -105,7 +106,8 @@ Sellmeier n(λ) for 6 glasses; Fresnel reflectivity (dielectric + metal); univer
 + neutral `element_transmittance` absorber; colored-glass Beer–Lambert (thickness-scaled); dielectric LP/SP/BP
 filters with AOI blue-shift; AR-coating ghost reflections.
 **Not yet:** editable per-material absorption A(λ) / reflectivity R(λ) curves, custom Sellmeier, surface
-roughness/scatter, multilayer-coating design, GDD. (Roadmap Phase 3.1.)
+roughness/scatter, multilayer-coating design, the GDD of thin elements (set by hand for now), prism-pair / grating-pair
+angular GDD. (Roadmap Phase 3.1.)
 
 ## 8. Scope boundaries (be honest about these)
 - Geometric single-ray + analytic overlays — **no full wave diffraction** (no Fresnel patterns; gratings are
