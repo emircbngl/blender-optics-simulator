@@ -15,6 +15,7 @@ _dirty = False
 _last_sig = None
 _pending_scene = None       # the scene whose depsgraph update armed the deferred trace
 _rendering = False          # a render job is running (render_init .. render_complete / render_cancel)
+_render_frame = None        # the frame whose keyed values the original data holds during a render
 _revision_sig = None        # live signature behind the current optics_scene_revision
 
 # Physics-affecting INPUT properties the tracer/physics read. They MUST be in the live
@@ -272,8 +273,9 @@ def beams_need_render_lock(scene):
 
 @persistent
 def on_render_init(scene, *args):
-    global _rendering
+    global _rendering, _render_frame
     _rendering = True
+    _render_frame = (scene.frame_current, scene.frame_subframe) if scene is not None else None
     if (scene is not None and _render_writes_unsafe(scene)
             and any(o.name.startswith("BEAM_") for o in scene.objects)):
         print("[optics] Render > Lock Interface is off: beams stay as baked for this render. "
@@ -301,9 +303,18 @@ def on_render_pre(scene, depsgraph=None):
     if getattr(bpy.context, "scene", None) is not scene:
         return
     # ensure_beams re-traces and compares the bake signature, so animation renders cannot
-    # reuse frame-1 tubes after a keyed shutter/mirror change.
+    # reuse frame-1 tubes after a keyed shutter/mirror change. A render evaluates each frame's
+    # animation on its own depsgraph and leaves the original data, which the tracer reads, on the
+    # frame the render started from. Only for a later frame, frame_set writes that frame's keyed
+    # values back first: the starting frame already holds them, together with any unkeyed edit the
+    # user made, which a still render must not throw away.
+    global _render_frame
     try:
         from . import bake
+        frame = (scene.frame_current, scene.frame_subframe)
+        if frame != _render_frame:
+            scene.frame_set(frame[0], subframe=frame[1])
+            _render_frame = frame
         bake.ensure_beams(bpy.context)
     except Exception as exc:
         print("[optics] render beam bake error:", exc)

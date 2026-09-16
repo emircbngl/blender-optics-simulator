@@ -50,6 +50,13 @@ Re-run a bench saved with v0.29.1 before reusing its numbers.
   - Stale references are dropped on load.
   - With Render ▸ Lock Interface off, render handlers no longer write scene data. Baked beams stay as baked, with a console note.
 - **A glass index read outside its Sellmeier window** raises `glass_extrapolated` (WARN) in `diagnose()` (#40).
+- **An animation render re-bakes the beams for every frame.** The re-bake added in #45 never ran in a real render.
+  - The tubes were built with operators that fail without an active object in a render handler.
+  - A render leaves the original data, which the tracer reads, on the frame it started from.
+  - Beams are now built with bmesh. From the second rendered frame on, the frame's keyed values are written back before tracing.
+  - A still render keeps unkeyed edits.
+  - Needs Render ▸ Lock Interface in the UI; a background render always re-bakes.
+  - `tests/test_render_animation.py` renders a keyed shutter through Blender's render pipeline.
 
 ### Added
 - **Porro prism**, `prism_type = PORRO` (#55): 180° return with a sideways offset, parity preserved. The TIR s/p phase is not modelled.
