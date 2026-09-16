@@ -80,6 +80,11 @@ jobs:
       - name: Agent control contract and nonlinear/tolerance witnesses
         run: xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_agent_control.py
 
+      - name: Review regressions and iris selection safety
+        run: |
+          xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_review_regressions.py
+          xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_iris_regen.py
+
       - name: Parameter schema (every input of every element type is in its schema and drawn)
         run: xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_param_schema.py
 

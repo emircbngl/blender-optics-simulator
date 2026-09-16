@@ -50,6 +50,16 @@ Re-run a bench saved with v0.29.1 before reusing its numbers.
   - Stale references are dropped on load.
   - With Render ▸ Lock Interface off, render handlers no longer write scene data. Baked beams stay as baked, with a console note.
 - **A glass index read outside its Sellmeier window** raises `glass_extrapolated` (WARN) in `diagnose()` (#40).
+- **Prisms keep a beam's state** (review follow-up). The entry, internal folds and exit of every prism type dropped
+  the beam's aberration, its unpolarized flag and its ghost depth.
+  - Seen at the output: an unpolarized beam through a prism into a Type-II crystal became roll-dependent,
+    `[0.4918, 0.7428, 0.4918]` at 0/45/90°; it is now `[0.2282, 0.2282, 0.2282]`.
+- **A live trace queued before an unlocked render waits until the render is done** (review follow-up). It no longer
+  refreshes the report during the render.
+- **The Tolerance Scan target stays on the detector you picked** when detectors are added, renamed or deleted (review
+  follow-up). A lost target is reported as missing; the scan no longer moves to another detector.
+- **An iris radius change keeps the selection** without iterating a stale view layer (review follow-up). This removes
+  native Blender 4.2.3 crashes in the schema, mesh and catalog runs.
 
 ### Added
 - **Porro prism**, `prism_type = PORRO` (#55): 180° return with a sideways offset, parity preserved. The TIR s/p phase is not modelled.
