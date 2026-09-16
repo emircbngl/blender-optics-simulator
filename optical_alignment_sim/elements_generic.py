@@ -1210,7 +1210,10 @@ def regenerate_iris(obj):
         except Exception:
             pass
         try:
-            for o in bpy.context.view_layer.objects:
+            # Removing the temporary collection invalidates the view-layer bases.
+            # Blender 4.2 can crash while iterating them before synchronization.
+            bpy.context.view_layer.update()
+            for o in list(bpy.context.view_layer.objects):
                 o.select_set(o in prev_sel)
             bpy.context.view_layer.objects.active = prev_active
         except Exception:

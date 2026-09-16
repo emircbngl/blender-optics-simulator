@@ -1216,7 +1216,8 @@ def _prism_exit_ray(glass_ray, E, He, d_out, opl_exit, power, parent_idx):
     nev = physics.field_from_jones(nj, d_out) if nj is not None else None
     return _Ray(He, d_out, power, glass_ray.depth + 1, E, glass_ray.wl, 'TRANSMIT', parent_idx,
                 jones=nj, opl=opl_exit, q=glass_ray.q, src_id=glass_ray.src_id, coh=glass_ray.coh,
-                evec=nev, m2=glass_ray.m2)
+                evec=nev, m2=glass_ray.m2, aberr=glass_ray.aberr,
+                unpol=glass_ray.unpol, ghost_depth=glass_ray.ghost_depth)
 
 
 # C4 routing-prism fold faces, in ORDER, by prism_type. Each is a port NAME (role REFLECT) carrying the
@@ -1252,7 +1253,8 @@ def _route_fold(glass_ray, E, fold_faces, segments, parent_idx, n_glass):
             ev = None
         ray = _Ray(Hb, d_fold, ray.power, ray.depth + 1, E, ray.wl, 'GLASS', parent_idx,
                    jones=ray.jones, opl=opl_b, q=ray.q, src_id=ray.src_id, coh=ray.coh,
-                   evec=ev, m2=ray.m2)
+                   evec=ev, m2=ray.m2, aberr=ray.aberr,
+                   unpol=ray.unpol, ghost_depth=ray.ghost_depth)
     return ray
 
 
@@ -1940,7 +1942,8 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             glass_ray = _Ray(H, d_glass, ray.power * T_in, ray.depth + 1, E, ray.wl, 'GLASS', idx,
                              jones=j_glass, opl=ray.opl + t, q=(physics.q_propagate(ray.q, physics.abcd_free(t))
                              if ray.q is not None else None), src_id=ray.src_id, coh=ray.coh,
-                             evec=(physics.field_from_jones(j_glass, d_glass) if j_glass else None), m2=ray.m2)
+                             evec=(physics.field_from_jones(j_glass, d_glass) if j_glass else None), m2=ray.m2,
+                             aberr=ray.aberr, unpol=ray.unpol, ghost_depth=ray.ghost_depth)
 
             ptype = getattr(op, 'prism_type', 'EQUILATERAL')
             if ptype == 'PELLIN_BROCA':
@@ -1961,7 +1964,8 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 d_fold = geometry.reflect(glass_ray.dir, tir_n)    # internal total reflection (the 90 deg fold)
                 fold_ray = _Ray(Hb, d_fold, glass_ray.power, glass_ray.depth + 1, E, ray.wl, 'GLASS', idx,
                                 jones=glass_ray.jones, opl=opl_b, q=glass_ray.q, src_id=ray.src_id, coh=ray.coh,
-                                evec=glass_ray.evec, m2=ray.m2)
+                                evec=glass_ray.evec, m2=ray.m2, aberr=glass_ray.aberr,
+                                unpol=glass_ray.unpol, ghost_depth=glass_ray.ghost_depth)
                 he = _ray_plane(fold_ray.p1, fold_ray.dir, exit_pt, ex_n)
                 He = he[0] if he is not None else (fold_ray.p1 + fold_ray.dir * 1.0)
                 gseg2, opl_e, _qd2 = _glass_seg(fold_ray, He, E, n_g, 'GLASS')
@@ -1986,7 +1990,8 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                 d_refl = geometry.reflect(glass_ray.dir, ex_n)     # coated back-reflection
                 refl_ray = _Ray(He, d_refl, glass_ray.power, glass_ray.depth + 1, E, ray.wl, 'GLASS', idx,
                                 jones=glass_ray.jones, opl=opl_e, q=glass_ray.q, src_id=ray.src_id, coh=ray.coh,
-                                evec=glass_ray.evec, m2=ray.m2)
+                                evec=glass_ray.evec, m2=ray.m2, aberr=glass_ray.aberr,
+                                unpol=glass_ray.unpol, ghost_depth=glass_ray.ghost_depth)
                 hx = _ray_plane(refl_ray.p1, refl_ray.dir, pin[0], Vector(pin[1]))
                 if hx is None:
                     continue
@@ -2023,7 +2028,8 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                     continue
                 flint_ray = _Ray(Hc, Vector(d_flint), glass_ray.power, glass_ray.depth + 1, E, ray.wl, 'GLASS',
                                  idx, jones=glass_ray.jones, opl=opl_c, q=glass_ray.q, src_id=ray.src_id,
-                                 coh=ray.coh, evec=glass_ray.evec, m2=ray.m2)
+                                 coh=ray.coh, evec=glass_ray.evec, m2=ray.m2, aberr=glass_ray.aberr,
+                                unpol=glass_ray.unpol, ghost_depth=glass_ray.ghost_depth)
                 he = _ray_plane(flint_ray.p1, flint_ray.dir, exit_pt, ex_n)
                 He = he[0] if he is not None else (flint_ray.p1 + flint_ray.dir * 1.0)
                 gseg2, opl_e, _qd2 = _glass_seg(flint_ray, He, E, n2, 'GLASS')      # flint leg (n2)

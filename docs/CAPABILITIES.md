@@ -42,6 +42,16 @@ relative placement, anchoring), **Simulate** (trace, measurements, adaptive opti
 corrections, optical report), and **Present** (render, sequence, export, **Tools & Integration** for the MCP
 bridge).
 
+Element exposes type-specific essentials and a collapsed **More** child panel. Both Element and
+Mount & Adjustment provide minus/slider/plus knobs; Mount & Adjustment also exposes Step. Descriptive catalog
+fields are labelled **Part data (not used by the trace)**.
+
+**Place ▸ Assemble ▸ Group Selected…** (`bpy.ops.optics.make_support`, a Blender operator) creates
+cage, tube or rail support; the API equivalents are `make_cage`, `make_tube` and `make_rail`. **Simulate ▸ Design**
+contains live telescope, 4f and mode-match calculators and Tolerance Scan (selected). **Inspect ▸
+Optical Report** begins with Refresh Report / Align All / Auto-align. **Present ▸ Sequence ▸
+Render Sequence…** writes PNGs, with optional ffmpeg encoding; the PNGs remain available without ffmpeg.
+
 ## 3. Element types (34) — `properties.py` `element_type`
 - **Sources:** SOURCE, FIBER_COLLIMATOR.
 - **Reflective:** MIRROR, PRISM_MIRROR, BEAMSPLITTER, DICHROIC, GRATING, RETROREFLECTOR, DEFORMABLE_MIRROR.

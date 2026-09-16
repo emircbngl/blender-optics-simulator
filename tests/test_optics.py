@@ -2162,8 +2162,12 @@ check("build_bench mid-build failure leaves no orphan optics",
 # inspect_all dashboard + export_report bundler (the new outputs) run end-to-end on a built example
 _ia = optics_api.inspect_all()
 check("inspect_all dashboard: per-element table for every optic", _ia.get("ok") and _ia["n_elements"] >= 4, str(_ia.get("n_elements")))
-_rep = optics_api.export_report(filepath="/tmp/oas_report.html", title="Regress")
-_rep_html = open("/tmp/oas_report.html").read() if _rep.get("ok") else ""
+import tempfile
+with tempfile.TemporaryDirectory(prefix="oas-report-") as _report_dir:
+    _report_path = os.path.join(_report_dir, "report.html")
+    _rep = optics_api.export_report(filepath=_report_path, title="Regress")
+    with open(_report_path) as _report_file:
+        _rep_html = _report_file.read() if _rep.get("ok") else ""
 check("export_report: self-contained HTML with the dashboard table", _rep.get("ok") and "<table>" in _rep_html and _rep["n_elements"] >= 4, str(_rep.get("path")))
 
 # The report must AGREE with diagnose(). It used to read keys diagnose() never returns, so every

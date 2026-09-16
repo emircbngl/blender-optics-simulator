@@ -99,6 +99,11 @@ def _deferred_trace():
         return None
     if not scene.optics.live_enabled:                  # live mode was toggled off after this was armed
         return None
+    if _rendering and _render_writes_unsafe(scene):
+        # The timer may have been armed before render_init. Retry after the render
+        # without tracing or mutating the scene while the UI is unlocked.
+        _dirty = True
+        return 0.1
     _recomputing = True
     try:
         # Propagate relative placement first: a moved anchor / leader updates its

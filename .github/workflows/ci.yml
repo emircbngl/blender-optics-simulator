@@ -80,6 +80,11 @@ jobs:
       - name: Agent control contract and nonlinear/tolerance witnesses
         run: xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_agent_control.py
 
+      - name: Review regressions and iris selection safety
+        run: |
+          xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_review_regressions.py
+          xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_iris_regen.py
+
       - name: Animation render re-bakes beams per frame (real render pipeline)
         run: xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_render_animation.py
 
