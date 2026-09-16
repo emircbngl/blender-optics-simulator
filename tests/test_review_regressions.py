@@ -24,6 +24,8 @@ with patch.object(handlers, '_is_background', return_value=False), patch.object(
     handlers._deferred_trace()
     check('queued live trace cannot refresh report during unlocked render', refresh.call_count == 0, refresh.call_count)
     handlers.on_render_done(scene)
+    handlers._deferred_trace()
+    check('the held live trace refreshes the report once the render is done', refresh.call_count == 1, refresh.call_count)
 scene.optics.live_enabled = False
 # Store an actual RNA enum selection, then alter the items callback's ordering.
 ann = operators.OPTICS_OT_tolerance_scan.__annotations__['target']
@@ -39,6 +41,21 @@ a = eg.detector('A_detector', (120, 0, 0), (1, 0, 0))
 check('adding earlier detector preserves target', scene.review_target.target == 'B_detector', scene.review_target.target)
 bpy.data.objects.remove(a, do_unlink=True)
 check('removing another detector preserves target', scene.review_target.target == 'B_detector', scene.review_target.target)
+# The selected detector itself renamed, then deleted: the target must not silently become another detector.
+a = eg.detector('A_detector', (120, 0, 0), (1, 0, 0))
+b.name = 'C_detector'
+bpy.context.view_layer.update()
+check('renaming the selected detector does not retarget another detector',
+      scene.review_target.target != 'A_detector', scene.review_target.target)
+bpy.data.objects.remove(b, do_unlink=True)
+bpy.context.view_layer.update()
+check('deleting the selected detector does not retarget another detector',
+      scene.review_target.target != 'A_detector', scene.review_target.target)
+from optical_alignment_sim import optics_api
+_lost = optics_api.tolerance_scan(['A_detector'], target=scene.review_target.target, n=2)
+check('a scan on the lost target says the target is missing instead of measuring elsewhere',
+      scene.review_target.target == '' and "give a 'target'" in _lost.get('error', ''),
+      (scene.review_target.target, _lost.get('error')))
 del bpy.types.Scene.review_target
 bpy.utils.unregister_class(ReviewTarget)
 r = tracer._Ray(Vector((0, 0, 0)), Vector((1, 0, 0)), 1., 0, None, 1064., 'TRANSMIT', -1,
@@ -48,7 +65,7 @@ check('prism exit preserves aberration', out.aberr == r.aberr, out.aberr)
 check('prism exit preserves unpolarized ensemble flag', out.unpol, out.unpol)
 check('prism exit preserves ghost recursion depth', out.ghost_depth == 2, out.ghost_depth)
 # Exercise entry, internal folds/cemented faces, and exit, not only the helper.
-for prism_type in ('EQUILATERAL', 'LITTROW', 'PELLIN_BROCA', 'AMICI', 'RIGHT_ANGLE', 'PENTA', 'DOVE', 'ROOF', 'RHOMBOID'):
+for prism_type in ('EQUILATERAL', 'LITTROW', 'PELLIN_BROCA', 'AMICI', 'RIGHT_ANGLE', 'PENTA', 'DOVE', 'ROOF', 'RHOMBOID', 'PORRO'):
     for obj in list(bpy.data.objects):
         bpy.data.objects.remove(obj, do_unlink=True)
     source = eg.source('S', (-120, 0, 0), (1, 0, 0))
