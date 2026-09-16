@@ -69,6 +69,8 @@ def build_svg(state, width=900, margin=64, oob='FALSE_COLOR'):
            'font-family="sans-serif">' % (width, height, width, height),
            '<rect width="100%%" height="100%%" fill="#0d0e12"/>']
     for s in beams:                                          # beam path
+        if s.get("kind") == "OPA_LINK":                      # an OPA's internal path, not a beam in air
+            continue
         rgb = beamcolor.wavelength_rgb255(s.get("wavelength", 632.8), oob)
         if rgb is None:                                      # hidden by the invisible-beam mode
             continue

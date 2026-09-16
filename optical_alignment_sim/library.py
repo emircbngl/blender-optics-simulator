@@ -72,6 +72,7 @@ BUILTIN = {
     "NDC_50C_2M": {"label": "Continuously Variable ND Wheel (NDC-50C-2M)", "vendor": "Thorlabs", "part_number": "NDC-50C-2M", "mesh": "NDC-50C-2M.stl", "format": "stl", "name": "VA_NDC50C", "element_type": "ATTENUATOR", "specs": "OD 0-2.0 reflective ND wheel"},
     # isolator / apertures / pinhole
     "IO_3D_633": {"label": "Free-Space Faraday Isolator (IO-3D-633-PBS)", "vendor": "Thorlabs", "part_number": "IO-3D-633-PBS", "mesh": "IO-3D-633-PBS.stl", "format": "stl", "name": "ISO_IO3D633", "element_type": "ISOLATOR", "specs": "633 nm, 3 mm aperture, PBS-based", "generic": {"radius": 9.0}},
+    "OPA": {"label": "Generic Optical Parametric Amplifier (two parts)", "vendor": "generic", "name": "OPA_generic", "element_type": "OPA", "specs": "Input end + separately placed output end; set signal wavelength, efficiency and optical path", "generic": {"signal_nm": 1300.0, "efficiency": 0.2}},
     "SHUTTER": {"label": "Generic Mechanical Shutter", "vendor": "generic", "name": "SHUTTER_generic", "element_type": "SHUTTER", "specs": "Binary open/closed in-line optical switch", "generic": {"radius": 12.5, "open": True}},
     "ID25": {"label": "25 mm Iris Diaphragm (ID25)", "vendor": "Thorlabs", "part_number": "ID25", "mesh": "ID25.stl", "format": "stl", "name": "AP_ID25", "element_type": "APERTURE", "specs": "1.0-25 mm SM1 iris", "generic": {"radius": 14.0}},
     "SM1D12": {"label": "SM1 Iris Diaphragm (SM1D12)", "vendor": "Thorlabs", "part_number": "SM1D12", "mesh": "SM1D12.stl", "format": "stl", "name": "AP_SM1D12", "element_type": "APERTURE", "specs": "1.0-12 mm SM1-mounted iris", "generic": {"radius": 12.0}},
@@ -308,6 +309,10 @@ def _generic_fallback(element_type, name, location, hints):
         return o
     if et == 'ISOLATOR':
         return eg.isolator(name, loc, DIR, radius=h.get("radius", 9.0))
+    if et == 'OPA':
+        out_loc = (loc[0] + 150.0 * TURN[0], loc[1] + 150.0 * TURN[1], loc[2] + 150.0 * TURN[2])
+        return eg.opa(name, loc, DIR, name + "_out", out_loc, DIR, signal_nm=h.get("signal_nm", 1300.0),
+                      efficiency=h.get("efficiency", 0.2))
     if et == 'SHUTTER':
         return eg.shutter(name, loc, DIR, radius=h.get("radius", 12.5), is_open=h.get("open", True))
     if et == 'APERTURE':

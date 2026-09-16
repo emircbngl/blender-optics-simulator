@@ -21,7 +21,7 @@ except ImportError:                     # bare-interpreter self-test: python3 op
 # GDD unless the element's dispersion is set by hand. A reflection off the front face (REFLECT, GHOST) crosses no
 # glass. A cube beamsplitter's reflection happens inside the cube, so any continuation counts for it.
 THIN_DISPERSIVE = ('LENS', 'WAVEPLATE', 'POLARIZER', 'FILTER', 'ATTENUATOR', 'ISOLATOR', 'CIRCULATOR', 'PASSTHROUGH',
-                   'CAVITY', 'OBJECTIVE', 'CRYSTAL', 'AOM', 'BEAMSPLITTER', 'DICHROIC')
+                   'CAVITY', 'OBJECTIVE', 'CRYSTAL', 'AOM', 'BEAMSPLITTER', 'DICHROIC', 'OPA')
 _FRONT_FACE_KINDS = ('REFLECT', 'GHOST')
 
 

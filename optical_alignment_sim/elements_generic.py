@@ -1682,6 +1682,25 @@ def slit(name, loc, axis, coll=None, width=2.0, angle=0.0, radius=14.0):
     return o
 
 
+def opa(name, loc, in_dir, out_name, out_loc, out_dir, coll=None, signal_nm=1300.0, efficiency=0.2, size=40.0):
+    """A two-part optical parametric amplifier: the INPUT end ``name`` at ``loc`` takes the pump travelling along
+    ``in_dir``; the OUTPUT end ``out_name`` at ``out_loc`` emits the signal and/or idler along ``out_dir``, however
+    far from the input end it is placed. The two are linked by the input end's ``opa_output``. The optical path
+    between them is set on the input end (opa_path_mode / opa_path_mm). Returns the input end."""
+    o = _cube(name, (size * 0.6, size * 0.4, size), coll)
+    o.data.materials.clear(); o.data.materials.append(MATS["bbo"]())
+    _tag(o, 'OPA', clear_aperture=size * 0.25, opa_signal_nm=signal_nm, opa_efficiency=efficiency)
+    _add_port(o, "IN", 'IN', (0, 0, -size * 0.5), (0, 0, -1), size * 0.25)
+    _set_matrix(o, Vector(loc), _z_to(Vector(in_dir).normalized()))
+    out = _disc(out_name, size * 0.3, 8.0, coll)
+    out.data.materials.clear(); out.data.materials.append(MATS["bbo"]())
+    _tag(out, 'OPA_OUTPUT', clear_aperture=size * 0.25)
+    _add_port(out, "OUT", 'OUT', (0, 0, 4.0), (0, 0, 1), size * 0.25)
+    _set_matrix(out, Vector(out_loc), _z_to(Vector(out_dir).normalized()))
+    o.optics.opa_output = out
+    return o
+
+
 def shutter(name, loc, axis, coll=None, is_open=True, radius=12.5):
     """A binary mechanical shutter / optical switch.
 

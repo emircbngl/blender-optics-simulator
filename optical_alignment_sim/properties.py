@@ -49,6 +49,8 @@ ELEMENT_TYPES = [
     ('PRISM',        "Dispersing Prism",           "Refractive material-dispersion prism (equilateral / Littrow / Pellin-Broca / Amici); fans a white beam by wavelength"),
     ('SLIT',         "Slit",                       "1-D (anisotropic) aperture: a pair of blades clipping the Gaussian along ONE transverse axis (T = erf(sqrt2 b/w))"),
     ('BEAM_DUMP',    "Beam Dump",                  "Terminal full-absorber (conical light trap); the ray ends here (power -> residual ~1e-3) -- safely dumps a rejected beam"),
+    ('OPA',          "Optical Parametric Amplifier", "Input end of a two-part OPA: takes the pump; its linked output end emits the signal and/or idler (user-set efficiency, Manley-Rowe split), after a user-set optical path"),
+    ('OPA_OUTPUT',   "OPA Output End",             "Output end of a two-part OPA: emits along its own axis wherever it is placed; a beam hitting it is blocked"),
     ('KNIFE_EDGE',   "Knife Edge",                 "Half-plane blade on a stage; transmits the beam past the edge (P = 0.5[1-erf(sqrt2(e-xc)/w)]); sweep -> erf profile -> beam radius"),
 ]
 
@@ -108,6 +110,11 @@ def _dof_update(self, context):
             mounts.compose_pose(obj)
     except Exception:
         pass
+
+
+def _opa_output_poll(self, obj):
+    op = getattr(obj, "optics", None)
+    return op is not None and op.is_optical and op.element_type == 'OPA_OUTPUT'
 
 
 def _anchor_poll(self, obj):
@@ -792,6 +799,29 @@ class OpticalElementProps(PropertyGroup):
     ao_gain: FloatProperty(name="Loop gain", default=0.5, min=0.0, max=1.0)
     wf_rms: FloatProperty(name="Wavefront RMS (waves)", default=0.0)
     part_key: StringProperty(name="Part", default="")   # catalog key / filename currently filling this slot
+    # --- OPA (two-part optical parametric amplifier): set on the INPUT end (element_type OPA). Phenomenological:
+    # the user sets the conversion efficiency; signal/idler powers follow from equal photon numbers.
+    opa_output: PointerProperty(name="Output end", type=bpy.types.Object, poll=_opa_output_poll,
+                                description="The OPA output end (an OPA Output End element) that emits the converted beam")
+    opa_signal_nm: FloatProperty(name="Signal wavelength (nm)", default=1300.0, min=1.0, soft_max=20000.0,
+                                 description="Signal wavelength. The idler follows from energy conservation, "
+                                             "1/l_idler = 1/l_pump - 1/l_signal, so the signal must be longer than the pump")
+    opa_output_select: EnumProperty(name="Emits", default='BOTH',
+        items=[('SIGNAL', "Signal", "Only the signal leaves the output end"),
+               ('IDLER', "Idler", "Only the idler leaves the output end"),
+               ('BOTH', "Signal + idler", "Both leave the output end, along the same axis")])
+    opa_efficiency: FloatProperty(name="Conversion efficiency", default=0.2, min=0.0, max=1.0,
+                                  description="Fraction of the pump power converted into signal + idler (split by "
+                                              "equal photon numbers: P_s = eta P l_p/l_s, P_i = eta P l_p/l_i). "
+                                              "The remaining pump is absorbed in the OPA. A set value, not a gain model")
+    opa_path_mode: EnumProperty(name="Path between the ends", default='REPLACE',
+        items=[('REPLACE', "Set path only", "The optical path from the input end to the output end is exactly the "
+                "set value, wherever the two ends are placed"),
+               ('ADD', "Distance + set path", "The straight distance between the two ends plus the set value")])
+    opa_path_mm: FloatProperty(name="Set path (mm)", default=0.0, min=0.0, unit='NONE',
+                               description="Optical path (mm) the OPA adds between its input and output ends: its "
+                                           "internal path, a delay line, fibre. Phase path at c; set the OPA's "
+                                           "Dispersion by hand for its group delay and GDD")
     anchor: PointerProperty(name="Anchor", type=bpy.types.Object, poll=_anchor_poll,
                             update=_anchor_update,
                             description="If set, this element's pose is relative to (follows) this object")

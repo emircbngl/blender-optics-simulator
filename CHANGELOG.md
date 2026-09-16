@@ -69,6 +69,16 @@ Re-run a bench saved with v0.29.1 before reusing its numbers.
   - `tests/test_render_animation.py` renders a keyed shutter through Blender's render pipeline.
 
 ### Added
+- **A two-part OPA element** (#58). An **OPA** input end takes the pump; its linked **OPA Output End**, placed anywhere,
+  emits the signal, the idler or both along its own axis.
+  - Signal wavelength set by the user; idler from energy conservation.
+  - Power from a set conversion efficiency, split by equal photon numbers. This is phenomenological, not a gain
+    model; the remaining pump is absorbed.
+  - The optical path between the ends is either exactly a set value, wherever the ends are, or the distance plus the
+    set value.
+  - The link shows in path statistics but is not drawn as a beam.
+  - `diagnose()` reports an OPA that cannot emit: no output end, or a signal not longer than the pump.
+  - `add_component("OPA")` creates both ends; `set_param(name, "opa_output", "<output end>")` relinks them.
 - **Group delay and GDD in path statistics** (#57). Each detector arrival reports `group_delay_fs` and `gdd_fs2`:
   - free space at c;
   - each traced glass leg (prisms, a polished mirror substrate with a named glass) at L·n_g/c and L·GVD from its

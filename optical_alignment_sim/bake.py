@@ -231,6 +231,8 @@ def _bake_beams_impl(context, scale=None):
     oob = getattr(scene.optics, "oob_display", 'FALSE_COLOR')
     mmpu = geometry.mm_per_unit(scene)                 # w(z) is in mm; the tubes are built in world units
     for i, s in enumerate(tracer.cached_segments):
+        if s.get("kind") == "OPA_LINK":                # bookkeeping between an OPA's two ends, not light in air
+            continue
         mat = beam_material(s.get("wavelength"), oob)  # per-segment color: SHG green != pump IR
         if mat is None:                                # hidden by the invisible-beam mode (IR/UV)
             continue

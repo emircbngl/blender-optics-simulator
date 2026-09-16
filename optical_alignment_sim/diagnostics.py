@@ -944,6 +944,33 @@ def _glass_extrapolation(scene, segs):
     return issues
 
 
+def _opa_unusable(scene, segs):
+    """An OPA input end a beam reaches but that emits nothing: no linked output end, or a signal wavelength not
+    longer than the arriving pump (no positive idler). The pump is absorbed there, so without this the light
+    just vanishes."""
+    issues = []
+    reported = set()
+    for s in segs:
+        name = s.get("to")
+        obj = scene.objects.get(name) if name else None
+        op = getattr(obj, "optics", None) if obj is not None else None
+        if op is None or not op.is_optical or op.element_type != 'OPA' or name in reported:
+            continue
+        wl = float(s.get("wavelength", 0.0) or 0.0)
+        if tracer.opa_outputs(op, wl):
+            continue
+        reported.add(name)
+        if op.opa_output is None:
+            why = "no output end is linked (set Output end)"
+        elif op.opa_signal_nm <= wl:
+            why = "its signal wavelength %.1f nm is not longer than the %.1f nm pump, so there is no idler" % (
+                op.opa_signal_nm, wl)
+        else:
+            why = "it emits nothing at the set efficiency and selection"
+        issues.append(_issue("opa_unusable", name, "%s absorbs the pump and emits nothing: %s" % (name, why), "WARN"))
+    return issues
+
+
 def _mirror_back_hits(scene, segs):
     """A beam arriving on a mirror's SUBSTRATE side (against the coated face's outward normal). With
     back_surface ABSORB the trace ends it there -- say so, or it reads as a mysteriously dark detector.
@@ -989,6 +1016,7 @@ def _run_diagnostics_from_segments(scene, segs):
     out += _glass_extrapolation(scene, segs)
     out += _ppln_qpm(scene, segs)
     out += _mirror_back_hits(scene, segs)
+    out += _opa_unusable(scene, segs)
     return out
 
 
@@ -1032,6 +1060,11 @@ _CORRECTION_SUGGESTIONS = {
         "tool": "set_param",
         "maybe_intentional_if": "a wavelength sweep briefly steps past the window and the out-of-window points are not used.",
         "confidence": 0.7},
+    "opa_unusable": {
+        "action": "Link the OPA's output end (Output end), and set a signal wavelength longer than the pump.",
+        "tool": "set_param",
+        "maybe_intentional_if": "the OPA is being used as a beam block while the bench is set up.",
+        "confidence": 0.8},
     "mirror_back_hit": {
         "action": "Turn the mirror around so its coated face meets the beam (rotate 180 deg about its vertical axis), or set back_surface to IDEAL if a back-side reflection is really meant.",
         "tool": "set_param",

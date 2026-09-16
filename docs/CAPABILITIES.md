@@ -53,11 +53,17 @@ contains live telescope, 4f and mode-match calculators and Tolerance Scan (selec
 Optical Report** begins with Refresh Report / Align All / Auto-align. **Present ▸ Sequence ▸
 Render Sequence…** writes PNGs, with optional ffmpeg encoding; the PNGs remain available without ffmpeg.
 
-## 3. Element types (34) — `properties.py` `element_type`
+## 3. Element types (36) — `properties.py` `element_type`
 - **Sources:** SOURCE, FIBER_COLLIMATOR.
 - **Reflective:** MIRROR, PRISM_MIRROR, BEAMSPLITTER, DICHROIC, GRATING, RETROREFLECTOR, DEFORMABLE_MIRROR.
 - **Transmissive:** LENS, WAVEPLATE, POLARIZER, FILTER, ATTENUATOR, ISOLATOR, PASSTHROUGH, CAVITY, OBJECTIVE,
   PRISM, CRYSTAL, AOM, SHUTTER (binary open/closed switch).
+- **Two-part OPA:** OPA (input end) linked to an OPA_OUTPUT (output end) placed anywhere.
+  - The output end emits the signal, the idler or both along its own axis.
+  - The idler wavelength follows from energy conservation.
+  - Power is a set conversion efficiency split by equal photon numbers (P_s = ηP·λp/λs, P_i = ηP·λp/λi). This is phenomenological, not a gain model; the rest of the pump is absorbed.
+  - The optical path between the ends is either exactly a set value, or the distance between the ends plus the set value (`opa_path_mode` REPLACE / ADD).
+  - Group delay and GDD of the OPA itself are set by hand.
 - **Apertures / stops:** APERTURE, PINHOLE, SLIT, KNIFE_EDGE, BEAM_DUMP.
 - **Detectors / sensing:** DETECTOR, PHOTODIODE, POWER_METER, WAVEFRONT_SENSOR, ABERRATOR, CIRCULATOR.
 - **Prism types** (`prism_type` on PRISM):
