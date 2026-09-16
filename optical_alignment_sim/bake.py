@@ -10,6 +10,7 @@ from __future__ import annotations
 import math
 from contextlib import contextmanager
 
+import bmesh
 import bpy
 from bpy.types import Operator
 from bpy.props import FloatProperty
@@ -169,21 +170,21 @@ def _make_taper(context, name, p1, p2, r1, r2, mat, coll):
     length = d.length
     if length < 1e-6:
         return None
-    bpy.ops.mesh.primitive_cone_add(radius1=max(r1, 1e-4), radius2=max(r2, 1e-4), depth=length,
-                                    location=(p1 + p2) * 0.5, vertices=24)
-    ob = context.active_object
-    ob.name = name
+    # Built with bmesh, not bpy.ops: render_pre re-bakes during a render, where no active object or
+    # operator context exists (the operator form failed there, so animation renders kept frame-1 beams).
+    me = bpy.data.meshes.new(name)
+    bm = bmesh.new()
+    uv = bm.loops.layers.uv.new("UVMap")
+    bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=24,
+                          radius1=max(r1, 1e-4), radius2=max(r2, 1e-4), depth=length, calc_uvs=True)
+    bm.to_mesh(me)
+    bm.free()
+    me.materials.append(mat)
+    ob = bpy.data.objects.new(name, me)
+    ob.location = (p1 + p2) * 0.5
     ob.rotation_mode = 'QUATERNION'
     ob.rotation_quaternion = Vector((0.0, 0.0, 1.0)).rotation_difference(d.normalized())
-    if ob.data.materials:
-        ob.data.materials[0] = mat
-    else:
-        ob.data.materials.append(mat)
-    for c in list(ob.users_collection):
-        if c is not coll:
-            c.objects.unlink(ob)
-    if ob.name not in coll.objects:
-        coll.objects.link(ob)
+    coll.objects.link(ob)
     return ob
 
 
@@ -221,7 +222,8 @@ def _bake_beams_impl(context, scale=None):
     tracer.cached_segments = tracer.trace_scene(
         scene, mode=scene.optics.trace_mode,
         max_segments=scene.optics.max_segments, max_depth=scene.optics.max_depth)
-    if context.object and context.object.mode != 'OBJECT':
+    active = getattr(context, "object", None)          # absent in a render handler's context
+    if active is not None and active.mode != 'OBJECT':
         bpy.ops.object.mode_set(mode='OBJECT')
     clear_baked(scene)
     coll = beam_collection(scene)
