@@ -1211,6 +1211,70 @@ def _second_surface_reflect(stack, segments, gcfg, ray, E, H, sn, idx):
     stack.append(out)
 
 
+def opa_outputs(op, pump_nm):
+    """[(kind, wavelength_nm, fraction of the pump power)] a two-part OPA emits for a pump at ``pump_nm``, or []
+    when it cannot: no linked output end, or a signal not longer than the pump (no positive idler). The idler
+    follows from energy conservation; the converted power opa_efficiency is split by equal photon numbers,
+    P_s = eta P l_p/l_s and P_i = eta P l_p/l_i, which sum to eta P."""
+    out_obj = getattr(op, 'opa_output', None)
+    sig = float(getattr(op, 'opa_signal_nm', 0.0))
+    if out_obj is None or pump_nm <= 0.0 or sig <= pump_nm:
+        return []
+    idl = physics.nl_child_wavelength('OPO', pump_nm, sig)
+    if idl is None or idl <= 0.0:
+        return []
+    eta = max(0.0, min(1.0, float(getattr(op, 'opa_efficiency', 0.0))))
+    sel = getattr(op, 'opa_output_select', 'BOTH')
+    rows = []
+    if sel in ('SIGNAL', 'BOTH'):
+        rows.append(('SIGNAL', sig, eta * pump_nm / sig))
+    if sel in ('IDLER', 'BOTH'):
+        rows.append(('IDLER', idl, eta * pump_nm / idl))
+    return rows
+
+
+def _opa_emit(stack, segments, ray, E, H, t, idx):
+    """A pump arriving at a two-part OPA's input end (E, hit at H). Records one OPA_LINK segment from H to the
+    linked output end, carrying the set optical path, and emits the signal and/or idler from the output end's
+    OUT port along its own axis, continuing that path. The link is bookkeeping, not light in free space: the
+    bake, overlay and schematic skip it. Each converted beam starts collimated with the pump's spot size at the
+    input end, at its new wavelength, with the pump's polarization (a modelling choice)."""
+    op = E.optics
+    rows = opa_outputs(op, ray.wl)
+    out_obj = getattr(op, 'opa_output', None)
+    if not rows or out_obj is None:
+        return
+    port = _first_out(out_obj.optics)
+    if port is None:
+        return
+    P_out = _wp(out_obj, port.local_position)
+    D_out = geometry.world_normal(out_obj, port.local_normal)
+    set_path = max(0.0, float(getattr(op, 'opa_path_mm', 0.0)))
+    link_len = set_path + ((P_out - H).length if getattr(op, 'opa_path_mode', 'REPLACE') == 'ADD' else 0.0)
+    opl_in = segments[idx]["opl"]
+    total = sum(frac for _k, _w, frac in rows) * ray.power
+    q_in = physics.q_propagate(ray.q, physics.abcd_free(t)) if ray.q is not None else None
+    w_in = physics.beam_radius_m2(q_in, ray.wl, ray.m2) if q_in is not None else None
+    link_ray = _Ray(H, (P_out - H).normalized() if (P_out - H).length > 1e-9 else D_out, total, ray.depth + 1, E,
+                    ray.wl, 'OPA_LINK', idx, jones=_jones_at_power(ray.jones, total), opl=opl_in, q=None,
+                    src_id=ray.src_id, coh=ray.coh, m2=ray.m2, ghost_depth=ray.ghost_depth)
+    link = _seg(link_ray, P_out, out_obj)
+    link["length_mm"] = link_len
+    link["opl"] = opl_in + link_len
+    lam_mm = ray.wl * 1.0e-6
+    link["phase"] = (2.0 * math.pi * link["opl"] / lam_mm) if lam_mm > 0.0 else 0.0
+    link_idx = len(segments)
+    segments.append(link)
+    for kind, wl, frac in rows:
+        power = ray.power * frac
+        j = _jones_at_power(ray.jones, power)
+        q = physics.q_from_waist(max(w_in, 1.0e-3), wl) if w_in is not None else None
+        stack.append(_Ray(P_out, D_out, power, ray.depth + 1, out_obj, wl, kind, link_idx, jones=j,
+                          opl=link["opl"], q=q, src_id=(ray.src_id, 'OPA_' + kind), coh=ray.coh,
+                          evec=(physics.field_from_jones(j, D_out) if j is not None else None), m2=ray.m2,
+                          ghost_depth=ray.ghost_depth, unpol=False))
+
+
 def _prism_exit_ray(glass_ray, E, He, d_out, opl_exit, power, parent_idx):
     """Continuation ray leaving a prism's exit face at He along d_out, carrying the accumulated optical path
     (opl_exit, already including the glass n*L legs) and the propagated Gaussian q. Polarization is rebuilt
@@ -1612,6 +1676,12 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
                     stack.append(_child(ray, E, Pp, Dp, ray.power * T_thru * iso_lin, 'CIRC_ISO', idx, t_eff,
                                         jones=ji))
             continue
+
+        if et == 'OPA_OUTPUT':
+            continue                                         # the output end's body: a beam that hits it is blocked
+        if et == 'OPA':
+            _opa_emit(stack, segments, ray, E, H, t, idx)
+            continue                                         # the pump not converted is absorbed in the OPA
 
         if et in TERMINAL:
             continue

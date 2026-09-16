@@ -60,6 +60,8 @@ def _signature(scene):
             vals += [round(d.current, 4) for d in op.dofs]
             for name in sorted(set(_SIG_PROPS) | set(param_schema.names(op.element_type))):
                 v = getattr(op, name, None)
+                if isinstance(v, bpy.types.ID):
+                    v = v.name                                # a linked object (an OPA's output end) by name
                 vals.append(tuple(v) if hasattr(v, "__len__") and not isinstance(v, str) else v)
             vals += [round(x, 6) for x in op.aberr_spec]      # Zernike inject (FloatVectorProperty)
             vals += [round(x, 6) for x in op.dm_command]      # DM correction command

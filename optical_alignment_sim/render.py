@@ -99,6 +99,8 @@ RENDER_DESCRIPTORS = {
     'POLARIZER':         ('glass', (0.70, 1.00, 0.85)),
     'CAVITY':            ('glass', (0.80, 0.90, 1.00)),
     'CRYSTAL':           ('glass', (0.70, 0.45, 0.90)),
+    'OPA':               ('glass', (0.70, 0.45, 0.90)),
+    'OPA_OUTPUT':        ('glass', (0.70, 0.45, 0.90)),
     'OBJECTIVE':         ('dark',  (0.10, 0.10, 0.12)),
     'AOM':               ('glass', (0.65, 0.80, 0.95)),
     'PRISM':             ('glass', (0.86, 0.92, 1.00)),

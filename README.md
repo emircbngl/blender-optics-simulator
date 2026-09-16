@@ -128,6 +128,25 @@ disciplines (inspect-first, byte-identical, advisory-corrections-you-judge).
 For headless pipelines, `optics_api` is importable directly inside Blender
 (`blender --background --python your_script.py`).
 
+### Two-part OPA
+
+An optical parametric amplifier whose output can sit anywhere on the bench:
+
+```python
+made = optics_api.add_component("OPA", location=(0, 0, 0))    # input end + a linked output end 150 mm away
+opa = made["name"]
+optics_api.set_param(opa, "opa_signal_nm", 1300.0)             # idler = 1/(1/l_pump - 1/l_signal)
+optics_api.set_param(opa, "opa_output_select", "BOTH")         # SIGNAL / IDLER / BOTH
+optics_api.set_param(opa, "opa_efficiency", 0.2)               # fraction of the pump converted
+optics_api.set_param(opa, "opa_path_mode", "REPLACE")          # REPLACE: path = set value; ADD: distance + value
+optics_api.set_param(opa, "opa_path_mm", 850.0)
+```
+
+- **Placement:** move and rotate the output end freely; it emits along its own axis.
+- **Power:** the converted power is split by equal photon numbers (P_s = ηP·λp/λs, P_i = ηP·λp/λi), and the rest of the pump is absorbed. This is a set efficiency, not a parametric gain model.
+- **In the UI:** the same fields are in the Element panel when the input end is selected.
+- **Dispersion:** for the OPA's own group delay and GDD, set its **Dispersion** to *Set by hand* (Element ▸ More).
+
 ### Detector path length, shutters, and custom meshes
 
 `path_statistics()` reports every source-to-detector arrival separately. It reconstructs the

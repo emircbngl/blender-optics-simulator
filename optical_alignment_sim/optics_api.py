@@ -1676,6 +1676,16 @@ def set_param(name, key, value):
     # Only scalar/enum params are settable here; refuse pointers (anchor), collections
     # (ports/dofs/mech) and vectors (base_pose) so a remote/API call can't corrupt the
     # element's structure or trip an RNA type error deep in Blender.
+    if key == 'opa_output':
+        if value in (None, ""):
+            obj.optics.opa_output = None
+            return {"ok": True, "name": name, key: None}
+        out = _scene().objects.get(str(value))
+        op = getattr(out, "optics", None) if out is not None else None
+        if op is None or not op.is_optical or op.element_type != 'OPA_OUTPUT':
+            return {"error": "opa_output must name an OPA Output End element: %r" % (value,)}
+        obj.optics.opa_output = out
+        return {"ok": True, "name": name, key: out.name}
     cur = getattr(obj.optics, key)
     if not isinstance(cur, (bool, int, float, str)):
         return {"error": "param '%s' is not a settable scalar" % key}
@@ -2310,6 +2320,8 @@ _ELEMENT_ROLE = {
     'WAVEPLATE': "retards one axis (HWP rotates, QWP circularizes)",
     'POLARIZER': "transmits one linear polarization (Malus), blocks the orthogonal",
     'SHUTTER': "binary in-line switch: open transmits, closed absorbs",
+    'OPA': "two-part OPA input end: converts the pump into signal/idler (set efficiency, Manley-Rowe split) emitted by its linked output end after a set optical path",
+    'OPA_OUTPUT': "OPA output end: emits the converted beam along its own axis; blocks a beam that hits it",
     'DETECTOR': "absorbs + reports power (terminal)",
     'WAVEFRONT_SENSOR': "reads the incoming wavefront's Zernike modes (terminal)",
     'APERTURE': "clips the beam to a clear aperture (iris / pinhole / slit)",

@@ -66,6 +66,8 @@ def _draw():
         # pump and its harmonic costs two, not one per segment
         groups = {}
         for s in segs:
+            if s["kind"] == "OPA_LINK":           # an OPA's internal path between its two ends is not drawn as a beam
+                continue
             col = _color_for(s["kind"], s.get("wavelength"), oob)
             if col is None:                   # hidden by the invisible-beam mode (IR/UV)
                 continue
