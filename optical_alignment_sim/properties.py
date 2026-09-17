@@ -22,7 +22,7 @@ ELEMENT_TYPES = [
     ('PRISM_MIRROR', "Prism Mirror (cage cube)",   "Internal 45deg reflective cube (e.g. KCB1C)"),
     ('BEAMSPLITTER', "Beam Splitter",              "Splits into reflected + transmitted"),
     ('DICHROIC',     "Dichroic Mirror",            "Wavelength-selective splitter (reflect + transmit)"),
-    ('GRATING',      "Diffraction Grating",        "Reflective grating (0th-order specular in layout)"),
+    ('GRATING',      "Diffraction Grating",        "Reflective grating; grooves along local Y, dispersion along local X"),
     ('RETROREFLECTOR', "Retroreflector",           "Corner-cube; returns the beam"),
     ('LENS',         "Lens",                       "Focusing / diverging element"),
     ('WAVEPLATE',    "Waveplate",                  "Polarization element (pass-through)"),
@@ -300,7 +300,7 @@ class OpticalElementProps(PropertyGroup):
     focal_length: FloatProperty(
         name="Focal Length (mm)", default=0.0,
         description="Focal length of the element in millimeters (default 0)")
-    # lens FORM (variant) -- shapes the mesh; the ABCD focal power is unchanged (set by focal_length).
+    # CYLINDRICAL powers local X only. All other forms retain the spherical thin-lens model.
     # AUTO = bi-convex/bi-concave by the sign of focal_length (the historic behavior).
     lens_type: EnumProperty(name="Lens form", default='AUTO',
         items=[('AUTO', "Auto (by focal sign)", "Bi-convex if f>=0, bi-concave if f<0"),
@@ -312,7 +312,7 @@ class OpticalElementProps(PropertyGroup):
                ('MENISCUS_NEG', "Negative meniscus", "Concave-convex, net diverging"),
                ('ACHROMAT', "Achromatic doublet", "Cemented crown+flint pair"),
                ('ASPHERE', "Aspheric", "Single aspheric surface"),
-               ('CYLINDRICAL', "Cylindrical", "Power in one axis only"),
+               ('CYLINDRICAL', "Cylindrical", "Thin lens: local X focuses, local Y is the cylinder axis; roll the object to rotate"),
                ('BALL', "Ball lens", "Full sphere"),
                ('GRIN', "GRIN rod", "Flat-faced gradient-index rod"),
                ('FRESNEL', "Fresnel", "Grooved flat lens"),
@@ -450,7 +450,15 @@ class OpticalElementProps(PropertyGroup):
     handedness: EnumProperty(name="Handedness",
         items=[('RIGHT', "Right", ""), ('LEFT', "Left", "")], default='RIGHT')
     linewidth_nm: FloatProperty(name="Linewidth (nm)", default=0.0, min=0.0)   # 0 -> ideal coherence
-    bandwidth_nm: FloatProperty(name="Bandwidth (nm)", default=0.0, min=0.0)   # >0 -> broadband / white-light
+    sensor_mode: EnumProperty(name="Sensor output", default='INTENSITY',
+        items=[('INTENSITY', "Intensity image", "Spatial intensity; display tint does not resolve wavelength"),
+               ('SPECTRUM', "Spectrum", "Ideal wavelength-resolving detector; power versus wavelength")])
+    spectrum_resolution_nm: FloatProperty(name="Resolution FWHM (nm)", default=1.0, min=0.001,
+        description="Gaussian instrument line-spread FWHM; simulated source sampling is unchanged")
+    bandwidth_nm: FloatProperty(name="Bandwidth (nm)", default=0.0, min=0.0,
+        description="0: monochromatic. Positive: 11 incoherent Gaussian-weighted wavelengths over "
+                    "center +/- bandwidth/2 (sampled FWHM interval). Try 550 nm center, 220 nm bandwidth "
+                    "for the white-light prism example")
     waist_um: FloatProperty(
         name="Beam Waist (µm)", default=500.0, min=0.0,
         description="Gaussian beam waist radius in micrometers (default 500)")

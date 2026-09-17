@@ -22,9 +22,9 @@ def _not(prop, *values):
 
 _LINEAR = _is("pol_type", 'LINEAR')
 _CIRCULAR = _is("pol_type", 'CIRCULAR')
-_SOURCE_FIELDS = [("wavelength", None), ("waist_um", None), ("pol_type", None),
+_SOURCE_FIELDS = [("wavelength", None), ("bandwidth_nm", None), ("waist_um", None), ("pol_type", None),
                   ("pol_angle", _LINEAR), ("handedness", _CIRCULAR)]
-_SOURCE_MORE = [("m2", None), ("linewidth_nm", None), ("bandwidth_nm", None)]
+_SOURCE_MORE = [("m2", None), ("linewidth_nm", None)]
 
 
 def _when_emitting(cond):
@@ -61,7 +61,9 @@ _MIRROR = {
     + _APERTURE + [("imprint_surface", None), ("imprint_zonal_px", None)],
 }
 _DETECTOR = {
-    "essentials": [("analyzer", None), ("det_mode", None), ("det_material", None), ("det_gain", None)],
+    "essentials": [("analyzer", None), ("sensor_mode", None),
+                   ("spectrum_resolution_nm", _is("sensor_mode", 'SPECTRUM')),
+                   ("det_mode", None), ("det_material", None), ("det_gain", None)],
     "more": [("det_spad_max", _is("det_mode", 'SPAD')), ("readout_topology", None),
              ("quadrant_gap_mm", _is("readout_topology", 'QUADRANT')), ("clear_aperture", None),
              ("sensor_px", None), ("pixel_size_um", None), ("sensor_exposure", None),
@@ -84,7 +86,7 @@ SCHEMA = {
     'DICHROIC': {"essentials": [("pass_type", None), ("cut_nm", None)],
                  "more": [("edge_width", None), ("n_eff", None)] + _APERTURE},
     'LENS': {
-        "essentials": [("focal_length", None), ("clear_aperture", None)],
+        "essentials": [("focal_length", None), ("lens_type", None), ("clear_aperture", None)],
         "more": [("lens_glass", None), ("design_wl", None), ("temp_C", None), ("thermal_lensing", None),
                  ("absorbed_power_W", _is("thermal_lensing", True)),
                  ("thermal_conductivity", _is("thermal_lensing", True)),
@@ -161,7 +163,6 @@ SCHEMA = {
 # mesh. Shown as text, not as editable fields, so editing them is not expected to change the beam.
 INFO = {
     'OBJECTIVE': ["obj_na", "obj_wd", "obj_long_wd"],
-    'LENS': ["lens_type"],
     'BEAMSPLITTER': ["bs_form"],
     'PRISM_MIRROR': ["prism_angle"],
     'PRISM': ["apex_angle_deg", "prism_design_wl"],

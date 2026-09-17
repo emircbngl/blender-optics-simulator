@@ -692,6 +692,16 @@ def beam_profile(detector: str = "", samples: int = 24) -> str:
 
 
 @mcp.tool()
+def detector_spectrum(detector: str = "", filepath: str = "") -> str:
+    """Ideal wavelength-resolving detector: exact lines and Gaussian-resolution bins.
+
+    Resolution is spectrum_resolution_nm (instrument FWHM); power is relative.
+    Optional filepath exports CSV on the Blender host. No wavelength scan required.
+    """
+    return _fmt(_call('detector_spectrum', detector=detector, filepath=filepath))
+
+
+@mcp.tool()
 def render(preset: str = "preview", camera: str = "HERO", filepath: str = "") -> str:
     """Configure or render the scene. preset: preview | final; camera: HERO/TOP/FRONT/SIDE.
     Pass filepath to write a still."""

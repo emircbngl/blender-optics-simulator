@@ -35,6 +35,7 @@ def _beam_path_json(segs):
         "p1": [round(x, 6) for x in s["p1"]], "p2": [round(x, 6) for x in s["p2"]],   # world units: 1e-3 m = 1 mm
         "kind": s["kind"], "power": s["power"],
         "wavelength": s["wavelength"], "parent": s["parent"],
+        **({'termination': s['termination']} if s.get('termination') else {}),
     } for s in segs]
 
 
@@ -2361,6 +2362,10 @@ def _inspect_beam_from_segments(element, segs):
         "m2": round(m2, 3),
     }
     qd = best.get("qd")
+    if best.get('gaussian'):
+        out['gaussian'] = best['gaussian']
+        out['principal_radii_mm'] = best['radii_mm']
+        out['radius_convention'] = 'w_mm is area-equivalent; use principal_radii_mm for the ellipse'
     if qd:
         q = complex(qd[0], qd[1])
         R = physics.beam_roc(q)
@@ -2378,6 +2383,22 @@ def _inspect_beam_from_segments(element, segs):
     if j and len(j) >= 4:
         out["polarization"] = physics.polarization_state((complex(j[0], j[1]), complex(j[2], j[3])))
     return out
+
+
+def detector_spectrum(detector="", filepath=""):
+    """Ideal optical power spectrum with Gaussian instrument FWHM; optional CSV export.
+
+    Power is relative (as in the tracer); electronics/responsivity do not calibrate it.
+    Exact lines are retained alongside resolution-broadened integrated bins.
+    """
+    from . import spectrum, scan as sensor_scan
+    det = sensor_scan._resolve_detector(_scene(), detector)
+    if det is None or det.optics.element_type == 'WAVEFRONT_SENSOR':
+        return {'error': 'Select an intensity/spectrum detector'}
+    result = spectrum.measure(det, _trace(_scene()))
+    if filepath:
+        result['csv_path'] = spectrum.save_csv(result, bpy.path.abspath(filepath))
+    return result
 
 
 def inspect_beam(element=""):
