@@ -94,6 +94,11 @@ jobs:
       - name: Two-part OPA element
         run: xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_opa.py
 
+      - name: Grating orientation, broadband library, cylindrical lenses and spectral detector
+        run: |
+          xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_feedback.py
+          xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_cylindrical_spectrum.py
+
       - name: Parameter schema (every input of every element type is in its schema and drawn)
         run: xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_param_schema.py
 

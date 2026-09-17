@@ -96,6 +96,22 @@ def _sensor_wavefront(segs, sensor_name, sensor_aperture_mm=0.0):
     coeffs = list(best.get("aberr")) if best.get("aberr") else [0.0] * physics.N_ZERNIKE
     modal_rms = physics.wavefront_rms(coeffs)
     a4 = _beam_defocus_coeff(best, sensor_aperture_mm)
+    if best.get('gaussian'):
+        import numpy as np
+        from .gaussian import GaussianQ
+        q = GaussianQ.unpack(best['gaussian'])
+        obj = bpy.context.scene.objects.get(sensor_name)
+        if obj is not None:
+            from . import scan
+            _,_,u,v = scan._detector_plane(obj)
+            transform = q.axes @ np.asarray([tuple(u),tuple(v)]).T
+            curvature = transform.T @ np.linalg.inv(q.matrix).real @ transform
+            radius = best.get('w_mm',0.)
+            if sensor_aperture_mm>0: radius = min(radius,sensor_aperture_mm)
+            factor = radius**2/(best['wavelength']*1e-6)
+            a4 = factor*np.trace(curvature)/(8*math.sqrt(3))
+            coeffs[4] += factor*curvature[0,1]/(2*math.sqrt(6))
+            coeffs[5] += factor*(curvature[0,0]-curvature[1,1])/(4*math.sqrt(6))
     if len(coeffs) > 3:
         coeffs[3] += a4                                     # beam curvature -> Noll Z4 (defocus)
     qd = best.get("qd")
@@ -107,6 +123,8 @@ def _sensor_wavefront(segs, sensor_name, sensor_aperture_mm=0.0):
         "defocus_waves": a4,
         "beam_roc_mm": R if math.isfinite(R) else None,
         "w_sensor_mm": best.get("w_mm", 0.0) or 0.0,
+        **({'gaussian': best['gaussian'], 'principal_radii_mm': best['radii_mm']}
+           if best.get('gaussian') else {}),
     }
     return coeffs, info
 

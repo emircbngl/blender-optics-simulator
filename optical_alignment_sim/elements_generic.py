@@ -222,7 +222,7 @@ def _roll_upright(R, n):
     """Roll ``R`` about the face normal ``n`` so local +Y lands on the most-skyward in-plane
     direction: a SQUARE plate reads edge-horizontal at any bench yaw (not a diamond), and a
     grating's grooves stand vertical, i.e. dispersion stays in the bench plane. Ports sit ON the
-    local Z axis with +/-Z normals, so a roll about Z leaves the trace byte-identical."""
+    local Z axis with +/-Z normals. On gratings, roll also rotates the dispersion direction."""
     n = Vector(n).normalized()
     t = Vector((0.0, 0.0, 1.0)) - n * n.z
     if t.length < 1e-6:                        # face looks straight up/down: any roll is as good
@@ -1065,8 +1065,24 @@ def lens(name, loc, axis, coll=None, focal=100.0, radius=14.0, lens_type='AUTO')
     depth = 5.0
     # real spherical lens, shaped by the FORM (lens_type): plano-/bi-convex/concave. Curvature is
     # cosmetic (the tracer uses the ABCD focal length), but the form + focal SIGN read correctly.
-    o = _revolve(name, _lens_profile(radius, focal, lens_type=lens_type), coll,
-                 seg=_seg_for_aperture(2.0 * radius), smooth=True)
+    if lens_type == 'CYLINDRICAL':
+        # Extruded X/Z profile: curved along powered X, constant along cylinder Y.
+        sag = min(2.0, max(.4, 100/max(abs(focal),10)))
+        section = [(-radius+2*radius*i/32,
+                    .5+sag*(1-((-radius+2*radius*i/32)/radius)**2) if focal>=0 else
+                    .5+sag*((-radius+2*radius*i/32)/radius)**2) for i in range(33)]
+        section += [(radius,-2.5),(-radius,-2.5)]
+        bm = bmesh.new()
+        front = [bm.verts.new((x,-radius,z)) for x,z in section]
+        back = [bm.verts.new((x,radius,z)) for x,z in section]
+        bm.faces.new(front); bm.faces.new(list(reversed(back)))
+        for i in range(len(section)):
+            j = (i+1)%len(section)
+            bm.faces.new((front[i],back[i],back[j],front[j]))
+        o = _bm_obj(name,bm,coll)
+    else:
+        o = _revolve(name, _lens_profile(radius, focal, lens_type=lens_type), coll,
+                     seg=_seg_for_aperture(2.0 * radius), smooth=True)
     o.data.materials.clear(); o.data.materials.append(MATS["lens"]())
     _tag(o, 'LENS', clear_aperture=radius, focal_length=focal, lens_type=lens_type)
     _add_port(o, "IN", 'IN', (0, 0, -depth * 0.5), (0, 0, -1), radius)

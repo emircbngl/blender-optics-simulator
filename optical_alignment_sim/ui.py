@@ -39,7 +39,10 @@ def _advanced_enabled():
 
 # Field labels that need units or wording the property name does not carry.
 _FIELD_TEXT = {"clear_aperture": "Clear Radius (mm)", "shutter_open": "Open", "pol_type": "Source Polarization",
-               "design_wl": "Design Wavelength (nm)"}
+               "design_wl": "Design Wavelength (nm)",
+               "bandwidth_nm": "Bandwidth (nm)", "lens_type": "Lens Form",
+               "sensor_mode": "Sensor Output",
+               "spectrum_resolution_nm": "Resolution FWHM (nm)"}
 
 
 def _display_value(props, name):
@@ -156,6 +159,19 @@ class OPTICS_PT_element(_OpticsPanel, Panel):
         col.use_property_decorate = False
         for name in param_schema.visible(props, "essentials"):
             col.prop(props, name, text=_FIELD_TEXT.get(name, ""))
+        if et == 'LENS' and props.lens_type == 'CYLINDRICAL':
+            col.label(text='Local X focuses; roll object to rotate axis', icon='INFO')
+        if et == 'GRATING':
+            col.label(text='Grooves: local Y; positive order: local X', icon='INFO')
+            from . import tracer
+            if any(s.get('to')==obj.name and s.get('termination')=='non_propagating_grating_order'
+                   for s in tracer.cached_segments):
+                col.label(text='Selected order cannot propagate for some arrivals', icon='ERROR')
+        if et in ('DETECTOR','PHOTODIODE','POWER_METER'):
+            if props.sensor_mode == 'SPECTRUM':
+                col.operator('optics.save_spectrum', text='Save Spectrum CSV').name = obj.name
+            else:
+                col.label(text='Image tint shows intensity, not wavelength', icon='INFO')
         if et == 'OBJECTIVE':
             tube_length = {'FINITE_160': 160.0, 'FINITE_195': 195.0}.get(props.obj_correction, props.obj_tube_ref)
             col.label(text="f_obj = %.2f mm  (M = f_tube/f_obj)" % (tube_length / max(props.obj_mag, 1e-6)),
@@ -573,6 +589,8 @@ class OPTICS_PT_optical_report(_OpticsPanel, Panel):
                 row = box.row(align=True)
                 row.operator("optics.sensor_monitor", text="Live Sensor Window", icon='IMAGE_BACKGROUND').name = obj.name
                 row.operator("optics.save_sensor", text="Save Sensor", icon='FILE_TICK').name = obj.name
+                if props.sensor_mode == 'SPECTRUM':
+                    box.operator('optics.save_spectrum', text='Save Spectrum CSV', icon='FILE_TICK').name = obj.name
                 if props.meas_power >= 0.0:
                     box.label(text="Power %.3f" % props.meas_power)
                     if props.meas_pol: box.label(text="Polarization: %s" % props.meas_pol)

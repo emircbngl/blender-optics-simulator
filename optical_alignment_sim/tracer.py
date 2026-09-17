@@ -19,6 +19,7 @@ from bpy.types import Operator
 from mathutils import Vector, Matrix
 
 from . import geometry, physics
+from .gaussian import GaussianQ
 
 EPS = 1e-4
 EXTEND_MM = 150.0          # how far an escaping ray is drawn
@@ -57,7 +58,7 @@ class _Ray:
         self.parent = parent
         self.jones = jones          # (Ex, Ey) Jones vector in the dir's transverse frame
         self.opl = opl              # optical path length accumulated up to p1 (mm)
-        self.q = q                  # Gaussian complex beam parameter
+        self.q = q.redirect(self.dir) if isinstance(q, GaussianQ) else q
         self.src_id = src_id        # coherence group (which source this ray came from)
         self.coh = coh              # coherence length (mm) from the source linewidth
         self.evec = evec            # 3-D complex field (vectorial pol), transverse to dir
@@ -230,7 +231,9 @@ def _seg(ray, p2, to_obj, sn=None):
         "jones": [j[0].real, j[0].imag, j[1].real, j[1].imag] if j else None,
         "opl": opl, "phase": phase, "src_id": ray.src_id, "coh": ray.coh,
         "w_mm": physics.beam_radius_m2(qd, ray.wl, ray.m2) if qd is not None else 0.0,
-        "qd": [qd.real, qd.imag] if qd is not None else None,   # Gaussian q at the hit -> R, w, Gouy
+        "qd": [qd.real, qd.imag] if qd is not None and not isinstance(qd, GaussianQ) else None,
+        **({'gaussian': qd.pack(), 'radii_mm': qd.radii(ray.wl, ray.m2).tolist()}
+           if isinstance(qd, GaussianQ) else {}),
         "m2": ray.m2,                                          # beam quality (B1): w_real = sqrt(m2)*beam_radius(q)
         "aberr": list(ray.aberr) if ray.aberr else None,
     }
@@ -290,14 +293,20 @@ def _child(ray, E, H, d, power, kind, idx, t, jones=None, q=None, evec=None, abe
         q = ray.q
         if q is not None:
             q = physics.q_propagate(q, physics.abcd_free(t))            # free space to the hit point
-            if E.optics.element_type == 'LENS' and E.optics.focal_length:
+            if (E.optics.element_type == 'LENS' and E.optics.focal_length
+                    and (E.optics.lens_type != 'CYLINDRICAL' or kind == 'TRANSMIT')):
                 lg = getattr(E.optics, 'lens_glass', 'N-BK7')    # the lens's real substrate glass
                 tC = getattr(E.optics, 'temp_C', 20.0)           # thermo-optic shift (20 C = no-op)
                 nd = physics.sellmeier_n(getattr(E.optics, 'design_wl', 633.0), lg, tC)
                 nl = physics.sellmeier_n(ray.wl, lg, tC)         # chromatic: f ~ 1/(n-1)
                 f_eff = (E.optics.focal_length * (nd - 1.0) / (nl - 1.0)
                          if abs(nl - 1.0) > 1e-6 else E.optics.focal_length)
-                q = physics.q_propagate(q, physics.abcd_lens(f_eff))
+                if E.optics.lens_type == 'CYLINDRICAL':
+                    if not isinstance(q, GaussianQ):
+                        q = GaussianQ.circular(q, ray.dir)
+                    q = q.lens(f_eff, geometry.world_normal(E, (1,0,0)))
+                else:
+                    q = physics.q_propagate(q, physics.abcd_lens(f_eff))
                 # opt-in THERMAL LENS: an absorbing optic adds an induced lens f_th to the beam q
                 # (Tier-1 lumped model; default off / 0 W -> byte-identical). w is preserved across a
                 # thin lens, so the post-lens q gives the beam radius at the optic.
@@ -336,6 +345,12 @@ def _child(ray, E, H, d, power, kind, idx, t, jones=None, q=None, evec=None, abe
     # propagation preserves M^2). Keyed on fresh_q (the ARGUMENT), not the post-propagation
     # local q -- the latter is non-None for every Gaussian continuation, which silently reset M^2.
     child_m2 = 1.0 if fresh_q else ray.m2
+    if isinstance(q, GaussianQ) and kind in ('REFLECT','SPLIT_R','GHOST','COATING_R'):
+        # The chief directions determine the specular bisector. Preserve the
+        # reflected ellipse's handedness, including cross terms from crossed cylinders.
+        bisector = d-ray.dir
+        if bisector.length > 1e-9:
+            q = q.reflect(bisector.normalized())
     return _Ray(H, d, power, ray.depth + 1, E, (wl if wl is not None else ray.wl), kind, idx,
                 jones=nj, opl=ray.opl + t, q=q,
                 src_id=(ray.src_id if coherence_id is None else coherence_id), coh=ray.coh, evec=nev,
@@ -406,6 +421,9 @@ def _clip_T(ray, E, t, H=None, sp=None, sn=None):
     is clipped harder, and one that lands on the body outside the opening is blocked. Without them (the
     legacy call) the beam is centred at normal incidence: CIRCULAR T = 1 - exp(-2 a^2/w^2), SQUARE /
     RECTANGULAR the separable erf product. A ray carrying no Gaussian is a point: 1 inside, 0 outside."""
+    if isinstance(ray.q, GaussianQ) and H is not None and sp is not None and sn is not None:
+        q = physics.q_propagate(ray.q, physics.abcd_free(t))
+        return q.aperture(E, ray.dir, H, sp, sn, ray.wl, ray.m2)
     return _aperture_T(E, ray.dir, _w_at(ray, t), H, sp, sn)
 
 
@@ -901,6 +919,8 @@ def _slit_T(ray, E, H, t):
         return 1.0
     b = max(E.optics.slit_width, 0.0) * 0.5
     axis = _clip_axis_world(E, E.optics.slit_angle)
+    if isinstance(ray.q, GaussianQ):
+        w = ray.q.abcd(physics.abcd_free(t)).marginal_radius(axis, ray.wl, ray.m2)
     center = _wc(E)
     off = abs((H - center).dot(axis))                  # chief-ray offset along the clipped axis (~0 if centered)
     # transmit the band [off - b, off + b]: T = 0.5(erf(sqrt2(off+b)/w) + erf(sqrt2(b-off)/w)). When off=0 this
@@ -917,6 +937,8 @@ def _knife_T(ray, E, H, t):
     if w <= 1e-9:
         return 1.0
     axis = _clip_axis_world(E, E.optics.knife_angle)
+    if isinstance(ray.q, GaussianQ):
+        w = ray.q.abcd(physics.abcd_free(t)).marginal_radius(axis, ray.wl, ray.m2)
     center = _wc(E)
     xc = (H - center).dot(axis)                        # chief-ray position on the cut axis (relative to stage center)
     e = E.optics.knife_position
@@ -1045,21 +1067,31 @@ def _dichroic_reflectance(op, wl, aoi=0.0):
     return 1.0 / (1.0 + math.exp((wl - cut) / w))   # LP (default): transmit long -> reflect short
 
 
-def _diffract(d, n, wl_nm, lines_per_mm, order):
-    """Grating equation in the plane of incidence: sin(theta_m) = sin(theta_i) +
-    m*lambda/d, d = 1/lines_per_mm. 0th order -> specular; an evanescent order
-    (|sin|>1) returns None so the caller can fall back to specular."""
+def _diffract(d, n, wl_nm, lines_per_mm, order, groove_axis):
+    """Reflective grating with grooves fixed to the element (local +Y).
+
+    Preserve the direction cosine along the grooves and add m*lambda/period
+    perpendicular to them. This includes conical incidence: MKS Diffraction
+    Grating Handbook, 8th ed., §2.2, eq. (2-3). Positive order is along
+    groove_axis cross n (local +X for the standard +Z surface). The incoming
+    hemisphere only selects the outgoing normal, never the dispersion sign.
+    None means the selected order cannot propagate; do not invent a zero order.
+    """
     if order == 0 or lines_per_mm <= 0.0:
         return geometry.reflect(d, n)
+    n = n.normalized()
+    grooves = groove_axis - groove_axis.dot(n) * n
+    if grooves.length < 1e-9:
+        return None                           # invalid ruling parallel to surface normal
+    grooves.normalize()
+    across = grooves.cross(n).normalized()
     n_in = n if d.dot(n) < 0.0 else -n              # normal facing the incoming ray
-    d_t = d - d.dot(n_in) * n_in
-    sin_i = d_t.length
-    t_hat = (d_t / sin_i) if sin_i > 1e-9 else n_in.orthogonal().normalized()
-    sin_m = sin_i + order * (wl_nm * 1.0e-6) * lines_per_mm
-    if abs(sin_m) > 1.0:
+    u = d.dot(across) + order * (wl_nm * 1.0e-6) * lines_per_mm
+    v = d.dot(grooves)
+    normal_sq = 1.0 - u*u - v*v
+    if normal_sq < -1e-7:                      # tolerate float32 at the grazing cutoff
         return None
-    cos_m = math.sqrt(max(0.0, 1.0 - sin_m * sin_m))
-    return (sin_m * t_hat + cos_m * n_in).normalized()
+    return (u * across + v * grooves + math.sqrt(max(0.0, normal_sq)) * n_in).normalized()
 
 
 def _prism_faces(E):
@@ -1089,7 +1121,9 @@ def _glass_seg(ray, p2, E, n_glass, kind, glass=None):
         "jones": [j[0].real, j[0].imag, j[1].real, j[1].imag] if j else None,
         "opl": opl, "phase": phase, "src_id": ray.src_id, "coh": ray.coh,
         "w_mm": physics.beam_radius_m2(qd, ray.wl, ray.m2) if qd is not None else 0.0,
-        "qd": [qd.real, qd.imag] if qd is not None else None,
+        "qd": [qd.real, qd.imag] if qd is not None and not isinstance(qd, GaussianQ) else None,
+        **({'gaussian': qd.pack(), 'radii_mm': qd.radii(ray.wl, ray.m2).tolist()}
+           if isinstance(qd, GaussianQ) else {}),
         "m2": ray.m2,
         "aberr": list(ray.aberr) if ray.aberr else None,
         # the Sellmeier glass of this leg (None: a fixed refractive index, so no dispersion model) -- read by
@@ -1786,9 +1820,11 @@ def trace_scene(scene, mode='AUTO', max_segments=64, max_depth=12):
             else:
                 stack.append(_child(ray, E, H, nd, ray.power * op.reflectivity, 'REFLECT', idx, t, jones=None, aberr=ab))
         elif et == 'GRATING':
-            nd = _diffract(ray.dir, sn, ray.wl, op.lines_per_mm, op.grating_order)
+            grooves = geometry.world_normal(E, (0.0, 1.0, 0.0))
+            nd = _diffract(ray.dir, sn, ray.wl, op.lines_per_mm, op.grating_order, grooves)
             if nd is None:
-                nd = geometry.reflect(ray.dir, sn)         # evanescent order -> specular
+                segments[idx]['termination'] = 'non_propagating_grating_order'
+                continue                      # selected order is non-propagating
             a = math.sqrt(max(op.reflectivity, 0.0))
             if ray.evec is not None:
                 # carry s/p through the TRUE plane of incidence onto the diffracted

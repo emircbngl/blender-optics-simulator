@@ -1676,12 +1676,16 @@ def q_from_waist(w0_mm, wavelength_nm, m2=1.0):
 
 def q_propagate(q, M):
     """q' = (A q + B) / (C q + D)."""
+    if hasattr(q, 'abcd'):
+        return q.abcd(M)
     (A, B), (C, D) = M
     return (A * q + B) / (C * q + D)
 
 
 def beam_radius(q, wavelength_nm):
     """Spot radius w from a q-parameter: 1/q = 1/R - i*lambda/(pi w^2)."""
+    if hasattr(q, 'area_radius'):
+        return q.area_radius(wavelength_nm)  # area-equivalent radius; full ellipse in segment.gaussian
     lam = wavelength_nm * NM_TO_MM
     inv_imag = (1.0 / q).imag
     if inv_imag >= 0.0:
@@ -1712,6 +1716,8 @@ def gouy_phase(q):
     -> +-pi/2 in the far field. It is a slowly-varying *piston* (no transverse dependence),
     so within one beam it is invisible, but between two beams of different focal history it
     shifts the interference fringes (the measurable Gouy effect)."""
+    if hasattr(q, 'gouy'):
+        return q.gouy()
     return math.atan2(q.real, q.imag)
 
 

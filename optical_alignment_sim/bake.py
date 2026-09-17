@@ -64,6 +64,7 @@ def _segments_sig(segs, oob=None, scale=None):
             s.get("kind"), s.get("wavelength"), s.get("m2"),
             round(s.get("w_mm") or 0.0, 6),
             tuple(round(v, 6) for v in (s.get("qd") or ())),
+            repr(s.get('gaussian')),
         ))
     return hash((oob, round(float(scale), 6) if scale is not None else None, tuple(rows)))
 
@@ -202,6 +203,36 @@ def _vis_radius(w_mm, kind, scale=1.0):
     return r * scale * (0.6 if kind == 'SPLIT_T' else 1.0)
 
 
+def _make_astigmatic(name, p1, p2, segment, mat, coll, scale, mmpu):
+    """Sample a smooth elliptical Gaussian envelope, including an interior waist."""
+    import numpy as np
+    from .gaussian import GaussianQ
+    from . import physics
+    qend = GaussianQ.unpack(segment['gaussian'])
+    length = segment.get('length_mm', (p2-p1).length*mmpu)
+    vertices=[]; faces=[]; nr=25; sides=32
+    for ring in range(nr):
+        f=ring/(nr-1)
+        q=qend.abcd(physics.abcd_free(-(1-f)*length))
+        vals,axes=np.linalg.eigh(q.precision(segment['wavelength'],segment.get('m2',1)))
+        radii=np.array([_vis_radius(1/math.sqrt(v),segment['kind'],scale)/mmpu for v in vals])
+        root=(axes*radii) @ axes.T
+        center=np.asarray(tuple(p1+(p2-p1)*f))
+        for j in range(sides):
+            angle=2*math.pi*j/sides
+            delta=q.axes.T @ root @ np.array([math.cos(angle),math.sin(angle)])
+            vertices.append(tuple(center+delta))
+    for i in range(nr-1):
+        for j in range(sides):
+            a=i*sides+j; b=i*sides+(j+1)%sides
+            faces.append((a,b,b+sides,a+sides))
+    faces.extend([tuple(reversed(range(sides))), tuple((nr-1)*sides+j for j in range(sides))])
+    mesh=bpy.data.meshes.new(name); mesh.from_pydata(vertices,[],faces); mesh.update()
+    mesh.materials.append(mat)
+    obj=bpy.data.objects.new(name,mesh); coll.objects.link(obj)
+    return obj
+
+
 def _bake_beams_impl(context, scale=None):
     """Bake the traced beams into meshes. `scale` multiplies every tube's radius (None = the
     scene's beam_radius_scale). It is a display scale on the real w(z), not a radius in mm --
@@ -237,6 +268,10 @@ def _bake_beams_impl(context, scale=None):
         if mat is None:                                # hidden by the invisible-beam mode (IR/UV)
             continue
         p1, p2 = Vector(s["p1"]), Vector(s["p2"])
+        if s.get('gaussian'):
+            if _make_astigmatic('BEAM_%02d' % i,p1,p2,s,mat,coll,scale,mmpu):
+                n += 1
+            continue
         qd = s.get("qd")
         if qd is not None:                              # taper to the real Gaussian w(z) along the segment
             q2 = complex(qd[0], qd[1]); wl = s.get("wavelength", 633.0)
