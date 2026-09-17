@@ -84,3 +84,7 @@ plates and four rods. Oversized optics are rejected before a generic preset chan
 The studio ground is placed below the complete bench, and every generated thumbnail checks all
 component bounds against the camera frame. Support tests explicitly check post-to-mount contact,
 not merely proximity between parts of an otherwise floating subgroup.
+
+## Mechanical assembly training roadmap
+
+The existing visual assets are not yet verified assembly-training models. The [product evidence inventory](mechanics/product-evidence.md) covers all 33 presets, selected real-product targets, subpart roles, source conflicts and missing dimensional evidence. Machine-readable records are in [product-evidence.json](mechanics/product-evidence.json); no runtime compatibility claims are made from this inventory. The sequential implementation status is tracked in [the assembly plan](../plans/optomechanical-assembly.md).
