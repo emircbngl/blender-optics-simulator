@@ -508,8 +508,10 @@ class ReachLayout:
         drawn_ops.add(name); items[self.pid] += 1
         return SimpleNamespace()
     def separator(self, *a, **k): pass
-for advanced in (False, True):
+# Some buttons only appear for a setting (a spectrum detector's Save Spectrum CSV), so walk those settings too.
+for advanced, sensor_mode in ((False, 'INTENSITY'), (True, 'INTENSITY'), (False, 'SPECTRUM')):
     ui._advanced_enabled = (lambda a=advanced: a)
+    reach_obj.optics.sensor_mode = sensor_mode
     for et, *_ in properties.ELEMENT_TYPES:
         if et == 'NONE':
             continue
@@ -524,6 +526,7 @@ for advanced in (False, True):
                                    **{k: getattr(panel, k) for k in dir(panel) if k.startswith('_') and not k.startswith('__')})
             panel.draw(inst, ctx)
 ui._advanced_enabled = original_advanced
+reach_obj.optics.sensor_mode = 'INTENSITY'
 reach_obj.optics.element_type = 'MIRROR'
 IN_PREFERENCES = {'optics.apply_update', 'optics.install_update', 'optics.check_updates'}
 unreachable = sorted(registered - drawn_ops - IN_PREFERENCES)
