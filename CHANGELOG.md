@@ -17,6 +17,18 @@ semantic versioning.
   spectrum, PNG/CSV export and `detector_spectrum` API/MCP readout.
 - See [usage, changed results and model limits](docs/DISPERSION_AND_SPECTRA.md).
 
+## [Unreleased]
+
+### Added
+- **Mechanical metadata (schema 1), metadata only.** An object can carry a versioned mechanical record next to its
+  optics: identity (manufacturer, part number, variant, revision), sources, interfaces, motions and an evidence
+  level. It is stored as JSON, so an unknown dimension stays null instead of becoming a numeric zero.
+  - No compatibility check, assembly engine or MCP tool yet; `capabilities()` reports it as unavailable.
+  - Evidence levels are limited to `unverified` and `visual_approximation`.
+  - `docs/mechanics/` holds the schema, the product evidence and the inventory; `plans/` holds the staged plan.
+- **Promotional Mach-Zehnder hardware** rebuilt through generation scripts (`tools/build_promo_mach_zehnder.py`,
+  `tools/verify_promo_assets.py`). Render-only: no optical object, port or trace result changes.
+
 ## [0.30.0] — An OPA, group delay and GDD, a Porro prism, polished mirrors, and results that were silently wrong — 2026-09-16
 
 Everything merged after v0.29.1 (#34–#64). Most of it comes from the 2026-09-13 audit and from the requests on
