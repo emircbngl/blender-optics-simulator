@@ -20,6 +20,7 @@ from . import tracer, beamcolor, geometry
 
 BEAM_COLL = "COL_BEAMS"
 BEAM_MAT = "OPTICS_BEAM"
+BEAM_MATERIAL_VERSION = 2
 
 # Tube radius for a segment that carries NO Gaussian q. Every source-originated ray does carry
 # one (the source floors its waist at 1 um, tracer.py), so this is a safety net, not a control:
@@ -81,12 +82,21 @@ def beam_collection(scene):
     return c
 
 
-def beam_material(wl_nm=None, mode='FALSE_COLOR'):
+def beam_material(wl_nm=None, mode='FALSE_COLOR', *, mm_per_unit=1.0):
     """Per-wavelength emission material (BEAM_MAT for the legacy default, BEAM_MAT_<nm>_<mode>
     otherwise) so a baked bench shows its real colors -- an SHG bench MUST read IR in / green out.
 
     The colour convention lives in `beamcolor`, shared with the viewport overlay and the SVG
-    export. Returns None when `mode` hides this wavelength, so the caller skips the tube."""
+    export. Returns None when `mode` hides this wavelength, so the caller skips the tube.
+
+    The mesh bounds describe the unchanged beam envelope, not an opaque solid.
+    Soft emission-only volume leaves the bench visible through the path. This is
+    an illustrative display, not an atmospheric scattering simulation. Scaling
+    emission per world-unit length keeps declared metre/mm scenes equivalent.
+    """
+    mm_per_unit = float(mm_per_unit)
+    if not math.isfinite(mm_per_unit) or mm_per_unit <= 0:
+        raise ValueError("mm_per_unit must be finite and positive")
     if wl_nm is None:
         name, color, strength = BEAM_MAT, (1.0, 0.08, 0.04, 1.0), 25.0   # legacy default (633-class red)
     else:
@@ -102,18 +112,50 @@ def beam_material(wl_nm=None, mode='FALSE_COLOR'):
         name = "%s_%.3f_%s" % (BEAM_MAT, float(wl_nm), mode)
         color = tuple(rgb) + (1.0,)
         strength = beamcolor.emission_strength(wl_nm, mode)
+    if mm_per_unit != 1.0:
+        name += "_U%.9g" % mm_per_unit
     m = bpy.data.materials.get(name)
-    if m:
+    if m and m.get("oab_beam_material_version") == BEAM_MATERIAL_VERSION:
         return m
-    m = bpy.data.materials.new(name)
+    # Upgrade old generated shaders as well as creating new ones. Otherwise an
+    # existing .blend would silently keep the old solid surface after re-bake.
+    m = m or bpy.data.materials.new(name)
     m.use_nodes = True
     nt = m.node_tree
     nt.nodes.clear()
     em = nt.nodes.new("ShaderNodeEmission")
     em.inputs["Color"].default_value = color
     em.inputs["Strength"].default_value = strength
+    coord = nt.nodes.new("ShaderNodeTexCoord")
+    center = nt.nodes.new("ShaderNodeVectorMath")
+    center.operation = 'SUBTRACT'
+    center.inputs[1].default_value = (0.5, 0.5, 0.0)
+    radial = nt.nodes.new("ShaderNodeVectorMath")
+    radial.operation = 'MULTIPLY'
+    radial.inputs[1].default_value = (2.0, 2.0, 0.0)
+    radius = nt.nodes.new("ShaderNodeVectorMath")
+    radius.operation = 'LENGTH'
+    edge = nt.nodes.new("ShaderNodeMapRange")
+    edge.name = "Soft beam edge"
+    edge.interpolation_type = 'SMOOTHSTEP'
+    edge.inputs['From Min'].default_value = 0.0
+    edge.inputs['From Max'].default_value = 1.0
+    edge.inputs['To Min'].default_value = 1.0
+    edge.inputs['To Max'].default_value = 0.0
+    gain = nt.nodes.new("ShaderNodeMath")
+    gain.operation = 'MULTIPLY'
+    gain.name = "Display emission per world unit"
+    gain.inputs[1].default_value = strength * 0.08 * mm_per_unit
+    nt.links.new(coord.outputs['Generated'], center.inputs[0])
+    nt.links.new(center.outputs['Vector'], radial.inputs[0])
+    nt.links.new(radial.outputs['Vector'], radius.inputs[0])
+    nt.links.new(radius.outputs['Value'], edge.inputs['Value'])
+    nt.links.new(edge.outputs['Result'], gain.inputs[0])
+    nt.links.new(gain.outputs[0], em.inputs['Strength'])
     out = nt.nodes.new("ShaderNodeOutputMaterial")
-    nt.links.new(em.outputs["Emission"], out.inputs["Surface"])
+    nt.links.new(em.outputs["Emission"], out.inputs["Volume"])
+    m["oab_beam_material_version"] = BEAM_MATERIAL_VERSION
+    m["oab_mm_per_unit"] = mm_per_unit
     return m
 
 
@@ -264,7 +306,7 @@ def _bake_beams_impl(context, scale=None):
     for i, s in enumerate(tracer.cached_segments):
         if s.get("kind") == "OPA_LINK":                # bookkeeping between an OPA's two ends, not light in air
             continue
-        mat = beam_material(s.get("wavelength"), oob)  # per-segment color: SHG green != pump IR
+        mat = beam_material(s.get("wavelength"), oob, mm_per_unit=mmpu)   # per-segment color: SHG green != pump IR
         if mat is None:                                # hidden by the invisible-beam mode (IR/UV)
             continue
         p1, p2 = Vector(s["p1"]), Vector(s["p2"])
@@ -310,7 +352,12 @@ def ensure_beams(context):
     # Preserve a scale explicitly chosen for the current bake through render-time re-bakes.
     # Calling bake_beams() without a scale resets this override to the scene setting.
     effective_scale = _baked_scale if _baked_scale is not None else _scene_scale(scene)
-    if have and _segments_sig(segs, oob, effective_scale) == _baked_sig:
+    materials_current = have and all(
+        o.data.materials and o.data.materials[0] and
+        o.data.materials[0].get("oab_beam_material_version") == BEAM_MATERIAL_VERSION and
+        o.data.materials[0].get("oab_mm_per_unit") == geometry.mm_per_unit(scene)
+        for o in c.objects if o.name.startswith("BEAM_"))
+    if materials_current and _segments_sig(segs, oob, effective_scale) == _baked_sig:
         return len(c.objects)
     return bake_beams(context, scale=effective_scale)
 

@@ -19,6 +19,17 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Fixed
+- **Baked beams no longer render as opaque rods.** The generated beam material had an opaque surface, so a
+  rendered bench was hidden behind its own beams. It is now an emission-only volume: the bench stays visible
+  through the beam path.
+  - Re-baking an old file upgrades the materials it generated.
+  - Material caches carry the appearance version and the declared unit scale, so metre and millimetre scenes
+    emit the same per physical length.
+  - Nothing optical changes: position, ports, wavelength, polarization, power, Gaussian propagation, apertures
+    and detector readings are identical.
+  - This is an illustrative display, not a scattering simulation. See `docs/BEAM_RENDERING.md`.
+
 ### Added
 - **Mechanical metadata (schema 1), metadata only.** An object can carry a versioned mechanical record next to its
   optics: identity (manufacturer, part number, variant, revision), sources, interfaces, motions and an evidence
