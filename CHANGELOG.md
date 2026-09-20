@@ -4,7 +4,7 @@ All notable changes to the **Blender Optics Simulator** (`optical_alignment_sim`
 here. The format follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 semantic versioning.
 
-## [Unreleased]
+## [0.31.0] — Gratings disperse by their grooves, cylindrical lenses, a spectrum detector, and beams you can see through — 2026-09-20
 
 ### Fixed
 - **Baked beams no longer render as opaque rods.** The generated beam material had an opaque surface, so a
