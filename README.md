@@ -1,5 +1,7 @@
 # Blender Optics Simulator
 
+Development: [dispersion, cylindrical lenses and spectral detector usage](docs/DISPERSION_AND_SPECTRA.md).
+
 [![CI](https://github.com/emircbngl/blender-optics-simulator/actions/workflows/ci.yml/badge.svg)](https://github.com/emircbngl/blender-optics-simulator/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/emircbngl/blender-optics-simulator?label=release&color=brightgreen)](https://github.com/emircbngl/blender-optics-simulator/releases/latest)
 [![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)

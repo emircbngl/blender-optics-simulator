@@ -188,7 +188,8 @@ def beam_profile_data(scene, det_name="", samples=24):
     chain = _beam_chain(segs, det.name)
     if not chain:
         return None
-    xs, ws = [], []
+    xs, ws, major, minor = [], [], [], []
+    astigmatic = False
     elems = []
     z0 = 0.0
     for s in chain:
@@ -196,14 +197,24 @@ def beam_profile_data(scene, det_name="", samples=24):
         if L is None:
             L = (Vector(s["p2"]) - Vector(s["p1"])).length * geometry.mm_per_unit(scene)
         qd = s.get("qd")
-        if qd and L > 1e-9:
-            q_end = complex(qd[0], qd[1])
+        gaussian = s.get('gaussian')
+        if (qd or gaussian) and L > 1e-9:
+            if gaussian:
+                from .gaussian import GaussianQ
+                q_end = GaussianQ.unpack(gaussian)
+                astigmatic = True
+            else:
+                q_end = complex(qd[0], qd[1])
             wl = s.get("wavelength", 632.8)
             m2 = s.get("m2", 1.0)                      # B1: physical radius = sqrt(m2)*beam_radius(q)
             for k in range(samples + 1):
                 f = k / samples
                 xs.append(z0 + f * L)
-                ws.append(physics.beam_radius_m2(q_end - (1.0 - f) * L, wl, m2))
+                q = physics.q_propagate(q_end, physics.abcd_free(-(1.0-f)*L))
+                w = physics.beam_radius_m2(q, wl, m2)
+                ws.append(w)
+                radii = q.radii(wl,m2) if gaussian else (w,w)
+                major.append(max(radii)); minor.append(min(radii))
         z0 += L
         to_obj = scene.objects.get(s["to"]) if s.get("to") else None
         if to_obj is not None:
@@ -212,7 +223,9 @@ def beam_profile_data(scene, det_name="", samples=24):
                           "w_mm": s.get("w_mm", 0.0)})
     if not xs:
         return None
-    return {"detector": det.name, "z": xs, "w": ws, "elements": elems}
+    return {"detector": det.name, "z": xs, "w": ws, "elements": elems,
+            **({'w_major': major, 'w_minor': minor, 'radius_convention': 'w is area-equivalent'}
+               if astigmatic else {})}
 
 
 def beam_profile_plot(scene, det_name="", samples=24):
@@ -222,13 +235,16 @@ def beam_profile_plot(scene, det_name="", samples=24):
     if data is None:
         return None
     base = os.path.join(tempfile.gettempdir(), "optics_beam_profile")
-    _render_plot(data["z"], {"w(z) (mm)": data["w"]}, base + ".png",
+    series = ({'major radius (mm)': data['w_major'], 'minor radius (mm)': data['w_minor']}
+              if 'w_major' in data else {'w(z) (mm)': data['w']})
+    _render_plot(data["z"], series, base + ".png",
                  title="Beam profile -> %s" % data["detector"],
                  vlines=[e["z_mm"] for e in data["elements"]])
     with open(base + ".csv", "w") as f:
-        f.write("z_mm,w_mm\n")
-        for z, w in zip(data["z"], data["w"]):
-            f.write("%.6g,%.6g\n" % (z, w))
+        f.write('z_mm,w_area_mm,w_major_mm,w_minor_mm\n' if 'w_major' in data else 'z_mm,w_mm\n')
+        for i,(z,w) in enumerate(zip(data['z'],data['w'])):
+            f.write(('%.6g,%.6g,%.6g,%.6g\n' % (z,w,data['w_major'][i],data['w_minor'][i]))
+                    if 'w_major' in data else ('%.6g,%.6g\n' % (z,w)))
         f.write("# elements: " + "; ".join("%s @ %.1f mm (CA %.1f mm)"
                 % (e["name"], e["z_mm"], e["aperture_mm"]) for e in data["elements"]) + "\n")
     i = min(range(len(data["w"])), key=lambda k: data["w"][k])
@@ -466,6 +482,10 @@ def _fringe_array(det, segs, size_mm, px, exposure=0.0, read_noise=0.0, well_dep
     fringe image); norm='peak' rescales to the fully-constructive maximum so ABSOLUTE
     brightness is faithful (a dark fringe looks dark) - what the live sensor window wants.
     """
+    if getattr(det.optics, 'sensor_mode', 'INTENSITY') == 'SPECTRUM' and det.optics.element_type != 'WAVEFRONT_SENSOR':
+        from . import spectrum
+        result = spectrum.measure(det, segs)
+        return spectrum.image(result, px), len(result['lines'])
     if getattr(det.optics, "element_type", "") == 'WAVEFRONT_SENSOR':
         from . import ao                              # a WFS records its wavefront map, not fringes
         ap = getattr(det.optics, 'clear_aperture', 0.0) or 0.0
@@ -517,7 +537,19 @@ def _fringe_array(det, segs, size_mm, px, exposure=0.0, read_noise=0.0, well_dep
             # large w, so every term vanishes and the old straight-fringe pattern is recovered;
             # two beams of different R give concentric (ring) fringes.
             qd = s.get("qd")
-            if qd:
+            if s.get('gaussian'):
+                from .gaussian import GaussianQ
+                q = GaussianQ.unpack(s['gaussian'])
+                hit = Vector(s['p2'])
+                du = uu - (hit-c).dot(u)*mmpu
+                dv = vv - (hit-c).dot(v)*mmpu
+                a = q.axes @ np.asarray(tuple(u)); b = q.axes @ np.asarray(tuple(v))
+                x = a[0]*du+b[0]*dv; y = a[1]*du+b[1]*dv
+                inv = np.linalg.inv(q.matrix)
+                quadratic = inv[0,0]*x*x + 2*inv[0,1]*x*y + inv[1,1]*y*y
+                phase = phase + k*quadratic.real/2 - q.gouy()
+                env = np.exp(k*quadratic.imag/(2*s.get('m2',1)))
+            elif qd:
                 hit = Vector(s["p2"])
                 du = uu - (hit - c).dot(u) * mmpu
                 dv = vv - (hit - c).dot(v) * mmpu
@@ -609,8 +641,6 @@ def live_fringe_update(scene):
     if not sp or not getattr(sp, "monitor_show", False):
         return
     segs = tracer.cached_segments
-    if not segs:
-        return
     keep = set()
     for det in _monitor_targets(scene, segs):
         op = det.optics
@@ -628,6 +658,9 @@ def live_fringe_update(scene):
             continue
         p, vis, _s = alignment.measure(segs, det.name, op.analyzer)
         txt = "P=%.3f" % p + ("  V=%.2f" % vis if vis >= 0.0 else "") + ("  %dpx @ %.1fum" % (px, op.pixel_size_um))
+        if op.sensor_mode == 'SPECTRUM':
+            from . import spectrum
+            txt = spectrum.caption(spectrum.measure(det, segs))
         monitor.set_frame(det.name, arr, txt)
         keep.add(det.name)
     for name in monitor.frame_names():            # drop stale detector frames (no beam now)
@@ -835,7 +868,34 @@ class OPTICS_OT_save_sensor(Operator):
         return {'FINISHED'}
 
 
-_classes = (OPTICS_OT_scan, OPTICS_OT_fringe, OPTICS_OT_quantum,
+class OPTICS_OT_save_spectrum(Operator):
+    bl_idname = 'optics.save_spectrum'
+    bl_label = 'Save Spectrum CSV'
+    filepath: StringProperty(subtype='FILE_PATH', default='//spectrum.csv')
+    filter_glob: StringProperty(default='*.csv', options={'HIDDEN'})
+    name: StringProperty()
+
+    def invoke(self, context, event):
+        context.window_manager.fileselect_add(self)
+        return {'RUNNING_MODAL'}
+
+    def execute(self, context):
+        from . import spectrum
+        det = _resolve_detector(context.scene, self.name)
+        if det is None or det.optics.element_type == 'WAVEFRONT_SENSOR':
+            self.report({'ERROR'}, 'Select an intensity/spectrum detector')
+            return {'CANCELLED'}
+        try:
+            result = spectrum.measure(det, _trace(context.scene))
+            spectrum.save_csv(result, bpy.path.abspath(self.filepath))
+        except (OSError, ValueError) as ex:
+            self.report({'ERROR'}, str(ex))
+            return {'CANCELLED'}
+        self.report({'INFO'}, 'Saved spectrum CSV (relative power)')
+        return {'FINISHED'}
+
+
+_classes = (OPTICS_OT_save_spectrum, OPTICS_OT_scan, OPTICS_OT_fringe, OPTICS_OT_quantum,
             OPTICS_OT_sensor_monitor, OPTICS_OT_save_sensor, OPTICS_OT_beam_profile)
 
 

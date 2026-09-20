@@ -4,6 +4,19 @@ All notable changes to the **Blender Optics Simulator** (`optical_alignment_sim`
 here. The format follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 semantic versioning.
 
+## [Unreleased]
+
+- Searchable component library sorted by displayed name, with size after name.
+- Groove-oriented reflective grating diffraction, including conical incidence;
+  inaccessible selected orders stop instead of silently reflecting as order zero.
+- Source bandwidth is visible in the main Element panel; added a broadband
+  white-light source preset.
+- Cylindrical lenses now focus one transverse axis, with coupled astigmatic
+  Gaussian propagation, elliptical sensor images, beam profiles and beam meshes.
+- Ideal wavelength-resolving sensor mode with Gaussian resolution FWHM, live
+  spectrum, PNG/CSV export and `detector_spectrum` API/MCP readout.
+- See [usage, changed results and model limits](docs/DISPERSION_AND_SPECTRA.md).
+
 ## [0.30.0] — An OPA, group delay and GDD, a Porro prism, polished mirrors, and results that were silently wrong — 2026-09-16
 
 Everything merged after v0.29.1 (#34–#64). Most of it comes from the 2026-09-13 audit and from the requests on
