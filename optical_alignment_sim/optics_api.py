@@ -172,6 +172,8 @@ def capabilities():
         "how_it_works": "Property-driven: each element carries optics properties; the generic tracer applies the "
                         "physics. Loop = get_state() -> act -> the beam re-traces live. Validation covers selected "
                         "formulas and scenes; inspect model limitations before interpreting results.",
+        "mechanical_assembly": {"available": False, "metadata_schema_version": 1,
+                                "status": "metadata only; no compatibility or assembly tools yet"},
         "tool_count": len(fns),
         "tool_groups": _TOOL_GROUPS,
         "other_tools": other,

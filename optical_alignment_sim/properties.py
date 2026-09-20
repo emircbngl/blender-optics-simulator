@@ -1005,14 +1005,21 @@ class OpticalDiagnosisCacheItem(PropertyGroup):
     fault_confidence: FloatProperty(options={'SKIP_SAVE'})
 
 
+class MechanicalMetadataProps(PropertyGroup):
+    # JSON preserves unknown values as null; numeric RNA defaults would turn them into zero.
+    record_json: StringProperty(name="Mechanical record", default="",
+                                description="Versioned mechanical metadata; absent on legacy scenes")
+
+
 _classes = (OpticalPort, AdjustmentDOF, MechLink, OpticalElementProps, OpticalSceneProps,
-            OpticalDiagnosisCacheItem)
+            OpticalDiagnosisCacheItem, MechanicalMetadataProps)
 
 
 def register():
     for c in _classes:
         bpy.utils.register_class(c)
     bpy.types.Object.optics = PointerProperty(type=OpticalElementProps)
+    bpy.types.Object.mechanics = PointerProperty(type=MechanicalMetadataProps)
     bpy.types.Scene.optics = PointerProperty(type=OpticalSceneProps)
     bpy.types.WindowManager.optics_diagnosis_cache = CollectionProperty(
         type=OpticalDiagnosisCacheItem, options={'SKIP_SAVE'})
@@ -1028,6 +1035,8 @@ def register():
 
 
 def unregister():
+    if hasattr(bpy.types.Object, "mechanics"):
+        del bpy.types.Object.mechanics
     for name in ("optics_scene_revision", "optics_diagnosis_revision",
                  "optics_diagnosis_warn", "optics_diagnosis_bad", "optics_diagnosis_cache",
                  "optics_correction_cache", "optics_correction_revision", "optics_design_result"):

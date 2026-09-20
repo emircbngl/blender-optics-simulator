@@ -1,5 +1,13 @@
 # Showcase video — production plan (v3 refresh)
 
+> **17 September 2026 priority update:** the user requested newly modelled optomechanics
+> and a richer setup for the promotional film. New still renders are authorized and
+> produced for the 13-element extended Mach–Zehnder scene. See
+> [V01 parts and delivery](mechanics/promo-parts.md). The zero-new-render restriction
+> below describes the older reuse-only edit, not this new asset work. The new geometry
+> is a visual prototype with explicit dimensional evidence gaps; do not describe it
+> as verified real-world assembly training. No new full movie has been rendered.
+
 A **general plugin-showcase film** (not a v0.10.0-only teaser): it shows the whole tool — build on real
 opto-mechanics, simulate the light with verified physics, align, sense + correct the wavefront, and let an
 AI agent drive the bench — with the v0.10.0 capabilities woven in as enrichment, not the sole subject.

@@ -6,19 +6,6 @@ semantic versioning.
 
 ## [Unreleased]
 
-- Searchable component library sorted by displayed name, with size after name.
-- Groove-oriented reflective grating diffraction, including conical incidence;
-  inaccessible selected orders stop instead of silently reflecting as order zero.
-- Source bandwidth is visible in the main Element panel; added a broadband
-  white-light source preset.
-- Cylindrical lenses now focus one transverse axis, with coupled astigmatic
-  Gaussian propagation, elliptical sensor images, beam profiles and beam meshes.
-- Ideal wavelength-resolving sensor mode with Gaussian resolution FWHM, live
-  spectrum, PNG/CSV export and `detector_spectrum` API/MCP readout.
-- See [usage, changed results and model limits](docs/DISPERSION_AND_SPECTRA.md).
-
-## [Unreleased]
-
 ### Fixed
 - **Baked beams no longer render as opaque rods.** The generated beam material had an opaque surface, so a
   rendered bench was hidden behind its own beams. It is now an emission-only volume: the bench stays visible
@@ -29,6 +16,27 @@ semantic versioning.
   - Nothing optical changes: position, ports, wavelength, polarization, power, Gaussian propagation, apertures
     and detector readings are identical.
   - This is an illustrative display, not a scattering simulation. See `docs/BEAM_RENDERING.md`.
+
+### Added
+- **Mechanical metadata (schema 1), metadata only.** An object can carry a versioned mechanical record next to its
+  optics: identity (manufacturer, part number, variant, revision), sources, interfaces, motions and an evidence
+  level. It is stored as JSON, so an unknown dimension stays null instead of becoming a numeric zero.
+  - No compatibility check, assembly engine or MCP tool yet; `capabilities()` reports it as unavailable.
+  - Evidence levels are limited to `unverified` and `visual_approximation`.
+  - `docs/mechanics/` holds the schema, the product evidence and the inventory; `plans/` holds the staged plan.
+- **Promotional Mach-Zehnder hardware** rebuilt through generation scripts (`tools/build_promo_mach_zehnder.py`,
+  `tools/verify_promo_assets.py`). Render-only: no optical object, port or trace result changes.
+
+### Added — Harca-Yita feedback (see [usage, changed results and model limits](docs/DISPERSION_AND_SPECTRA.md))
+- Searchable component library sorted by displayed name, with size after name.
+- Groove-oriented reflective grating diffraction, including conical incidence;
+  inaccessible selected orders stop instead of silently reflecting as order zero.
+- Source bandwidth is visible in the main Element panel; added a broadband
+  white-light source preset.
+- Cylindrical lenses now focus one transverse axis, with coupled astigmatic
+  Gaussian propagation, elliptical sensor images, beam profiles and beam meshes.
+- Ideal wavelength-resolving sensor mode with Gaussian resolution FWHM, live
+  spectrum, PNG/CSV export and `detector_spectrum` API/MCP readout.
 
 ## [0.30.0] — An OPA, group delay and GDD, a Porro prism, polished mirrors, and results that were silently wrong — 2026-09-16
 
