@@ -17,6 +17,19 @@ semantic versioning.
   spectrum, PNG/CSV export and `detector_spectrum` API/MCP readout.
 - See [usage, changed results and model limits](docs/DISPERSION_AND_SPECTRA.md).
 
+## [Unreleased]
+
+### Fixed
+- **Baked beams no longer render as opaque rods.** The generated beam material had an opaque surface, so a
+  rendered bench was hidden behind its own beams. It is now an emission-only volume: the bench stays visible
+  through the beam path.
+  - Re-baking an old file upgrades the materials it generated.
+  - Material caches carry the appearance version and the declared unit scale, so metre and millimetre scenes
+    emit the same per physical length.
+  - Nothing optical changes: position, ports, wavelength, polarization, power, Gaussian propagation, apertures
+    and detector readings are identical.
+  - This is an illustrative display, not a scattering simulation. See `docs/BEAM_RENDERING.md`.
+
 ## [0.30.0] — An OPA, group delay and GDD, a Porro prism, polished mirrors, and results that were silently wrong — 2026-09-16
 
 Everything merged after v0.29.1 (#34–#64). Most of it comes from the 2026-09-13 audit and from the requests on

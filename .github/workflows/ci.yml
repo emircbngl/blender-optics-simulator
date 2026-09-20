@@ -102,6 +102,9 @@ jobs:
       - name: Parameter schema (every input of every element type is in its schema and drawn)
         run: xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_param_schema.py
 
+      - name: Beam appearance (render-only material, optical invariance)
+        run: xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_beam_appearance.py
+
       - name: Render hardware detail (render-only, restores the bench) and generic mount catalog
         run: |
           xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_hardware_render.py
