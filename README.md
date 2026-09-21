@@ -14,12 +14,10 @@ real opto-mechanics, and renders it in Cycles. The whole optical state is readab
 a localhost MCP bridge, so an agent works from measured geometry instead of guesses.
 
 <p align="center">
-  <video src="https://github.com/emircbngl/blender-optics-simulator/raw/main/docs/video/E_optix.mp4" width="92%" controls muted loop playsinline poster="docs/img/video-poster.png"></video>
+  <a href="https://github.com/emircbngl/blender-optics-simulator/raw/main/docs/video/E_optix.mp4"><img src="docs/img/e-optix.gif" width="88%" alt="Sixteen-second tour: a green beam through the add-on's optomechanics, ending on the project title"></a>
 </p>
 
-<p align="center"><a href="https://github.com/emircbngl/blender-optics-simulator/raw/main/docs/video/E_optix.mp4"><img src="docs/img/video-poster.png" width="92%" alt="Sixteen-second tour: a green beam through the add-on's optomechanics, ending on the project title"></a></p>
-
-<p align="center"><em>Sixteen seconds of the add-on's own output. If the player above does not appear, the image links to the file.</em></p>
+<p align="center"><em>Sixteen seconds, rendered from a scene the add-on built. <a href="https://github.com/emircbngl/blender-optics-simulator/raw/main/docs/video/E_optix.mp4">Full-quality MP4</a>.</em></p>
 
 <p align="center">
   <picture>
