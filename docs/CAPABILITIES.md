@@ -53,7 +53,7 @@ contains live telescope, 4f and mode-match calculators and Tolerance Scan (selec
 Optical Report** begins with Refresh Report / Align All / Auto-align. **Present ▸ Sequence ▸
 Render Sequence…** writes PNGs, with optional ffmpeg encoding; the PNGs remain available without ffmpeg.
 
-## 3. Element types (36) — `properties.py` `element_type`
+## 3. Element types (35) — `properties.py` `element_type`
 - **Sources:** SOURCE, FIBER_COLLIMATOR.
 - **Reflective:** MIRROR, PRISM_MIRROR, BEAMSPLITTER, DICHROIC, GRATING, RETROREFLECTOR, DEFORMABLE_MIRROR.
 - **Transmissive:** LENS, WAVEPLATE, POLARIZER, FILTER, ATTENUATOR, ISOLATOR, PASSTHROUGH, CAVITY, OBJECTIVE,
