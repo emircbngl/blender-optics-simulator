@@ -15,6 +15,17 @@ license = ["SPDX:GPL-3.0-or-later"]
 website = "https://github.com/emircbngl/blender-optics-simulator"
 tags = ["Render"]
 
+# Promo-film tooling lives in the package so it can use the add-on's own modules, but users never
+# run it: tools/build_promo_mach_zehnder.py is the only importer. Keep it out of the shipped zip.
+[build]
+paths_exclude_pattern = [
+  "__pycache__/",
+  "/.git/",
+  "*.zip",
+  "promo_hardware.py",
+  "promo_stations.py",
+]
+
 [permissions]
 network = "Localhost bridge lets an external MCP agent drive the scene"
 files = "Import user mesh libraries; write converted meshes to the cache"

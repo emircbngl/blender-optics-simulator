@@ -4,6 +4,17 @@ All notable changes to the **Blender Optics Simulator** (`optical_alignment_sim`
 here. The format follows [Keep a Changelog](https://keepachangelog.com/), and the project uses
 semantic versioning.
 
+## [Unreleased]
+
+### Changed
+- **README rewritten.** A short front page: what it is, the 16-second video, install, a quick start
+  that runs, and links out. The long-form content moved to [docs/FEATURES.md](docs/FEATURES.md)
+  unchanged.
+- The promo-film modules (`promo_hardware`, `promo_stations`) stay in the source tree for
+  `tools/build_promo_mach_zehnder.py`, but the built zip now excludes them: 54 files instead of 56.
+- CI runs the mechanical schema test and the catalog inventory check.
+- CAPABILITIES said 36 element types; there are 35.
+
 ## [0.31.0] — Gratings disperse by their grooves, cylindrical lenses, a spectrum detector, and beams you can see through — 2026-09-20
 
 ### Fixed
