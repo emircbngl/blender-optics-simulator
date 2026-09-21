@@ -6,6 +6,21 @@ semantic versioning.
 
 ## [Unreleased]
 
+### Added
+- **Mechanical compatibility, read-only** (stage 03 of the optomechanics plan). `inspect_part`,
+  `list_interfaces` and `check_compatibility` in the API and over MCP answer whether two interfaces mate,
+  from the data each part states about itself.
+  - Verdicts: compatible / incompatible / unknown / adapter_required, with the rule-by-rule reasoning and
+    the source id each rule used.
+  - A missing value is never a pass: the verdict is `unknown` and the answer names the field.
+  - Threads check gender, standard, hand, form, major diameter, pitch and bottoming; bores check entry,
+    the stated clearance and insertion depth; seats check optic thickness; cage patterns check spacing.
+  - Adapter routes are searched shortest-chain-first, each part used once so a chain cannot loop, and an
+    adapter without a manufacturer and part number is reported as missing identity.
+  - `capabilities()` still reports `mechanical_assembly.available: false`: there is no assembly engine,
+    and a compatible verdict is a data statement, not a tested fit.
+  - See [docs/mechanics/compatibility.md](docs/mechanics/compatibility.md).
+
 ### Changed
 - **README rewritten.** A short front page: what it is, the 16-second video, install, a quick start
   that runs, and links out. The long-form content moved to [docs/FEATURES.md](docs/FEATURES.md)

@@ -797,6 +797,39 @@ def check_mechanics() -> str:
 
 
 @mcp.tool()
+def inspect_part(name: str) -> str:
+    """Read one object's stored mechanical identity: manufacturer, part number, sources, interfaces and
+    motions. Nothing is inferred from the object name or its mount preset, and nothing is written. An
+    evidence level of unverified or visual_approximation means the model is not a dimensional guarantee."""
+    return _fmt(_call("inspect_part", name=name))
+
+
+@mcp.tool()
+def list_interfaces(name: str) -> str:
+    """List one object's mechanical interfaces in millimetres and degrees: kind, thread labels, stated
+    dimensions and the source id behind each. A dimension the product data does not state comes back as
+    null; that is the gap check_compatibility refuses to guess around."""
+    return _fmt(_call("list_interfaces", name=name))
+
+
+@mcp.tool()
+def check_compatibility(a: str, interface_a: str, b: str, interface_b: str, adapters: str = "",
+                        optic_thickness_mm: float = 0.0, max_chain: int = 2) -> str:
+    """Can interface_a of object a mate with interface_b of object b? Returns compatible / incompatible /
+    unknown / adapter_required with the rule-by-rule reasoning, the sources each rule used and the fields
+    that were missing. A missing value is never a pass. `adapters` is a comma-separated list of object
+    names to search for a route (shortest chain first, each part used once, so no loops)."""
+    args = {"a": a, "interface_a": interface_a, "b": b, "interface_b": interface_b,
+            "max_chain": max_chain}
+    names = [n.strip() for n in adapters.split(",") if n.strip()]
+    if names:
+        args["adapters"] = names
+    if optic_thickness_mm > 0.0:
+        args["optic_thickness_mm"] = optic_thickness_mm
+    return _fmt(_call("check_compatibility", **args))
+
+
+@mcp.tool()
 def bake_beams(scale: float = 0.0) -> str:
     """Bake the traced beam path into emission-cylinder meshes (for rendering). `scale`
     multiplies the tube width (0 = use the scene's Beam width scale); the tube still follows
