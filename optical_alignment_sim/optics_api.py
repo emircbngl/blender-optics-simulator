@@ -10,6 +10,7 @@ existing execute_blender_code socket:
 """
 from __future__ import annotations
 
+import json as _json
 import math
 import os
 import tempfile
@@ -23,6 +24,7 @@ from . import optomech as _optomech
 from . import operators as _ops
 from . import bake as _bake
 from . import render as _render
+from . import mechanical_assembly as _mechanical_assembly
 from . import mechanical_catalog as _mechanical_catalog
 from . import mechanical_compatibility as _mechanical_compatibility
 from . import mechanical_interfaces as _mechanical_interfaces
@@ -55,7 +57,8 @@ _TOOL_GROUPS = {
         "capabilities", "get_state", "diagnose", "propose_corrections", "detect_phenomena", "produce_phenomenon",
         "inspect_beam", "inspect_element", "inspect_all", "beam_profile", "ao_measure", "get_wavefront", "sensor_capture",
         "check_mechanics", "coupling_efficiency", "material_tables",
-        "inspect_part", "list_interfaces", "check_compatibility"],
+        "inspect_part", "list_interfaces", "check_compatibility",
+        "assembly_graph", "disassembly_plan", "permitted_motions"],
     "build / scene": [
         "build_example", "build_bench", "add_component", "tag_element", "swap_part", "set_param", "set_mount", "convert_scene_to_mm",
         "import_glass", "fdtd_derive_property"],
@@ -66,7 +69,8 @@ _TOOL_GROUPS = {
         "talbot_effect", "speckle_pattern", "caustic_pattern"],
     "place / assemble (opto-mechanics)": [
         "place_relative", "make_cage", "make_tube", "make_rail", "place_on_grid", "place_on_rail",
-        "set_grid", "dress_bench"],
+        "set_grid", "dress_bench",
+        "enable_manual_assembly", "join_parts", "set_joint_state", "separate_parts"],
     "trace / measure": ["trace_beam", "path_statistics", "scan", "bake_beams", "clear_beams",
                         "tolerance_scan", "monte_carlo_tissue"],
     "align (mutates DOFs -- on demand only)": ["align_all", "align_element", "auto_align", "tilt_null",
@@ -177,9 +181,17 @@ def capabilities():
                         "physics. Loop = get_state() -> act -> the beam re-traces live. Validation covers selected "
                         "formulas and scenes; inspect model limitations before interpreting results.",
         "mechanical_assembly": {"available": False, "metadata_schema_version": 1,
+                                "graph_schema_version": _mechanical_assembly.GRAPH_VERSION,
+                                "manual_assembly": _scene().mechanics.manual_assembly,
                                 "compatibility_read_tools": ["inspect_part", "list_interfaces",
                                                              "check_compatibility"],
-                                "status": "metadata plus read-only compatibility; no assembly engine, and "
+                                "graph_tools": ["enable_manual_assembly", "join_parts", "set_joint_state",
+                                                "separate_parts", "assembly_graph", "disassembly_plan",
+                                                "permitted_motions"],
+                                "status": "metadata, read-only compatibility and a metadata-only assembly "
+                                          "graph (which parts are joined, in which state, and in what "
+                                          "order they come apart). No geometry: joining a part does not "
+                                          "place it, poses are not propagated, loops are not solved, and "
                                           "a compatible verdict is a data statement, not a tested fit"},
         "tool_count": len(fns),
         "tool_groups": _TOOL_GROUPS,
@@ -1755,6 +1767,276 @@ def check_compatibility(a, interface_a, b, interface_b, adapters=None, optic_thi
             max_chain=int(max_chain), optic_thickness_mm=optic_thickness_mm)
     except _mechanical_interfaces.SchemaError as exc:
         return {"error": str(exc)}
+
+
+# ---------------------------------------------------------------------------------------------------
+# Stage 04a: the mechanical assembly graph. Metadata only -- nothing here moves or creates geometry.
+# ---------------------------------------------------------------------------------------------------
+
+def _assembly_flag_off(scene):
+    if scene.mechanics.manual_assembly:
+        return None
+    return {"error": "manual mechanical assembly is off; call enable_manual_assembly(True) first. "
+                     "While it is off the assembly graph is read-only and the optical bench and Dress "
+                     "Bench behave exactly as before."}
+
+
+def _read_assembly(scene):
+    """(graph, error). An empty property is an empty graph, not a migration."""
+    raw = scene.mechanics.graph_json
+    if not raw:
+        return _mechanical_assembly.new_graph(), None
+    try:
+        return _mechanical_assembly.validate_graph(_json.loads(raw)), None
+    except (ValueError, TypeError, KeyError) as exc:
+        return None, {"error": "the stored assembly graph is unreadable: %s" % exc,
+                      "note": "the raw property is left untouched"}
+
+
+def _write_assembly(scene, graph):
+    """One validated serialization, one property write: an operation is atomic or it did not happen."""
+    encoded = _json.dumps(_mechanical_assembly.validate_graph(graph), ensure_ascii=False,
+                          allow_nan=False, sort_keys=True, separators=(",", ":"))
+    scene.mechanics.graph_json = encoded
+
+
+def _assembly_part(scene, name):
+    """(object, normalized record, error) for one part that may take part in the graph."""
+    obj = scene.objects.get(name)
+    if obj is None:
+        return None, None, {"error": "object not found: %s" % name}
+    if obj.name.startswith(_optomech.BENCH_PREFIX):
+        return None, None, {"error": "%s is automatic bench dressing, not a mechanical part: Dress "
+                                     "Bench owns it and rebuilds it. Manual assembly and automatic "
+                                     "dressing are kept apart." % name}
+    record, error = _mechanical_record(name)
+    if error:
+        return None, None, error
+    duplicates = []
+    for other in scene.objects:
+        if other is obj or not other.mechanics.record_json:
+            continue
+        found = _mechanical_catalog.read_object(other)["record"]
+        if found is not None and found["instance_id"] == record["instance_id"]:
+            duplicates.append(other.name)
+    if duplicates:
+        return None, None, {"error": "%s shares its instance_id with %s. A duplicated Blender object "
+                                     "copies the record, and the graph addresses parts by instance_id, "
+                                     "so give the copy its own record before joining it."
+                                     % (name, ", ".join(sorted(duplicates)))}
+    return obj, _mechanical_catalog.normalized(record), None
+
+
+def _resolve_instance(scene, instance_id):
+    for obj in scene.objects:
+        if not obj.mechanics.record_json:
+            continue
+        state = _mechanical_catalog.read_object(obj)
+        if state["record"] is not None and state["record"]["instance_id"] == instance_id:
+            return obj
+    return None
+
+
+def enable_manual_assembly(enable=True):
+    """Turn manual mechanical assembly on or off for this scene (the stage-04 feature flag).
+
+    Off is the default and the fallback: with it off the assembly calls refuse to write, the stored
+    graph is left exactly as it is, and the optical bench, Dress Bench and renders behave as before.
+    Turning it off does not delete a graph that was already recorded."""
+    scene = _scene()
+    scene.mechanics.manual_assembly = bool(enable)
+    graph, error = _read_assembly(scene)
+    return {"ok": True, "manual_assembly": scene.mechanics.manual_assembly,
+            "joints": 0 if error else len(graph["joints"]),
+            "note": "metadata only: this stage records how parts are joined, it does not move them"}
+
+
+def join_parts(a, interface_a, b, interface_b, carries=None, adapters=None, optic_thickness_mm=None,
+               max_chain=2, dry_run=False):
+    """JOIN two mechanical interfaces into one recorded joint, at state `aligned`.
+
+    The stage-03 verdict is the gate: only `compatible` may become a joint, and `adapter_required`,
+    `unknown` and `incompatible` are refused with the reason and the missing fields. A socket holds one
+    joint, a part cannot be joined to itself, and calling twice returns the joint that already exists
+    instead of a second one. `carries` decides transform ownership: None lets the graph decide (the part
+    named second is mounted onto the first when that is possible), 'a'/'b' demands that side and is
+    refused if it would mean two parents or a cycle, 'none' records a physical joint that carries no
+    pose -- which is how four cage rods between two plates are recorded. `dry_run=True` returns the same
+    decision without writing. No geometry is touched: this records the joint, it does not place the part."""
+    scene = _scene()
+    if not dry_run:
+        blocked = _assembly_flag_off(scene)
+        if blocked:
+            return blocked
+    graph, error = _read_assembly(scene)
+    if error:
+        return error
+    obj_a, record_a, error = _assembly_part(scene, a)
+    if error:
+        return error
+    obj_b, record_b, error = _assembly_part(scene, b)
+    if error:
+        return error
+    compatibility = check_compatibility(a, interface_a, b, interface_b, adapters=adapters,
+                                        optic_thickness_mm=optic_thickness_mm, max_chain=max_chain)
+    if "error" in compatibility:
+        return compatibility
+    try:
+        decision = _mechanical_assembly.plan_join(graph, record_a, interface_a, obj_a.name,
+                                                  record_b, interface_b, obj_b.name,
+                                                  compatibility, carries=carries)
+    except _mechanical_interfaces.SchemaError as exc:
+        return {"error": str(exc)}
+    if not decision["ok"]:
+        return dict(decision, dry_run=bool(dry_run))
+    out = {"ok": True, "joint": decision["joint"], "created": decision["created"],
+           "dry_run": bool(dry_run), "compatibility": {"verdict": compatibility["verdict"],
+                                                      "evidence": compatibility["evidence"]},
+           "joints": len(decision["graph"]["joints"])}
+    if decision.get("note"):
+        out["note"] = decision["note"]
+    if decision["created"] and not dry_run:
+        _write_assembly(scene, decision["graph"])
+    return out
+
+
+def set_joint_state(joint_id, state, dry_run=False):
+    """STEP one joint along aligned -> seated -> fastened -> locked, or one step back.
+
+    `aligned` is held in place, `seated` is in its seat, `fastened` is screwed, `locked` has a declared
+    lock engaged. One step at a time in either direction: skipping a state is refused, so the order a
+    real part goes on and comes off is always explicit. `locked` needs one of the two interfaces to
+    declare a lock; without that the data does not support the state. Metadata only."""
+    scene = _scene()
+    if not dry_run:
+        blocked = _assembly_flag_off(scene)
+        if blocked:
+            return blocked
+    graph, error = _read_assembly(scene)
+    if error:
+        return error
+    joint = _mechanical_assembly.find_joint(graph, joint_id)
+    interfaces = {}
+    if joint is not None:
+        for side in ("a", "b"):
+            obj = _resolve_instance(scene, joint[side]["instance_id"])
+            if obj is None:
+                return {"error": "%s of %s is no longer in the scene; the joint is dangling"
+                                 % (joint[side]["object"], joint_id), "joint": joint}
+            _obj, record, error = _assembly_part(scene, obj.name)
+            if error:
+                return error
+            found = next((i for i in record["interfaces"]
+                          if i["id"] == joint[side]["interface"]), None)
+            if found is None:
+                return {"error": "%s no longer has an interface %r; the record was replaced under "
+                                 "joint %s" % (obj.name, joint[side]["interface"], joint_id)}
+            interfaces[side] = found
+    decision = _mechanical_assembly.plan_state(graph, joint_id, state,
+                                               interface_a=interfaces.get("a"),
+                                               interface_b=interfaces.get("b"))
+    if not decision["ok"]:
+        return dict(decision, dry_run=bool(dry_run))
+    if decision.get("changed") and not dry_run:
+        _write_assembly(scene, decision["graph"])
+    out = {"ok": True, "joint": decision["joint"], "changed": bool(decision.get("changed")),
+           "dry_run": bool(dry_run)}
+    if decision.get("note"):
+        out["note"] = decision["note"]
+    return out
+
+
+def separate_parts(joint_id, dry_run=False):
+    """SEPARATE one joint. Only an `aligned` joint comes apart; anything else names the next step back
+    (unlock, loosen, unseat), so a part is taken off in the reverse order it went on. Metadata only:
+    nothing is moved or deleted, the joint record is removed."""
+    scene = _scene()
+    if not dry_run:
+        blocked = _assembly_flag_off(scene)
+        if blocked:
+            return blocked
+    graph, error = _read_assembly(scene)
+    if error:
+        return error
+    decision = _mechanical_assembly.plan_separate(graph, joint_id)
+    if not decision["ok"]:
+        return dict(decision, dry_run=bool(dry_run))
+    if not dry_run:
+        _write_assembly(scene, decision["graph"])
+    return {"ok": True, "removed": decision["removed"], "dry_run": bool(dry_run),
+            "joints": len(decision["graph"]["joints"])}
+
+
+def assembly_graph():
+    """READ the recorded assembly: every joint with its state, the transform-ownership forest and the
+    joints that close a physical loop. Parts are addressed by their record's instance_id, so a renamed
+    object keeps its joints and a deleted one shows up as `dangling` instead of vanishing quietly."""
+    scene = _scene()
+    graph, error = _read_assembly(scene)
+    if error:
+        return error
+    parents = _mechanical_assembly.ownership(graph)
+    joints, dangling = [], []
+    for joint in graph["joints"]:
+        entry = {"id": joint["id"], "state": joint["state"], "carries": joint["carries"],
+                 "closes_loop": joint["closes_loop"], "evidence": joint["evidence"], "parts": {}}
+        for side in ("a", "b"):
+            obj = _resolve_instance(scene, joint[side]["instance_id"])
+            if obj is None:
+                dangling.append({"joint": joint["id"], "side": side,
+                                 "instance_id": joint[side]["instance_id"],
+                                 "object_when_joined": joint[side]["object"]})
+            entry["parts"][side] = {"object": None if obj is None else obj.name,
+                                    "object_when_joined": joint[side]["object"],
+                                    "instance_id": joint[side]["instance_id"],
+                                    "definition_id": joint[side]["definition_id"],
+                                    "interface": joint[side]["interface"]}
+        joints.append(entry)
+    return {"ok": True, "manual_assembly": scene.mechanics.manual_assembly, "joints": joints,
+            "ownership": parents, "loops": [j["id"] for j in graph["joints"] if j["closes_loop"]],
+            "dangling": dangling,
+            "note": "a recorded joint is a stated mating, not a measured fit, and this stage places "
+                    "no geometry: the parts are where you put them"}
+
+
+def disassembly_plan(name):
+    """READ the order one part comes off in: `release` opens only the joints that cross the boundary of
+    the sub-assembly it carries, so it lifts off as a unit; `full` takes that sub-assembly apart too,
+    deepest joint first. Each step is a call you can make: a state to step back to, or a separation."""
+    scene = _scene()
+    graph, error = _read_assembly(scene)
+    if error:
+        return error
+    obj, record, error = _assembly_part(scene, name)
+    if error:
+        return error
+    plan = _mechanical_assembly.disassembly_order(graph, record["instance_id"])
+    names = {}
+    for instance_id in plan["carries"]:
+        carried = _resolve_instance(scene, instance_id)
+        names[instance_id] = None if carried is None else carried.name
+    return {"ok": True, "name": name, "instance_id": record["instance_id"],
+            "carries": [{"instance_id": i, "object": names[i]} for i in plan["carries"]],
+            "release": plan["release"], "full": plan["full"]}
+
+
+def permitted_motions(name):
+    """READ which of a part's declared mechanical motions may move right now, and what holds the rest.
+
+    A motion whose interface carries no joint is free; seating leaves it free, because seating is what
+    it is for; a fastened joint holds it and names the step that frees it; a locked joint refuses it
+    until the lock is opened. These are the mechanical motions from the part's record, which are not
+    the optical mount DOFs that `set_dof` turns."""
+    scene = _scene()
+    graph, error = _read_assembly(scene)
+    if error:
+        return error
+    obj, record, error = _assembly_part(scene, name)
+    if error:
+        return error
+    return {"ok": True, "name": name, "motions": _mechanical_assembly.motion_permissions(graph, record),
+            "note": "the limits are the record's own stated values in mm/deg; no torque, friction or "
+                    "collision is modelled"}
 
 
 def check_mechanics():

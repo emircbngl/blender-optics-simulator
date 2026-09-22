@@ -1011,8 +1011,19 @@ class MechanicalMetadataProps(PropertyGroup):
                                 description="Versioned mechanical metadata; absent on legacy scenes")
 
 
+class MechanicalSceneProps(PropertyGroup):
+    # The assembly graph is one serialized string on the scene: a single undo step covers a whole
+    # operation, and a half-written joint is impossible.
+    manual_assembly: BoolProperty(
+        name="Manual mechanical assembly", default=False,
+        description="Allow the mechanical assembly graph to be written. Off by default: Dress Bench "
+                    "and the optical bench work exactly as before while this is off")
+    graph_json: StringProperty(name="Assembly graph", default="",
+                               description="Versioned mechanical assembly graph; empty on legacy scenes")
+
+
 _classes = (OpticalPort, AdjustmentDOF, MechLink, OpticalElementProps, OpticalSceneProps,
-            OpticalDiagnosisCacheItem, MechanicalMetadataProps)
+            OpticalDiagnosisCacheItem, MechanicalMetadataProps, MechanicalSceneProps)
 
 
 def register():
@@ -1021,6 +1032,7 @@ def register():
     bpy.types.Object.optics = PointerProperty(type=OpticalElementProps)
     bpy.types.Object.mechanics = PointerProperty(type=MechanicalMetadataProps)
     bpy.types.Scene.optics = PointerProperty(type=OpticalSceneProps)
+    bpy.types.Scene.mechanics = PointerProperty(type=MechanicalSceneProps)
     bpy.types.WindowManager.optics_diagnosis_cache = CollectionProperty(
         type=OpticalDiagnosisCacheItem, options={'SKIP_SAVE'})
     bpy.types.WindowManager.optics_diagnosis_bad = IntProperty(options={'SKIP_SAVE'})
@@ -1035,6 +1047,8 @@ def register():
 
 
 def unregister():
+    if hasattr(bpy.types.Scene, "mechanics"):
+        del bpy.types.Scene.mechanics
     if hasattr(bpy.types.Object, "mechanics"):
         del bpy.types.Object.mechanics
     for name in ("optics_scene_revision", "optics_diagnosis_revision",
