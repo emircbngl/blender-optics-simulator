@@ -88,3 +88,32 @@ Bu JSON henüz MCP runtime aracı değildir. İlerideki ajan yalnız `primary_pu
 ## Kapanış
 
 Aşama 01 envanter kapsamı tamam: 33 girdinin her biri hedef veya açık eksikle sonuçlandırıldı. Aşama 02 için şema gereksinimleri hazır; ürün modelleme adımlarına geçmeden kaynak/datum, tolerans ve kimlik boşlukları çözülmeli.
+
+## Aşama 05 kaynak edinimi (22 Eylül 2026) — kısmi, ve aşama açık
+
+Aşama 05 (breadboard, taban, post, holder, bağlantı elemanları) taşıyıcı zincirin ölçülerini ister.
+Üreticinin canlı ürün sayfalarından yayımlanmış **nominal** veriler `support_facts` altına alındı; ikisi
+de mesh doğrulanmış değildir ve tolerans içermez:
+
+| Parça | Yayımlanan | Kaynak |
+|---|---|---|
+| TR50/M | Ø12.7 mm taşlanmış gövde; üstte M4 diş + çıkarılabilir çift uçlu M4 setskur (SS4M12D); tabanda M6 diş; yanda Ø3.2 mm delik; 303 paslanmaz; L = 50 mm | post ailesi sayfası |
+| PH50/M | Ø12.7 mm post holder; yaylı, altıgen kilitli başparmak vidası; L = 50 mm | ürün sayfası |
+
+İmperial TR serisi üstte 8-32, tabanda 1/4"-20'dir. **Bir varyantın dişini diğerine taşıma.**
+
+### Aşama 05'i hâlâ kapatmayan eksikler
+
+Sayfalar boyut, diş ve malzeme yayımlıyor; aşama 05'in denetlemesi gereken ölçüleri yayımlamıyor:
+
+1. TR/M üst M4 ve taban M6 için diş derinliği / kullanılabilir kavrama
+2. PH50/M delik çapı, Ø12.7 mm posta göre boşluğu ve giriş aralığı
+3. PH50/M taban dişi ve derinliği
+4. BA2/M yuva geometrisi, havşa ve bağlantı vidası boyu
+5. **Breadboard ürün kimliği yok** — 33 presetlik envanterde hiçbir tabla yok
+6. Her arayüz çerçevesi için datum konumu ve yönü — aşama 04b yerleştirmeyi çerçevelerden yapar ve
+   kaynaklı tek bir çerçeve yok
+
+Bunlar üreticinin CAD çizimlerinde. Aşama 01 hiçbir CAD dosyası almadı ve yeniden dağıtım hakkı
+belirsiz. Bu yüzden bağımlı iş **başlatılmadı**: `support_blockers.dependent_work_not_started = true`.
+Sıradaki hamle sahibin kararı — TR50/M, PH50/M ve BA2/M çizimlerini açmak ve breadboard ürününü seçmek.
