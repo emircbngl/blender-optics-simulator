@@ -25,6 +25,11 @@ code). Every shipped formula is covered by the repository's physics and Blender 
 - **Design (pure math):** `design_telescope`, `design_4f`, `mode_match`.
 - **Place / assemble:** `place_relative`, `make_cage`, `make_tube`, `make_rail`, `place_on_grid`, `place_on_rail`,
   `set_grid`, `dress_bench`.
+- **Mechanics (metadata, read-only compatibility, assembly graph):** `inspect_part`, `list_interfaces`,
+  `check_compatibility`; `enable_manual_assembly`, `join_parts`, `set_joint_state`, `separate_parts`,
+  `assembly_graph`, `disassembly_plan`, `permitted_motions`. These record and check *stated* mechanical
+  data — they place no geometry and a `compatible` verdict is not a tested fit. See
+  [mechanics/compatibility.md](mechanics/compatibility.md) and [mechanics/assembly.md](mechanics/assembly.md).
 - **Trace / measure:** `trace_beam`, `scan`, `bake_beams`, `clear_beams`.
 - **Path statistics:** `path_statistics` returns each detector arrival's route, geometric length, phase OPL and group
   delay / GDD. These come from the Sellmeier glass of traced glass legs plus hand-set element dispersion, and are

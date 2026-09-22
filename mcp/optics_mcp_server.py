@@ -830,6 +830,77 @@ def check_compatibility(a: str, interface_a: str, b: str, interface_b: str, adap
 
 
 @mcp.tool()
+def enable_manual_assembly(enable: bool = True) -> str:
+    """Turn manual mechanical assembly on or off for the scene (the stage-04 feature flag). Off is the
+    default: the assembly calls then refuse to write, and the optical bench, Dress Bench and renders
+    behave exactly as before. Turning it off does not delete a graph that was already recorded."""
+    return _fmt(_call("enable_manual_assembly", enable=enable))
+
+
+@mcp.tool()
+def join_parts(a: str, interface_a: str, b: str, interface_b: str, carries: str = "",
+               adapters: str = "", optic_thickness_mm: float = 0.0, max_chain: int = 2,
+               dry_run: bool = False) -> str:
+    """Record that interface_a of object a is joined to interface_b of object b, at state `aligned`.
+    METADATA ONLY: this does not move or place anything. Only a `compatible` verdict may become a joint;
+    adapter_required / unknown / incompatible are refused with the reason and nothing is written. One
+    interface holds one joint, and calling twice returns the existing joint instead of a second one.
+    `carries` is '', 'a', 'b' or 'none': '' lets the graph decide (b is mounted onto a when possible),
+    'a'/'b' demands that side and is refused if it would mean two parents or a cycle, 'none' records a
+    physical joint that carries no pose -- which is how cage rods between two plates are recorded.
+    `adapters` is a comma-separated list of object names to search for a route. dry_run decides only."""
+    args = {"a": a, "interface_a": interface_a, "b": b, "interface_b": interface_b,
+            "max_chain": max_chain, "dry_run": dry_run}
+    if carries.strip():
+        args["carries"] = carries.strip()
+    names = [n.strip() for n in adapters.split(",") if n.strip()]
+    if names:
+        args["adapters"] = names
+    if optic_thickness_mm > 0.0:
+        args["optic_thickness_mm"] = optic_thickness_mm
+    return _fmt(_call("join_parts", **args))
+
+
+@mcp.tool()
+def set_joint_state(joint_id: str, state: str, dry_run: bool = False) -> str:
+    """Step one joint along aligned -> seated -> fastened -> locked, or one step back. One step at a
+    time: skipping a state is refused, so assembly order stays explicit. `locked` needs one of the two
+    interfaces to declare a lock. Metadata only: nothing moves."""
+    return _fmt(_call("set_joint_state", joint_id=joint_id, state=state, dry_run=dry_run))
+
+
+@mcp.tool()
+def separate_parts(joint_id: str, dry_run: bool = False) -> str:
+    """Remove one recorded joint. Only an `aligned` joint comes apart; anything else is refused and names
+    the next step back (unlock, loosen, unseat). The objects and their records are left alone."""
+    return _fmt(_call("separate_parts", joint_id=joint_id, dry_run=dry_run))
+
+
+@mcp.tool()
+def assembly_graph() -> str:
+    """Read the recorded mechanical assembly: every joint with its state, the transform-ownership forest,
+    the joints that close a physical loop, and any joint whose part has been deleted (dangling). Parts
+    are addressed by their record's instance_id, so a renamed object keeps its joints."""
+    return _fmt(_call("assembly_graph"))
+
+
+@mcp.tool()
+def disassembly_plan(name: str) -> str:
+    """The order one part comes off in. `release` opens only the joints crossing the boundary of the
+    sub-assembly it carries, so it lifts off as a unit; `full` takes that sub-assembly apart too, deepest
+    joint first. Each step is a call you can make."""
+    return _fmt(_call("disassembly_plan", name=name))
+
+
+@mcp.tool()
+def permitted_motions(name: str) -> str:
+    """Which of a part's declared mechanical motions may move now, and what holds the rest: a fastened
+    joint holds its interface's motion and names the step that frees it, a locked one refuses it until
+    the lock is opened. These are mechanical motions, not the optical mount DOFs that set_dof turns."""
+    return _fmt(_call("permitted_motions", name=name))
+
+
+@mcp.tool()
 def bake_beams(scale: float = 0.0) -> str:
     """Bake the traced beam path into emission-cylinder meshes (for rendering). `scale`
     multiplies the tube width (0 = use the scene's Beam width scale); the tube still follows

@@ -20,6 +20,24 @@ semantic versioning.
   - `capabilities()` still reports `mechanical_assembly.available: false`: there is no assembly engine,
     and a compatible verdict is a data statement, not a tested fit.
   - See [docs/mechanics/compatibility.md](docs/mechanics/compatibility.md).
+- **Mechanical assembly graph, metadata only** (stage 04a of the optomechanics plan). `join_parts`,
+  `set_joint_state`, `separate_parts`, `assembly_graph`, `disassembly_plan` and `permitted_motions`
+  record which interfaces are joined, in which state, and in what order a part comes off. Off by
+  default behind `enable_manual_assembly`.
+  - Only a stage-03 `compatible` verdict may become a joint; adapter_required / unknown / incompatible
+    are refused with the reason and the missing fields, and nothing is written.
+  - Transform ownership stays a forest — one parent, no cycles — while the physical graph keeps the
+    loops real hardware has: a joint that cannot carry a pose is still recorded as a physical joint.
+  - States follow bench practice, one step at a time: aligned, seated, fastened, locked. `locked` needs
+    an interface that declares a lock. A fastened joint holds its interface's motion; a locked one
+    refuses it until the lock is opened.
+  - One JSON string on the scene, validated before a single write, so a refusal cannot leave half a
+    joint and one operation is one undo step. `dry_run` decides without writing.
+  - Parts are addressed by `instance_id`: a renamed object keeps its joints, a deleted one is reported
+    as dangling, and a duplicated record is refused. The `BENCH_` namespace stays Dress Bench's.
+  - No geometry: joining a part does not place it, poses are not propagated and loops are not solved,
+    so `capabilities()` still reports `mechanical_assembly.available: false`.
+  - See [docs/mechanics/assembly.md](docs/mechanics/assembly.md).
 
 ### Changed
 - **README rewritten.** A short front page: what it is, the 16-second video, install, a quick start
@@ -27,7 +45,8 @@ semantic versioning.
   unchanged.
 - The promo-film modules (`promo_hardware`, `promo_stations`) stay in the source tree for
   `tools/build_promo_mach_zehnder.py`, but the built zip now excludes them: 54 files instead of 56.
-- CI runs the mechanical schema test and the catalog inventory check.
+- CI runs the mechanical schema test, the catalog inventory check, the compatibility engine and the
+  assembly graph.
 - CAPABILITIES said 36 element types; there are 35.
 
 ## [0.31.0] — Gratings disperse by their grooves, cylindrical lenses, a spectrum detector, and beams you can see through — 2026-09-20

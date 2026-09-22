@@ -1,6 +1,6 @@
 # Gerçek parçalarla optomekanik montaj pratiği — yürütme planı
 
-Durum: 01 ve 02 TAMAMLANDI. V01 ilk görsel prototip teslimi hazır; nihai mekanik doğrulama açık. Ana sırada sonraki adım 03.
+Durum: 01, 02, 03 ve 04a TAMAMLANDI. V01 ilk görsel prototip teslimi hazır; nihai mekanik doğrulama açık. Ana sırada sonraki adım 04b (montaj geometrisi); 04 bütünüyle kapanmadı.
 Kullanıcı talimatı: önce Astra ile liste; sonraki oturumlarda sırayla uygula. Bir adım doğrulanmadan diğerine geçme; geçiş için tekrar onay isteme. Paralel uygulama yok. Bu dosya devam oturumlarının başlangıç noktasıdır.
 
 ## Hedef ve mevcut durum
@@ -57,6 +57,14 @@ Kontrol/çıkış: kaynaklı olumlu/olumsuz/bilinmeyen/adaptörlü örnekler; ya
 Geri dönüş: yeni katı uyum yolunu kapat; eski preset uygulaması korunur.
 
 ## 04 — Montaj grafiği ve montaj işlemleri
+
+Bölme (22 Eylül 2026): bu adım tek inceleme birimi için büyük olduğundan bütçe kuralı uyarınca ikiye
+ayrıldı. **04a — grafik, durumlar ve kapılar** (geometri yok): parça/bağlantı grafiği, durum makinesi,
+dönüşüm sahipliği ormanı ile fiziksel grafiğin ayrılması, kilitli hareket reddi, söküm sırası, dry_run,
+atomik yazma, save/reload ve Dress Bench ayrımı. **04b — montaj geometrisi**: bağlantı çerçevelerinden
+yerleştirme, alt montaj dönüşüm aktarımı, kapalı çevrimde poz/kısıt tutarlılığı veya gerekçeli
+çözümsüzlük, gerçek geometride Dress Bench/elle montaj sahipliği ve render/yeniden dress korunması.
+Kapsam daraltma değildir: 04, 04b tamamlanmadan kapanmaz ve 05'e geçilmez.
 
 Bağlam: 03 motoru kararı verir; mevcut BENCH sahipliği gerçek sabitlenmiş bağlantı anlamına gelmez.
 Dosyalar: yeni `mechanical_assembly.py`, `tests/test_mechanical_assembly.py`; `mounts.py`, `optomech.py`, `optics_api.py`.
@@ -149,9 +157,11 @@ Bu bağlantılar araştırma girişidir; ürün bazlı ölçü onayı henüz ver
 - 01: tamamlandı (16 Eylül 2026). 33/33 preset, 30 kaynakta adlandırılmış hedef, 3 kimlik/kanıt açığı; 27 kaynak ve 10 destek parçası adayı. Ölçü/uyum/model doğrulaması henüz yapılmadı.
 - 02: tamamlandı. mechanical_catalog.py / mechanical_interfaces.py, Object.mechanics snapshot, capabilities durum bildirimi ve docs/mechanics/schema.md eklendi. mechanical-schema-v2 PASS (16 geçersiz örnek, save/reload, null/birim, atomik yazma, optik yalıtım); mechanical-schema-units 32/32 PASS.
 - 03: tamamlandı (21 Eylül 2026). `mechanical_compatibility.py` + `tests/test_mechanical_compatibility.py` (27/27) + `docs/mechanics/compatibility.md`. API adları sabitlendi: `inspect_part`, `list_interfaces`, `check_compatibility`; aynı üç araç MCP'de de var. Kararlar: uyumlu/uyumsuz/bilinmiyor/adaptör gerekli; eksik alan asla geçer sayılmaz ve `missing` içinde adlandırılır; kanıtsız kural olumlu sonuç veremez; beyan edilmemiş boşluk "bilinmiyor"dur; adaptör zinciri en kısa yoldan aranır, her parça bir kez kullanılır (döngü yok) ve kimliksiz adaptörün eksikliği bildirilir. Kaynaklı örnekler: 4 mm SR çubuğu 6 mm LCP01 deliğinde reddedildi, 1/4-80 adjuster ile 8-32 vidası ayrıldı, TRF90'ın 5 mm giriş sınırı dibe vurmayı yakaladı. Şema v1'de profil olmadığı için dovetail/clamp ve düzlem oturması bilinmiyor kalıyor; ölçü doğrulaması, tolerans yığını ve montaj sırası hâlâ açık.
-- 04–12: bekliyor.
+- 04a: tamamlandı (22 Eylül 2026). `mechanical_assembly.py` (bpy'siz) + `tests/test_mechanical_assembly.py` (61/61) + `docs/mechanics/assembly.md` + `Scene.mechanics` (graph_json, manual_assembly) + CI adımı. API adları sabitlendi: `enable_manual_assembly`, `join_parts`, `set_joint_state`, `separate_parts`, `assembly_graph`, `disassembly_plan`, `permitted_motions`; MCP araçları eklenmedi (aşama 11). Kararlar: yalnız 03'ün `compatible` kararı bağlantıya dönüşür, diğer üç karar gerekçesiyle reddedilir ve hiçbir şey yazılmaz; bir arayüz tek bağlantı taşır; aynı çağrı ikinci kez kopya üretmez; dönüşüm sahipliği orman kalır (döngü/ikinci ebeveyn reddedilir), taşıyamayan bağlantı fiziksel bağlantı olarak kaydedilir ve kapalı çevrim böyle kabul edilir; durumlar aligned→seated→fastened→locked tek adım ilerler, atlama reddedilir; `locked` yalnız arayüzü kilit beyan ediyorsa mümkündür; fastened arayüzün hareketini tutar, locked reddeder; söküm ters sırada ve `release`/`full` olarak dönülür; grafik sahnede tek JSON dizesidir, tam doğrulama sonrası tek yazma yapılır; parçalar `instance_id` ile adreslenir, kopyalanmış kayıt reddedilir, silinen parça `dangling` görünür; `BENCH_` ad alanı Dress Bench'e aittir (strip o adı silmektedir, bu yüzden oraya bağlantı reddedilir). Geometri yok: bağlamak yerleştirmez, poz aktarılmaz, çevrim çözülmez; `available: false` sürüyor. Bulgu: arka planda `bpy.ops.ed.undo` poll edilemediği için undo ADIMI headless sınanamadı; sınanan şey bir işlemin tek datablock üzerinde tek özellik yazması.
+- 04b: bekliyor (montaj geometrisi; yukarıdaki bölme notu kapsamı tanımlar).
+- 05–12: bekliyor.
 - V01 ilk teslim: sıfırdan BA2/M, PH50/M, TR50/M ve EO15-866 hedefli dört görsel parça; iki ayna istasyonu, 13 optikli genişletilmiş Mach–Zehnder, iki Cycles still ve beş asset kütüphanesi. Ayrıntılar `docs/mechanics/promo-parts.md`. `promo-asset-reload` PASS (sahne ve beş asset). `promo-new-parts-v2` PASS: altı nominal gövde zarfı, optik iz değişmezliği, BAD=0. İç geometri, toleranslar ve breadboard bağlantıları henüz doğrulanmadı; V01 nihai gerçekçilik kapısı açık. Tüm parçalar yenilenmiş değildir.
-- Sonraki çalışma: ana sırada 03 uyumluluk motoru; V01 gerçek montaj doğrulaması 03–04 ve ilgili parça doğrulama adımlarına bağımlı. Görsel teslim bu adımları tamamlanmış saymaz.
+- Sonraki çalışma: ana sırada 04b montaj geometrisi; V01 gerçek montaj doğrulaması 03–04 ve ilgili parça doğrulama adımlarına bağımlı. Görsel teslim bu adımları tamamlanmış saymaz.
 - 01 dosyaları: `docs/mechanics/product-evidence.md`, `docs/mechanics/product-evidence.json`, `tools/check_mechanical_inventory.py`.
 - 01 kontrolü: `python3 tools/check_mechanical_inventory.py` → INVENTORY PASS 33/33; 30 hedef, 3 açık. Bu kontrol kapsam ve kaynak referanslarının yapısını denetler, dış kaynak doğruluğunu veya mesh uyumunu kanıtlamaz. Runtime kodu değişmediği için Blender render/regresyonu tekrar çalıştırılmadı.
 - Kanıt açıkları: POLARIS-K1 eski belge canlı erişimi; CAMERA/SOURCE gerçek SKU; tüm ailelerin CAD/çizim revizyonu, datum ve toleransları; metrik bağlantı vidalarının gerçek uzunlukları; VC1 ve CXYZ1 sürüm farkları. Bunlar ilgili modelleme aşamalarının kapanışını engeller.
