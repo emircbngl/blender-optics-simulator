@@ -862,11 +862,27 @@ def join_parts(a: str, interface_a: str, b: str, interface_b: str, carries: str 
 
 
 @mcp.tool()
-def set_joint_state(joint_id: str, state: str, dry_run: bool = False) -> str:
+def set_joint_state(joint_id: str, state: str, clock_deg: float = 0.0, insertion_mm: float = 0.0,
+                    tolerance_mm: float = -1.0, tolerance_deg: float = -1.0,
+                    dry_run: bool = False) -> str:
     """Step one joint along aligned -> seated -> fastened -> locked, or one step back. One step at a
     time: skipping a state is refused, so assembly order stays explicit. `locked` needs one of the two
-    interfaces to declare a lock. Metadata only: nothing moves."""
-    return _fmt(_call("set_joint_state", joint_id=joint_id, state=state, dry_run=dry_run))
+    interfaces to declare a lock.
+
+    SEATING IS WHERE GEOMETRY HAPPENS: seating a carrying joint places the carried part by making the two
+    declared interface frames coincident and anti-parallel, and parents it so the whole sub-assembly
+    rides its support. `clock_deg` and `insertion_mm` are the explicit extras (positive insertion goes
+    into the parent, checked against the stated limits); an interface with no frame is refused. Seating a
+    joint that carries no pose (the one closing a cage loop) moves nothing and instead measures whether
+    the stated geometry closes, against `tolerance_mm` / `tolerance_deg` -- leave them negative and it
+    will tell you it needs them. Going back to `aligned` releases the part where it stands."""
+    args = {"joint_id": joint_id, "state": state, "clock_deg": clock_deg,
+            "insertion_mm": insertion_mm, "dry_run": dry_run}
+    if tolerance_mm >= 0.0:
+        args["tolerance_mm"] = tolerance_mm
+    if tolerance_deg >= 0.0:
+        args["tolerance_deg"] = tolerance_deg
+    return _fmt(_call("set_joint_state", **args))
 
 
 @mcp.tool()

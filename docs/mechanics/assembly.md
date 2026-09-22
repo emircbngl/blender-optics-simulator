@@ -1,9 +1,13 @@
-# Mechanical assembly graph (stage 04a)
+# Mechanical assembly graph (stage 04)
 
-Metadata only. This stage records **how parts are joined** — which interfaces mate, what state each
-joint is in, what carries what, and in which order a part comes off. It places nothing: joining a part
-does not move it, poses are not propagated, and a loop's geometry is not solved. That is stage 04b, and
-`capabilities()` keeps reporting `mechanical_assembly.available: false` until it exists.
+Stage 04a records **how parts are joined** — which interfaces mate, what state each joint is in, what
+carries what, and in which order a part comes off. Stage 04b adds **where a seated part goes**: seating
+a joint places the carried part from the two declared frames and parents it, so the whole sub-assembly
+rides its support.
+
+What is still not claimed: `capabilities()` keeps reporting `mechanical_assembly.available: false`. A
+placement is only as good as the frames in the record, the evidence levels are untouched, and nothing
+here checks collision, tool access, torque or load.
 
 Manual assembly is off by default. `enable_manual_assembly(True)` turns writing on for the scene; with
 it off the assembly calls refuse to write, and the optical bench, Dress Bench and renders behave exactly
@@ -75,6 +79,46 @@ These are the mechanical motions from the part's record. They are not the optica
 - `full` — that sub-assembly taken apart as well, deepest joint first, which is the order a bench is
   stripped in.
 
+## Seating: where a part actually goes (04b)
+
+The convention is **stated, not inferred**: seating makes the two declared interface frames *coincident
+and anti-parallel* — the child's local `+Z`, which schema v1 calls the connection axis and surface
+normal, turns to face the parent's. That means a part's outward normal has to point out of the part: a
+post's foot frame points down, so the post stands up once the frames face each other.
+
+Nothing else is read out of the data:
+
+| Input | Rule |
+|---|---|
+| `insertion_mm` | Explicit depth past the frame datum, positive = into the parent (along the parent socket's `−Z`). Checked against the stated `insertion_min` / `insertion_max` on either interface; unstated limits are not invented, and the answer cites the evidence of the limits it did check. |
+| `clock_deg` | Explicit rotation about the mating axis. Schema v1 carries no clocking datum beyond the frame's own `+X`, so there is nothing to infer. |
+| a `null` frame | No datum, no placement. The answer is a refusal naming the field — the same rule as stage 03. |
+
+Seating parents the carried part to its support with `matrix_parent_inverse`, so moving the support
+moves the whole sub-assembly as one body. Going back to `aligned` releases the part **where it stands**;
+it does not teleport home.
+
+### A joint that closes a loop is measured, not placed
+
+Both of its parts already have a pose, so seating it moves nothing and instead asks whether the stated
+geometry actually closes: the gap in millimetres, the axis error and the clocking error against where
+seating *would* put the second interface, with this joint's own clock and insertion.
+
+Schema v1 states no tolerance for a frame, so **you name one** — `tolerance_mm` and `tolerance_deg`.
+Without them the answer is a refusal that reports the residual it measured. Over the tolerance, it
+refuses with the numbers and `unsolvable: true`: with those frames the loop has no consistent pose, and
+nothing is nudged to make it fit.
+
+### Dress Bench and manual assembly
+
+Dress Bench decorates optics that stand on nothing. An optic seated on a recorded mount already has a
+support, so `dress()` skips it — otherwise it would stack a second invented post under a real one.
+Strip and re-dress leave manual placements and their parenting untouched, and the `BENCH_` namespace
+stays Dress Bench's alone.
+
+Opto-mechanics is millimetre-only, so seating is refused in a scene that has declared its unit scale
+authoritative and non-millimetre — the same gate `check_mechanics` uses.
+
 ## Storage, atomicity and undo
 
 The whole graph is one JSON string on `Scene.mechanics.graph_json`, validated completely before a single
@@ -91,7 +135,7 @@ reported and left byte-for-byte intact; nothing is migrated on read.
 |---|---|
 | `enable_manual_assembly(enable=True)` | The feature flag for this scene. |
 | `join_parts(a, interface_a, b, interface_b, carries=None, adapters=None, optic_thickness_mm=None, max_chain=2, dry_run=False)` | Record one joint at `aligned`. |
-| `set_joint_state(joint_id, state, dry_run=False)` | One step along the state order. |
+| `set_joint_state(joint_id, state, clock_deg=0.0, insertion_mm=0.0, tolerance_mm=None, tolerance_deg=None, dry_run=False)` | One step along the state order; seating is where placement (or the loop measurement) happens. |
 | `separate_parts(joint_id, dry_run=False)` | Remove an `aligned` joint. |
 | `assembly_graph()` | Every joint, the ownership forest, the loops, the dangling ends. |
 | `disassembly_plan(name)` | `release` and `full`, as callable steps. |
@@ -102,13 +146,19 @@ the MCP surface to match `optics_api` exactly; the MCP assembly *guide* is still
 
 ## Limits
 
-- **No geometry.** A recorded joint is a stated mating, not a placement and not a measured fit. Parts
-  stay exactly where you put them.
-- Pose consistency in a closed loop is not solved and not checked — stage 04b.
+- **A placement is not a fit.** It puts the part where the declared frames say; it is not a measurement,
+  a tolerance stack or a claim that the real parts go together. A `compatible` verdict behind it is a
+  data statement.
+- **Only as good as the frames.** The stage-01 inventory has no sourced interface frames at all yet, so
+  no real part can be placed from evidence today. An interface without a frame is refused, which is the
+  intended behaviour, not a gap to work around.
+- A closed loop is *checked* against a tolerance you name, not solved: there is no constraint solver
+  here, and an over-constrained loop is reported as unsolvable rather than relaxed.
 - The evidence levels in the records are still `unverified` or `visual_approximation`; nothing here
   promotes them.
-- No collision, tool access, torque or load check. Those are stages 07 and 10.
+- No collision, tool access, torque, friction or load check. Those are stages 07 and 10.
 
-Tests: `tests/test_mechanical_assembly.py` (61 checks). Every part in it is a labelled `FIXTURE`: the
-stage-01 inventory has no sourced pair that mates yet, and the rules under test are graph rules that do
-not depend on the numbers being real.
+Tests: `tests/test_mechanical_assembly.py` (69 checks, the graph and its gates) and
+`tests/test_mechanical_assembly_geometry.py` (44 checks, the placement math and its refusals). Every
+part in both is a labelled `FIXTURE`: the inventory has no sourced pair that mates and no sourced frame,
+and the rules under test do not depend on the numbers being real.

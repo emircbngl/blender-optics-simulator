@@ -1837,6 +1837,108 @@ def _resolve_instance(scene, instance_id):
     return None
 
 
+def _rigid_to_matrix(transform):
+    rot, trans = transform
+    return _Matrix(((rot[0][0], rot[0][1], rot[0][2], trans[0]),
+                    (rot[1][0], rot[1][1], rot[1][2], trans[1]),
+                    (rot[2][0], rot[2][1], rot[2][2], trans[2]),
+                    (0.0, 0.0, 0.0, 1.0)))
+
+
+def _matrix_to_rigid(matrix):
+    return (tuple(tuple(matrix[i][j] for j in range(3)) for i in range(3)),
+            tuple(matrix[i][3] for i in range(3)))
+
+
+def _seat(joint, objects, interfaces, clock_deg, insertion_mm, tolerance_mm, tolerance_deg, dry_run):
+    """Decide (and, unless dry_run, apply) where a seated joint puts its parts.
+
+    A carrying joint places the carried part from the two declared frames. A joint that carries no pose
+    -- the one that closes a cage loop -- places nothing: both parts already have a pose, so seating it
+    MEASURES whether the stated geometry actually closes, against a tolerance the caller names.
+    """
+    frames, missing = {}, []
+    for side in ("a", "b"):
+        frame = interfaces[side]["frame"]
+        if frame is None:
+            missing.append("frame of interface %s on %s" % (interfaces[side]["id"], objects[side].name))
+        else:
+            frames[side] = _mechanical_assembly.frame_transform(frame)
+    if missing:
+        return {"error": "seating needs a datum on both sides, and %s" % " and ".join(missing),
+                "missing": missing,
+                "remedy": "state the interface frame in the part's record, or keep the joint aligned"}
+    if joint["carries"] is None:
+        residual = _mechanical_assembly.seating_residual(
+            _matrix_to_rigid(objects["a"].matrix_world), frames["a"],
+            _matrix_to_rigid(objects["b"].matrix_world), frames["b"],
+            clock_deg=float(clock_deg), insertion_mm=float(insertion_mm))
+        if tolerance_mm is None or tolerance_deg is None:
+            return {"error": "this joint carries no pose (it closes a loop), so seating can only check "
+                             "whether the stated geometry already mates. Schema v1 states no tolerance "
+                             "for a frame, so name one: tolerance_mm and tolerance_deg.",
+                    "missing": ["tolerance_mm", "tolerance_deg"], "residual": residual}
+        over = []
+        if residual["gap_mm"] > float(tolerance_mm):
+            over.append("a gap of %.4f mm over %.4f mm" % (residual["gap_mm"], float(tolerance_mm)))
+        for key, label in (("axis_deg", "axis"), ("clock_deg", "clocking")):
+            if residual[key] > float(tolerance_deg):
+                over.append("%s off by %.4f deg over %.4f deg" % (label, residual[key], float(tolerance_deg)))
+        if over:
+            return {"error": "the stated geometry does not close here: " + ", and ".join(over)
+                             + ". Nothing was moved and nothing was fudged: with these frames the loop "
+                               "has no consistent pose.",
+                    "residual": residual, "unsolvable": True}
+        return {"ok": True, "placed": None, "residual": residual,
+                "note": "the loop closes within the tolerance you named; no part was moved"}
+    child_side = joint["carries"]
+    parent_side = "a" if child_side == "b" else "b"
+    problems, evidence = _mechanical_assembly.placement_limits(
+        interfaces[parent_side], interfaces[child_side], float(insertion_mm))
+    if problems:
+        return {"error": "the requested insertion is outside what the parts state: "
+                         + "; ".join(problems), "evidence": evidence}
+    child, parent = objects[child_side], objects[parent_side]
+    if child.parent is not None and child.parent is not parent:
+        return {"error": "%s is already parented to %s in Blender; the assembly will not take that over"
+                         % (child.name, child.parent.name)}
+    pose = _mechanical_assembly.seating_pose(
+        _matrix_to_rigid(parent.matrix_world), frames[parent_side], frames[child_side],
+        clock_deg=float(clock_deg), insertion_mm=float(insertion_mm))
+    matrix = _rigid_to_matrix(pose)
+    result = {"ok": True, "placed": {"object": child.name, "onto": parent.name,
+                                     "clock_deg": float(clock_deg), "insertion_mm": float(insertion_mm),
+                                     "world_origin_mm": [round(v, 6) for v in pose[1]],
+                                     "moved_mm": round((matrix.translation - child.matrix_world.translation).length, 6)},
+              "evidence": evidence,
+              "note": "placed by making the two declared frames coincident and anti-parallel; any depth "
+                      "past that datum is the insertion you asked for, not a measured seat"}
+    if not dry_run:
+        child.matrix_world = matrix
+        child.parent = parent
+        child.matrix_parent_inverse = parent.matrix_world.inverted()
+        _bpy_update()
+    return result
+
+
+def _unseat(joint, objects):
+    """Going back to `aligned` releases the part without teleporting it: it stays where the hand left it."""
+    if joint["carries"] is None:
+        return {"ok": True, "released": None}
+    child = objects[joint["carries"]]
+    if child.parent is None:
+        return {"ok": True, "released": None}
+    pose = child.matrix_world.copy()
+    child.parent = None
+    child.matrix_world = pose
+    _bpy_update()
+    return {"ok": True, "released": child.name}
+
+
+def _bpy_update():
+    bpy.context.view_layer.update()
+
+
 def enable_manual_assembly(enable=True):
     """Turn manual mechanical assembly on or off for this scene (the stage-04 feature flag).
 
@@ -1900,13 +2002,24 @@ def join_parts(a, interface_a, b, interface_b, carries=None, adapters=None, opti
     return out
 
 
-def set_joint_state(joint_id, state, dry_run=False):
+def set_joint_state(joint_id, state, clock_deg=0.0, insertion_mm=0.0, tolerance_mm=None,
+                    tolerance_deg=None, dry_run=False):
     """STEP one joint along aligned -> seated -> fastened -> locked, or one step back.
 
     `aligned` is held in place, `seated` is in its seat, `fastened` is screwed, `locked` has a declared
     lock engaged. One step at a time in either direction: skipping a state is refused, so the order a
     real part goes on and comes off is always explicit. `locked` needs one of the two interfaces to
-    declare a lock; without that the data does not support the state. Metadata only."""
+    declare a lock; without that the data does not support the state.
+
+    SEATING IS WHERE GEOMETRY HAPPENS. Seating a carrying joint PLACES the carried part: the two declared
+    interface frames are made coincident and anti-parallel, the part is parented so the whole
+    sub-assembly rides its support, and `clock_deg` / `insertion_mm` are the explicit extras (positive
+    insertion goes into the parent, and is checked against the stated insertion limits). An interface
+    with no frame has no datum and is refused. Seating a joint that carries no pose -- the one that
+    closes a cage loop -- moves nothing and instead MEASURES whether the stated geometry closes, against
+    the `tolerance_mm` / `tolerance_deg` you name; if it does not, the answer says so and refuses rather
+    than fudging a pose. Going back to `aligned` releases the part where it stands. `dry_run` reports the
+    pose it would set without touching anything."""
     scene = _scene()
     if not dry_run:
         blocked = _assembly_flag_off(scene)
@@ -1937,12 +2050,32 @@ def set_joint_state(joint_id, state, dry_run=False):
                                                interface_b=interfaces.get("b"))
     if not decision["ok"]:
         return dict(decision, dry_run=bool(dry_run))
+    geometry_result = None
+    if decision.get("changed") and state == 'seated':
+        blocked = _hardware_unsupported_here()
+        if blocked:
+            return blocked
+        objects = {side: _resolve_instance(scene, joint[side]["instance_id"]) for side in ("a", "b")}
+        geometry_result = _seat(joint, objects, interfaces, clock_deg, insertion_mm,
+                                tolerance_mm, tolerance_deg, dry_run)
+        if "error" in geometry_result:
+            # The state is not recorded when the geometry it claims cannot be produced: no half-seat.
+            return dict(geometry_result, joint=joint, dry_run=bool(dry_run))
     if decision.get("changed") and not dry_run:
         _write_assembly(scene, decision["graph"])
+        if state == 'aligned' and joint["state"] == 'seated':
+            objects = {side: _resolve_instance(scene, joint[side]["instance_id"]) for side in ("a", "b")}
+            geometry_result = _unseat(joint, objects)
     out = {"ok": True, "joint": decision["joint"], "changed": bool(decision.get("changed")),
            "dry_run": bool(dry_run)}
     if decision.get("note"):
         out["note"] = decision["note"]
+    if geometry_result is not None:
+        for key in ("placed", "released", "residual", "evidence"):
+            if key in geometry_result:
+                out[key] = geometry_result[key]
+        if geometry_result.get("note"):
+            out["geometry_note"] = geometry_result["note"]
     return out
 
 
