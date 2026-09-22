@@ -293,6 +293,49 @@
    "document_revision": null,
    "redistribution_permission": "unknown",
    "cad_file_acquired": false
+  },
+  "tr50m_drawing": {
+   "title": "Thorlabs TR50/M drawing 0331 (50 mm long metric TR-series post)",
+   "url": "https://media.thorlabs.com/globalassets/items/t/tr/tr5/tr50_m/0331-e0w.pdf",
+   "locator": "Thorlabs drawing 0331, sheet 1, title block REV J (28/MAR/13)",
+   "access": "primary_drawing",
+   "checked_on": "2026-09-22",
+   "document_revision": "J",
+   "redistribution_permission": "unknown",
+   "cad_file_acquired": true,
+   "acquisition_note": "Opened and read for dimensions only. The file is not stored in this repository and is not redistributed. Drawing is stamped FOR INFORMATION ONLY / NOT FOR MANUFACTURING PURPOSES and carries no tolerances; imperial values on it are marked as calculated and may contain round-off."
+  },
+  "ph50m_drawing": {
+   "title": "Thorlabs PH50/M drawing 23132 (50 mm post holder)",
+   "url": "https://media.thorlabs.com/globalassets/items/p/ph/ph5/ph50_m/23132-e0w.pdf",
+   "locator": "Thorlabs drawing 23132, sheet 1, title block REV B (20/DEC/11)",
+   "access": "primary_drawing",
+   "checked_on": "2026-09-22",
+   "document_revision": "B",
+   "redistribution_permission": "unknown",
+   "cad_file_acquired": true,
+   "acquisition_note": "Opened and read for dimensions only. The file is not stored in this repository and is not redistributed. Drawing is stamped FOR INFORMATION ONLY / NOT FOR MANUFACTURING PURPOSES and carries no tolerances; imperial values on it are marked as calculated and may contain round-off."
+  },
+  "ba2m_drawing": {
+   "title": "Thorlabs BA2/M drawing 19227 (metric BA2 mounting base)",
+   "url": "https://media.thorlabs.com/globalassets/items/b/ba/ba2/ba2_m/19227-e0w.pdf",
+   "locator": "Thorlabs drawing 19227, sheet 1, title block REV A (08/SEP/14)",
+   "access": "primary_drawing",
+   "checked_on": "2026-09-22",
+   "document_revision": "A",
+   "redistribution_permission": "unknown",
+   "cad_file_acquired": true,
+   "acquisition_note": "Opened and read for dimensions only. The file is not stored in this repository and is not redistributed. Drawing is stamped FOR INFORMATION ONLY / NOT FOR MANUFACTURING PURPOSES and carries no tolerances; imperial values on it are marked as calculated and may contain round-off."
+  },
+  "holder_family": {
+   "title": "Thorlabs Ø1/2\" Post Holders family page",
+   "url": "https://www.thorlabs.com/half-inch-post-holders",
+   "locator": "Key Features table and Standard Post Holders section",
+   "access": "indexed_primary",
+   "checked_on": "2026-09-22",
+   "document_revision": null,
+   "redistribution_permission": "unknown",
+   "cad_file_acquired": false
   }
  },
  "products": [
@@ -5249,21 +5292,423 @@
    "note": null,
    "verification": "primary_published_nominal_not_mesh_verified",
    "manufacturing_tolerance": null
+  },
+  {
+   "id": "tr50m_dwg_outer_diameter",
+   "support_parts": [
+    "TR50/M"
+   ],
+   "field": "outer_diameter_mm",
+   "value": 12.7,
+   "source_id": "tr50m_drawing",
+   "locator": "End view: Ø12.7 mm [Ø0.50in]",
+   "note": null,
+   "verification": "primary_published_nominal_not_mesh_verified",
+   "manufacturing_tolerance": null
+  },
+  {
+   "id": "tr50m_dwg_length",
+   "support_parts": [
+    "TR50/M"
+   ],
+   "field": "length_mm",
+   "value": 50.0,
+   "source_id": "tr50m_drawing",
+   "locator": "Overall: 50.0 mm [1.97in]",
+   "note": null,
+   "verification": "primary_published_nominal_not_mesh_verified",
+   "manufacturing_tolerance": null
+  },
+  {
+   "id": "tr50m_dwg_base_thread",
+   "support_parts": [
+    "TR50/M"
+   ],
+   "field": "base_thread",
+   "value": "M6 x 1.0",
+   "source_id": "tr50m_drawing",
+   "locator": "End view leader: M6 X 1.0 MOUNTING HOLE",
+   "note": null,
+   "verification": "primary_published_nominal_not_mesh_verified",
+   "manufacturing_tolerance": null
+  },
+  {
+   "id": "tr50m_dwg_base_thread_depth",
+   "support_parts": [
+    "TR50/M"
+   ],
+   "field": "base_thread_depth_mm",
+   "value": 8.6,
+   "source_id": "tr50m_drawing",
+   "locator": "End view leader: 8.6 mm [0.34in] DEEP",
+   "note": "This is the usable depth of the base tap, the number stage 03's bottoming rule needs.",
+   "verification": "primary_published_nominal_not_mesh_verified",
+   "manufacturing_tolerance": null
+  },
+  {
+   "id": "tr50m_dwg_side_bore",
+   "support_parts": [
+    "TR50/M"
+   ],
+   "field": "side_bore_diameter_mm",
+   "value": 3.2,
+   "source_id": "tr50m_drawing",
+   "locator": "Leader: Ø3.2 mm [Ø0.13in] THRU, for a 2 mm ball driver or hex key",
+   "note": null,
+   "verification": "primary_published_nominal_not_mesh_verified",
+   "manufacturing_tolerance": null
+  },
+  {
+   "id": "tr50m_dwg_side_bore_offset",
+   "support_parts": [
+    "TR50/M"
+   ],
+   "field": "side_bore_axis_offset_mm",
+   "value": 10.2,
+   "source_id": "tr50m_drawing",
+   "locator": "Dimension 10.2 mm [0.40in] from the setscrew end of the body to the side-bore centreline",
+   "note": "Which face the 10.2 mm references is READ off the dimension line, not stated in words. Confirm against the STEP model before this becomes a datum.",
+   "verification": "primary_published_nominal_not_mesh_verified",
+   "manufacturing_tolerance": null
+  },
+  {
+   "id": "tr50m_dwg_setscrew",
+   "support_parts": [
+    "TR50/M"
+   ],
+   "field": "top_setscrew",
+   "value": "SS4M12D, M4 x 0.7 double-ended set screw, 12 mm long, 2.0 mm hex",
+   "source_id": "tr50m_drawing",
+   "locator": "Leader: REMOVABLE SS4M12D INCLUDED",
+   "note": null,
+   "verification": "primary_published_nominal_not_mesh_verified",
+   "manufacturing_tolerance": null
+  },
+  {
+   "id": "tr50m_dwg_setscrew_protrusion_min",
+   "support_parts": [
+    "TR50/M"
+   ],
+   "field": "setscrew_protrusion_min_mm",
+   "value": 4.6,
+   "source_id": "tr50m_drawing",
+   "locator": "Dimension: 4.6 mm [0.18in] MIN",
+   "note": "How far the M4 stud stands out of the post; with the MAX below it is the engagement range.",
+   "verification": "primary_published_nominal_not_mesh_verified",
+   "manufacturing_tolerance": null
+  },
+  {
+   "id": "tr50m_dwg_setscrew_protrusion_max",
+   "support_parts": [
+    "TR50/M"
+   ],
+   "field": "setscrew_protrusion_max_mm",
+   "value": 5.2,
+   "source_id": "tr50m_drawing",
+   "locator": "Dimension: 5.2 mm [0.21in] MAX",
+   "note": null,
+   "verification": "primary_published_nominal_not_mesh_verified",
+   "manufacturing_tolerance": null
+  },
+  {
+   "id": "tr50m_dwg_material",
+   "support_parts": [
+    "TR50/M"
+   ],
+   "field": "material",
+   "value": "stainless steel",
+   "source_id": "tr50m_drawing",
+   "locator": "Title block MATERIAL",
+   "note": null,
+   "verification": "primary_published_nominal_not_mesh_verified",
+   "manufacturing_tolerance": null
+  },
+  {
+   "id": "ph50m_dwg_outer_diameter",
+   "support_parts": [
+    "PH50/M"
+   ],
+   "field": "outer_diameter_mm",
+   "value": 25.0,
+   "source_id": "ph50m_drawing",
+   "locator": "End view: Ø25.0 mm [Ø0.98in]",
+   "note": null,
+   "verification": "primary_published_nominal_not_mesh_verified",
+   "manufacturing_tolerance": null
+  },
+  {
+   "id": "ph50m_dwg_length",
+   "support_parts": [
+    "PH50/M"
+   ],
+   "field": "length_mm",
+   "value": 50.0,
+   "source_id": "ph50m_drawing",
+   "locator": "Side view: 50.0 mm [1.97in]",
+   "note": null,
+   "verification": "primary_published_nominal_not_mesh_verified",
+   "manufacturing_tolerance": null
+  },
+  {
+   "id": "ph50m_dwg_bore_diameter",
+   "support_parts": [
+    "PH50/M"
+   ],
+   "field": "bore_diameter_mm",
+   "value": 12.8,
+   "source_id": "ph50m_drawing",
+   "locator": "End view leader: Ø12.8 mm [Ø0.50in] ... FOR USE WITH TR-SERIES POSTS",
+   "note": null,
+   "verification": "primary_published_nominal_not_mesh_verified",
+   "manufacturing_tolerance": null
+  },
+  {
+   "id": "ph50m_dwg_bore_depth",
+   "support_parts": [
+    "PH50/M"
+   ],
+   "field": "bore_depth_mm",
+   "value": 43.2,
+   "source_id": "ph50m_drawing",
+   "locator": "End view leader: 43.2 mm [1.70in] DEEP",
+   "note": "The maximum a TR-series post can be inserted; stage 03 reads this as the insertion range.",
+   "verification": "primary_published_nominal_not_mesh_verified",
+   "manufacturing_tolerance": null
+  },
+  {
+   "id": "ph50m_dwg_base_thread",
+   "support_parts": [
+    "PH50/M"
+   ],
+   "field": "base_thread",
+   "value": "M6 x 1.0 tapped hole thru",
+   "source_id": "ph50m_drawing",
+   "locator": "Bottom view leader: M6 X 1.0 TAPPED HOLE THRU",
+   "note": null,
+   "verification": "primary_published_nominal_not_mesh_verified",
+   "manufacturing_tolerance": null
+  },
+  {
+   "id": "ph50m_dwg_thumbscrew_head",
+   "support_parts": [
+    "PH50/M"
+   ],
+   "field": "thumbscrew_head_diameter_mm",
+   "value": 14.5,
+   "source_id": "ph50m_drawing",
+   "locator": "Leader: Ø14.5 mm [Ø0.57in] SPRING LOADED THUMBSCREW, 5mm HEX SOCKET",
+   "note": null,
+   "verification": "primary_published_nominal_not_mesh_verified",
+   "manufacturing_tolerance": null
+  },
+  {
+   "id": "ph50m_dwg_thumbscrew_offset",
+   "support_parts": [
+    "PH50/M"
+   ],
+   "field": "thumbscrew_axis_offset_mm",
+   "value": 12.7,
+   "source_id": "ph50m_drawing",
+   "locator": "Dimension 12.7 mm [0.50in] from the top face to the thumbscrew axis",
+   "note": "Read off the dimension line; confirm the reference face before it becomes a datum.",
+   "verification": "primary_published_nominal_not_mesh_verified",
+   "manufacturing_tolerance": null
+  },
+  {
+   "id": "ph50m_dwg_foot_height",
+   "support_parts": [
+    "PH50/M"
+   ],
+   "field": "foot_height_mm",
+   "value": 10.0,
+   "source_id": "ph50m_drawing",
+   "locator": "Side view: 10.0 mm [0.39in] foot section",
+   "note": null,
+   "verification": "primary_published_nominal_not_mesh_verified",
+   "manufacturing_tolerance": null
+  },
+  {
+   "id": "ph50m_family_torque",
+   "support_parts": [
+    "PH50/M"
+   ],
+   "field": "thumbscrew_max_torque_nm",
+   "value": 3.2,
+   "source_id": "holder_family",
+   "locator": "Standard Post Holders: maximum torque of 28 in-lbs (3.2 N-m)",
+   "note": "A published limit, not a modelled one: nothing in the add-on computes torque.",
+   "verification": "primary_published_nominal_not_mesh_verified",
+   "manufacturing_tolerance": null
+  },
+  {
+   "id": "ph50m_family_mounting",
+   "support_parts": [
+    "PH50/M"
+   ],
+   "field": "table_mounting",
+   "value": "1/4\"-20 (M6) cap screw into the base",
+   "source_id": "holder_family",
+   "locator": "Key Features: bottom-located 1/4\"-20 (M6) tapped hole",
+   "note": null,
+   "verification": "primary_published_nominal_not_mesh_verified",
+   "manufacturing_tolerance": null
+  },
+  {
+   "id": "ba2m_dwg_footprint",
+   "support_parts": [
+    "BA2/M"
+   ],
+   "field": "footprint_mm",
+   "value": [
+    75.0,
+    50.0,
+    10.0
+   ],
+   "source_id": "ba2m_drawing",
+   "locator": "Plan and side views: 75.0 x 50.0 x 10.0 mm [2.95 x 1.97 x 0.39in]",
+   "note": null,
+   "verification": "primary_published_nominal_not_mesh_verified",
+   "manufacturing_tolerance": null
+  },
+  {
+   "id": "ba2m_dwg_counterbores",
+   "support_parts": [
+    "BA2/M"
+   ],
+   "field": "counterbores_for_m6_cap_screw",
+   "value": 3,
+   "source_id": "ba2m_drawing",
+   "locator": "Leader: COUNTERBORE FOR USE WITH M6 [1/4-20] CAP SCREW, 3 PLACES",
+   "note": null,
+   "verification": "primary_published_nominal_not_mesh_verified",
+   "manufacturing_tolerance": null
+  },
+  {
+   "id": "ba2m_dwg_counterbore_pitch",
+   "support_parts": [
+    "BA2/M"
+   ],
+   "field": "counterbore_pitch_mm",
+   "value": 12.5,
+   "source_id": "ba2m_drawing",
+   "locator": "Dimension: 12.5 mm [0.49in] TYP between counterbore centres",
+   "note": null,
+   "verification": "primary_published_nominal_not_mesh_verified",
+   "manufacturing_tolerance": null
+  },
+  {
+   "id": "ba2m_dwg_counterbore_column",
+   "support_parts": [
+    "BA2/M"
+   ],
+   "field": "counterbore_column_offset_mm",
+   "value": 37.5,
+   "source_id": "ba2m_drawing",
+   "locator": "Dimension: 37.5 mm [1.48in] to the counterbore column",
+   "note": null,
+   "verification": "primary_published_nominal_not_mesh_verified",
+   "manufacturing_tolerance": null
+  },
+  {
+   "id": "ba2m_dwg_slots",
+   "support_parts": [
+    "BA2/M"
+   ],
+   "field": "clearance_slots_for_m6_cap_screw",
+   "value": 2,
+   "source_id": "ba2m_drawing",
+   "locator": "Leader: CLEARANCE SLOT FOR M6 [1/4-20] CAP SCREW, 2 PLACES",
+   "note": null,
+   "verification": "primary_published_nominal_not_mesh_verified",
+   "manufacturing_tolerance": null
+  },
+  {
+   "id": "ba2m_dwg_slot_width",
+   "support_parts": [
+    "BA2/M"
+   ],
+   "field": "slot_width_mm",
+   "value": 9.1,
+   "source_id": "ba2m_drawing",
+   "locator": "Dimension: 9.1 mm [0.36in]",
+   "note": null,
+   "verification": "primary_published_nominal_not_mesh_verified",
+   "manufacturing_tolerance": null
+  },
+  {
+   "id": "ba2m_dwg_slot_travel",
+   "support_parts": [
+    "BA2/M"
+   ],
+   "field": "slot_end_centre_distance_mm",
+   "value": 31.8,
+   "source_id": "ba2m_drawing",
+   "locator": "Dimension: 31.8 mm [1.25in] between the slot end centres",
+   "note": null,
+   "verification": "primary_published_nominal_not_mesh_verified",
+   "manufacturing_tolerance": null
+  },
+  {
+   "id": "ba2m_dwg_slot_pitch",
+   "support_parts": [
+    "BA2/M"
+   ],
+   "field": "slot_pitch_mm",
+   "value": 50.0,
+   "source_id": "ba2m_drawing",
+   "locator": "Dimension: 50.0 mm [1.97in] between the two slots",
+   "note": null,
+   "verification": "primary_published_nominal_not_mesh_verified",
+   "manufacturing_tolerance": null
+  },
+  {
+   "id": "ba2m_dwg_material",
+   "support_parts": [
+    "BA2/M"
+   ],
+   "field": "material",
+   "value": "anodized aluminum",
+   "source_id": "ba2m_drawing",
+   "locator": "Title block MATERIAL",
+   "note": null,
+   "verification": "primary_published_nominal_not_mesh_verified",
+   "manufacturing_tolerance": null
+  },
+  {
+   "id": "post_holder_diametral_gap",
+   "support_parts": [
+    "PH50/M"
+   ],
+   "field": "nominal_diametral_gap_mm",
+   "value": 0.1,
+   "source_id": "ph50m_drawing",
+   "locator": "12.8 mm bore minus the 12.7 mm TR-series post on the same drawing's note",
+   "note": "DERIVED, not published: arithmetic on two nominals from two drawings, with no tolerance on either. It is a nominal clearance, not a fit class and not a measured gap.",
+   "verification": "derived_from_published_nominals",
+   "manufacturing_tolerance": null,
+   "derived_from": [
+    "ph50m_dwg_bore_diameter",
+    "tr50m_dwg_outer_diameter"
+   ]
   }
  ],
  "support_blockers": {
   "recorded_on": "2026-09-22",
   "stage": "05",
-  "statement": "Stage 05 cannot close on the evidence in hand. The product pages publish sizes, threads and materials, but not the dimensions stage 05 has to check: thread depth and engagement, the holder bore's clearance over the post, base slot geometry, and the datum positions every interface frame needs. Those live in the vendor CAD drawings, which stage 01 did not acquire and whose redistribution rights are unknown.",
-  "missing": [
-   "thread depth / usable engagement for the M4 top and M6 base of TR/M",
-   "PH50/M bore diameter, clearance over a Ø12.7 mm post, and insertion range",
-   "PH50/M base thread and its depth",
-   "BA2/M slot geometry, counterbore and fastener length",
-   "a breadboard product identity at all: no table is in the 33-preset inventory",
-   "datum origins and orientations for every interface frame (stage 04b places from frames, and no sourced frame exists yet)"
+  "statement": "The owner approved opening the vendor drawings, so the dimensional gaps for the post/holder/base chain are now closed from primary drawings (TR50/M 0331 rev J, PH50/M 23132 rev B, BA2/M 19227 rev A). What remains is a product identity and the modelling work, not missing evidence for these three parts.",
+  "closed_since_last_record": [
+   "TR/M base thread depth: M6 x 1.0, 8.6 mm deep",
+   "TR/M setscrew engagement: M4 x 0.7 stud standing 4.6-5.2 mm out of the post",
+   "PH50/M bore: 12.8 mm diameter, 43.2 mm deep, for TR-series posts",
+   "PH50/M base thread: M6 x 1.0 tapped thru",
+   "BA2/M slot and counterbore geometry for M6 cap screws"
   ],
-  "next_action": "Owner decision: open the vendor CAD PDF/DXF drawings for TR50/M, PH50/M and BA2/M, and pick the breadboard product. Reading a published drawing to record a dimensioned nominal is normal practice, but it is a file download and the inventory already flags CAD rights as an open question.",
+  "missing": [
+   "a breadboard product identity: no optical table is in the 33-preset inventory, so the bottom of the chain has no product yet",
+   "manufacturing tolerances: every drawing is stamped FOR INFORMATION ONLY and states none, so fit classes and tolerance stacks stay out of reach",
+   "interface datums still have to be AUTHORED from these drawings and checked against the STEP model: two dimensions (TR/M side bore at 10.2 mm, PH50/M thumbscrew at 12.7 mm) were read off dimension lines rather than stated in words"
+  ],
+  "next_action": "Pick the breadboard product, then build schema v1 records with frames for TR50/M, PH50/M and BA2/M from these facts and check every critical dimension against an independent mesh measurement, which is stage 05's exit condition.",
   "dependent_work_not_started": true
  }
 }
