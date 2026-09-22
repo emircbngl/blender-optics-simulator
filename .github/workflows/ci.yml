@@ -114,7 +114,9 @@ jobs:
         run: xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_mechanical_compatibility.py
 
       - name: Mechanical assembly graph (states, ownership vs physical loops, locks)
-        run: xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_mechanical_assembly.py
+        run: |
+          xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_mechanical_assembly.py
+          xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_mechanical_assembly_geometry.py
 
       - name: Render hardware detail (render-only, restores the bench) and generic mount catalog
         run: |

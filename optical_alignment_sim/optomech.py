@@ -1837,6 +1837,37 @@ def support_scan_invalidate(scene):
     _SUPPORT_SCAN_CACHE.pop(scene.as_pointer(), None)
 
 
+def manually_mounted(scene):
+    """Objects a hand-built mechanical assembly already carries (stage 04b).
+
+    Dress Bench decorates optics that stand on nothing. An optic seated on a real, recorded mount has a
+    support already, so dressing it would stack a second invented post under it. Read straight from the
+    stored graph: no import of the assembly API, and an empty or unreadable graph means "none", never a
+    guess."""
+    raw = getattr(getattr(scene, "mechanics", None), "graph_json", "")
+    if not raw:
+        return set()
+    try:
+        graph = json.loads(raw)
+        carried = {joint[joint["carries"]]["instance_id"] for joint in graph["joints"]
+                   if joint.get("carries")}
+    except (ValueError, TypeError, KeyError):
+        return set()
+    if not carried:
+        return set()
+    owned = set()
+    for o in scene.objects:
+        raw_record = getattr(getattr(o, "mechanics", None), "record_json", "")
+        if not raw_record:
+            continue
+        try:
+            if json.loads(raw_record).get("instance_id") in carried:
+                owned.add(o.name)
+        except (ValueError, TypeError):
+            continue
+    return owned
+
+
 def dress(scene, post_radius=POST_RADIUS):
     """Spawn a hole-grid breadboard under the optics, then a beam-height-driven post + post-holder
     base under each element and a mount ring framing the optic. The board top sits one beam height
@@ -1846,10 +1877,13 @@ def dress(scene, post_radius=POST_RADIUS):
     Optics keep their exact positions, so dressing never perturbs the trace. Idempotent: strips any
     prior dressing first. Returns the object count."""
     elems = _optical_objects(scene)
+    mounted = manually_mounted(scene)
+    if mounted:
+        elems = [o for o in elems if o.name not in mounted]
     if not elems:
         strip(scene)
         return 0
-    signature = _dress_signature(scene, elems, post_radius)
+    signature = _dress_signature(scene, elems, post_radius) + "|manual:" + ",".join(sorted(mounted))
     coll_existing = bpy.data.collections.get(BENCH_COLL)
     expected = scene.get("oa_dress_count")
     if (scene.get("oa_dress_sig") == signature and isinstance(expected, int)

@@ -50,6 +50,10 @@ def interface(identifier, kind, dimensions=None, thread_data=None, lock=None):
     item = mi.new_interface(identifier, kind)
     item["dimensions"] = dimensions or {}
     item["thread"] = thread_data
+    # Stage 04b will not seat an interface that states no datum, and this file is about the graph, not
+    # the geometry -- so every fixture carries a trivial frame at its own origin.
+    item["frame"] = {"origin": [0.0, 0.0, 0.0], "unit": 'mm', "quaternion_wxyz": [1.0, 0.0, 0.0, 0.0],
+                     "evidence": ['fixture']}
     if lock:
         item["lock"] = {"kind": lock, "state": 'unlocked'}
     return item
@@ -250,8 +254,13 @@ skip = api.set_joint_state(jid, 'fastened')
 check("skipping a state is refused and says which one was skipped",
       "error" in skip and "seated" in skip["error"], skip.get("error"))
 check("the refused step changed nothing", api.assembly_graph()["joints"][1]["state"] == 'aligned')
-seated = api.set_joint_state(jid, 'seated')
+shallow = api.set_joint_state(jid, 'seated')
+check("seating refuses a depth the bore says is too little",
+      "error" in shallow and "insertion_min" in shallow["error"], shallow.get("error"))
+seated = api.set_joint_state(jid, 'seated', insertion_mm=10.0)
 check("seating is one step", seated.get("ok") and seated["joint"]["state"] == 'seated')
+check("and it placed the post on the holder", seated["placed"]["object"] == "P_post",
+      seated.get("placed"))
 dry_state = api.set_joint_state(jid, 'fastened', dry_run=True)
 check("dry_run on a state change writes nothing",
       dry_state.get("ok") and api.assembly_graph()["joints"][1]["state"] == 'seated')
@@ -277,7 +286,7 @@ api.set_joint_state(jid, 'fastened')
 fastened = next(m for m in api.permitted_motions("P_holder")["motions"] if m["motion"] == 'height')
 check("a fastened joint still refuses it, and names the step that frees it",
       fastened["permitted"] is False and fastened["next_step"]["state"] == 'seated', fastened["reason"])
-api.set_joint_state(jid, 'seated')
+api.set_joint_state(jid, 'seated', insertion_mm=10.0)
 free = next(m for m in api.permitted_motions("P_holder")["motions"] if m["motion"] == 'height')
 check("seated leaves the motion free, because seating is what it is for", free["permitted"] is True,
       free["reason"])
@@ -364,14 +373,20 @@ scene.mechanics.graph_json = broken
 
 print("[nothing here is geometry]")
 scene.optics.live_enabled = False
-def compare(rows):
-    # BENCH_Probe is gone (Dress Bench owns that prefix) and P_rod2 was deleted on purpose.
-    return [r for r in rows if not r[0].startswith("BENCH_") and r[0] != "P_rod2"]
+def compare(rows, poses):
+    # BENCH_Probe is gone (Dress Bench owns that prefix) and P_rod2 was deleted on purpose. Seating
+    # MOVES the parts it seats -- that is stage 04b's whole job -- so poses are compared only for the
+    # objects no joint touches.
+    return [r if poses else (r[0], r[2])
+            for r in rows if not r[0].startswith("BENCH_") and r[0] != "P_rod2"]
 
 
-check("no assembly call moved an object or changed a record",
-      compare(digest()) == compare(scene_before),
-      [(a, b) for a, b in zip(compare(digest()), compare(scene_before)) if a != b][:2])
+check("no assembly call changed a record",
+      compare(digest(), False) == compare(scene_before, False),
+      [(a, b) for a, b in zip(compare(digest(), False), compare(scene_before, False)) if a != b][:2])
+optical_now = [d for d in digest() if d[0] in ("S", "M", "D")]
+check("and no optical element was moved: the parts that moved are the ones that were seated",
+      optical_now == [d for d in scene_before if d[0] in ("S", "M", "D")], optical_now)
 check("the optical trace is unchanged", repr(scan._trace(scene)) == trace_before)
 caps = api.capabilities()
 check("capabilities still reports no assembly engine and says why",

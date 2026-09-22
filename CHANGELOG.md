@@ -37,6 +37,16 @@ semantic versioning.
     as dangling, and a duplicated record is refused. The `BENCH_` namespace stays Dress Bench's.
   - No geometry: joining a part does not place it, poses are not propagated and loops are not solved,
     so `capabilities()` still reports `mechanical_assembly.available: false`.
+  - **Seating places the part** (stage 04b): the two declared interface frames are made coincident and
+    anti-parallel, and the part is parented so the whole sub-assembly rides its support. `insertion_mm`
+    and `clock_deg` are explicit, and insertion is checked against the stated limits; an interface with
+    no frame has no datum and is refused.
+  - A joint that closes a loop is **measured, not placed**: seating it reports the gap, axis and
+    clocking residual against a tolerance you name (schema v1 states none for a frame), and refuses with
+    `unsolvable: true` rather than nudging a part to make the loop fit.
+  - Dress Bench skips an optic that a recorded mount already carries, so it no longer stacks an invented
+    post under a real one; strip and re-dress leave manual placements and parenting untouched.
+  - Seating is millimetre-only, like the rest of the opto-mechanics.
   - See [docs/mechanics/assembly.md](docs/mechanics/assembly.md).
 
 ### Changed

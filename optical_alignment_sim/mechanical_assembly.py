@@ -19,6 +19,8 @@ This stage adds no geometry: nothing here moves, creates or measures anything. P
 mating frames, sub-assembly propagation and loop pose consistency are stage 04b and are not claimed.
 Pure Python, no bpy: the API layer reads the records and the stored graph and passes them in.
 """
+import math
+
 from .mechanical_interfaces import SchemaError, normalize_quantity
 
 GRAPH_VERSION = 1
@@ -393,3 +395,125 @@ def motion_permissions(graph, record):
                          next_step={'joint': joint['id'], 'state': 'seated'})
         out.append(entry)
     return out
+
+
+# ---------------------------------------------------------------------------------------------------
+# Stage 04b: where a joined part actually goes.
+#
+# The convention, stated rather than inferred: seating makes the two declared interface frames
+# COINCIDENT AND ANTI-PARALLEL -- the child's local +Z, which schema v1 calls the connection axis and
+# surface normal, turns to face the parent's. Nothing else is read out of the data. Any depth past that
+# datum is an explicit `insertion_mm` (positive = into the parent, along the parent socket's -Z), and it
+# is checked against the stated insertion limits. Clocking about the axis is an explicit angle, because
+# schema v1 carries no clocking datum beyond the frame's own +X.
+#
+# An interface with no frame has no datum, so it cannot be placed: the answer is `unknown` and names the
+# field. That is the same rule as stage 03 -- a missing value is never a pass.
+# ---------------------------------------------------------------------------------------------------
+
+IDENTITY = (((1.0, 0.0, 0.0), (0.0, 1.0, 0.0), (0.0, 0.0, 1.0)), (0.0, 0.0, 0.0))
+# pi about local X: +Z -> -Z, +X kept. This is what makes two mating faces look at each other.
+MATE_FLIP = (((1.0, 0.0, 0.0), (0.0, -1.0, 0.0), (0.0, 0.0, -1.0)), (0.0, 0.0, 0.0))
+
+
+def rotation_from_quaternion(wxyz):
+    """Unit quaternion (w, x, y, z) -> row-major 3x3. The schema already requires unit length."""
+    w, x, y, z = (float(v) for v in wxyz)
+    norm = math.sqrt(w * w + x * x + y * y + z * z)
+    if norm == 0.0:
+        raise SchemaError('a frame quaternion of zero length has no orientation')
+    w, x, y, z = w / norm, x / norm, y / norm, z / norm
+    return ((1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)),
+            (2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)),
+            (2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)))
+
+
+def compose(first, second):
+    """Rigid transform product: `first` then `second` applied in the frame `first` defines."""
+    (ra, ta), (rb, tb) = first, second
+    rot = tuple(tuple(sum(ra[i][k] * rb[k][j] for k in range(3)) for j in range(3)) for i in range(3))
+    trans = tuple(ta[i] + sum(ra[i][k] * tb[k] for k in range(3)) for i in range(3))
+    return rot, trans
+
+
+def invert(transform):
+    rot, trans = transform
+    inverse = tuple(tuple(rot[j][i] for j in range(3)) for i in range(3))
+    return inverse, tuple(-sum(inverse[i][k] * trans[k] for k in range(3)) for i in range(3))
+
+
+def translation(x, y, z):
+    return IDENTITY[0], (float(x), float(y), float(z))
+
+
+def rotation_about_z(degrees):
+    angle = math.radians(float(degrees))
+    cos, sin = math.cos(angle), math.sin(angle)
+    return ((cos, -sin, 0.0), (sin, cos, 0.0), (0.0, 0.0, 1.0)), (0.0, 0.0, 0.0)
+
+
+def frame_transform(frame):
+    """A schema v1 frame, already normalized to mm, as a rigid transform. None has no datum."""
+    if frame is None:
+        return None
+    return rotation_from_quaternion(frame['quaternion_wxyz']), tuple(float(v) for v in frame['origin'])
+
+
+def _axis(transform, index):
+    rot = transform[0]
+    return tuple(rot[i][index] for i in range(3))
+
+
+def _angle_between(u, v):
+    dot = max(-1.0, min(1.0, sum(a * b for a, b in zip(u, v))))
+    return math.degrees(math.acos(dot))
+
+
+def mating_transform(clock_deg=0.0, insertion_mm=0.0):
+    """Parent socket -> child socket: face to face, clocked, then pushed in by `insertion_mm`."""
+    return compose(compose(MATE_FLIP, rotation_about_z(clock_deg)),
+                   translation(0.0, 0.0, float(insertion_mm)))
+
+
+def seating_pose(parent_world, parent_frame, child_frame, clock_deg=0.0, insertion_mm=0.0):
+    """Where the child's object origin lands, given the parent's world transform.
+
+    `parent_world` is the parent object's own transform; the frames are its and the child's declared
+    interface frames in millimetres. Returns a rigid transform in the same world units.
+    """
+    socket = compose(parent_world, parent_frame)
+    return compose(compose(socket, mating_transform(clock_deg, insertion_mm)), invert(child_frame))
+
+
+def seating_residual(world_a, frame_a, world_b, frame_b, clock_deg=0.0, insertion_mm=0.0):
+    """How far two already-placed interfaces are from actually mating, for a joint that closes a loop.
+
+    The comparison is against where seating WOULD put interface b -- face to face with a, clocked and
+    inserted as asked -- so a joint whose hop carries a depth is judged with that depth, not without it.
+    Returns the gap in millimetres, the angle the axes are off, and the clocking difference. Nothing is
+    corrected: this measures the stated geometry and hands back the numbers.
+    """
+    socket_a = compose(world_a, frame_a)
+    socket_b = compose(world_b, frame_b)
+    expected = compose(socket_a, mating_transform(clock_deg, insertion_mm))
+    gap = math.sqrt(sum((expected[1][i] - socket_b[1][i]) ** 2 for i in range(3)))
+    return {'gap_mm': gap,
+            'axis_deg': _angle_between(_axis(expected, 2), _axis(socket_b, 2)),
+            'clock_deg': _angle_between(_axis(expected, 0), _axis(socket_b, 0))}
+
+
+def placement_limits(interface_a, interface_b, insertion_mm):
+    """Stated insertion limits the requested depth has to respect. Unstated limits are not invented."""
+    problems, used = [], []
+    for item, side in ((interface_a, 'a'), (interface_b, 'b')):
+        for field, compare in (('insertion_min', lambda v: insertion_mm < v),
+                               ('insertion_max', lambda v: insertion_mm > v)):
+            quantity = (item.get('dimensions') or {}).get(field)
+            if quantity is None or quantity.get('value') is None:
+                continue
+            value = normalize_quantity(quantity)['value']
+            used.extend(quantity.get('evidence') or [])
+            if compare(value):
+                problems.append('%s of interface %s states %s %.3f mm, and %.3f mm was asked for'
+                                % (item['id'], side, field, value, insertion_mm))
+    return problems, sorted(set(used))
