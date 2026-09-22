@@ -23,6 +23,9 @@ from . import optomech as _optomech
 from . import operators as _ops
 from . import bake as _bake
 from . import render as _render
+from . import mechanical_catalog as _mechanical_catalog
+from . import mechanical_compatibility as _mechanical_compatibility
+from . import mechanical_interfaces as _mechanical_interfaces
 
 
 def _scene():
@@ -51,7 +54,8 @@ _TOOL_GROUPS = {
     "read / inspect (the AI's eyes -- call these to SEE the bench, never guess)": [
         "capabilities", "get_state", "diagnose", "propose_corrections", "detect_phenomena", "produce_phenomenon",
         "inspect_beam", "inspect_element", "inspect_all", "beam_profile", "ao_measure", "get_wavefront", "sensor_capture",
-        "check_mechanics", "coupling_efficiency", "material_tables"],
+        "check_mechanics", "coupling_efficiency", "material_tables",
+        "inspect_part", "list_interfaces", "check_compatibility"],
     "build / scene": [
         "build_example", "build_bench", "add_component", "tag_element", "swap_part", "set_param", "set_mount", "convert_scene_to_mm",
         "import_glass", "fdtd_derive_property"],
@@ -173,7 +177,10 @@ def capabilities():
                         "physics. Loop = get_state() -> act -> the beam re-traces live. Validation covers selected "
                         "formulas and scenes; inspect model limitations before interpreting results.",
         "mechanical_assembly": {"available": False, "metadata_schema_version": 1,
-                                "status": "metadata only; no compatibility or assembly tools yet"},
+                                "compatibility_read_tools": ["inspect_part", "list_interfaces",
+                                                             "check_compatibility"],
+                                "status": "metadata plus read-only compatibility; no assembly engine, and "
+                                          "a compatible verdict is a data statement, not a tested fit"},
         "tool_count": len(fns),
         "tool_groups": _TOOL_GROUPS,
         "other_tools": other,
@@ -1661,6 +1668,93 @@ def _hardware_unsupported_here():
                      "'Scene units are authoritative' is on: it would be placed and collision-"
                      "checked a factor of %g out. Turn the declaration off, or keep the bench in "
                      "a millimetre scene." % geometry.mm_per_unit(scene)}
+
+
+def _mechanical_record(name):
+    """(record, error) for one object. Reading never creates or migrates metadata."""
+    obj = _scene().objects.get(name)
+    if obj is None:
+        return None, {"error": "object not found: %s" % name}
+    state = _mechanical_catalog.read_object(obj)
+    if state["record"] is None:
+        return None, {"error": "%s carries no readable mechanical record (%s)" % (name, state["status"]),
+                      "status": state["status"]}
+    return state["record"], None
+
+
+def inspect_part(name):
+    """READ-ONLY mechanical identity of one object: manufacturer/part number, sources, interfaces and
+    motions, exactly as stored. Nothing is inferred from the object's name or its mount preset, and the
+    scene is not modified. Objects without a record report `legacy_unmapped`."""
+    record, error = _mechanical_record(name)
+    if error:
+        return error
+    canonical = _mechanical_catalog.normalized(record)
+    return {"ok": True, "name": name, "definition_id": canonical["definition_id"],
+            "identity": canonical["identity"], "evidence_level": canonical["evidence_level"],
+            "sources": canonical["sources"],
+            "interfaces": [{"id": i["id"], "kind": i["kind"]} for i in canonical["interfaces"]],
+            "motions": [{"id": m["id"], "interface_id": m["interface_id"], "kind": m["kind"]}
+                        for m in canonical["motions"]],
+            "note": "stored metadata; an evidence level of unverified or visual_approximation is not a "
+                    "dimensional guarantee"}
+
+
+def list_interfaces(name):
+    """READ-ONLY list of one object's mechanical interfaces in millimetres and degrees: kind, thread
+    labels, stated dimensions and the source ids behind each. A dimension the product data does not state
+    comes back as null -- that is the input `check_compatibility` refuses to guess around."""
+    record, error = _mechanical_record(name)
+    if error:
+        return error
+    canonical = _mechanical_catalog.normalized(record)
+    out = []
+    for item in canonical["interfaces"]:
+        thread = item["thread"]
+        out.append({
+            "id": item["id"], "kind": item["kind"], "mating_direction": item["mating_direction"],
+            "dimensions_mm": {k: {"value": q["value"], "evidence": q["evidence"]}
+                              for k, q in item["dimensions"].items()},
+            "thread": None if thread is None else {
+                "standard": thread["standard"], "gender": thread["gender"], "hand": thread["hand"],
+                "form": thread["form"], "fit_class": thread["fit_class"],
+                "major_diameter_mm": thread["major_diameter"]["value"], "pitch_mm": thread["pitch"]["value"],
+                "evidence": thread["evidence"]},
+            "lock": item["lock"], "access": {"tool": item["access"]["tool"]},
+            "evidence": item["evidence"]})
+    return {"ok": True, "name": name, "interfaces": out}
+
+
+def check_compatibility(a, interface_a, b, interface_b, adapters=None, optic_thickness_mm=None,
+                        max_chain=2):
+    """Can interface `interface_a` of object `a` mate with `interface_b` of object `b`? READ-ONLY.
+
+    Returns one of `compatible`, `incompatible`, `unknown`, `adapter_required`, with the rule-by-rule
+    reasoning, the source ids each rule used, and the fields that were missing. A missing value never
+    becomes a pass: the answer is `unknown` and `missing` names the field. `adapters` is a list of object
+    names whose own mechanical records are searched for a route, shortest chain first, each part used at
+    most once so a chain cannot loop. An adapter without manufacturer and part number is still reported,
+    with its missing identity listed rather than a made-up product."""
+    record_a, error = _mechanical_record(a)
+    if error:
+        return error
+    record_b, error = _mechanical_record(b)
+    if error:
+        return error
+    adapter_records = []
+    for adapter_name in (adapters or []):
+        record, error = _mechanical_record(adapter_name)
+        if error:
+            return error
+        adapter_records.append(record)
+    try:
+        return _mechanical_compatibility.check(
+            _mechanical_catalog.normalized(record_a), interface_a,
+            _mechanical_catalog.normalized(record_b), interface_b,
+            adapters=[_mechanical_catalog.normalized(r) for r in adapter_records],
+            max_chain=int(max_chain), optic_thickness_mm=optic_thickness_mm)
+    except _mechanical_interfaces.SchemaError as exc:
+        return {"error": str(exc)}
 
 
 def check_mechanics():

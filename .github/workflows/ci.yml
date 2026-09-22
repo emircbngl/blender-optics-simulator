@@ -110,6 +110,9 @@ jobs:
           xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_mechanical_schema.py
           python3 tools/check_mechanical_inventory.py
 
+      - name: Mechanical compatibility engine (verdicts, evidence, adapter chains)
+        run: xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_mechanical_compatibility.py
+
       - name: Render hardware detail (render-only, restores the bench) and generic mount catalog
         run: |
           xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_hardware_render.py
