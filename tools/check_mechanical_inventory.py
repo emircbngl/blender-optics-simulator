@@ -45,13 +45,31 @@ def check():
     for fact in data['evidence_facts']:
         assert fact['source_id'] in sources and set(fact['presets']) <= expected
         assert fact['locator'] and fact['verification'] == 'primary_published_nominal_not_mesh_verified'
+    support_numbers = {p['part_number'] for p in data['support_parts']}
     for p in data['support_parts']:
         assert p['source_id'] in sources and p['compatibility'] == 'unknown'
+    # Stage 05 acquisition: published facts about the support chain. They live apart from the preset
+    # facts because a post or a holder is not a preset, and they are nominal until a drawing datum
+    # and a mesh measurement agree.
+    for fact in data.get('support_facts', []):
+        assert fact['source_id'] in sources, fact['id']
+        assert set(fact['support_parts']) <= support_numbers, fact['id']
+        assert fact['locator'] and fact['verification'] == 'primary_published_nominal_not_mesh_verified'
+    blockers = data.get('support_blockers')
+    if blockers is not None:
+        assert blockers['missing'] and blockers['next_action']
+        assert blockers['dependent_work_not_started'] is True, \
+            'the plan forbids starting work that depends on evidence that is still missing'
     assert data['stage_gate'] == dict(preset_inventory_complete=True, product_identity_complete=False,
                                      dimension_validation_complete=False, assembly_training_complete=False)
     mapped = sum(p['target']['part_number'] is not None for p in products)
     print(f'INVENTORY PASS: {len(expected)}/{len(expected)} presets; {mapped} source-named targets; '
           f'{len(expected)-mapped} explicit identity/evidence gaps; {len(sources)} source records')
+    facts = len(data.get('support_facts', []))
+    if facts:
+        print(f'SUPPORT ACQUISITION: {facts} published facts for '
+              f'{len({p for f in data["support_facts"] for p in f["support_parts"]})} support parts; '
+              f'{len(data["support_blockers"]["missing"])} gaps still blocking stage 05')
     print('This validates coverage and provenance structure, not source accuracy, mesh dimensions or compatibility.')
 
 if __name__ == '__main__':
