@@ -347,6 +347,16 @@
       "redistribution_permission": "unknown",
       "cad_file_acquired": true,
       "acquisition_note": "Opened and read for dimensions only. The file is not stored in this repository and is not redistributed. Drawing is stamped FOR INFORMATION ONLY / NOT FOR MANUFACTURING PURPOSES and carries no tolerances; imperial values on it are marked as calculated and may contain round-off."
+    },
+    "rs2pm_product": {
+      "title": "Thorlabs RS2P/M product page",
+      "url": "https://www.thorlabs.com/thorproduct.cfm?partnumber=RS2P/M",
+      "locator": "product title: \u00d825.0 mm Pedestal Pillar Post, M6 Taps, L = 50 mm",
+      "access": "indexed_primary",
+      "checked_on": "2026-09-23",
+      "document_revision": null,
+      "redistribution_permission": "unknown",
+      "cad_file_acquired": false
     }
   },
   "products": [
@@ -5056,6 +5066,31 @@
         "ball plunger diameter and spring force",
         "CAD rights"
       ]
+    },
+    {
+      "part_number": "TR50/M-JP",
+      "manufacturer": "Thorlabs",
+      "role": "post_12mm",
+      "variant": "metric",
+      "source_id": "post_family",
+      "compatibility": "unknown",
+      "gaps": [
+        "drawing revision",
+        "CAD rights"
+      ]
+    },
+    {
+      "part_number": "RS2P/M",
+      "manufacturer": "Thorlabs",
+      "role": "pillar_post_25mm",
+      "variant": "metric",
+      "source_id": "rs2pm_product",
+      "compatibility": "unknown",
+      "gaps": [
+        "drawing revision",
+        "exact mating interfaces",
+        "CAD rights"
+      ]
     }
   ],
   "evidence_facts": [
@@ -5706,7 +5741,7 @@
       "value": 0.1,
       "source_id": "ph50m_drawing",
       "locator": "12.8 mm bore minus the 12.7 mm TR-series post on the same drawing's note",
-      "note": "DERIVED, not published: arithmetic on two nominals from two drawings, with no tolerance on either. It is a nominal clearance, not a fit class and not a measured gap.",
+      "note": "DERIVED, not published: the nominal gap a TR50/M leaves in a PH50/M. It is NOT the bore's allowed clearance -- the vendor states that \u00d812 mm posts fit the same holders directly, a 0.8 mm gap (see ph_series_allowed_gap_lower_bound). Not a fit class and not a measured gap.",
       "verification": "derived_from_published_nominals",
       "manufacturing_tolerance": null,
       "derived_from": [
@@ -5847,6 +5882,89 @@
         "ph50m_dwg_thumbscrew_offset",
         "ts6hm_dwg_tip"
       ]
+    },
+    {
+      "id": "tr_jp_outer_diameter",
+      "support_parts": [
+        "TR50/M-JP"
+      ],
+      "field": "outer_diameter_mm",
+      "value": 12.0,
+      "source_id": "post_family",
+      "locator": "\u00d812 mm Stainless Steel Optical Posts: precision ground to \u00d812 mm; TR50/M-JP, L = 50 mm",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "tr_jp_length",
+      "support_parts": [
+        "TR50/M-JP"
+      ],
+      "field": "length_mm",
+      "value": 50,
+      "source_id": "post_family",
+      "locator": "Japanese table: TR50/M-JP, L = 50 mm",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "tr_jp_holder_compatibility",
+      "support_parts": [
+        "TR50/M-JP"
+      ],
+      "field": "compatible_with",
+      "value": "standard \u00d81/2\" post holders",
+      "source_id": "post_family",
+      "locator": "\u00d812 mm section: 'These \u00d812 mm posts are directly compatible with our standard \u00d81/2\" Post Holders and most of their compatible products.'",
+      "note": "The vendor's own statement. It is what stops the 0.1 mm TR50/M gap being read as the bore's allowed clearance.",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "ph_series_allowed_gap_lower_bound",
+      "support_parts": [
+        "PH50/M"
+      ],
+      "field": "allowed_diametral_gap_min_mm",
+      "value": 0.8,
+      "source_id": "post_family",
+      "locator": "12.8 mm bore (drawing 23132) minus the 12.0 mm post the vendor states fits directly",
+      "note": "DERIVED, not published: the bore takes at least a 0.8 mm diametral gap, because the ball-plunger thumbscrew clamps the post against the bore wall rather than the bore holding it by size. A larger gap is not claimed either way.",
+      "verification": "derived_from_published_nominals",
+      "manufacturing_tolerance": null,
+      "derived_from": [
+        "ph50m_dwg_bore_diameter",
+        "tr_jp_outer_diameter",
+        "tr_jp_holder_compatibility"
+      ]
+    },
+    {
+      "id": "rs2pm_outer_diameter",
+      "support_parts": [
+        "RS2P/M"
+      ],
+      "field": "outer_diameter_mm",
+      "value": 25.0,
+      "source_id": "rs2pm_product",
+      "locator": "Product title: \u00d825.0 mm Pedestal Pillar Post",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "rs2pm_length",
+      "support_parts": [
+        "RS2P/M"
+      ],
+      "field": "length_mm",
+      "value": 50,
+      "source_id": "rs2pm_product",
+      "locator": "Product title: L = 50 mm",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
     }
   ],
   "support_blockers": {

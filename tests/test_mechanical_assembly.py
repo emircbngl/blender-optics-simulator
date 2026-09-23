@@ -286,7 +286,9 @@ api.set_joint_state(jid, 'fastened')
 fastened = next(m for m in api.permitted_motions("P_holder")["motions"] if m["motion"] == 'height')
 check("a fastened joint still refuses it, and names the step that frees it",
       fastened["permitted"] is False and fastened["next_step"]["state"] == 'seated', fastened["reason"])
-api.set_joint_state(jid, 'seated', insertion_mm=10.0)
+back = api.set_joint_state(jid, 'seated')
+check("loosening back to seated needs no insertion: nothing is placed again",
+      back.get("ok") and "placed" not in back, back.get("error"))
 free = next(m for m in api.permitted_motions("P_holder")["motions"] if m["motion"] == 'height')
 check("seated leaves the motion free, because seating is what it is for", free["permitted"] is True,
       free["reason"])

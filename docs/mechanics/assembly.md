@@ -98,6 +98,12 @@ Seating parents the carried part to its support with `matrix_parent_inverse`, so
 moves the whole sub-assembly as one body. Going back to `aligned` releases the part **where it stands**;
 it does not teleport home.
 
+**Only the forward step places.** `aligned → seated` is where geometry happens. Coming back to `seated`
+from `fastened` is loosening the screw: the part stays exactly where it is, and no insertion or clocking
+is asked for again. (Until 2026-09-23 the backward step re-ran the placement at insertion 0, which
+either moved the part back to its datum or, on a bore with a stated minimum insertion, refused to let
+the screw be loosened at all.)
+
 ### A joint that closes a loop is measured, not placed
 
 Both of its parts already have a pose, so seating it moves nothing and instead asks whether the stated
@@ -158,7 +164,9 @@ the MCP surface to match `optics_api` exactly; the MCP assembly *guide* is still
   promotes them.
 - No collision, tool access, torque, friction or load check. Those are stages 07 and 10.
 
-Tests: `tests/test_mechanical_assembly.py` (69 checks, the graph and its gates) and
-`tests/test_mechanical_assembly_geometry.py` (44 checks, the placement math and its refusals). Every
+Tests: `tests/test_mechanical_assembly.py` (73 checks, the graph and its gates),
+`tests/test_mechanical_assembly_geometry.py` (45 checks, the placement math and its refusals) and
+`tests/test_support_assembly.py` (26 checks, a real TR50/M post in a real PH50/M holder, from their
+drawings — see [product-evidence.md](product-evidence.md)). Every
 part in both is a labelled `FIXTURE`: the inventory has no sourced pair that mates and no sourced frame,
 and the rules under test do not depend on the numbers being real.
