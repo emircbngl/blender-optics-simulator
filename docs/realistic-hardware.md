@@ -40,17 +40,29 @@ of truth; generated .blend assets need not be committed to the add-on package.
 ## Sources and model limits
 
 These are original, vendor-inspired visual models, **not manufacturing CAD or verified dimensional
-replicas**. Existing mount envelopes and support geometry remain estimates where no drawing was
-validated. Coil count, wire size, knurl depth, text sizes, cross-hole axial position and surface
-roughness are visual choices, not measured specifications. No vendor CAD or brand logos are copied.
-Visual details do not introduce collision geometry into the optical tracer or change tolerances.
+replicas**. Mount envelopes and most support geometry remain estimates where no drawing was
+validated. Coil count, wire size, knurl depth, text sizes and surface roughness are visual choices,
+not measured specifications. No vendor CAD or brand logos are copied. Visual details do not
+introduce collision geometry into the optical tracer or change tolerances.
+
+**The Ø12.7 mm post and its post holder are the exception.** Their critical dimensions follow
+Thorlabs drawings TR50/M 0331 rev J and PH50/M 23132 rev B (read 2026-09-22; see
+[mechanics/product-evidence.md](mechanics/product-evidence.md)): a Ø25 × 50 mm holder with a closed wall
+and a Ø12.8 × 43.2 mm bore, the thumbscrew axis 12.7 mm below the top with a Ø14.5 mm knob standing
+10 mm proud, and the post's Ø3.2 mm cross-hole 10.2 mm below its top. `tests/test_support_geometry.py`
+measures the shipped Dress Bench and render meshes against those drawing values at 0.05 mm — half
+the drawings' 0.1 mm resolution. The drawings are stamped *for information only* and state no
+tolerances, so this is agreement with a nominal, not a fit. The foot under the holder is still a
+visual stand-in for the base, and the thumbscrew's neck/knob split and neck radius are not
+dimensioned on the drawing.
 
 Reference material checked 2026-09-15:
 
 - [Thorlabs continuous rotation mounts](https://www.thorlabs.com/NewGroupPage9_PF.cfm?ObjectGroup_ID=246):
   RSP1 accepts 1-inch optics; a knurled rim and 2-degree scale motivate the ring detail.
 - [Thorlabs optical posts](https://www.thorlabs.com/newgrouppage9.cfm?objectgroup_id=1266&pn=TR75%2FM-JP-P5):
-  stainless steel construction and a 3.2 mm transverse hole motivate the post material and cross hole.
+  stainless steel construction and a 3.2 mm transverse hole motivate the post material and cross hole;
+  the cross-hole station now comes from drawing 0331 rev J.
 - [Thorlabs POLARIS-K1 catalog](https://www.thorlabs.com/catalogpages/obsolete/2023/POLARIS-K1.pdf):
   stainless steel front/back plates motivate the distinct POLARIS material.
 

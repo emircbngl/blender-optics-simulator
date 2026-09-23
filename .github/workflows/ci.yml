@@ -118,6 +118,9 @@ jobs:
           xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_mechanical_assembly.py
           xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_mechanical_assembly_geometry.py
 
+      - name: Post and post holder against the vendor drawings (TR50/M, PH50/M)
+        run: xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_support_geometry.py
+
       - name: Render hardware detail (render-only, restores the bench) and generic mount catalog
         run: |
           xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_hardware_render.py

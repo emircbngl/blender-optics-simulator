@@ -250,10 +250,11 @@ def _prepare(scene):
             if name.startswith('RSPring_'):
                 _scale(coll,src,r,hi)
             if post and hi-lo > 20:
-                # Published TR cross-hole diameter; axial station is a visual estimate.
+                # TR50/M drawing 0331 rev J: a Ø3.2 mm cross-hole, its centreline 10.2 mm from the
+                # end face at the setscrew end (the post's top).
                 bpy.context.view_layer.update()
                 ob.hide_set(False)
-                optomech._bore_local(ob,ob.matrix_world.copy(),(0,0,hi-7),1.6,2*r+2,axis='X',seg=32)
+                optomech._bore_local(ob,ob.matrix_world.copy(),(0,0,hi-10.2),1.6,2*r+2,axis='X',seg=32)
                 ob.hide_set(True)
         bpy.context.view_layer.update()
     except Exception:

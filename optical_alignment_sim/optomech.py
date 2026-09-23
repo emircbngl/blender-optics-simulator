@@ -116,16 +116,27 @@ GRID_IMPERIAL_MM = 25.4         # imperial breadboard pitch (1", 1/4-20)
 # which we don't model as geometry, differs).
 POST_RADIUS = 6.35              # Ø12.7 mm optical post (TR 1/2" workhorse)
 POST_RADIUS_TALL = 12.5         # Ø25 mm (1") RS-series pillar — the periscope/vertical-fold support
-POST_SEAT_MM = 16.0             # post bottom seats HERE above the board: the 12 mm foot + the
-                                # holder's 4 mm bore floor. The cap screw is driven first, the post
-                                # drops in after — so the post must never pass through screw or foot.
+HOLDER_FOOT_H = 12.0            # the base foot under the holder (stage 05b: not yet the sourced BA2/M)
+# PH50/M, Thorlabs drawing 23132 rev B (docs/mechanics/product-evidence.json, read 2026-09-22). The
+# drawing is stamped FOR INFORMATION ONLY and states no tolerances: these are nominals.
+PH_OUTER_R = 12.5               # Ø25.0 mm body
+PH_BORE_R = 6.4                 # Ø12.8 mm bore, "for use with TR-series posts"
+PH_BORE_DEPTH = 43.2            # bore depth from the top face; the M6 x 1.0 tap runs through the floor
+PH_SCREW_FROM_TOP = 12.7        # thumbscrew axis below the top (bore) face
+PH_KNOB_R = 7.25                # Ø14.5 mm knob, 5 mm hex
+PH_KNOB_PROUD = 10.0            # knob's far face beyond the body wall
 VERTICAL_STACK_MM = 25.0        # optics this far apart in z at one xy => a vertical beam runs between
                                 # them; the pillar must be OFFSET so it doesn't sit in the beam path
 PILLAR_OFFSET = 44.0            # how far to push a vertical-fold (RS99 periscope) pillar off the beam
                                 # axis: enough that the post + clamp clear the optic so neither blocks it
 BOARD_THICKNESS = 12.7          # 1/2" solid breadboard slab
 MOUNT_DROP = 15.0               # optical axis -> post top: the mount body bridges this gap
-HOLDER_H = 50.0                 # fixed post-holder body length (PH2-class); insertion varies, not the body
+HOLDER_H = 50.0                 # PH50/M body length (drawing 23132 rev B); insertion varies, not the body
+POST_SEAT_MM = HOLDER_FOOT_H + HOLDER_H - PH_BORE_DEPTH
+                                # post bottom seats HERE above the board: the foot + the holder's
+                                # 6.8 mm floor under the 43.2 mm bore. The cap screw is driven first,
+                                # the post drops in after -- so the post never passes through screw or
+                                # foot.
 BASE_H = 9.0                    # post-holder/base foot thickness on the board
 BEAM_HEIGHT_DEFAULT = 100.0     # optical-axis height above the board top (the layout datum)
 
@@ -708,9 +719,17 @@ def _build_mount(o, coll, idx):
 def _post_holder(tag, x, y, board_top_z, post_radius, coll, grid):
     """The vertical support under one optic: a base foot bolted to the board (a cap-screw head shows
     it is fastened, not floating) + a fixed-length post-holder body with a side locking thumbscrew
-    (the post slides in and is clamped). The post itself is built by the caller. Returns the count."""
-    hr = post_radius * 1.8
-    foot, foot_h = 26.0, 12.0
+    (the post slides in and is clamped). The post itself is built by the caller. Returns the count.
+
+    For the Ø12.7 mm post -- every holder Dress Bench builds -- the holder is the PH50/M of drawing
+    23132 rev B: Ø25 x 50 mm, a Ø12.8 x 43.2 mm bore, a closed wall, and the thumbscrew 12.7 mm below
+    the top with a Ø14.5 mm knob standing 10 mm proud. tests/test_support_geometry.py measures it
+    against the drawing. Any other post radius falls back to the old proportional visual, which is
+    NOT sourced. The foot underneath is still a visual stand-in for the base (stage 05b)."""
+    sourced = abs(post_radius - POST_RADIUS) < 1e-9
+    hr = PH_OUTER_R if sourced else post_radius * 1.8
+    bore_r = PH_BORE_R if sourced else post_radius + 0.25
+    foot, foot_h = 26.0, HOLDER_FOOT_H
     x0, y0, nx, ny, pitch = grid
     holes = [(math.hypot(x0 + col * pitch - x, y0 + row * pitch - y),
               x0 + col * pitch, y0 + row * pitch)
@@ -756,20 +775,32 @@ def _post_holder(tag, x, y, board_top_z, post_radius, coll, grid):
                 (bolt_x, bolt_y, board_top_z + seat_top - 1.8), coll, "steel")
     _bore(bolt, (bolt_x, bolt_y, board_top_z + seat_top - 0.25), 2.6, 1.6, seg=6)   # real M6 hex: 5 mm across flats
     _bevel(bolt, 0.35, 1)
-    # bored, slit post-holder tube (a split-tube clamp, not a solid peg): the post slides into the bore
+    # The holder body: a closed-wall tube with a blind bore from the top. The post is clamped by the
+    # thumbscrew's tip, not by a split tube -- the drawing shows no slit.
     z_body = board_top_z + foot_h + HOLDER_H * 0.5
+    top = board_top_z + foot_h + HOLDER_H
     body = _cyl(BENCH_PREFIX + "Holder_" + tag, hr, HOLDER_H, (x, y, z_body), coll, "holder")
-    _bore(body, (x, y, z_body + 4.0), post_radius + 0.25, HOLDER_H)                   # coaxial bore, open top
-    slit = eg._cube(BENCH_PREFIX + "_slit_" + tag, Vector((1.6, hr * 2.3, HOLDER_H * 0.86)), coll)
-    slit.location = (x + hr * 0.55, y, z_body + HOLDER_H * 0.07)
-    _diff(body, slit)
+    depth = PH_BORE_DEPTH           # the floor is a property of the holder length, so POST_SEAT_MM holds
+    # 64 sides keep the polygon within 0.01 mm of the round bore, so it cannot eat the 0.05 mm radial
+    # clearance a Ø12.7 post has in it; the cutter runs 1 mm past the top so the mouth is clean.
+    _bore(body, (x, y, top - depth * 0.5 + 0.5), bore_r, depth + 1.0, seg=64)
     _bevel(body, 0.6, 1)
-    # side locking thumbscrew (shaft + knurled head) crossing the slit, clamping the post
-    mw = Matrix.Translation((x, y, board_top_z + foot_h + HOLDER_H * 0.70))
-    _ocyl(BENCH_PREFIX + "Locks_" + tag, post_radius * 0.3, post_radius * 1.1,
-          mw, (hr + post_radius * 0.4, 0.0, 0.0), coll, "steel", axis='X')
-    _bevel(_ocyl(BENCH_PREFIX + "Lockh_" + tag, post_radius * 0.7, post_radius * 0.7,
-                 mw, (hr + post_radius * 1.05, 0.0, 0.0), coll, "steel", axis='X'), 0.45, 2)
+    # Side locking thumbscrew, radial in +X. Sourced: the axis station, the knob diameter and how far
+    # the knob stands proud. Not dimensioned on the drawing, so a visual choice: the 3 mm neck / 7 mm
+    # knob split of that 10 mm, and the neck radius.
+    if sourced:
+        mw = Matrix.Translation((x, y, top - PH_SCREW_FROM_TOP))
+        knob_r, knob_len, neck_len = PH_KNOB_R, 7.0, PH_KNOB_PROUD - 7.0
+        _ocyl(BENCH_PREFIX + "Locks_" + tag, 2.5, hr - bore_r + neck_len,
+              mw, ((bore_r + hr + neck_len) * 0.5, 0.0, 0.0), coll, "steel", axis='X')
+        _bevel(_ocyl(BENCH_PREFIX + "Lockh_" + tag, knob_r, knob_len,
+                     mw, (hr + neck_len + knob_len * 0.5, 0.0, 0.0), coll, "steel", axis='X'), 0.45, 2)
+    else:
+        mw = Matrix.Translation((x, y, board_top_z + foot_h + HOLDER_H * 0.70))
+        _ocyl(BENCH_PREFIX + "Locks_" + tag, post_radius * 0.3, post_radius * 1.1,
+              mw, (hr + post_radius * 0.4, 0.0, 0.0), coll, "steel", axis='X')
+        _bevel(_ocyl(BENCH_PREFIX + "Lockh_" + tag, post_radius * 0.7, post_radius * 0.7,
+                     mw, (hr + post_radius * 1.05, 0.0, 0.0), coll, "steel", axis='X'), 0.45, 2)
     return 6 if needs_tab else 5
 
 
