@@ -128,6 +128,9 @@ jobs:
           xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_hardware_render.py
           xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_hardware_catalog.py
 
+      - name: Breadboard mesh cache across File > New, File > Open and Purge
+        run: xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_board_grid_cache.py
+
       - name: Mesh health (elements bare + mounts dressed, render-free)
         # numeric leg of the mount/element structural audit: non-manifold/loose-vert gate per
         # element mesh, BVH contact gate per dressed mount part. No renders in CI by design --

@@ -337,6 +337,9 @@ def on_load_post(*args):
     # RNA pointers from the previous .blend are invalid after a load. Never let a timer
     # dereference one; the next explicit/live trace repopulates the cache for the new file.
     tracer.cached_segments = []
+    # Likewise the breadboard cache: its meshes belonged to the file that was just closed.
+    from . import optomech
+    optomech._BOARD_GRID_MESH_CACHE.clear()
     try:
         from . import bake
         bake._baked_sig = None
