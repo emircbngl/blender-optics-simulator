@@ -138,8 +138,12 @@ boydan boya yarık yoktur; post yarık tüple değil başparmak vidasının ucuy
 **maksimum tork 28 in·lbs (3.2 N·m)**.
 
 **BA2/M** — 75.0 × 50.0 × 10.0 mm; M6 [1/4-20] başlı vida için **3 havşa** (12.5 mm TYP, 37.5 mm
-kolonda); M6 için **2 boşluk yuvası** (9.1 mm genişlik, uç merkezleri arası 31.8 mm, yuvalar arası
-50.0 mm); eloksallı alüminyum.
+kolonda); M6 için **2 boşluk yuvası** (kenardan yuva uç merkezine 9.1 mm, uç merkezleri arası 31.8 mm,
+yuvalar arası 50.0 mm; **yuva genişliği ölçülendirilmemiş**); eloksallı alüminyum.
+
+> **Düzeltme (23 Eylül 2026):** burada ilk olarak "9.1 mm genişlik" yazılmıştı. Çizim 3300 px'te yeniden
+> okundu: 9.1 mm plakanın kenarından yuvanın uç merkezine gidiyor; 9.1 + 31.8 + 9.1 = 50.0 mm, plakanın
+> genişliği. Yuva genişliği çizimde yok. (#78'deki ikinci yanlış okuma; ilki PH50/M'nin "ayağı"ydı.)
 
 **Türetilmiş tek sayı, etiketlenmiş olarak:** Ø12.8 delik − Ø12.7 post = **0.1 mm nominal çap boşluğu**.
 Yayımlanmış değil, iki nominalin farkıdır; geçme sınıfı ya da ölçülmüş boşluk değildir

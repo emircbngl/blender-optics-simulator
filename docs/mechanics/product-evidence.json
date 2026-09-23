@@ -410,6 +410,39 @@
       "redistribution_permission": "unknown",
       "cad_file_acquired": false,
       "acquisition_note": "The official ISO sample distributed by iTeh, read for one clause; not stored in this repository. sha256 ebbde6db362d145114f804724b8e8f6a027edb21195648da3325addc4e18fa2e"
+    },
+    "ba1m_drawing": {
+      "title": "Thorlabs BA1/M drawing 19225 (metric BA1 mounting base)",
+      "url": "https://media.thorlabs.com/globalassets/items/b/ba/ba1/ba1_m/19225-e0w.pdf",
+      "locator": "Thorlabs drawing 19225, sheet 1, title block REV A (29/OCT/14)",
+      "access": "primary_drawing",
+      "checked_on": "2026-09-23",
+      "document_revision": "A",
+      "redistribution_permission": "unknown",
+      "cad_file_acquired": true,
+      "acquisition_note": "Opened and read for dimensions only, with the owner's approval. The file is not stored in this repository and is not redistributed. sha256 c32fd52e9b252566e4afbf6c947d4fb9012d595e6e71790921c55b9b59b8ff73. Drawing is stamped FOR INFORMATION ONLY / NOT FOR MANUFACTURING PURPOSES and carries no tolerances; imperial values on it are marked as calculated and may contain round-off."
+    },
+    "be1m_drawing": {
+      "title": "Thorlabs BE1/M drawing 6790 (metric pedestal base)",
+      "url": "https://media.thorlabs.com/globalassets/items/b/be/be1/be1_m/6790-e0w.pdf",
+      "locator": "Thorlabs drawing 6790, sheet 1, title block REV C (04/NOV/14)",
+      "access": "primary_drawing",
+      "checked_on": "2026-09-23",
+      "document_revision": "C",
+      "redistribution_permission": "unknown",
+      "cad_file_acquired": true,
+      "acquisition_note": "Opened and read for dimensions only, with the owner's approval. The file is not stored in this repository and is not redistributed. sha256 55d0cdeb32fb096009e8dc182e034ab8ac9692dbc3db3527d83bdbf8c33090d5. Drawing is stamped FOR INFORMATION ONLY / NOT FOR MANUFACTURING PURPOSES and carries no tolerances; imperial values on it are marked as calculated and may contain round-off."
+    },
+    "cf125_drawing": {
+      "title": "Thorlabs CF125 drawing 6535 (small clamping fork)",
+      "url": "https://media.thorlabs.com/globalassets/items/c/cf/cf1/cf125/6535-e0w.pdf",
+      "locator": "Thorlabs drawing 6535, sheet 1, title block REV E (28/JAN/14)",
+      "access": "primary_drawing",
+      "checked_on": "2026-09-23",
+      "document_revision": "E",
+      "redistribution_permission": "unknown",
+      "cad_file_acquired": true,
+      "acquisition_note": "Opened and read for dimensions only, with the owner's approval. The file is not stored in this repository and is not redistributed. sha256 1146c94249a020e7ce1cc9f3865c285b86e68acdc647193086a72a1c8534e784. Drawing is stamped FOR INFORMATION ONLY / NOT FOR MANUFACTURING PURPOSES and carries no tolerances; imperial values on it are marked as calculated and may contain round-off."
     }
   },
   "products": [
@@ -5004,6 +5037,7 @@
       "source_id": "support",
       "compatibility": "unknown",
       "gaps": [
+        "slot width",
         "drawing revision",
         "exact mating interfaces",
         "fastener length / engagement",
@@ -5168,6 +5202,43 @@
       "gaps": [
         "tap depth (not dimensioned; no THRU stated)",
         "thread hand (not stated)",
+        "CAD rights"
+      ]
+    },
+    {
+      "part_number": "BA1/M",
+      "manufacturer": "Thorlabs",
+      "role": "base_narrow",
+      "variant": "metric",
+      "source_id": "ba1m_drawing",
+      "compatibility": "unknown",
+      "gaps": [
+        "slot width",
+        "counterbore diameter and depth",
+        "CAD rights"
+      ]
+    },
+    {
+      "part_number": "BE1/M",
+      "manufacturer": "Thorlabs",
+      "role": "pedestal_base_adapter",
+      "variant": "metric",
+      "source_id": "be1m_drawing",
+      "compatibility": "unknown",
+      "gaps": [
+        "CAD rights"
+      ]
+    },
+    {
+      "part_number": "CF125",
+      "manufacturer": "Thorlabs",
+      "role": "clamping_fork",
+      "variant": "universal",
+      "source_id": "cf125_drawing",
+      "compatibility": "unknown",
+      "gaps": [
+        "slot width",
+        "undercut depth",
         "CAD rights"
       ]
     }
@@ -5760,15 +5831,15 @@
       "manufacturing_tolerance": null
     },
     {
-      "id": "ba2m_dwg_slot_width",
+      "id": "ba2m_dwg_slot_end_from_edge",
       "support_parts": [
         "BA2/M"
       ],
-      "field": "slot_width_mm",
+      "field": "slot_end_centre_from_edge_mm",
       "value": 9.1,
       "source_id": "ba2m_drawing",
-      "locator": "Dimension: 9.1 mm [0.36in]",
-      "note": null,
+      "locator": "Dimension 9.1 mm [0.36in] from the plate's edge to the slot's end centre",
+      "note": "CORRECTED 2026-09-23. Recorded on 2026-09-22 as the slot WIDTH, which was a misreading: re-read at 3300 px, the dimension runs from the edge to the slot end centre, and 9.1 + 31.8 + 9.1 = 50.0 mm, the plate's width. The slot width is not dimensioned.",
       "verification": "primary_published_nominal_not_mesh_verified",
       "manufacturing_tolerance": null
     },
@@ -6252,6 +6323,274 @@
       "note": "The screw's length under the head: an upper bound on how far it can engage. What it actually engages is 16 mm minus what it clamps (schema v2).",
       "verification": "primary_published_nominal_not_mesh_verified",
       "manufacturing_tolerance": null
+    },
+    {
+      "id": "ba1m_dwg_footprint",
+      "support_parts": [
+        "BA1/M"
+      ],
+      "field": "footprint_mm",
+      "value": [
+        75.0,
+        25.0,
+        10.0
+      ],
+      "source_id": "ba1m_drawing",
+      "locator": "Views: 75.0 mm [2.95in] x 25.0 mm [0.98in] x 10.0 mm [0.39in]",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "ba1m_dwg_centre_hole",
+      "support_parts": [
+        "BA1/M"
+      ],
+      "field": "holder_hole",
+      "value": "clearance hole for M6 cap screw at the centre",
+      "source_id": "ba1m_drawing",
+      "locator": "Leader: CLEARANCE HOLE FOR M6 [1/4-20] CAP SCREW; 37.5 mm from the end, 12.5 mm from the side",
+      "note": "Drawn with a counterbore ring; its diameters and depth are not dimensioned.",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "ba1m_dwg_slot_depth",
+      "support_parts": [
+        "BA1/M"
+      ],
+      "field": "slot_end_centre_from_end_mm",
+      "value": 20.1,
+      "source_id": "ba1m_drawing",
+      "locator": "Dimension: 20.1 mm [0.79in] TYP from each end to the slot's end centre",
+      "note": "Two slots, open at the ends (isometric view). Their width is not dimensioned.",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "ba1m_dwg_slot_span",
+      "support_parts": [
+        "BA1/M"
+      ],
+      "field": "slot_end_centres_apart_mm",
+      "value": 34.9,
+      "source_id": "ba1m_drawing",
+      "locator": "Dimension: 34.9 mm [1.37in] between the two slot end centres",
+      "note": "75 - 2 x 20.1 = 34.8; the 0.1 mm is the drawing's own round-off.",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "be1m_dwg_disc",
+      "support_parts": [
+        "BE1/M"
+      ],
+      "field": "disc_diameter_mm",
+      "value": 31.8,
+      "source_id": "be1m_drawing",
+      "locator": "Leader: \u00d831.8 mm [\u00d81.25in]",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "be1m_dwg_disc_thickness",
+      "support_parts": [
+        "BE1/M"
+      ],
+      "field": "disc_thickness_mm",
+      "value": 4.7,
+      "source_id": "be1m_drawing",
+      "locator": "Side view: 4.7 mm [0.19in]",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "be1m_dwg_stud",
+      "support_parts": [
+        "BE1/M"
+      ],
+      "field": "stud",
+      "value": "M6 x 1.0 thread",
+      "source_id": "be1m_drawing",
+      "locator": "Leader: M6 x 1.0 THREAD",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "be1m_dwg_overall",
+      "support_parts": [
+        "BE1/M"
+      ],
+      "field": "overall_length_mm",
+      "value": 12.3,
+      "source_id": "be1m_drawing",
+      "locator": "Side view: 12.3 mm [0.49in], disc face to stud end",
+      "note": "So the stud stands 12.3 - 4.7 = 7.6 mm proud.",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "be1m_dwg_hex",
+      "support_parts": [
+        "BE1/M"
+      ],
+      "field": "drive",
+      "value": "3.0 mm hex for tightening base to post",
+      "source_id": "be1m_drawing",
+      "locator": "Leader: 3.0mm HEX FOR TIGHTENING BASE TO POST",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "be1m_stud_into_bore",
+      "support_parts": [
+        "BE1/M"
+      ],
+      "field": "stud_tip_into_ph50m_bore_mm",
+      "value": 0.8,
+      "source_id": "be1m_drawing",
+      "locator": "BE1/M's 7.6 mm stud against PH50/M's 6.8 mm through-tapped floor (50 - 43.2)",
+      "note": "DERIVED, not published: threaded home, the stud tip stands 0.8 mm into the bore, so a fully inserted post rests on the stud, not on the floor. A stack schema v1 cannot see; schema v2's fastener rule must.",
+      "verification": "derived_from_published_nominals",
+      "manufacturing_tolerance": null,
+      "derived_from": [
+        "be1m_dwg_overall",
+        "be1m_dwg_disc_thickness",
+        "ph50m_dwg_length",
+        "ph50m_dwg_bore_depth"
+      ]
+    },
+    {
+      "id": "cf125_dwg_outline",
+      "support_parts": [
+        "CF125"
+      ],
+      "field": "outline_mm",
+      "value": [
+        73.8,
+        36.3
+      ],
+      "source_id": "cf125_drawing",
+      "locator": "Front view: 2.91in [73.8 mm] x 1.43in [36.3 mm]",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "cf125_dwg_thickness",
+      "support_parts": [
+        "CF125"
+      ],
+      "field": "thickness_mm",
+      "value": [
+        11.2,
+        12.2
+      ],
+      "source_id": "cf125_drawing",
+      "locator": "Side view: 0.44in [11.2 mm] at the jaw end, 0.48in [12.2 mm] overall",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "cf125_dwg_jaw",
+      "support_parts": [
+        "CF125"
+      ],
+      "field": "jaw_diameter_mm",
+      "value": 26.0,
+      "source_id": "cf125_drawing",
+      "locator": "Leader: \u00d81.01in [\u00d826.0 mm] FOR COMPATIBILITY WITH \u00d81.00in [\u00d825.0 mm] (RS-SERIES) PEDESTAL POSTS",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "cf125_dwg_undercut",
+      "support_parts": [
+        "CF125"
+      ],
+      "field": "undercut_diameter_mm",
+      "value": 32.5,
+      "source_id": "cf125_drawing",
+      "locator": "Back view leader: \u00d81.28in [\u00d832.5 mm]",
+      "note": "Takes a \u00d831.8 mm pedestal disc such as BE1/M's with 0.7 mm to spare. Its depth is not dimensioned.",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "cf125_dwg_jaw_offset",
+      "support_parts": [
+        "CF125"
+      ],
+      "field": "jaw_centre_from_tip_mm",
+      "value": 3.8,
+      "source_id": "cf125_drawing",
+      "locator": "Dimension: 0.15in [3.8 mm] from the tip line to the jaw centre",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "cf125_dwg_slot_length",
+      "support_parts": [
+        "CF125"
+      ],
+      "field": "slot_end_centres_apart_mm",
+      "value": 31.5,
+      "source_id": "cf125_drawing",
+      "locator": "Dimension: 1.24in [31.5 mm] between the slot end centres",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "cf125_dwg_slot_far",
+      "support_parts": [
+        "CF125"
+      ],
+      "field": "far_slot_end_from_jaw_centre_mm",
+      "value": 43.2,
+      "source_id": "cf125_drawing",
+      "locator": "Dimension: 1.70in [43.2 mm] from the jaw centre to the far slot end centre",
+      "note": "So the screw can sit 43.2 - 31.5 = 11.7 to 43.2 mm from the pedestal's centre.",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "cf125_dwg_slot_screw",
+      "support_parts": [
+        "CF125"
+      ],
+      "field": "table_fastener",
+      "value": "1/4in-20 [M6 x 1.0] cap screw and washer (not included)",
+      "source_id": "cf125_drawing",
+      "locator": "Leader: CBORED SLOT TO ACCEPT 1/4in-20 [M6 x 1.0] CAP SCREW AND WASHER (NOT INCLUDED)",
+      "note": "The kit fixes it with an M6 x 12 mm cap screw plus washer (manual 6.2).",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "cf125_reaches_any_hole",
+      "support_parts": [
+        "CF125"
+      ],
+      "field": "grid_reach",
+      "value": "always reaches a 25 mm grid hole",
+      "source_id": "cf125_drawing",
+      "locator": "Reach 11.7-43.2 mm, turned freely about the pedestal",
+      "note": "DERIVED, not published: on a 25 mm grid the nearest hole is at most 17.7 mm away (half the cell's diagonal); if it is nearer than 11.7 mm, the next one out is within 11.7 + 25 = 36.7 mm < 43.2 mm.",
+      "verification": "derived_from_published_nominals",
+      "manufacturing_tolerance": null,
+      "derived_from": [
+        "cf125_dwg_slot_far",
+        "cf125_dwg_slot_length",
+        "mb4560m_dwg_pitch"
+      ]
     }
   ],
   "support_blockers": {
