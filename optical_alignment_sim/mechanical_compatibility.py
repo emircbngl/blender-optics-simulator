@@ -12,6 +12,12 @@ from .mechanical_interfaces import SchemaError, normalize_quantity
 
 VERDICTS = ('compatible', 'incompatible', 'unknown', 'adapter_required')
 
+# Values are stated in decimals and stored in binary floating point, so a difference of two stated
+# values can miss an equally stated limit by round-off alone: 12.8 - 12.0 is 0.8000000000000007. This
+# absorbs representation error only. It is a billionth of a millimetre, not a tolerance, and nothing
+# physical is decided inside it.
+REPRESENTATION_MM = 1e-9
+
 # Which interface kinds can mate at all. A pair outside this table is not "incompatible" through a
 # measurement -- it is a pairing the model has no rule for, so it is reported as unknown.
 MATING_KINDS = {
@@ -159,7 +165,7 @@ def _check_bore_shaft(a, b, report):
         if allowed is None:
             report.unknown('bore.fit', 'clearance',
                            'the bore states no clearance, so a %.2f mm gap cannot be called a fit' % gap)
-        elif gap > allowed:
+        elif gap > allowed + REPRESENTATION_MM:
             report.note('bore.fit', 'incompatible',
                         'a %.2f mm gap exceeds the %.2f mm clearance this bore allows' % (gap, allowed),
                         e_clear + e_bore + e_shaft)

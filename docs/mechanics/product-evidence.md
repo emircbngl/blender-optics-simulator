@@ -170,6 +170,30 @@ geometrik alt sınır, önerilen giriş değil (postun ölçülendirilmemiş uç
 `ph50m_min_insertion_lower_bound`, `derived_from_published_nominals`. Bu sayı olmadan aşama 03'ün
 delik/mil kuralı gerçek TR50/M ↔ PH50/M çiftine `unknown` diyor ve aşama 04 birleştirmeyi reddediyordu.
 
+### Ø12 mm post da uyuyor — üreticinin kendi beyanı (23 Eylül 2026)
+
+Post ailesi sayfası: *"These Ø12 mm posts are directly compatible with our standard Ø1/2" Post
+Holders"* (TR50/M-JP, Ø12 mm, M4 setskur, M6 diş, L 50 mm). Yani PH50/M'nin deliği boyutla değil,
+bilyeli başparmak vidasıyla tutar: Ø12.8 delik en az **0.8 mm** çap boşluğunu kabul eder
+(`ph_series_allowed_gap_lower_bound`, türetilmiş). 0.1 mm'lik `post_holder_diametral_gap` bir TR50/M'nin
+bıraktığı boşluktur, **izin verilen boşluk değildir**; onu delik boşluğu diye kullansaydım motor
+üreticinin desteklediği bir eşleşmeyi reddedecekti. Daha geniş bir boşluk iddia edilmiyor: 0.8 mm'yi
+aşan ince bir post reddedilir, tahmin edilmez.
+
+Gerçekten yanlış post: **RS2P/M**, Ø25.0 mm pedestal pillar post (ürün başlığından) — Ø12.8 deliğe girmez.
+
+### Kaynaklı kayıtlar (aşama 05a-2)
+
+`optical_alignment_sim/mechanical_library.py` bu olgulardan şema v1 kayıtları kurar: TR50/M, TR50/M-JP,
+RS2P/M, PH50/M. Eklenti dokümanlarla gelmediği için değerler kopyadır; `PROVENANCE` her değeri kaynağı olan
+olguya bağlar ve `tests/test_support_assembly.py` biri kayarsa düşer. Çizim kaynakları okunan dosyanın
+SHA-256'sını taşır. Üç değer türetilmiştir ve öyle etiketlidir: en az giriş 12.7 mm, izin verilen boşluk
+0.8 mm, taban kalınlığı 6.8 mm. `evidence_level` her kayıtta `unverified`.
+
+Motorun sonucu üreticiyle aynı: TR50/M uyar, TR50/M-JP uyar, RS2P/M girmez. Oturtulan post, Dress
+Bench'in kendi postuyla aynı yükseklikte, holder tabanının 6.8 mm üstünde durur — kayıtlar ile üretilen
+geometri aynı arayüzde buluşuyor.
+
 ### Hâlâ kapanmayanlar
 
 1. **Breadboard ürün kimliği yok** — zincirin altında hiçbir tabla yok (sahip kararı).

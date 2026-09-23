@@ -48,6 +48,15 @@ semantic versioning.
     post under a real one; strip and re-dress leave manual placements and parenting untouched.
   - Seating is millimetre-only, like the rest of the opto-mechanics.
   - See [docs/mechanics/assembly.md](docs/mechanics/assembly.md).
+- **Real parts to assemble** (stage 05a-2). `mechanical_library` builds schema-v1 records for the
+  Thorlabs TR50/M post, TR50/M-JP (Ø12 mm) post, RS2P/M (Ø25 mm) pillar and PH50/M post holder from
+  their drawings and product pages, each value tied to the inventory fact it came from and each drawing
+  pinned by the SHA-256 of the file read. The engine now agrees with the vendor: the TR50/M fits, the
+  Ø12 mm post fits too (the vendor says so, which is why the holder's allowed gap is recorded as at
+  least 0.8 mm and not the 0.1 mm a TR50/M leaves), the Ø25 mm pillar does not go in. Seated, the post
+  stands on the bore floor at exactly the height Dress Bench puts its own post. Too shallow for the
+  thumbscrew's ball (under 12.7 mm, derived) or deeper than the 43.2 mm bore is refused, and a locked
+  thumbscrew holds the post until it is walked back.
 
 ### Changed
 - **The post holder is now the PH50/M of its drawing, not a proportional guess** (stage 05a). Dress
@@ -66,10 +75,18 @@ semantic versioning.
 - The promo-film modules (`promo_hardware`, `promo_stations`) stay in the source tree for
   `tools/build_promo_mach_zehnder.py`, but the built zip now excludes them: 54 files instead of 56.
 - CI runs the mechanical schema test, the catalog inventory check, the compatibility engine, the
-  assembly graph and the post/holder drawing check.
+  assembly graph, the post/holder drawing check and the post/holder assembly.
 - CAPABILITIES said 36 element types; there are 35.
 
 ### Fixed
+- **Loosening a screw moved the part** (stage 04b). Stepping a joint back from `fastened` to `seated`
+  re-ran the seating placement at insertion 0: the part jumped back to its datum, or, on a bore with a
+  stated minimum insertion, the screw could not be loosened at all. Only the forward step
+  `aligned → seated` places now. The 04a suite had quietly worked around it by passing an insertion
+  on a backward step; that workaround is gone and both variants have witnesses.
+- **A gap exactly at the stated clearance was rejected by round-off** (stage 03). 12.8 − 12.0 is
+  0.8000000000000007 in binary floating point, so a 0.8 mm gap "exceeded" a 0.8 mm clearance. The
+  comparison now allows 1e-9 mm of representation error, which decides nothing physical.
 - **A misread drawing dimension in the support inventory.** The PH50/M "10.0 mm foot" recorded on
   2026-09-22 is the thumbscrew knob's protrusion; PH50/M has no foot. Re-read at 3300 px and corrected
   as `ph50m_dwg_thumbscrew_protrusion`, with the correction noted in the record. The TR50/M 10.2 mm

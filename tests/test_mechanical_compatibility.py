@@ -241,6 +241,27 @@ routed = compat.check(metric_stud, "stud", imperial_base, "hole", adapters=[loop
 check("adapters that only convert M4 to M4 never reach an imperial hole, and the search terminates",
       routed["verdict"] == 'incompatible' and routed["adapter_chain"] == [], routed["adapter_chain"])
 
+print("[a gap exactly at the stated clearance is a fit, not a round-off rejection]")
+# FIXTURE with the real numbers behind it: Thorlabs states that Ø12 mm posts are directly compatible
+# with its Ø12.8 mm-bore post holders, a 0.8 mm gap. 12.8 - 12.0 is 0.8000000000000007 in binary
+# floating point, so a plain `gap > clearance` rejected exactly the pairing the vendor supports.
+edge_bore = record("fixture:edge-bore", {'fixture': FIXTURE_SOURCE},
+                   [interface("bore", 'smooth_bore', {"diameter": quantity(12.8, evidence=['fixture']),
+                                                      "clearance": quantity(0.8, evidence=['fixture']),
+                                                      "insertion_min": quantity(12.7, evidence=['fixture'])})])
+edge_post = record("fixture:edge-post", {'fixture': FIXTURE_SOURCE},
+                   [interface("shaft", 'shaft', {"diameter": quantity(12.0, evidence=['fixture']),
+                                                 "insertion_max": quantity(50.0, evidence=['fixture'])})])
+edge = compat.check(edge_bore, "bore", edge_post, "shaft")
+check("a 0.8 mm gap under a 0.8 mm stated clearance is compatible",
+      edge["verdict"] == 'compatible', [(r["rule"], r["result"], r["detail"]) for r in edge["direct"]["rules"]])
+over_post = record("fixture:over-post", {'fixture': FIXTURE_SOURCE},
+                   [interface("shaft", 'shaft', {"diameter": quantity(11.99, evidence=['fixture']),
+                                                 "insertion_max": quantity(50.0, evidence=['fixture'])})])
+over = compat.check(edge_bore, "bore", over_post, "shaft")
+check("but 0.01 mm past it is still rejected: the allowance is representation, not tolerance",
+      over["verdict"] == 'incompatible', over["verdict"])
+
 print("[the API reads the scene and changes nothing]")
 for obj in list(bpy.data.objects):
     bpy.data.objects.remove(obj, do_unlink=True)

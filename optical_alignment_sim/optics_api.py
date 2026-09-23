@@ -2051,7 +2051,9 @@ def set_joint_state(joint_id, state, clock_deg=0.0, insertion_mm=0.0, tolerance_
     if not decision["ok"]:
         return dict(decision, dry_run=bool(dry_run))
     geometry_result = None
-    if decision.get("changed") and state == 'seated':
+    # Only the forward step places a part. Coming back to `seated` from `fastened` is loosening the
+    # screw: the part stays exactly where it is, and no insertion or clocking is asked for again.
+    if decision.get("changed") and state == 'seated' and joint["state"] == 'aligned':
         blocked = _hardware_unsupported_here()
         if blocked:
             return blocked

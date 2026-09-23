@@ -196,6 +196,18 @@ check("clocking turns the part about the mating axis",
 api.set_joint_state(j_base_post["joint"]["id"], 'aligned')
 api.set_joint_state(j_base_post["joint"]["id"], 'seated')
 
+print("[loosening a screw does not move the part]")
+api.set_joint_state(j_base_post["joint"]["id"], 'aligned')
+api.set_joint_state(j_base_post["joint"]["id"], 'seated', insertion_mm=3.0)
+api.set_joint_state(j_base_post["joint"]["id"], 'fastened')
+tight = objects["G_post"].matrix_world.copy()
+loose = api.set_joint_state(j_base_post["joint"]["id"], 'seated')
+check("fastened -> seated leaves the post 3 mm deep, not back at the datum",
+      loose.get("ok") and objects["G_post"].matrix_world == tight and "placed" not in loose,
+      (loose.get("placed"), tuple(objects["G_post"].matrix_world.translation)))
+api.set_joint_state(j_base_post["joint"]["id"], 'aligned')
+api.set_joint_state(j_base_post["joint"]["id"], 'seated')
+
 print("[no datum, no placement]")
 j_nodatum = api.join_parts("G_base", "side", "G_nodatum", "stem")
 check("the joint itself is allowed: the threads do mate", j_nodatum.get("ok"), j_nodatum.get("error"))

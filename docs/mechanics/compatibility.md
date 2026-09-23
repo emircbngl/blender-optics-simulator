@@ -28,7 +28,9 @@ not visibly collide are not compatibility.
 | anything else | `unknown` with "no rule for X against Y", not `incompatible`. |
 
 Values are normalised to millimetres and degrees before comparison; the stored record keeps its original
-units.
+units. A gap is compared with the stated clearance allowing `REPRESENTATION_MM` = 1e-9 mm: stated
+decimals live in binary floating point, and 12.8 − 12.0 is 0.8000000000000007, which used to reject a
+0.8 mm gap against a 0.8 mm clearance. That allowance is round-off only, not a tolerance.
 
 ## Adapters
 
