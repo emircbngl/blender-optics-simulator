@@ -357,6 +357,37 @@
       "document_revision": null,
       "redistribution_permission": "unknown",
       "cad_file_acquired": false
+    },
+    "slotted_bases_family": {
+      "title": "Thorlabs Slotted Bases family page",
+      "url": "https://www.thorlabs.com/slotted-bases",
+      "locator": "Standard Bases section",
+      "access": "indexed_primary",
+      "checked_on": "2026-09-23",
+      "document_revision": null,
+      "redistribution_permission": "unknown",
+      "cad_file_acquired": false
+    },
+    "edu_speb2m_manual": {
+      "title": "Thorlabs EDU-SPEB2(/M) Educational Spectrometer Kit manual, MTN021357-D02",
+      "url": "https://media.thorlabs.com/globalassets/items/e/ed/edu/edu-speb2/mtn021357-d02.pdf",
+      "locator": "Chapter 4 Kit Components (pages 5-6); Chapter 6 Setup, sections 6.1.4, 6.1.5, 6.2",
+      "access": "primary_manual",
+      "checked_on": "2026-09-23",
+      "document_revision": "Rev A, July 22, 2020",
+      "redistribution_permission": "unknown",
+      "cad_file_acquired": false,
+      "acquisition_note": "Downloaded with the owner's approval and read for the parts list and procedure. Not stored in this repository and not redistributed. sha256 d2627eb6d83648f6c7d2de80fa54550f636cecf9149b1a01759aa09b582ddf6d"
+    },
+    "mb4560m_product": {
+      "title": "Thorlabs MB4560/M product page",
+      "url": "https://www.thorlabs.com/thorproduct.cfm?partnumber=MB4560/M",
+      "locator": "product title: Aluminum Breadboard, 450 mm x 600 mm x 12.7 mm, M6 Taps",
+      "access": "indexed_primary",
+      "checked_on": "2026-09-23",
+      "document_revision": null,
+      "redistribution_permission": "unknown",
+      "cad_file_acquired": false
     }
   },
   "products": [
@@ -5091,6 +5122,32 @@
         "exact mating interfaces",
         "CAD rights"
       ]
+    },
+    {
+      "part_number": "EDU-SPEB2/M kit: M6 x 10 mm cap screw",
+      "manufacturer": "Thorlabs",
+      "role": "base_to_post_holder_screw",
+      "variant": "metric",
+      "source_id": "edu_speb2m_manual",
+      "compatibility": "unknown",
+      "gaps": [
+        "catalogue part number: the kit manual gives the size, not a part number",
+        "head height",
+        "CAD rights"
+      ]
+    },
+    {
+      "part_number": "MB4560/M",
+      "manufacturer": "Thorlabs",
+      "role": "breadboard_candidate",
+      "variant": "metric",
+      "source_id": "mb4560m_product",
+      "compatibility": "unknown",
+      "gaps": [
+        "owner confirmation as the chain's table",
+        "tap depth / through-hole detail",
+        "CAD rights"
+      ]
     }
   ],
   "evidence_facts": [
@@ -5965,6 +6022,119 @@
       "note": null,
       "verification": "primary_published_nominal_not_mesh_verified",
       "manufacturing_tolerance": null
+    },
+    {
+      "id": "bases_holder_joint",
+      "support_parts": [
+        "BA2/M"
+      ],
+      "field": "post_holder_joint",
+      "value": "1/4\"-20 (M6) cap screw through the bottom counterbore into the post holder",
+      "source_id": "slotted_bases_family",
+      "locator": "Standard Bases: 'Post holders are attached via 1/4\"-20 (M6) cap screws placed through the bottom-located counterbores in the base'",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "bases_parallelism",
+      "support_parts": [
+        "BA2/M"
+      ],
+      "field": "parallel_and_perpendicular_within_mm",
+      "value": 0.05,
+      "source_id": "slotted_bases_family",
+      "locator": "Standard Bases: 'All bases are machined parallel and perpendicular to within 0.002\" (0.05 mm)'",
+      "note": "The first published manufacturing tolerance in this chain. It is a form tolerance of the base, not a tolerance on any other value recorded here.",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "kit_base_holder_screw",
+      "support_parts": [
+        "EDU-SPEB2/M kit: M6 x 10 mm cap screw"
+      ],
+      "field": "fastener",
+      "value": "M6 x 10 mm cap screw",
+      "source_id": "edu_speb2m_manual",
+      "locator": "6.1.4: 'Attach a BA1(/M) base to a PH2 (PH50/M) post holder with a 1/4\"-20 x 3/8\" (M6 x 10 mm) cap screw'; 6.1.5: the three BA2(/M) bases to PH75/M holders with the same screw",
+      "note": "BA1/M and BA2/M are both 10 mm thick with the same M6 counterbore (kit components list).",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "kit_base_board_screw",
+      "support_parts": [
+        "BA2/M"
+      ],
+      "field": "table_fastener",
+      "value": "M6 x 16 mm cap screw plus M6 washer",
+      "source_id": "edu_speb2m_manual",
+      "locator": "6.2: 'Fix the position with a 1/4\"-20 x 5/8\" (M6 x 16 mm) cap screw plus washer'",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "kit_breadboard",
+      "support_parts": [
+        "MB4560/M"
+      ],
+      "field": "kit_table",
+      "value": "MB4560/M optical breadboard, 45 cm x 60 cm",
+      "source_id": "edu_speb2m_manual",
+      "locator": "Chapter 4: '1 x MB1824 (MB4560/M) Optical Breadboard, 18\" x 24\" (45 cm x 60 cm)'",
+      "note": "The table the kit that stage 01 took this chain from is sold with.",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "mb4560m_size",
+      "support_parts": [
+        "MB4560/M"
+      ],
+      "field": "size_mm",
+      "value": [
+        450,
+        600,
+        12.7
+      ],
+      "source_id": "mb4560m_product",
+      "locator": "Product title: 450 mm x 600 mm x 12.7 mm",
+      "note": "12.7 mm is the add-on's existing BOARD_THICKNESS.",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "mb4560m_taps",
+      "support_parts": [
+        "MB4560/M"
+      ],
+      "field": "taps",
+      "value": "M6",
+      "source_id": "mb4560m_product",
+      "locator": "Product title: M6 Taps",
+      "note": "Tap depth and grid pitch are not in the title; they are on drawing 6282, not yet opened.",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "ba2m_counterbore_floor_min",
+      "support_parts": [
+        "BA2/M"
+      ],
+      "field": "counterbore_floor_min_mm",
+      "value": 3.2,
+      "source_id": "edu_speb2m_manual",
+      "locator": "An M6 x 10 mm screw (kit procedure) into PH50/M's M6 tap, which runs through a 6.8 mm floor",
+      "note": "DERIVED, not published: for the vendor's own screw to stay out of the bore, at least 10 - 6.8 = 3.2 mm must sit under its head. The counterbore depth itself is not dimensioned on drawing 19227.",
+      "verification": "derived_from_published_nominals",
+      "manufacturing_tolerance": null,
+      "derived_from": [
+        "kit_base_holder_screw",
+        "ph50m_dwg_bore_depth",
+        "ph50m_dwg_length"
+      ]
     }
   ],
   "support_blockers": {
@@ -5976,15 +6146,19 @@
       "TR/M setscrew engagement: M4 x 0.7 stud standing 4.6-5.2 mm out of the post",
       "PH50/M bore: 12.8 mm diameter, 43.2 mm deep, for TR-series posts",
       "PH50/M base thread: M6 x 1.0 tapped thru",
-      "BA2/M slot and counterbore geometry for M6 cap screws"
+      "BA2/M slot and counterbore geometry for M6 cap screws",
+      "BA2/M -> PH50/M fastener: an M6 x 10 mm cap screw, by the vendor's own kit procedure (MTN021357-D02 6.1.4/6.1.5)",
+      "base -> table fastener: an M6 x 16 mm cap screw plus M6 washer (6.2)",
+      "a sourced table candidate: MB4560/M, the kit's own breadboard (450 x 600 x 12.7 mm, M6)"
     ],
     "missing": [
-      "a breadboard product identity: no optical table is in the 33-preset inventory, so the bottom of the chain has no product yet",
-      "manufacturing tolerances: every drawing is stamped FOR INFORMATION ONLY and states none, so fit classes and tolerance stacks stay out of reach",
-      "interface datums still have to be AUTHORED from these drawings and checked against the STEP model: two dimensions (TR/M side bore at 10.2 mm, PH50/M thumbscrew at 12.7 mm) were read off dimension lines rather than stated in words",
-      "the BA2/M -> PH50/M fastener: the drawing says only 'M6 cap screw', with no part number and no length, so thread engagement in the holder's M6 tap cannot be checked yet"
+      "owner confirmation that MB4560/M is the chain's table; its drawing 6282 (tap depth, grid) not yet opened",
+      "manufacturing tolerances: only the bases' 0.05 mm parallelism is published; the drawings state none",
+      "BA2/M counterbore depth: not dimensioned; the vendor procedure implies at least 3.2 mm under the head",
+      "screw catalogue part numbers, head height and washer thickness: the kit gives sizes only",
+      "schema v1 cannot express a three-part screw stack (head in the base, shank through its floor, thread in the holder), so the base joint's engagement cannot be rule-checked yet"
     ],
-    "next_action": "Pick the breadboard product, then build schema v1 records with frames for TR50/M, PH50/M and BA2/M from these facts and check every critical dimension against an independent mesh measurement, which is stage 05's exit condition.",
+    "next_action": "Owner: confirm MB4560/M as the table and approve opening drawing 6282. Then the table and base records, and a stack-aware fastener rule (a schema change, decided separately).",
     "dependent_work_not_started": true
   }
 }

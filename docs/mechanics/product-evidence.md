@@ -194,9 +194,38 @@ Motorun sonucu üreticiyle aynı: TR50/M uyar, TR50/M-JP uyar, RS2P/M girmez. Ot
 Bench'in kendi postuyla aynı yükseklikte, holder tabanının 6.8 mm üstünde durur — kayıtlar ile üretilen
 geometri aynı arayüzde buluşuyor.
 
+### Taban, vidalar ve tabla (aşama 05b kaynak edinimi, 23 Eylül 2026)
+
+**Birleşme tipi** (Slotted Bases aile sayfası): post holder'lar tabana, tabanın altındaki havşadan geçen
+1/4"-20 (M6) başlı vidayla bağlanır. Aynı sayfa zincirdeki **ilk yayımlanmış toleransı** veriyor: tabanlar
+0.002" (**0.05 mm**) içinde paralel ve dik işlenir.
+
+**Vidalar — üreticinin kendi montaj prosedüründen.** Aşama 01 bu zinciri (TR50/M, PH50/M, BA2/M)
+EDU-SPEB2/M eğitim kitinin malzeme listesinden almıştı; kitin kılavuzu (MTN021357-D02 Rev A, 22 Temmuz
+2020; sahip onayıyla indirildi, depoda değil) montajı adım adım veriyor:
+
+- taban ↔ post holder: **M6 × 10 mm başlı vida** (§6.1.4: BA1/M + PH50/M; §6.1.5: BA2/M + PH75/M — iki
+  taban da 10 mm kalın, aynı M6 havşa);
+- taban ↔ tabla: **M6 × 16 mm başlı vida + M6 pul** (§6.2).
+
+Kit parça numarası vermiyor, yalnız boyut; vida kaydı bu yüzden "kit vidası" olarak tutuluyor.
+
+**Türetilmiş:** PH50/M'nin M6 dişi 6.8 mm'lik tabanını boydan boya geçiyor. Üreticinin 10 mm vidası
+deliğe girmesin diye başın altında en az **3.2 mm** malzeme kalmalı (`ba2m_counterbore_floor_min`). Havşa
+derinliği çizimde yok; bu yalnız prosedürün ima ettiği alt sınır.
+
+**Tabla adayı: MB4560/M** — kitin kendi breadboard'u, 450 × 600 × **12.7 mm**, M6 diş. 12.7 mm eklentinin
+mevcut `BOARD_THICKNESS` değeriyle aynı. Seçim hâlâ sahibin: bu zincirin kaynağı olan kit onu kullanıyor,
+bu yüzden keyfi bir tahmin değil ama onay olmadan tablaya bağlanmadı. Diş derinliği ve ızgara adımı
+çizim 6282'de; açılmadı.
+
+**Şema sınırı:** taban bağlantısı üç parçalı bir yığın — baş tabanın havşasında, gövde havşa tabanından
+geçer, diş holder'da. Şema v1 bunu ifade edemiyor, bu yüzden taban bağlantısının kavraması kuralla
+denetlenemiyor. Bu bir şema değişikliği ve ayrıca karar gerektirir.
+
 ### Hâlâ kapanmayanlar
 
-1. **Breadboard ürün kimliği yok** — zincirin altında hiçbir tabla yok (sahip kararı).
+1. **Tabla sahip onayı bekliyor** — aday MB4560/M (kitin kendi tablası); çizim 6282 açılmadı.
 2. **Üretim toleransı yok** — her çizim "FOR INFORMATION ONLY / NOT FOR MANUFACTURING PURPOSES"
    damgalı ve tolerans vermiyor; ondalık basamaktan tolerans çıkarılmaz.
 3. **Datumlar henüz yazılmadı** — arayüz çerçeveleri bu çizimlerden üretilecek ve bağımsız mesh
