@@ -13,7 +13,7 @@ The choice follows the EDU-SPEB2/M kit the chain was taken from:
 * **BA1/M** (75 x 25 x 10 mm) where BA2/M would collide. Holder at the centre; its two slots are open at
   the ends and run in to 20.1 mm from each end. Same rule: only on a grid line.
 * **BE1/M + CF125** everywhere else. The pedestal disc (Ø31.8 x 4.7 mm) sits under the holder and the
-  fork's slot reaches 11.7-43.2 mm from the pedestal's centre, turning freely around it -- which always
+  fork's slot reaches 26.8-58.3 mm from the pedestal's centre, turning freely around it -- which always
   contains a hole of a 25 mm grid (derived in the inventory, `cf125_reaches_any_hole`). The kit fixes a
   CF125 this way for the one optic it has to place freely.
 
@@ -37,7 +37,9 @@ BA2 = {'part': 'BA2/M', 'length': 75.0, 'width': 50.0, 'slot_u': 25.0, 'slot_hal
        'counterbores': (0.0, -12.5, 12.5)}
 BA1 = {'part': 'BA1/M', 'length': 75.0, 'width': 25.0, 'slot_in': 17.4, 'slot_out': 37.5}
 BE1 = {'part': 'BE1/M', 'disc': 31.8}
-CF125 = {'part': 'CF125', 'length': 73.8, 'width': 36.3, 'tip': 3.8, 'reach': (11.7, 43.2)}
+# Reach from the jaw centre: near slot end 73.8 - 43.2 - 3.8 = 26.8, far end 26.8 + 31.5 = 58.3 (drawing 6535
+# rev E; the 43.2 runs from the near slot end to the fork's back end, not from the jaw).
+CF125 = {'part': 'CF125', 'length': 73.8, 'width': 36.3, 'tip': 3.8, 'reach': (26.8, 58.3)}
 HOLDER_D = 25.0            # PH50/M body
 
 
@@ -64,6 +66,26 @@ def _disc(cx, cy, d):
     """A disc as a 16-gon that encloses it, so an overlap test on it never misses a real overlap."""
     r = d / 2.0 / math.cos(math.pi / 16)
     return [(cx + r * math.cos(2 * math.pi * k / 16), cy + r * math.sin(2 * math.pi * k / 16)) for k in range(16)]
+
+
+def hull(points):
+    """Convex hull of 2-D points (monotone chain), counter-clockwise. Used to turn an already-built part's
+    footprint into an obstacle; a hull never under-covers the part."""
+    pts = sorted(set((round(x, 6), round(y, 6)) for x, y in points))
+    if len(pts) < 3:
+        return pts
+    def cross(o, a, b):
+        return (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0])
+    lower, upper = [], []
+    for p in pts:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], p) <= 0:
+            lower.pop()
+        lower.append(p)
+    for p in reversed(pts):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], p) <= 0:
+            upper.pop()
+        upper.append(p)
+    return lower[:-1] + upper[:-1]
 
 
 def overlap(a, b, clearance=0.0):
@@ -167,12 +189,13 @@ def _fork_plans(x, y, grid):
                'disc': _disc(x, y, BE1['disc'])}
 
 
-def choose(holders, grid):
-    """holders: {tag: (x, y)}. Returns {tag: plan}. Deterministic: tags in sorted order, candidates in
-    the kit's order of preference, the first whose footprint clears everything already placed and every
-    other holder's body."""
+def choose(holders, grid, obstacles=()):
+    """holders: {tag: (x, y)}. obstacles: footprints already standing on the board (rails, periscope
+    forks), as convex polygons. Returns {tag: plan}. Deterministic: tags in sorted order, candidates in
+    the kit's order of preference, the first whose footprint clears every obstacle, everything already
+    placed and every other holder's body."""
     bodies = {tag: _disc(x, y, HOLDER_D) for tag, (x, y) in holders.items()}
-    placed, plans = [], {}
+    placed, plans = [list(p) for p in obstacles if len(p) >= 3], {}
     for tag in sorted(holders):
         x, y = holders[tag]
         others = [poly for t, poly in bodies.items() if t != tag]

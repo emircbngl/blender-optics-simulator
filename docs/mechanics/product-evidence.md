@@ -214,9 +214,7 @@ EDU-SPEB2/M eğitim kitinin malzeme listesinden almıştı; kitin kılavuzu (MTN
 
 Kit parça numarası vermiyor, yalnız boyut; vida kaydı bu yüzden "kit vidası" olarak tutuluyor.
 
-**Türetilmiş:** PH50/M'nin M6 dişi 6.8 mm'lik tabanını boydan boya geçiyor. Üreticinin 10 mm vidası
-deliğe girmesin diye başın altında en az **3.2 mm** malzeme kalmalı (`ba2m_counterbore_floor_min`). Havşa
-derinliği çizimde yok; bu yalnız prosedürün ima ettiği alt sınır.
+**Türetilmiş — ama bir varsayımdan (düzeltildi, 23 Eylül 2026, #83 incelemesi):** PH50/M'nin M6 dişi 6.8 mm'lik tabanını boydan boya geçiyor; kitin 10 mm vidası deliğe girmiyorsa başın altında en az **3.2 mm** malzeme vardır (`ba1m_counterbore_floor_assumed_min`). Bu bir SINIR ya da KANIT değil: yalnız kit prosedürü doğruysa geçerli, bu yüzden vidanın deliğe girmediğini göstermek için asla kullanılamaz. İlk olarak BA2/M'ye yazılmıştı; oysa kit PH50/M'yi **BA1/M** ile eşliyor (§6.1.4), BA2/M ise PH75/M ile (§6.1.5) ve PH75/M'nin tabanı okunmadı — BA2/M'ye hiçbir şey taşınmaz. Havşa derinliği hâlâ ölçülendirilmemiş.
 
 **Tabla: MB4560/M** — kitin kendi breadboard'u; **sahip 23 Eylül 2026'da onayladı** ve çizim 6282 rev B
 (16/JAN/18) okundu: **600.0 × 450.0 × 12.7 mm** alüminyum, köşeler R3.0; **432 adet M6 × 1.0 diş**, **25.0 mm**

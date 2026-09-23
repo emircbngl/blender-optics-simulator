@@ -21,7 +21,7 @@ verts = [tuple(v.co) for v in m.data.vertices]
 optomech.dress(s)
 base = {o.name:(o.data, o.hide_render) for o in s.objects if o.name.startswith('BENCH_')}
 # A deliberately hidden part must never be resurrected by render prep or cleanup.
-hidden = next(o for o in s.objects if o.name.startswith('BENCH_BaseBolt'))
+hidden = next(o for o in s.objects if o.name.startswith('BENCH_BaseScrew'))
 hidden.hide_render = True
 base[hidden.name] = (hidden.data,True)
 bpy.context.view_layer.objects.active=m

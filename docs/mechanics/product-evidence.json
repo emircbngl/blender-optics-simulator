@@ -6212,15 +6212,15 @@
       "manufacturing_tolerance": null
     },
     {
-      "id": "ba2m_counterbore_floor_min",
+      "id": "ba1m_counterbore_floor_assumed_min",
       "support_parts": [
-        "BA2/M"
+        "BA1/M"
       ],
-      "field": "counterbore_floor_min_mm",
+      "field": "counterbore_floor_min_mm_if_kit_procedure_is_sound",
       "value": 3.2,
       "source_id": "edu_speb2m_manual",
-      "locator": "An M6 x 10 mm screw (kit procedure) into PH50/M's M6 tap, which runs through a 6.8 mm floor",
-      "note": "DERIVED, not published: for the vendor's own screw to stay out of the bore, at least 10 - 6.8 = 3.2 mm must sit under its head. The counterbore depth itself is not dimensioned on drawing 19227.",
+      "locator": "Manual 6.1.4: BA1/M on PH50/M with an M6 x 10 mm cap screw; PH50/M's M6 tap runs through a 6.8 mm floor (drawing 23132)",
+      "note": "DERIVED from an ASSUMPTION. CORRECTED 2026-09-23 (peer review of #83). An ASSUMPTION, not a bound and not a proof: it holds only if the kit's own procedure keeps the screw out of the bore, so it can never be used to show that the screw stays out. It was first filed under BA2/M, but the kit pairs PH50/M with BA1/M (6.1.4); BA2/M goes on PH75/M (6.1.5), whose floor is not read, so nothing transfers to BA2/M. The real counterbore depth is still not dimensioned.",
       "verification": "derived_from_published_nominals",
       "manufacturing_tolerance": null,
       "derived_from": [
@@ -6549,15 +6549,15 @@
       "manufacturing_tolerance": null
     },
     {
-      "id": "cf125_dwg_slot_far",
+      "id": "cf125_dwg_slot_near_to_back",
       "support_parts": [
         "CF125"
       ],
-      "field": "far_slot_end_from_jaw_centre_mm",
+      "field": "near_slot_end_centre_to_back_end_mm",
       "value": 43.2,
       "source_id": "cf125_drawing",
-      "locator": "Dimension: 1.70in [43.2 mm] from the jaw centre to the far slot end centre",
-      "note": "So the screw can sit 43.2 - 31.5 = 11.7 to 43.2 mm from the pedestal's centre.",
+      "locator": "Dimension 1.70in [43.2 mm] from the slot end centre nearer the jaw to the fork's back end",
+      "note": "CORRECTED 2026-09-23 (caught by a peer session's witness). First recorded as 'jaw centre to the far slot end', which put the near slot end 11.7 mm from the jaw centre -- inside the 13.0 mm jaw, physically impossible. Re-read at 3300 px: the extension lines run from the near slot end centre to the back edge.",
       "verification": "primary_published_nominal_not_mesh_verified",
       "manufacturing_tolerance": null
     },
@@ -6575,6 +6575,28 @@
       "manufacturing_tolerance": null
     },
     {
+      "id": "cf125_reach",
+      "support_parts": [
+        "CF125"
+      ],
+      "field": "screw_reach_from_jaw_centre_mm",
+      "value": [
+        26.8,
+        58.3
+      ],
+      "source_id": "cf125_drawing",
+      "locator": "Along the fork from its tips: jaw centre 3.8, near slot end 73.8 - 43.2 = 30.6, far slot end 30.6 + 31.5 = 62.1, back end 73.8",
+      "note": "DERIVED, not published: measured from the jaw centre the slot's end centres are at 26.8 and 58.3 mm. The near end clears the 16.25 mm undercut radius; the far end is 11.7 mm from the back.",
+      "verification": "derived_from_published_nominals",
+      "manufacturing_tolerance": null,
+      "derived_from": [
+        "cf125_dwg_outline",
+        "cf125_dwg_jaw_offset",
+        "cf125_dwg_slot_near_to_back",
+        "cf125_dwg_slot_length"
+      ]
+    },
+    {
       "id": "cf125_reaches_any_hole",
       "support_parts": [
         "CF125"
@@ -6582,13 +6604,12 @@
       "field": "grid_reach",
       "value": "always reaches a 25 mm grid hole",
       "source_id": "cf125_drawing",
-      "locator": "Reach 11.7-43.2 mm, turned freely about the pedestal",
-      "note": "DERIVED, not published: on a 25 mm grid the nearest hole is at most 17.7 mm away (half the cell's diagonal); if it is nearer than 11.7 mm, the next one out is within 11.7 + 25 = 36.7 mm < 43.2 mm.",
+      "locator": "Reach 26.8-58.3 mm, turned freely about the pedestal",
+      "note": "DERIVED, not published: from any point, some hole of a 25 mm grid lies inside the reach with at least 8.55 mm to spare (the tightest spot is on a hole, via its 35.4 mm diagonals). Checked on a 201 x 201 sampling of one cell whose half-diagonal is 0.088 mm; the margin changes no faster than distance does, so it holds everywhere.",
       "verification": "derived_from_published_nominals",
       "manufacturing_tolerance": null,
       "derived_from": [
-        "cf125_dwg_slot_far",
-        "cf125_dwg_slot_length",
+        "cf125_reach",
         "mb4560m_dwg_pitch"
       ]
     }
@@ -6611,7 +6632,7 @@
     ],
     "missing": [
       "manufacturing tolerances: only the bases' 0.05 mm parallelism is published; the drawings state none",
-      "BA2/M counterbore depth: not dimensioned; the vendor procedure implies at least 3.2 mm under the head",
+      "BA1/M and BA2/M counterbore depth: not dimensioned; the kit procedure only implies >= 3.2 mm under BA1/M's screw head if the procedure is sound, which is an assumption, not a bound",
       "screw catalogue part numbers, head height and washer thickness: the kit gives sizes only",
       "schema v1 cannot express a three-part screw stack (head in the base, shank through its floor, thread in the holder), so the base joint's engagement cannot be rule-checked yet",
       "MB4560/M tap depth: not dimensioned and not marked THRU, so the M6 x 16 mm table screw's engagement is unknown"

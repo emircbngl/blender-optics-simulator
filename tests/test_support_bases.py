@@ -24,6 +24,10 @@ def check(name, ok, detail=""):
     print(("PASS " if ok else "FAIL ") + name + ": " + str(detail), flush=True)
 
 
+import json
+FACTS = {f["id"]: f for f in json.loads(
+    (Path(__file__).resolve().parents[1] / "docs/mechanics/product-evidence.json").read_text())["support_facts"]}
+REACH = tuple(FACTS["cf125_reach"]["value"])       # from the inventory, never from support_bases itself
 GRID = (0.0, 0.0, 24, 18, 25.0)                 # MB4560/M: 24 x 18 holes on a 25 mm pitch
 HOLES = {(round(x, 6), round(y, 6)) for x, y in sb.holes(GRID)}
 
@@ -69,8 +73,9 @@ print("[off the grid: BE1/M + CF125]")
 off = sb.choose({'a': (263.0, 208.0)}, GRID)['a']
 r = math.hypot(off['screw'][0] - 263.0, off['screw'][1] - 208.0)
 check("a holder on no grid line gets a pedestal and a clamping fork", off['part'] == 'BE1/M + CF125', off['part'])
-check("the fork's screw is within its 11.7-43.2 mm reach, on a real hole",
-      11.7 - 1e-9 <= r <= 43.2 + 1e-9 and on_hole(off), r)
+check("the fork's screw is within its %.1f-%.1f mm reach, on a real hole" % REACH,
+      REACH[0] - 1e-9 <= r <= REACH[1] + 1e-9 and on_hole(off), r)
+check("support_bases uses the inventory's fork reach", tuple(sb.CF125['reach']) == REACH, sb.CF125['reach'])
 check("fastened with the kit's M6 x 12 + washer", off['fastener'] == 'M6 x 12 mm cap screw + M6 washer')
 # The inventory's derived claim, checked numerically: anywhere on the board, the fork reaches a hole.
 missed = []

@@ -47,7 +47,7 @@ grid=optomech.grid_info(bpy.context.scene)
 bases=[o for o in parts if o.get('table_base')]
 bolts=[o for o in parts if o.get('table_fastener')]
 assert len(bases)==13 and len(bolts)==26
-assert not any(o.name.startswith(('OAR_HW_Base_','OAR_HW_BaseTab_','OAR_HW_BaseBolt_')) and not o.hide_render for o in bpy.context.scene.objects)
+assert not any(o.name.startswith(tuple('OAR_HW_'+b for b in optomech.BASE_PARTS)) and not o.hide_render for o in bpy.context.scene.objects)
 for bolt in bolts:
  pos=bolt.matrix_world.translation
  for i in (0,1):

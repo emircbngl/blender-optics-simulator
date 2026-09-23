@@ -78,7 +78,7 @@ for p in list(newcoll.objects):
   bpy.data.objects.remove(p,do_unlink=True)
 for p in list(scene.objects):
  src=p.parent if p.name.startswith('OAR_HW_') else p
- if src and src.name.startswith(('BENCH_Base_','BENCH_BaseTab_','BENCH_BaseBolt_')):
+ if src and src.name.startswith(tuple(optomech.BENCH_PREFIX+b for b in optomech.BASE_PARTS)):
   p.hide_render=True
 for holder in list(newcoll.objects):
  if holder.get('target_part')=='PH50/M':H.table_base(newcoll,holder,optomech.grid_info(scene))

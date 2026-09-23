@@ -116,7 +116,6 @@ GRID_IMPERIAL_MM = 25.4         # imperial breadboard pitch (1", 1/4-20)
 # which we don't model as geometry, differs).
 POST_RADIUS = 6.35              # Ø12.7 mm optical post (TR 1/2" workhorse)
 POST_RADIUS_TALL = 12.5         # Ø25 mm (1") RS-series pillar — the periscope/vertical-fold support
-HOLDER_FOOT_H = 12.0            # the base foot under the holder (stage 05b: not yet the sourced BA2/M)
 # PH50/M, Thorlabs drawing 23132 rev B (docs/mechanics/product-evidence.json, read 2026-09-22). The
 # drawing is stamped FOR INFORMATION ONLY and states no tolerances: these are nominals.
 PH_OUTER_R = 12.5               # Ø25.0 mm body
@@ -136,12 +135,11 @@ PILLAR_OFFSET = 44.0            # how far to push a vertical-fold (RS99 periscop
 BOARD_THICKNESS = 12.7          # 1/2" solid breadboard slab
 MOUNT_DROP = 15.0               # optical axis -> post top: the mount body bridges this gap
 HOLDER_H = 50.0                 # PH50/M body length (drawing 23132 rev B); insertion varies, not the body
-POST_SEAT_MM = HOLDER_FOOT_H + HOLDER_H - PH_BORE_DEPTH
-                                # post bottom seats HERE above the board: the foot + the holder's
-                                # 6.8 mm floor under the 43.2 mm bore. The cap screw is driven first,
-                                # the post drops in after -- so the post never passes through screw or
-                                # foot.
-BASE_H = 9.0                    # post-holder/base foot thickness on the board
+# Where a post's bottom ends up is now decided per holder by its real base (support_bases): 16.8 mm
+# above the board on a BA2/M or BA1/M (10 mm plate + PH50/M's 6.8 mm floor), 12.3 mm on a BE1/M
+# pedestal (4.7 mm disc + a 7.6 mm stud whose tip stands 0.8 mm into the bore). _post_holder returns it.
+BASE_H = 10.0                   # BA2/M and BA1/M are 10 mm thick. validate() uses the taller real base,
+                                # which is conservative for a holder on a 4.7 mm BE1/M pedestal.
 BEAM_HEIGHT_DEFAULT = 100.0     # optical-axis height above the board top (the layout datum)
 
 
@@ -720,71 +718,210 @@ def _build_mount(o, coll, idx):
     return 2
 
 
-def _post_holder(tag, x, y, board_top_z, post_radius, coll, grid):
-    """The vertical support under one optic: a base foot bolted to the board (a cap-screw head shows
-    it is fastened, not floating) + a fixed-length post-holder body with a side locking thumbscrew
-    (the post slides in and is clamped). The post itself is built by the caller. Returns the count.
+# Stage 05b: dress() decides every holder's real base at once, before building anything, because a base
+# must not land where a later holder will stand. _post_holder then reads its plan by tag.
+_BASE_PLANS = {}
+_BASE_PLAN_POS = {}
+# Every object name a real base is built from (after BENCH_PREFIX). Tools that hide or check Dress
+# Bench's bases read this instead of spelling the names out, so a rename cannot slip past them.
+BASE_PARTS = ('Base_', 'BaseScrew_', 'BaseWasher_', 'BasePedestal_', 'BaseFork_')
+_LAST_PLAN_INPUTS = {}             # scene pointer -> the exact inputs of that scene's last base plan
 
-    For the Ø12.7 mm post -- every holder Dress Bench builds -- the holder is the PH50/M of drawing
-    23132 rev B: Ø25 x 50 mm, a Ø12.8 x 43.2 mm bore, a closed wall, and the thumbscrew 12.7 mm below
-    the top with a Ø14.5 x 7.9 mm TS6H/M knob standing 10 mm proud. tests/test_support_geometry.py measures it
-    against the drawing. Any other post radius falls back to the old proportional visual, which is
-    NOT sourced. The foot underneath is still a visual stand-in for the base (stage 05b)."""
+
+def base_plan_inputs(scene):
+    """The inputs the last dress() of `scene` planned its bases from: {'holders', 'grid', 'obstacles'}.
+    Re-running support_bases.choose(**inputs) reproduces the plan exactly, which is how a test can hold
+    the built bases to the decision -- the obstacles (rails, periscope parts) cannot be told apart from
+    bases once everything is dressed, so they are kept, not re-derived. None if not dressed here."""
+    inputs = _LAST_PLAN_INPUTS.get(scene.as_pointer())
+    if inputs is None:
+        return None
+    return {'holders': dict(inputs['holders']), 'grid': tuple(inputs['grid']),
+            'obstacles': [list(p) for p in inputs['obstacles']]}
+
+# Visual only -- these features exist on the real parts but are not dimensioned on their drawings, so
+# nothing is decided from them: slot and clearance-hole widths (M6 clearance), cap-screw heads and
+# washers, CF125's undercut depth (it must clear BE1/M's 4.7 mm disc).
+_VIS_SLOT_W = 6.6
+_VIS_WASHER = (6.0, 1.6)            # radius, thickness
+_VIS_SCREW_HEAD = (5.0, 6.0)        # radius, height (a 5 mm hex socket)
+_VIS_UNDERCUT = 4.8
+_CF125_T = 11.2                     # drawing 6535 rev E: 11.2 mm body (12.2 mm overall is not modelled)
+
+
+def _stack_top(members):
+    """The optic that sets a stack's support, and whether the stack is a vertical fold (periscope)."""
+    members.sort(key=lambda io: (_anchor_pt(io[1]).z, io[1].name))
+    i_top, o_top = members[-1]
+    pt = _anchor_pt(o_top)
+    zlo = _anchor_pt(members[0][1]).z
+    return i_top, o_top, pt, (pt.z - zlo) > VERTICAL_STACK_MM
+
+
+def _holder_positions(stacks, groups, tubes):
+    """{tag: (x, y)} for every post holder dress() is about to build, from the same helpers the
+    builders use -- so the plan and the build cannot disagree about where a holder stands."""
+    pos = {}
+    for members in stacks.values():
+        i_top, _o, pt, vfold = _stack_top(members)
+        if not vfold:
+            pos["%02d" % i_top] = (pt.x, pt.y)
+    for gi, members in enumerate(groups.values()):
+        geom = _cage_geom(members)
+        t = _cage_support_member(members, geom[5], geom[2]).matrix_world.translation
+        pos["cage_%02d" % gi] = (t.x, t.y)
+    for ti, members in enumerate(tubes.values()):
+        centroid = _tube_geom(members)[4]
+        pos["tube_%02d" % ti] = (centroid.x, centroid.y)
+    return pos
+
+
+def _board_obstacles(coll, board_top_z):
+    """Footprints of the Dress Bench parts already standing on the board (rails, periscope forks and
+    collars), as convex hulls of their real vertices -- read from the built meshes, not re-derived, so
+    they cannot drift from the builders."""
+    from . import support_bases as sb
+    skip = tuple(BENCH_PREFIX + p for p in ("Breadboard", "Holes", "Foot_"))
+    polys = []
+    for o in coll.objects:
+        if o.type != 'MESH' or not o.name.startswith(BENCH_PREFIX) or o.name.startswith(skip):
+            continue
+        ws = [o.matrix_world @ v.co for v in o.data.vertices]
+        if ws and min(v.z for v in ws) <= board_top_z + 15.0:
+            polys.append(sb.hull([(v.x, v.y) for v in ws]))
+    return polys
+
+
+def _slot_cut(obj, plan, a, b, z, depth):
+    """Cut a straight slot of the visual width from base-local point a to b (a stadium: box + ends)."""
+    from . import support_bases as sb
+    ang = math.radians(plan['angle_deg'])
+    wa = sb.to_world(plan['centre'], ang, *a)
+    wb = sb.to_world(plan['centre'], ang, *b)
+    length = math.hypot(wb[0] - wa[0], wb[1] - wa[1])
+    if length > 1e-6:
+        cut = eg._cube(BENCH_PREFIX + "_slotcut", Vector((length, _VIS_SLOT_W, depth)), bpy.context.scene.collection)
+        cut.location = ((wa[0] + wb[0]) * 0.5, (wa[1] + wb[1]) * 0.5, z)
+        cut.rotation_euler[2] = math.atan2(wb[1] - wa[1], wb[0] - wa[0])
+        _diff(obj, cut)
+    for w in (wa, wb):
+        _bore(obj, (w[0], w[1], z), _VIS_SLOT_W * 0.5, depth, seg=24)
+
+
+def _table_screw(tag, plan, top_z, coll):
+    """The one table screw the kit manual uses per base, with its washer, at the planned grid hole."""
+    sx, sy = plan['screw']
+    wr, wt = _VIS_WASHER
+    hr, hh = _VIS_SCREW_HEAD
+    _cyl(BENCH_PREFIX + "BaseWasher_" + tag, wr, wt, (sx, sy, top_z + wt * 0.5), coll, "steel")
+    head = _cyl(BENCH_PREFIX + "BaseScrew_" + tag, hr, hh, (sx, sy, top_z + wt + hh * 0.5), coll, "steel")
+    _bore(head, (sx, sy, top_z + wt + hh - 1.5), 5.0 / math.sqrt(3.0), 3.0, seg=6)   # 5 mm hex socket
+    _bevel(head, 0.35, 1)
+    return 2
+
+
+def _build_base(tag, plan, x, y, board_top_z, coll):
+    """The real base under one holder, from its plan. Returns (object count, the object carrying the plan)."""
+    from . import support_bases as sb
+    ang = math.radians(plan['angle_deg'])
+    if plan['part'] in ('BA2/M', 'BA1/M'):
+        spec = sb.BA2 if plan['part'] == 'BA2/M' else sb.BA1
+        cx, cy = plan['centre']
+        t = sb.BA_THICKNESS
+        plate = _box(BENCH_PREFIX + "Base_" + tag, (spec['length'], spec['width'], t),
+                     (cx, cy, board_top_z + t * 0.5), coll, "clamp")
+        plate.rotation_euler[2] = ang
+        bpy.context.view_layer.update()
+        zc, cut = board_top_z + t * 0.5, t * 3.0
+        if plan['part'] == 'BA2/M':
+            for side in (-1.0, 1.0):
+                _slot_cut(plate, plan, (side * spec['slot_u'], -spec['slot_half']),
+                          (side * spec['slot_u'], spec['slot_half']), zc, cut)
+            for v in spec['counterbores']:                  # clearance through each counterbore
+                w = sb.to_world(plan['centre'], ang, 0.0, v)
+                _bore(plate, (w[0], w[1], zc), _VIS_SLOT_W * 0.5, cut)
+        else:
+            for side in (-1.0, 1.0):                        # open at the ends: run the cut past them
+                _slot_cut(plate, plan, (side * spec['slot_in'], 0.0),
+                          (side * (spec['slot_out'] + _VIS_SLOT_W), 0.0), zc, cut)
+            _bore(plate, (cx, cy, zc), _VIS_SLOT_W * 0.5, cut)
+        _bevel(plate, 0.6, 1)
+        carrier, top = plate, board_top_z + t
+        n = 1
+    else:
+        disc = _cyl(BENCH_PREFIX + "BasePedestal_" + tag, sb.BE1['disc'] * 0.5, sb.BE1_DISC,
+                    (x, y, board_top_z + sb.BE1_DISC * 0.5), coll, "steel")
+        _bevel(disc, 0.3, 1)
+        # BE1/M's M6 stud is part of the same piece (drawing 6790: 12.3 mm overall, so 7.6 mm above
+        # the 4.7 mm disc). It threads up into the holder's floor; its tip is where the post stands.
+        import bmesh
+        bm = bmesh.new()
+        bm.from_mesh(disc.data)
+        bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=24, radius1=3.0, radius2=3.0,
+                              depth=sb.BE1_STUD,
+                              matrix=Matrix.Translation((0.0, 0.0, sb.BE1_DISC * 0.5 + sb.BE1_STUD * 0.5)))
+        bm.to_mesh(disc.data)
+        bm.free()
+        spec = sb.CF125
+        mid = spec['length'] * 0.5 - spec['tip']
+        fork = _box(BENCH_PREFIX + "BaseFork_" + tag, (spec['length'], spec['width'], _CF125_T),
+                    (x + math.cos(ang) * mid, y + math.sin(ang) * mid, board_top_z + _CF125_T * 0.5),
+                    coll, "steel")
+        fork.rotation_euler[2] = ang
+        bpy.context.view_layer.update()
+        zc, cut = board_top_z + _CF125_T * 0.5, _CF125_T * 3.0
+        _bore(fork, (x, y, zc), 13.0, cut, seg=64)                   # jaw Ø26.0 (drawing 6535)
+        mouth = eg._cube(BENCH_PREFIX + "_mouth", Vector((spec['tip'] + 13.0, 26.0, cut)), bpy.context.scene.collection)
+        back = (spec['tip'] + 13.0) * 0.5
+        mouth.location = (x - math.cos(ang) * back, y - math.sin(ang) * back, zc)
+        mouth.rotation_euler[2] = ang
+        _diff(fork, mouth)                                            # the jaw opens at the tips
+        _bore(fork, (x, y, board_top_z + _VIS_UNDERCUT * 0.5), 16.25, _VIS_UNDERCUT, seg=64)  # Ø32.5 undercut
+        lo, hi = spec['reach']
+        _slot_cut(fork, dict(plan, centre=(x, y)), (lo, 0.0), (hi, 0.0), zc, cut)
+        _bevel(fork, 0.4, 1)
+        carrier, top = disc, board_top_z + _CF125_T
+        n = 2
+    n += _table_screw(tag, plan, top, coll)
+    carrier["base_part"] = plan['part']
+    carrier["base_screw_xy"] = [float(plan['screw'][0]), float(plan['screw'][1])]
+    carrier["base_seat_mm"] = float(plan['seat'])
+    carrier["base_angle_deg"] = float(plan['angle_deg'])
+    carrier["base_conflict"] = bool(plan['conflict'])
+    return n, carrier
+
+
+def _post_holder(tag, x, y, board_top_z, post_radius, coll, grid):
+    """The vertical support under one optic: a real base screwed to the board, and a PH50/M post holder
+    with its side locking thumbscrew (the post slides in and is clamped). The post itself is built by
+    the caller. Returns (object count, seat) -- seat is how far above the board the post's bottom sits.
+
+    The base is chosen by support_bases, the way the EDU-SPEB2/M kit does it: a BA2/M where a grid line
+    allows, a BA1/M where BA2/M would collide, a BE1/M pedestal in a CF125 clamping fork anywhere else,
+    each with one table screw on a real grid hole. The holder is PH50/M of drawing 23132 rev B: Ø25 x 50
+    mm, a Ø12.8 x 43.2 mm bore, a closed wall, and the thumbscrew 12.7 mm below the top with a Ø14.5 x
+    7.9 mm TS6H/M knob standing 10 mm proud. tests/test_support_geometry.py and
+    tests/test_support_bases.py measure both. Any other post radius falls back to the old proportional
+    holder, which is NOT sourced."""
+    from . import support_bases as sb
     sourced = abs(post_radius - POST_RADIUS) < 1e-9
     hr = PH_OUTER_R if sourced else post_radius * 1.8
     bore_r = PH_BORE_R if sourced else post_radius + 0.25
-    foot, foot_h = 26.0, HOLDER_FOOT_H
-    x0, y0, nx, ny, pitch = grid
-    holes = [(math.hypot(x0 + col * pitch - x, y0 + row * pitch - y),
-              x0 + col * pitch, y0 + row * pitch)
-             for col in range(nx) for row in range(ny)]
-    bolt_dist, bolt_x, bolt_y = sorted(holes, key=lambda h: (h[0], h[1], h[2]))[0]
-    needs_tab = bolt_dist > 1.5
-    # rectangular pedestal foot (real PH foot is a chunky block, not a thin disc), bolted DOWN
-    # through a counterbored clearance hole (no proud bolt head)
-    ft = eg._cube(BENCH_PREFIX + "Base_" + tag, Vector((foot, foot, foot_h)), coll)
-    ft.location = (x, y, board_top_z + foot_h * 0.5)
-    ft.data.materials.clear(); ft.data.materials.append(_MATS["clamp"]())
-    if needs_tab:
-        # An integral slotted mounting ear reaches the grid without moving the post or its
-        # optic — BA-plate thickness (9.5 mm) so it reads as the slotted-base family.
-        tab_h = 9.5
-        dx, dy = bolt_x - x, bolt_y - y
-        angle = math.atan2(dy, dx)
-        tab = eg._cube(BENCH_PREFIX + "BaseTab_" + tag,
-                       Vector((bolt_dist + foot * 0.5, 13.0, tab_h)), coll)
-        tab.location = (x + dx * 0.5, y + dy * 0.5, board_top_z + tab_h * 0.5)
-        tab.rotation_euler[2] = angle
-        tab.data.materials.clear(); tab.data.materials.append(_MATS["clamp"]())
-        # The lengthwise clearance channel terminates in the screw counterbore at the real hole.
-        slot_len = max(bolt_dist - foot * 0.25, 1.0)
-        slot = eg._cube(BENCH_PREFIX + "_baseslot_" + tag,
-                        Vector((slot_len, 6.8, tab_h * 2.5)), coll)
-        slot.location = (bolt_x - math.cos(angle) * slot_len * 0.5,
-                         bolt_y - math.sin(angle) * slot_len * 0.5,
-                         board_top_z + tab_h * 0.5)
-        slot.rotation_euler[2] = angle
-        _diff(tab, slot)
-        _bore(tab, (bolt_x, bolt_y, board_top_z + tab_h * 0.5), 3.4, tab_h * 2.5)
-        _bore(tab, (bolt_x, bolt_y, board_top_z + tab_h - 1.0), 5.6, 4.0)
-        _bevel(tab, 1.0, 2)
-        seat_top = tab_h                                  # the screw seats in the tab counterbore
-    else:
-        _bore(ft, (bolt_x, bolt_y, board_top_z + foot_h * 0.5), 3.4, foot_h * 2.5)
-        _bore(ft, (bolt_x, bolt_y, board_top_z + foot_h - 1.0), 5.6, 4.0)
-        seat_top = foot_h                                 # the screw seats in the foot counterbore
-    _bevel(ft, 1.0, 2)
-    # The socket-head screw sits on the counterbore floor, slightly below the seat's top face.
-    bolt = _cyl(BENCH_PREFIX + "BaseBolt_" + tag, 5.4, 3.0,
-                (bolt_x, bolt_y, board_top_z + seat_top - 1.8), coll, "steel")
-    _bore(bolt, (bolt_x, bolt_y, board_top_z + seat_top - 0.25), 2.6, 1.6, seg=6)   # real M6 hex: 5 mm across flats
-    _bevel(bolt, 0.35, 1)
+    plan = _BASE_PLANS.get(tag)
+    if plan is None:                                  # called outside a dress() pass: plan this one alone
+        plan = sb.choose({tag: (x, y)}, grid)[tag]
+    elif __debug__:
+        px, py = _BASE_PLAN_POS[tag]
+        assert abs(px - x) < 1e-6 and abs(py - y) < 1e-6, "base planned for %s at %r, holder built at %r" % (
+            tag, (px, py), (x, y))
+    n, _carrier = _build_base(tag, plan, x, y, board_top_z, coll)
+    foot_h = plan['thickness']
     # The holder body: a closed-wall tube with a blind bore from the top. The post is clamped by the
     # thumbscrew's tip, not by a split tube -- the drawing shows no slit.
     z_body = board_top_z + foot_h + HOLDER_H * 0.5
     top = board_top_z + foot_h + HOLDER_H
     body = _cyl(BENCH_PREFIX + "Holder_" + tag, hr, HOLDER_H, (x, y, z_body), coll, "holder")
-    depth = PH_BORE_DEPTH           # the floor is a property of the holder length, so POST_SEAT_MM holds
+    depth = PH_BORE_DEPTH
     # 64 sides keep the polygon within 0.01 mm of the round bore, so it cannot eat the 0.05 mm radial
     # clearance a Ø12.7 post has in it; the cutter runs 1 mm past the top so the mouth is clean.
     _bore(body, (x, y, top - depth * 0.5 + 0.5), bore_r, depth + 1.0, seg=64)
@@ -804,7 +941,7 @@ def _post_holder(tag, x, y, board_top_z, post_radius, coll, grid):
               mw, (hr + post_radius * 0.4, 0.0, 0.0), coll, "steel", axis='X')
         _bevel(_ocyl(BENCH_PREFIX + "Lockh_" + tag, post_radius * 0.7, post_radius * 0.7,
                      mw, (hr + post_radius * 1.05, 0.0, 0.0), coll, "steel", axis='X'), 0.45, 2)
-    return 6 if needs_tab else 5
+    return n + 3, plan['seat']
 
 
 def _clamp_fork(tag, x, y, board_top_z, post_radius, coll, away):
@@ -1049,12 +1186,12 @@ def _build_cage(scene, members, board_top_z, coll, post_radius, tag, grid, creat
     support = _cage_support_member(members, centroid, axis)
     post_top_z = support.matrix_world.translation.z - plate_side * 0.5 + _CAGE_POST_BITE_MM
     h = max(post_top_z - board_top_z, 1.0)
-    nh = _post_holder("cage_" + tag, support.matrix_world.translation.x,
-                      support.matrix_world.translation.y, board_top_z, post_radius, coll, grid)
-    hs = max(h - POST_SEAT_MM, 1.0)                      # bottom on the holder floor, top unchanged
+    nh, seat = _post_holder("cage_" + tag, support.matrix_world.translation.x,
+                            support.matrix_world.translation.y, board_top_z, post_radius, coll, grid)
+    hs = max(h - seat, 1.0)                              # bottom on its seat, top unchanged
     _cyl("%sCagePost_%s" % (BENCH_PREFIX, tag), post_radius, hs,
          (support.matrix_world.translation.x, support.matrix_world.translation.y,
-          board_top_z + POST_SEAT_MM + hs * 0.5), coll, "post")
+          board_top_z + seat + hs * 0.5), coll, "post")
     if created is not None:
         created.extend(o for o in coll.objects if o not in before)
     return n + nh + 1
@@ -1156,10 +1293,10 @@ def _build_tube(scene, members, board_top_z, coll, post_radius, tag, grid, creat
     # one post under the barrel centroid, to beam height
     post_top_z = centroid.z - od * .5 + .8
     h = max(post_top_z - board_top_z, 1.0)
-    nh = _post_holder("tube_" + tag, centroid.x, centroid.y, board_top_z, post_radius, coll, grid)
-    hs = max(h - POST_SEAT_MM, 1.0)                      # bottom on the holder floor, top unchanged
+    nh, seat = _post_holder("tube_" + tag, centroid.x, centroid.y, board_top_z, post_radius, coll, grid)
+    hs = max(h - seat, 1.0)                              # bottom on its seat, top unchanged
     _cyl("%sTubePost_%s" % (BENCH_PREFIX, tag), post_radius, hs,
-         (centroid.x, centroid.y, board_top_z + POST_SEAT_MM + hs * 0.5), coll, "post")
+         (centroid.x, centroid.y, board_top_z + seat + hs * 0.5), coll, "post")
     if created is not None:
         created.extend(o for o in coll.objects if o not in before)
     return 3 + len(members) + nh + 1
@@ -1994,60 +2131,76 @@ def dress(scene, post_radius=POST_RADIUS):
             continue
         p = _anchor_pt(o)          # base pose, not the DOF-composed pose: posts don't chase knobs
         stacks.setdefault((round(p.x / 3.0), round(p.y / 3.0)), []).append((i, o))
-    for members in stacks.values():
-        before = set(coll.objects)                       # snapshot -> tag this cluster's new hardware below
-        created = []
-        members.sort(key=lambda io: (_anchor_pt(io[1]).z, io[1].name))
-        i_top, o_top = members[-1]                       # the highest optic sets the pillar height
-        pt = _anchor_pt(o_top)
-        zlo = _anchor_pt(members[0][1]).z
-        vfold = (pt.z - zlo) > VERTICAL_STACK_MM         # >1 deck at one xy => a vertical beam runs
-        if vfold:
-            # Vertical fold (periscope): a beam travels UP the shared xy between the decks. A post on
-            # that axis would sit IN the beam -- so the pillar is pushed PILLAR_OFFSET off-axis (out of
-            # the fold plane) and each mirror mount cantilevers back onto the beam on a short arm. This
-            # is the real periscope assembly; a coaxial post here is a (render-invisible) blocked beam.
-            # offset perpendicular to the in-plane beam legs: the horizontal beams leave this stack
-            # toward the other optics, so push the pillar across that axis. Spread of the other optics
-            # in x vs y tells us which way the legs run (periscope: source+detector along Y -> push X).
-            others = [e.matrix_world.translation for e in elems
-                      if ((e.matrix_world.translation.x - pt.x) ** 2
-                          + (e.matrix_world.translation.y - pt.y) ** 2) ** 0.5 > 8.0]
-            sx = sum(abs(o.x - pt.x) for o in others)
-            sy = sum(abs(o.y - pt.y) for o in others)
-            dirx, diry = (1.0, 0.0) if sy >= sx else (0.0, 1.0)
-            ox, oy = pt.x + dirx * PILLAR_OFFSET, pt.y + diry * PILLAR_OFFSET
-            h = max(pt.z - board_top_z, 1.0)             # one Ø1" post reaches up to the top deck
-            # RS99 periscope: a clamping fork anchors the single Ø1" post; each mirror rides a post-clamp
-            # collar that reaches back onto the beam axis (NOT a thin spider-arm on a slip-fit holder).
-            nf = _clamp_fork("%02d" % i_top, ox, oy, board_top_z, POST_RADIUS_TALL, coll, (dirx, diry))
-            _cyl(BENCH_PREFIX + "Post_%02d" % i_top, POST_RADIUS_TALL, h,
-                 (ox, oy, board_top_z + h * 0.5), coll, "post")
-            n += nf + 1
-            for i, o in members:
-                op = o.matrix_world.translation
-                opr = getattr(o.optics, "clear_aperture", 0.0) or 12.5
-                n += _periscope_clamp("%02d" % i, ox, oy, POST_RADIUS_TALL, op.x, op.y, op.z, coll, opr)
-                n += _build_mount(o, coll, i)
-        else:
-            from .hardware_shapes import support_drop
-            drop = max(support_drop(member) for _, member in members)
-            h = max((pt.z - drop) - board_top_z, 1.0)
-            # standard mounts keep the catalog Ø1/2" post at ANY length (the TR series runs to
-            # 300 mm and custom lengths exist) -- the diameter is a standard, the length is not.
-            # The Ø1" pillar is reserved for the vertical-fold/periscope assembly above, which is
-            # the real product that actually uses it.
-            pr = post_radius
-            # one base foot + post-holder + pillar (post top under the optic)
-            nh = _post_holder("%02d" % i_top, pt.x, pt.y, board_top_z, pr, coll, grid)
-            hs = max(h - POST_SEAT_MM, 1.0)              # bottom on the holder floor, top unchanged
-            _cyl(BENCH_PREFIX + "Post_%02d" % i_top, pr, hs,
-                 (pt.x, pt.y, board_top_z + POST_SEAT_MM + hs * 0.5), coll, "post")
-            n += nh + 1
-            for i, o in members:                         # each optic in the stack gets its own mount
-                n += _build_mount(o, coll, i)
-        created.extend(o for o in coll.objects if o not in before)
-        _own_new(coll, created, "stk%02d" % i_top, [o for _i, o in members], before=before)
+    # Every holder's real base is chosen here, all at once, before anything is built -- a base must not
+    # land where a later holder will stand. _post_holder reads its plan by tag.
+    # Periscopes and rails need no base and go down first: they are obstacles a base must clear.
+    from . import support_bases
+    for want_vfold in (True, False):
+        if not want_vfold:
+            for ri, members in enumerate(rails.values()):
+                before = set(coll.objects)
+                created = []
+                n += _build_rail(scene, members, board_top_z, coll, post_radius, "%02d" % ri, created)
+                _own_new(coll, created, "rail%02d" % ri, members, before=before)
+            _BASE_PLAN_POS.clear(); _BASE_PLAN_POS.update(_holder_positions(stacks, groups, tubes))
+            obstacles = _board_obstacles(coll, board_top_z)
+            _LAST_PLAN_INPUTS[scene.as_pointer()] = {'holders': dict(_BASE_PLAN_POS), 'grid': tuple(grid),
+                                                     'obstacles': [list(o) for o in obstacles]}
+            _BASE_PLANS.clear(); _BASE_PLANS.update(support_bases.choose(
+                dict(_BASE_PLAN_POS), grid, obstacles=obstacles))
+        for members in stacks.values():
+            # the highest optic sets the pillar height; >1 deck at one xy => a vertical beam runs
+            i_top, o_top, pt, vfold = _stack_top(members)
+            if vfold != want_vfold:
+                continue
+            before = set(coll.objects)                       # snapshot -> tag this cluster's new hardware below
+            created = []
+            if vfold:
+                # Vertical fold (periscope): a beam travels UP the shared xy between the decks. A post on
+                # that axis would sit IN the beam -- so the pillar is pushed PILLAR_OFFSET off-axis (out of
+                # the fold plane) and each mirror mount cantilevers back onto the beam on a short arm. This
+                # is the real periscope assembly; a coaxial post here is a (render-invisible) blocked beam.
+                # offset perpendicular to the in-plane beam legs: the horizontal beams leave this stack
+                # toward the other optics, so push the pillar across that axis. Spread of the other optics
+                # in x vs y tells us which way the legs run (periscope: source+detector along Y -> push X).
+                others = [e.matrix_world.translation for e in elems
+                          if ((e.matrix_world.translation.x - pt.x) ** 2
+                              + (e.matrix_world.translation.y - pt.y) ** 2) ** 0.5 > 8.0]
+                sx = sum(abs(o.x - pt.x) for o in others)
+                sy = sum(abs(o.y - pt.y) for o in others)
+                dirx, diry = (1.0, 0.0) if sy >= sx else (0.0, 1.0)
+                ox, oy = pt.x + dirx * PILLAR_OFFSET, pt.y + diry * PILLAR_OFFSET
+                h = max(pt.z - board_top_z, 1.0)             # one Ø1" post reaches up to the top deck
+                # RS99 periscope: a clamping fork anchors the single Ø1" post; each mirror rides a post-clamp
+                # collar that reaches back onto the beam axis (NOT a thin spider-arm on a slip-fit holder).
+                nf = _clamp_fork("%02d" % i_top, ox, oy, board_top_z, POST_RADIUS_TALL, coll, (dirx, diry))
+                _cyl(BENCH_PREFIX + "Post_%02d" % i_top, POST_RADIUS_TALL, h,
+                     (ox, oy, board_top_z + h * 0.5), coll, "post")
+                n += nf + 1
+                for i, o in members:
+                    op = o.matrix_world.translation
+                    opr = getattr(o.optics, "clear_aperture", 0.0) or 12.5
+                    n += _periscope_clamp("%02d" % i, ox, oy, POST_RADIUS_TALL, op.x, op.y, op.z, coll, opr)
+                    n += _build_mount(o, coll, i)
+            else:
+                from .hardware_shapes import support_drop
+                drop = max(support_drop(member) for _, member in members)
+                h = max((pt.z - drop) - board_top_z, 1.0)
+                # standard mounts keep the catalog Ø1/2" post at ANY length (the TR series runs to
+                # 300 mm and custom lengths exist) -- the diameter is a standard, the length is not.
+                # The Ø1" pillar is reserved for the vertical-fold/periscope assembly above, which is
+                # the real product that actually uses it.
+                pr = post_radius
+                # one base foot + post-holder + pillar (post top under the optic)
+                nh, seat = _post_holder("%02d" % i_top, pt.x, pt.y, board_top_z, pr, coll, grid)
+                hs = max(h - seat, 1.0)                      # bottom on its seat, top unchanged
+                _cyl(BENCH_PREFIX + "Post_%02d" % i_top, pr, hs,
+                     (pt.x, pt.y, board_top_z + seat + hs * 0.5), coll, "post")
+                n += nh + 1
+                for i, o in members:                         # each optic in the stack gets its own mount
+                    n += _build_mount(o, coll, i)
+            created.extend(o for o in coll.objects if o not in before)
+            _own_new(coll, created, "stk%02d" % i_top, [o for _i, o in members], before=before)
     for gi, members in enumerate(groups.values()):
         before = set(coll.objects)
         created = []
@@ -2058,11 +2211,7 @@ def dress(scene, post_radius=POST_RADIUS):
         created = []
         n += _build_tube(scene, members, board_top_z, coll, post_radius, "%02d" % ti, grid, created)
         _own_new(coll, created, "tube%02d" % ti, members, before=before)
-    for ri, members in enumerate(rails.values()):
-        before = set(coll.objects)
-        created = []
-        n += _build_rail(scene, members, board_top_z, coll, post_radius, "%02d" % ri, created)
-        _own_new(coll, created, "rail%02d" % ri, members, before=before)
+    _BASE_PLANS.clear(); _BASE_PLAN_POS.clear()     # plans belong to this pass only
     scene["oa_dress_sig"] = signature
     scene_objects = set(scene.objects)
     scene["oa_dress_count"] = sum(1 for o in coll.objects if o in scene_objects
