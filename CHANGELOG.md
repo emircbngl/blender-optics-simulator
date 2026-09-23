@@ -87,6 +87,12 @@ semantic versioning.
 - CAPABILITIES said 36 element types; there are 35.
 
 ### Fixed
+- **Dress Bench crashed after File > New or File > Open once four different benches had been dressed.**
+  The breadboard cache keeps the last three board meshes and outlived the file they belonged to, so
+  dropping the oldest entry touched a mesh Blender had already freed and raised `ReferenceError:
+  StructRNA of type Mesh has been removed`. Loading a file now empties the cache, and dropping an entry
+  skips a mesh that is already gone, which also covers Purge Unused Data within one file.
+  `tests/test_board_grid_cache.py` checks all three routes and fails on the previous code.
 - **Loosening a screw moved the part** (stage 04b). Stepping a joint back from `fastened` to `seated`
   re-ran the seating placement at insertion 0: the part jumped back to its datum, or, on a bore with a
   stated minimum insertion, the screw could not be loosened at all. Only the forward step

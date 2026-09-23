@@ -277,19 +277,27 @@ def _cached_board_grid(key):
     return board_mesh, hole_mesh, bored
 
 
+def _release_board_grid(entry):
+    """Remove a dropped cache entry's meshes if nothing else uses them. The cache outlives the
+    file: File > New/Open and Purge free these meshes while it still holds them, so a mesh Blender
+    already removed is skipped rather than dereferenced."""
+    for mesh in entry[:2]:
+        try:
+            if mesh.users == 0 and bpy.data.meshes.get(mesh.name) is mesh:
+                bpy.data.meshes.remove(mesh)
+        except ReferenceError:
+            pass
+
+
 def _cache_board_grid(key, board_mesh, hole_mesh, bored):
     old = _BOARD_GRID_MESH_CACHE.pop(key, None)
     if old is not None:
-        for mesh in old[:2]:
-            if mesh.users == 0 and bpy.data.meshes.get(mesh.name) is mesh:
-                bpy.data.meshes.remove(mesh)
+        _release_board_grid(old)
     _BOARD_GRID_MESH_CACHE[key] = (board_mesh, hole_mesh, bored)
     _BOARD_GRID_MESH_CACHE.move_to_end(key)
     while len(_BOARD_GRID_MESH_CACHE) > _BOARD_GRID_MESH_CACHE_MAX:
         _old_key, old = _BOARD_GRID_MESH_CACHE.popitem(last=False)
-        for mesh in old[:2]:
-            if mesh.users == 0 and bpy.data.meshes.get(mesh.name) is mesh:
-                bpy.data.meshes.remove(mesh)
+        _release_board_grid(old)
 
 
 # ---------------------------------------------------------------------------
