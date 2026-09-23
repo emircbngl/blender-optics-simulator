@@ -50,14 +50,33 @@ semantic versioning.
   - See [docs/mechanics/assembly.md](docs/mechanics/assembly.md).
 
 ### Changed
+- **The post holder is now the PH50/M of its drawing, not a proportional guess** (stage 05a). Dress
+  Bench built every holder as Ø22.9 mm with a Ø13.2 × 46 mm bore and a cut through its wall; the
+  Thorlabs drawing (23132 rev B) says Ø25 × 50 mm, a Ø12.8 × 43.2 mm bore and a closed wall, with the
+  thumbscrew (TS6H/M, drawing 23136 rev B) 12.7 mm below the top: a Ø14.5 × 7.9 mm knob standing 10 mm
+  proud on an M6 thread whose end lands exactly on the bore wall. The render detail's post
+  cross-hole moves from an estimated 7 mm to the drawing's 10.2 mm below the top (TR50/M 0331 rev J).
+  Posts now stand on the real 6.8 mm floor, so they are 2.8 mm shorter; the optics do not move and the
+  trace is unchanged. `tests/test_support_geometry.py` measures the shipped meshes against the drawing
+  values at 0.05 mm (half the drawings' resolution) and fails on the old generator 14 of 24 checks.
+  The drawings state no tolerances, so this is agreement with a nominal, not a fit.
 - **README rewritten.** A short front page: what it is, the 16-second video, install, a quick start
   that runs, and links out. The long-form content moved to [docs/FEATURES.md](docs/FEATURES.md)
   unchanged.
 - The promo-film modules (`promo_hardware`, `promo_stations`) stay in the source tree for
   `tools/build_promo_mach_zehnder.py`, but the built zip now excludes them: 54 files instead of 56.
-- CI runs the mechanical schema test, the catalog inventory check, the compatibility engine and the
-  assembly graph.
+- CI runs the mechanical schema test, the catalog inventory check, the compatibility engine, the
+  assembly graph and the post/holder drawing check.
 - CAPABILITIES said 36 element types; there are 35.
+
+### Fixed
+- **A misread drawing dimension in the support inventory.** The PH50/M "10.0 mm foot" recorded on
+  2026-09-22 is the thumbscrew knob's protrusion; PH50/M has no foot. Re-read at 3300 px and corrected
+  as `ph50m_dwg_thumbscrew_protrusion`, with the correction noted in the record. The TR50/M 10.2 mm
+  cross-hole reading was re-checked the same way and stands.
+- The prose section of `docs/mechanics/product-evidence.md` that belonged with the drawing facts never
+  landed: it shared a shell call with a blocked command and was dropped with it. The facts went into
+  the JSON; the text is written now.
 
 ## [0.31.0] — Gratings disperse by their grooves, cylindrical lenses, a spectrum detector, and beams you can see through — 2026-09-20
 

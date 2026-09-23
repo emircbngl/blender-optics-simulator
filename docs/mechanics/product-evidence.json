@@ -336,6 +336,17 @@
       "document_revision": null,
       "redistribution_permission": "unknown",
       "cad_file_acquired": false
+    },
+    "ts6hm_drawing": {
+      "title": "Thorlabs TS6H/M drawing 23136 (spring-loaded metric thumbscrew)",
+      "url": "https://media.thorlabs.com/globalassets/items/t/ts/ts6/ts6h_m/23136-e0w.pdf",
+      "locator": "Thorlabs drawing 23136, sheet 1, title block REV B (20/DEC/11)",
+      "access": "primary_drawing",
+      "checked_on": "2026-09-23",
+      "document_revision": "B",
+      "redistribution_permission": "unknown",
+      "cad_file_acquired": true,
+      "acquisition_note": "Opened and read for dimensions only. The file is not stored in this repository and is not redistributed. Drawing is stamped FOR INFORMATION ONLY / NOT FOR MANUFACTURING PURPOSES and carries no tolerances; imperial values on it are marked as calculated and may contain round-off."
     }
   },
   "products": [
@@ -5033,6 +5044,18 @@
         "fastener length / engagement",
         "CAD rights"
       ]
+    },
+    {
+      "part_number": "TS6H/M",
+      "manufacturer": "Thorlabs",
+      "role": "post_holder_thumbscrew",
+      "variant": "metric",
+      "source_id": "ts6hm_drawing",
+      "compatibility": "unknown",
+      "gaps": [
+        "ball plunger diameter and spring force",
+        "CAD rights"
+      ]
     }
   ],
   "evidence_facts": [
@@ -5367,7 +5390,7 @@
       "value": 10.2,
       "source_id": "tr50m_drawing",
       "locator": "Dimension 10.2 mm [0.40in] from the setscrew end of the body to the side-bore centreline",
-      "note": "Which face the 10.2 mm references is READ off the dimension line, not stated in words. Confirm against the STEP model before this becomes a datum.",
+      "note": "Re-read at 3300 px on 2026-09-23: the 10.2 mm runs from the side-bore centreline to the end face of the post body at the setscrew end, the same face the 50.0 mm length and the 4.6-5.2 mm stud protrusion are measured from.",
       "verification": "primary_published_nominal_not_mesh_verified",
       "manufacturing_tolerance": null
     },
@@ -5510,20 +5533,20 @@
       "value": 12.7,
       "source_id": "ph50m_drawing",
       "locator": "Dimension 12.7 mm [0.50in] from the top face to the thumbscrew axis",
-      "note": "Read off the dimension line; confirm the reference face before it becomes a datum.",
+      "note": "Read off the dimension line in the thumbscrew-facing view; the end view places the thumbscrew at the bore end, so the reference is the top (bore) face.",
       "verification": "primary_published_nominal_not_mesh_verified",
       "manufacturing_tolerance": null
     },
     {
-      "id": "ph50m_dwg_foot_height",
+      "id": "ph50m_dwg_thumbscrew_protrusion",
       "support_parts": [
         "PH50/M"
       ],
-      "field": "foot_height_mm",
+      "field": "thumbscrew_protrusion_mm",
       "value": 10.0,
       "source_id": "ph50m_drawing",
-      "locator": "Side view: 10.0 mm [0.39in] foot section",
-      "note": null,
+      "locator": "Side view: 10.0 mm [0.39in] from the body's outer surface to the far face of the thumbscrew knob",
+      "note": "CORRECTED 2026-09-23. Recorded on 2026-09-22 as a 10.0 mm 'foot section', which was a misreading: re-read at 3300 px, the dimension runs from the cylinder wall to the knob. PH50/M has no foot; it is a plain 25 mm cylinder that sits on a separate base.",
       "verification": "primary_published_nominal_not_mesh_verified",
       "manufacturing_tolerance": null
     },
@@ -5690,12 +5713,146 @@
         "ph50m_dwg_bore_diameter",
         "tr50m_dwg_outer_diameter"
       ]
+    },
+    {
+      "id": "ph50m_dwg_no_slit",
+      "support_parts": [
+        "PH50/M"
+      ],
+      "field": "wall",
+      "value": "closed wall, no through-slit",
+      "source_id": "ph50m_drawing",
+      "locator": "Side and thumbscrew-facing views: no slit line along the body; end view: a solid ring with a local notch where the thumbscrew enters the bore",
+      "note": "The post is clamped by the thumbscrew's tip, not by a split tube. The family page's 'extra wide relief cut' is internal and is not dimensioned on this drawing.",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "ts6hm_dwg_thread",
+      "support_parts": [
+        "TS6H/M"
+      ],
+      "field": "thread",
+      "value": "M6 x 1.0 external",
+      "source_id": "ts6hm_drawing",
+      "locator": "Leader: M6 X 1.0 EXTERNAL THREAD; also the product title",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "ts6hm_dwg_knob_diameter",
+      "support_parts": [
+        "TS6H/M"
+      ],
+      "field": "knob_diameter_mm",
+      "value": 14.5,
+      "source_id": "ts6hm_drawing",
+      "locator": "End view: \u00d814.5 mm [\u00d80.57in]",
+      "note": "Agrees with the PH50/M drawing's \u00d814.5 mm thumbscrew: two drawings, one number.",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "ts6hm_dwg_knob_length",
+      "support_parts": [
+        "TS6H/M"
+      ],
+      "field": "knob_length_mm",
+      "value": 7.9,
+      "source_id": "ts6hm_drawing",
+      "locator": "Side view: 7.9 mm [0.31in]",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "ts6hm_dwg_length_to_thread_end",
+      "support_parts": [
+        "TS6H/M"
+      ],
+      "field": "length_to_thread_end_mm",
+      "value": 16.1,
+      "source_id": "ts6hm_drawing",
+      "locator": "Side view: 16.1 mm [0.64in], knob face to the end of the thread",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "ts6hm_dwg_length_to_tip",
+      "support_parts": [
+        "TS6H/M"
+      ],
+      "field": "length_to_ball_tip_mm",
+      "value": 17.1,
+      "source_id": "ts6hm_drawing",
+      "locator": "Side view: 17.1 mm [0.68in], knob face to the ball plunger tip",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "ts6hm_dwg_tip",
+      "support_parts": [
+        "TS6H/M"
+      ],
+      "field": "tip",
+      "value": "spring-loaded ball plunger",
+      "source_id": "ts6hm_drawing",
+      "locator": "Leader: SPRING-LOADED BALL PLUNGER",
+      "note": "The post is clamped by a ball, i.e. at a point on the thumbscrew axis. Ball diameter and spring force are not dimensioned.",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "ts6hm_dwg_hex",
+      "support_parts": [
+        "TS6H/M"
+      ],
+      "field": "drive",
+      "value": "5 mm hex, 3.8 mm deep",
+      "source_id": "ts6hm_drawing",
+      "locator": "Leader: 5mm HEX 3.8mm [0.15in] DEEP",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "ts6hm_dwg_torque",
+      "support_parts": [
+        "TS6H/M"
+      ],
+      "field": "max_torque_in_lb",
+      "value": 28,
+      "source_id": "ts6hm_drawing",
+      "locator": "Note: MAXIMUM TORQUE OF 28 INCH POUNDS",
+      "note": "Agrees with the post holder family page (28 in-lbs, 3.2 N-m). Not modelled.",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "ph50m_min_insertion_lower_bound",
+      "support_parts": [
+        "PH50/M"
+      ],
+      "field": "min_insertion_mm",
+      "value": 12.7,
+      "source_id": "ts6hm_drawing",
+      "locator": "The TS6H/M ball plunger bears at the thumbscrew axis, which PH50/M places 12.7 mm below the top face",
+      "note": "DERIVED, not published: a strict geometric lower bound -- below it the ball meets no post. The post's end chamfer, not dimensioned, adds a little; this is not a recommended insertion.",
+      "verification": "derived_from_published_nominals",
+      "manufacturing_tolerance": null,
+      "derived_from": [
+        "ph50m_dwg_thumbscrew_offset",
+        "ts6hm_dwg_tip"
+      ]
     }
   ],
   "support_blockers": {
     "recorded_on": "2026-09-22",
     "stage": "05",
-    "statement": "The owner approved opening the vendor drawings, so the dimensional gaps for the post/holder/base chain are now closed from primary drawings (TR50/M 0331 rev J, PH50/M 23132 rev B, BA2/M 19227 rev A). What remains is a product identity and the modelling work, not missing evidence for these three parts.",
+    "statement": "The owner approved opening the vendor drawings, so the dimensional gaps for the post/holder/base chain are now closed from primary drawings (TR50/M 0331 rev J, PH50/M 23132 rev B, BA2/M 19227 rev A). What remains is a product identity and the modelling work, not missing evidence for these three parts. The holder<->post pair (TR50/M, PH50/M) is fully sourced and is stage 05a; the base, its cap screws and the table are stage 05b.",
     "closed_since_last_record": [
       "TR/M base thread depth: M6 x 1.0, 8.6 mm deep",
       "TR/M setscrew engagement: M4 x 0.7 stud standing 4.6-5.2 mm out of the post",
@@ -5706,7 +5863,8 @@
     "missing": [
       "a breadboard product identity: no optical table is in the 33-preset inventory, so the bottom of the chain has no product yet",
       "manufacturing tolerances: every drawing is stamped FOR INFORMATION ONLY and states none, so fit classes and tolerance stacks stay out of reach",
-      "interface datums still have to be AUTHORED from these drawings and checked against the STEP model: two dimensions (TR/M side bore at 10.2 mm, PH50/M thumbscrew at 12.7 mm) were read off dimension lines rather than stated in words"
+      "interface datums still have to be AUTHORED from these drawings and checked against the STEP model: two dimensions (TR/M side bore at 10.2 mm, PH50/M thumbscrew at 12.7 mm) were read off dimension lines rather than stated in words",
+      "the BA2/M -> PH50/M fastener: the drawing says only 'M6 cap screw', with no part number and no length, so thread engagement in the holder's M6 tap cannot be checked yet"
     ],
     "next_action": "Pick the breadboard product, then build schema v1 records with frames for TR50/M, PH50/M and BA2/M from these facts and check every critical dimension against an independent mesh measurement, which is stage 05's exit condition.",
     "dependent_work_not_started": true

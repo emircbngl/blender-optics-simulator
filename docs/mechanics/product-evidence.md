@@ -114,6 +114,70 @@ Sayfalar boyut, diş ve malzeme yayımlıyor; aşama 05'in denetlemesi gereken �
 6. Her arayüz çerçevesi için datum konumu ve yönü — aşama 04b yerleştirmeyi çerçevelerden yapar ve
    kaynaklı tek bir çerçeve yok
 
-Bunlar üreticinin CAD çizimlerinde. Aşama 01 hiçbir CAD dosyası almadı ve yeniden dağıtım hakkı
-belirsiz. Bu yüzden bağımlı iş **başlatılmadı**: `support_blockers.dependent_work_not_started = true`.
-Sıradaki hamle sahibin kararı — TR50/M, PH50/M ve BA2/M çizimlerini açmak ve breadboard ürününü seçmek.
+Bunlar üreticinin CAD çizimlerindeydi. **Sahip çizimlerin açılmasını onayladı** (22 Eylül 2026) ve
+üç çizim yalnız ölçü okumak için açıldı. Dosyalar depoya konmadı ve yeniden dağıtılmadı; kaydedilen şey
+ölçü + çizim numarası + revizyon + URL + tarihtir.
+
+### Birincil çizimlerden okunanlar
+
+| Parça | Çizim | Rev |
+|---|---|---|
+| TR50/M | 0331 | J (28/MAR/13) |
+| PH50/M | 23132 | B (20/DEC/11) |
+| BA2/M | 19227 | A (08/SEP/14) |
+
+**TR50/M** — Ø12.7 mm gövde, 50.0 mm boy; tabanda **M6 × 1.0, 8.6 mm derin** montaj deliği; yanda
+Ø3.2 mm delik, eksen çizgisi setskur ucundaki gövde yüzeyinden **10.2 mm**; üstte **SS4M12D**, M4 × 0.7
+çift uçlu setskur, 12 mm boy, 2.0 mm altıgen; setskurun gövdeden dışarı kalan boyu **4.6 mm MIN – 5.2 mm
+MAX**; paslanmaz çelik. 50.0 mm boy, 10.2 mm ve 4.6–5.2 mm aynı yüzeyden ölçülür.
+
+**PH50/M** — Ø25.0 mm gövde, 50.0 mm boy; **Ø12.8 mm delik, 43.2 mm derin** ("FOR USE WITH TR-SERIES
+POSTS"); tabanda **M6 × 1.0 boydan boya diş**; Ø14.5 mm yaylı başparmak vidası, 5 mm altıgen, ekseni
+delik tarafındaki üst yüzeyden 12.7 mm; topuz gövde yüzeyinden **10.0 mm** dışarı çıkar. Duvar kapalıdır,
+boydan boya yarık yoktur; post yarık tüple değil başparmak vidasının ucuyla sıkılır. Aile sayfasından
+**maksimum tork 28 in·lbs (3.2 N·m)**.
+
+**BA2/M** — 75.0 × 50.0 × 10.0 mm; M6 [1/4-20] başlı vida için **3 havşa** (12.5 mm TYP, 37.5 mm
+kolonda); M6 için **2 boşluk yuvası** (9.1 mm genişlik, uç merkezleri arası 31.8 mm, yuvalar arası
+50.0 mm); eloksallı alüminyum.
+
+**Türetilmiş tek sayı, etiketlenmiş olarak:** Ø12.8 delik − Ø12.7 post = **0.1 mm nominal çap boşluğu**.
+Yayımlanmış değil, iki nominalin farkıdır; geçme sınıfı ya da ölçülmüş boşluk değildir
+(`verification: derived_from_published_nominals`).
+
+> **Düzeltme (23 Eylül 2026).** 22 Eylül kaydında PH50/M için "10.0 mm ayak yüksekliği" yazılmıştı.
+> Çizim 3300 px'te yeniden okundu: ölçü gövde duvarından başparmak vidası topuzunun uç yüzeyine gidiyor.
+> PH50/M'nin ayağı yoktur; ayrı bir tabana oturan düz Ø25 mm silindirdir. Olgu
+> `ph50m_dwg_thumbscrew_protrusion` olarak düzeltildi. TR50/M'nin 10.2 mm okuması aynı yöntemle doğrulandı.
+>
+> Ayrıca: bu bölüm 22 Eylül'de #78 ile birlikte yazılmak istendi ama o komut bir kanca tarafından
+> engellendiği için dosyaya hiç ulaşmadı; #78'de olgular JSON'a girdi, bu metin girmedi.
+
+### Başparmak vidası: TS6H/M (çizim 23136 rev B, 23 Eylül 2026)
+
+PH50/M'nin başparmak vidası aile sayfasında TS6H/M olarak adlandırılıyor; çizimi aynı onay kapsamında
+açıldı. **M6 × 1.0** dış diş; topuz **Ø14.5 × 7.9 mm** (PH50/M çizimindeki Ø14.5 ile aynı); topuz
+yüzünden diş ucuna **16.1 mm**, bilye ucuna **17.1 mm** — yani uçta 1.0 mm dışarı çıkan **yaylı bilyeli
+piston**; 5 mm altıgen, 3.8 mm derin; maksimum tork 28 in·lb (aile sayfasıyla aynı).
+
+İki çizimin birbirini doğrulaması: topuz yüzü eksenden 12.5 + 10.0 = 22.5 mm'de; 16.1 mm geri gelince
+diş ucu **6.4 mm'ye — tam delik duvarına** düşüyor. Bilye 1.0 mm daha içeri, 6.35 mm'deki post yüzeyinin
+ötesine uzanıyor: post takılıyken yay önceden yüklü. Okumalar tutarlı.
+
+**Türetilmiş ikinci sayı:** bilye postu vida ekseninde, noktasal olarak sıkar; eksen üst yüzeyden 12.7 mm
+aşağıda. Post o eksene ulaşmazsa bilye hiçbir şeye değmez, bu yüzden **en az giriş 12.7 mm** — kesin bir
+geometrik alt sınır, önerilen giriş değil (postun ölçülendirilmemiş uç pahı biraz ekler). Olgu
+`ph50m_min_insertion_lower_bound`, `derived_from_published_nominals`. Bu sayı olmadan aşama 03'ün
+delik/mil kuralı gerçek TR50/M ↔ PH50/M çiftine `unknown` diyor ve aşama 04 birleştirmeyi reddediyordu.
+
+### Hâlâ kapanmayanlar
+
+1. **Breadboard ürün kimliği yok** — zincirin altında hiçbir tabla yok (sahip kararı).
+2. **Üretim toleransı yok** — her çizim "FOR INFORMATION ONLY / NOT FOR MANUFACTURING PURPOSES"
+   damgalı ve tolerans vermiyor; ondalık basamaktan tolerans çıkarılmaz.
+3. **Datumlar henüz yazılmadı** — arayüz çerçeveleri bu çizimlerden üretilecek ve bağımsız mesh
+   ölçümüyle karşılaştırılacak.
+4. **BA2/M ↔ PH50/M bağlantı vidası** — çizim yalnız "M6 başlı vida" diyor; parça numarası ve boyu yok.
+
+Holder ↔ post çifti (TR50/M, PH50/M) ise artık birincil çizimden tam kaynaklı; aşama 05a onu önce
+yapıyor. Taban ve tabla (05b) bu dört eksik kapanana kadar başlamaz.
