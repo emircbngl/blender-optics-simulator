@@ -388,6 +388,17 @@
       "document_revision": null,
       "redistribution_permission": "unknown",
       "cad_file_acquired": false
+    },
+    "mb4560m_drawing": {
+      "title": "Thorlabs MB4560/M drawing 6282 (aluminium breadboard 450 x 600 x 12.7 mm)",
+      "url": "https://media.thorlabs.com/globalassets/items/m/mb/mb4/mb4560_m/6282-e0w.pdf",
+      "locator": "Thorlabs drawing 6282, sheet 1, title block REV B (16/JAN/18)",
+      "access": "primary_drawing",
+      "checked_on": "2026-09-23",
+      "document_revision": "B",
+      "redistribution_permission": "unknown",
+      "cad_file_acquired": true,
+      "acquisition_note": "Opened and read for dimensions only, with the owner's approval. The file is not stored in this repository and is not redistributed. sha256 c7cffde6a32966346b230c045122e7f7515655f5d005cbf5983af56eca1b507f. Drawing is stamped FOR INFORMATION ONLY / NOT FOR MANUFACTURING PURPOSES and carries no tolerances; imperial values on it are marked as calculated and may contain round-off."
     }
   },
   "products": [
@@ -5139,13 +5150,13 @@
     {
       "part_number": "MB4560/M",
       "manufacturer": "Thorlabs",
-      "role": "breadboard_candidate",
+      "role": "breadboard",
       "variant": "metric",
       "source_id": "mb4560m_product",
       "compatibility": "unknown",
       "gaps": [
-        "owner confirmation as the chain's table",
-        "tap depth / through-hole detail",
+        "tap depth (not dimensioned; no THRU stated)",
+        "thread hand (not stated)",
         "CAD rights"
       ]
     }
@@ -6135,6 +6146,88 @@
         "ph50m_dwg_bore_depth",
         "ph50m_dwg_length"
       ]
+    },
+    {
+      "id": "mb4560m_dwg_size",
+      "support_parts": [
+        "MB4560/M"
+      ],
+      "field": "size_mm",
+      "value": [
+        600.0,
+        450.0,
+        12.7
+      ],
+      "source_id": "mb4560m_drawing",
+      "locator": "Plan: 600.0 x 450.0 mm; side view: 12.7 mm",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "mb4560m_dwg_taps",
+      "support_parts": [
+        "MB4560/M"
+      ],
+      "field": "tapped_holes",
+      "value": "432 x M6 x 1.0",
+      "source_id": "mb4560m_drawing",
+      "locator": "Detail A leader: 432 X M6X1.0 TAPPED HOLES",
+      "note": "No depth and no THRU is stated, so the usable depth of a tap is unknown.",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "mb4560m_dwg_pitch",
+      "support_parts": [
+        "MB4560/M"
+      ],
+      "field": "grid_pitch_mm",
+      "value": 25.0,
+      "source_id": "mb4560m_drawing",
+      "locator": "Detail A: 25.0 mm [0.98in] between tapped holes",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "mb4560m_dwg_edge_offset",
+      "support_parts": [
+        "MB4560/M"
+      ],
+      "field": "grid_edge_offset_mm",
+      "value": 12.5,
+      "source_id": "mb4560m_drawing",
+      "locator": "Detail A: 12.5 mm [0.49in] from each edge",
+      "note": "24 x 18 holes at 25 mm from 12.5 mm in: (600-25)/25+1 = 24, (450-25)/25+1 = 18, 24 x 18 = 432.",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "mb4560m_dwg_mount_holes",
+      "support_parts": [
+        "MB4560/M"
+      ],
+      "field": "mounting_holes",
+      "value": "5 x counterbored for M6 socket cap",
+      "source_id": "mb4560m_drawing",
+      "locator": "Leader: 5X COUNTERBORED HOLES TO SUIT M6 SOCKET CAP; corners 25.0 mm in (550 x 400), one at centre",
+      "note": "For fixing the board itself, not for mounting optics; they sit between tapped grid holes.",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "mb4560m_dwg_corners",
+      "support_parts": [
+        "MB4560/M"
+      ],
+      "field": "corner_radius_mm",
+      "value": 3.0,
+      "source_id": "mb4560m_drawing",
+      "locator": "Leader: 4 x R3.0 mm [0.12in]",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
     }
   ],
   "support_blockers": {
@@ -6149,16 +6242,18 @@
       "BA2/M slot and counterbore geometry for M6 cap screws",
       "BA2/M -> PH50/M fastener: an M6 x 10 mm cap screw, by the vendor's own kit procedure (MTN021357-D02 6.1.4/6.1.5)",
       "base -> table fastener: an M6 x 16 mm cap screw plus M6 washer (6.2)",
-      "a sourced table candidate: MB4560/M, the kit's own breadboard (450 x 600 x 12.7 mm, M6)"
+      "a sourced table candidate: MB4560/M, the kit's own breadboard (450 x 600 x 12.7 mm, M6)",
+      "the table: MB4560/M adopted by the owner (2026-09-23); drawing 6282 rev B read"
     ],
     "missing": [
-      "owner confirmation that MB4560/M is the chain's table; its drawing 6282 (tap depth, grid) not yet opened",
       "manufacturing tolerances: only the bases' 0.05 mm parallelism is published; the drawings state none",
       "BA2/M counterbore depth: not dimensioned; the vendor procedure implies at least 3.2 mm under the head",
       "screw catalogue part numbers, head height and washer thickness: the kit gives sizes only",
-      "schema v1 cannot express a three-part screw stack (head in the base, shank through its floor, thread in the holder), so the base joint's engagement cannot be rule-checked yet"
+      "schema v1 cannot express a three-part screw stack (head in the base, shank through its floor, thread in the holder), so the base joint's engagement cannot be rule-checked yet",
+      "MB4560/M tap depth: not dimensioned and not marked THRU, so the M6 x 16 mm table screw's engagement is unknown",
+      "thread hand: no drawing in this chain states it (no 'LH', but no 'RH' either); stage 03 therefore answers `unknown` for every thread pair until a sourced rule decides how an unmarked metric thread is read"
     ],
-    "next_action": "Owner: confirm MB4560/M as the table and approve opening drawing 6282. Then the table and base records, and a stack-aware fastener rule (a schema change, decided separately).",
+    "next_action": "Owner decisions: (1) how to read an unmarked thread hand; (2) a schema change for three-part screw stacks; (3) whether Dress Bench's visual foot becomes the real BA2/M/BA1/M.",
     "dependent_work_not_started": true
   }
 }

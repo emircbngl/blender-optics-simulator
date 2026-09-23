@@ -214,10 +214,16 @@ Kit parça numarası vermiyor, yalnız boyut; vida kaydı bu yüzden "kit vidas�
 deliğe girmesin diye başın altında en az **3.2 mm** malzeme kalmalı (`ba2m_counterbore_floor_min`). Havşa
 derinliği çizimde yok; bu yalnız prosedürün ima ettiği alt sınır.
 
-**Tabla adayı: MB4560/M** — kitin kendi breadboard'u, 450 × 600 × **12.7 mm**, M6 diş. 12.7 mm eklentinin
-mevcut `BOARD_THICKNESS` değeriyle aynı. Seçim hâlâ sahibin: bu zincirin kaynağı olan kit onu kullanıyor,
-bu yüzden keyfi bir tahmin değil ama onay olmadan tablaya bağlanmadı. Diş derinliği ve ızgara adımı
-çizim 6282'de; açılmadı.
+**Tabla: MB4560/M** — kitin kendi breadboard'u; **sahip 23 Eylül 2026'da onayladı** ve çizim 6282 rev B
+(16/JAN/18) okundu: **600.0 × 450.0 × 12.7 mm** alüminyum, köşeler R3.0; **432 adet M6 × 1.0 diş**, **25.0 mm**
+adımla, her kenardan **12.5 mm** içeride başlıyor (24 × 18 = 432, tutarlı); tablanın kendisini sabitlemek
+için 5 havşalı M6 deliği. 12.7 mm eklentinin mevcut `BOARD_THICKNESS`, 25 mm eklentinin metrik ızgarasıyla
+aynı.
+
+**Çizimin söylemedikleri:** diş derinliği yok ve "THRU" da yazmıyor — M6 × 16 mm tabla vidasının kavraması
+bilinmiyor. **Diş yönü hiçbir çizimde yok**: "M6X1.0" yazıyor, "LH" yok ama "RH" de yok. Aşama 03 diş
+yönü iki tarafta da belirtilmemişse `unknown` döner; yani bugün bu zincirdeki **her** vida bağlantısı
+`unknown`. İşaretsiz metrik dişin nasıl okunacağı kaynaklı bir kural gerektiriyor.
 
 **Şema sınırı:** taban bağlantısı üç parçalı bir yığın — baş tabanın havşasında, gövde havşa tabanından
 geçer, diş holder'da. Şema v1 bunu ifade edemiyor, bu yüzden taban bağlantısının kavraması kuralla
@@ -225,7 +231,7 @@ denetlenemiyor. Bu bir şema değişikliği ve ayrıca karar gerektirir.
 
 ### Hâlâ kapanmayanlar
 
-1. **Tabla sahip onayı bekliyor** — aday MB4560/M (kitin kendi tablası); çizim 6282 açılmadı.
+1. **Tabla seçildi (MB4560/M), ama diş derinliği ve diş yönü çizimde yok** — vida kavraması denetlenemiyor.
 2. **Üretim toleransı yok** — her çizim "FOR INFORMATION ONLY / NOT FOR MANUFACTURING PURPOSES"
    damgalı ve tolerans vermiyor; ondalık basamaktan tolerans çıkarılmaz.
 3. **Datumlar henüz yazılmadı** — arayüz çerçeveleri bu çizimlerden üretilecek ve bağımsız mesh
