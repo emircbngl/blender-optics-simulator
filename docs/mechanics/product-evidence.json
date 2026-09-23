@@ -336,6 +336,17 @@
       "document_revision": null,
       "redistribution_permission": "unknown",
       "cad_file_acquired": false
+    },
+    "ts6hm_drawing": {
+      "title": "Thorlabs TS6H/M drawing 23136 (spring-loaded metric thumbscrew)",
+      "url": "https://media.thorlabs.com/globalassets/items/t/ts/ts6/ts6h_m/23136-e0w.pdf",
+      "locator": "Thorlabs drawing 23136, sheet 1, title block REV B (20/DEC/11)",
+      "access": "primary_drawing",
+      "checked_on": "2026-09-23",
+      "document_revision": "B",
+      "redistribution_permission": "unknown",
+      "cad_file_acquired": true,
+      "acquisition_note": "Opened and read for dimensions only. The file is not stored in this repository and is not redistributed. Drawing is stamped FOR INFORMATION ONLY / NOT FOR MANUFACTURING PURPOSES and carries no tolerances; imperial values on it are marked as calculated and may contain round-off."
     }
   },
   "products": [
@@ -5033,6 +5044,18 @@
         "fastener length / engagement",
         "CAD rights"
       ]
+    },
+    {
+      "part_number": "TS6H/M",
+      "manufacturer": "Thorlabs",
+      "role": "post_holder_thumbscrew",
+      "variant": "metric",
+      "source_id": "ts6hm_drawing",
+      "compatibility": "unknown",
+      "gaps": [
+        "ball plunger diameter and spring force",
+        "CAD rights"
+      ]
     }
   ],
   "evidence_facts": [
@@ -5703,6 +5726,127 @@
       "note": "The post is clamped by the thumbscrew's tip, not by a split tube. The family page's 'extra wide relief cut' is internal and is not dimensioned on this drawing.",
       "verification": "primary_published_nominal_not_mesh_verified",
       "manufacturing_tolerance": null
+    },
+    {
+      "id": "ts6hm_dwg_thread",
+      "support_parts": [
+        "TS6H/M"
+      ],
+      "field": "thread",
+      "value": "M6 x 1.0 external",
+      "source_id": "ts6hm_drawing",
+      "locator": "Leader: M6 X 1.0 EXTERNAL THREAD; also the product title",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "ts6hm_dwg_knob_diameter",
+      "support_parts": [
+        "TS6H/M"
+      ],
+      "field": "knob_diameter_mm",
+      "value": 14.5,
+      "source_id": "ts6hm_drawing",
+      "locator": "End view: \u00d814.5 mm [\u00d80.57in]",
+      "note": "Agrees with the PH50/M drawing's \u00d814.5 mm thumbscrew: two drawings, one number.",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "ts6hm_dwg_knob_length",
+      "support_parts": [
+        "TS6H/M"
+      ],
+      "field": "knob_length_mm",
+      "value": 7.9,
+      "source_id": "ts6hm_drawing",
+      "locator": "Side view: 7.9 mm [0.31in]",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "ts6hm_dwg_length_to_thread_end",
+      "support_parts": [
+        "TS6H/M"
+      ],
+      "field": "length_to_thread_end_mm",
+      "value": 16.1,
+      "source_id": "ts6hm_drawing",
+      "locator": "Side view: 16.1 mm [0.64in], knob face to the end of the thread",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "ts6hm_dwg_length_to_tip",
+      "support_parts": [
+        "TS6H/M"
+      ],
+      "field": "length_to_ball_tip_mm",
+      "value": 17.1,
+      "source_id": "ts6hm_drawing",
+      "locator": "Side view: 17.1 mm [0.68in], knob face to the ball plunger tip",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "ts6hm_dwg_tip",
+      "support_parts": [
+        "TS6H/M"
+      ],
+      "field": "tip",
+      "value": "spring-loaded ball plunger",
+      "source_id": "ts6hm_drawing",
+      "locator": "Leader: SPRING-LOADED BALL PLUNGER",
+      "note": "The post is clamped by a ball, i.e. at a point on the thumbscrew axis. Ball diameter and spring force are not dimensioned.",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "ts6hm_dwg_hex",
+      "support_parts": [
+        "TS6H/M"
+      ],
+      "field": "drive",
+      "value": "5 mm hex, 3.8 mm deep",
+      "source_id": "ts6hm_drawing",
+      "locator": "Leader: 5mm HEX 3.8mm [0.15in] DEEP",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "ts6hm_dwg_torque",
+      "support_parts": [
+        "TS6H/M"
+      ],
+      "field": "max_torque_in_lb",
+      "value": 28,
+      "source_id": "ts6hm_drawing",
+      "locator": "Note: MAXIMUM TORQUE OF 28 INCH POUNDS",
+      "note": "Agrees with the post holder family page (28 in-lbs, 3.2 N-m). Not modelled.",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "ph50m_min_insertion_lower_bound",
+      "support_parts": [
+        "PH50/M"
+      ],
+      "field": "min_insertion_mm",
+      "value": 12.7,
+      "source_id": "ts6hm_drawing",
+      "locator": "The TS6H/M ball plunger bears at the thumbscrew axis, which PH50/M places 12.7 mm below the top face",
+      "note": "DERIVED, not published: a strict geometric lower bound -- below it the ball meets no post. The post's end chamfer, not dimensioned, adds a little; this is not a recommended insertion.",
+      "verification": "derived_from_published_nominals",
+      "manufacturing_tolerance": null,
+      "derived_from": [
+        "ph50m_dwg_thumbscrew_offset",
+        "ts6hm_dwg_tip"
+      ]
     }
   ],
   "support_blockers": {

@@ -53,11 +53,12 @@ semantic versioning.
 - **The post holder is now the PH50/M of its drawing, not a proportional guess** (stage 05a). Dress
   Bench built every holder as Ø22.9 mm with a Ø13.2 × 46 mm bore and a cut through its wall; the
   Thorlabs drawing (23132 rev B) says Ø25 × 50 mm, a Ø12.8 × 43.2 mm bore and a closed wall, with the
-  thumbscrew 12.7 mm below the top and a Ø14.5 mm knob standing 10 mm proud. The render detail's post
+  thumbscrew (TS6H/M, drawing 23136 rev B) 12.7 mm below the top: a Ø14.5 × 7.9 mm knob standing 10 mm
+  proud on an M6 thread whose end lands exactly on the bore wall. The render detail's post
   cross-hole moves from an estimated 7 mm to the drawing's 10.2 mm below the top (TR50/M 0331 rev J).
   Posts now stand on the real 6.8 mm floor, so they are 2.8 mm shorter; the optics do not move and the
   trace is unchanged. `tests/test_support_geometry.py` measures the shipped meshes against the drawing
-  values at 0.05 mm (half the drawings' resolution) and fails on the old generator 12 of 20 checks.
+  values at 0.05 mm (half the drawings' resolution) and fails on the old generator 14 of 24 checks.
   The drawings state no tolerances, so this is agreement with a nominal, not a fit.
 - **README rewritten.** A short front page: what it is, the 16-second video, install, a quick start
   that runs, and links out. The long-form content moved to [docs/FEATURES.md](docs/FEATURES.md)

@@ -153,6 +153,23 @@ Yayımlanmış değil, iki nominalin farkıdır; geçme sınıfı ya da ölçül
 > Ayrıca: bu bölüm 22 Eylül'de #78 ile birlikte yazılmak istendi ama o komut bir kanca tarafından
 > engellendiği için dosyaya hiç ulaşmadı; #78'de olgular JSON'a girdi, bu metin girmedi.
 
+### Başparmak vidası: TS6H/M (çizim 23136 rev B, 23 Eylül 2026)
+
+PH50/M'nin başparmak vidası aile sayfasında TS6H/M olarak adlandırılıyor; çizimi aynı onay kapsamında
+açıldı. **M6 × 1.0** dış diş; topuz **Ø14.5 × 7.9 mm** (PH50/M çizimindeki Ø14.5 ile aynı); topuz
+yüzünden diş ucuna **16.1 mm**, bilye ucuna **17.1 mm** — yani uçta 1.0 mm dışarı çıkan **yaylı bilyeli
+piston**; 5 mm altıgen, 3.8 mm derin; maksimum tork 28 in·lb (aile sayfasıyla aynı).
+
+İki çizimin birbirini doğrulaması: topuz yüzü eksenden 12.5 + 10.0 = 22.5 mm'de; 16.1 mm geri gelince
+diş ucu **6.4 mm'ye — tam delik duvarına** düşüyor. Bilye 1.0 mm daha içeri, 6.35 mm'deki post yüzeyinin
+ötesine uzanıyor: post takılıyken yay önceden yüklü. Okumalar tutarlı.
+
+**Türetilmiş ikinci sayı:** bilye postu vida ekseninde, noktasal olarak sıkar; eksen üst yüzeyden 12.7 mm
+aşağıda. Post o eksene ulaşmazsa bilye hiçbir şeye değmez, bu yüzden **en az giriş 12.7 mm** — kesin bir
+geometrik alt sınır, önerilen giriş değil (postun ölçülendirilmemiş uç pahı biraz ekler). Olgu
+`ph50m_min_insertion_lower_bound`, `derived_from_published_nominals`. Bu sayı olmadan aşama 03'ün
+delik/mil kuralı gerçek TR50/M ↔ PH50/M çiftine `unknown` diyor ve aşama 04 birleştirmeyi reddediyordu.
+
 ### Hâlâ kapanmayanlar
 
 1. **Breadboard ürün kimliği yok** — zincirin altında hiçbir tabla yok (sahip kararı).

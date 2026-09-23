@@ -125,6 +125,10 @@ PH_BORE_DEPTH = 43.2            # bore depth from the top face; the M6 x 1.0 tap
 PH_SCREW_FROM_TOP = 12.7        # thumbscrew axis below the top (bore) face
 PH_KNOB_R = 7.25                # Ø14.5 mm knob, 5 mm hex
 PH_KNOB_PROUD = 10.0            # knob's far face beyond the body wall
+# The thumbscrew itself: TS6H/M, drawing 23136 rev B. Its thread end lands exactly on the bore wall
+# (12.5 + 10.0 - 16.1 = 6.4), and a spring-loaded ball plunger stands 1 mm past it onto the post.
+TS_KNOB_LEN = 7.9               # knob length
+TS_THREAD_R = 3.0               # M6 x 1.0
 VERTICAL_STACK_MM = 25.0        # optics this far apart in z at one xy => a vertical beam runs between
                                 # them; the pillar must be OFFSET so it doesn't sit in the beam path
 PILLAR_OFFSET = 44.0            # how far to push a vertical-fold (RS99 periscope) pillar off the beam
@@ -723,7 +727,7 @@ def _post_holder(tag, x, y, board_top_z, post_radius, coll, grid):
 
     For the Ø12.7 mm post -- every holder Dress Bench builds -- the holder is the PH50/M of drawing
     23132 rev B: Ø25 x 50 mm, a Ø12.8 x 43.2 mm bore, a closed wall, and the thumbscrew 12.7 mm below
-    the top with a Ø14.5 mm knob standing 10 mm proud. tests/test_support_geometry.py measures it
+    the top with a Ø14.5 x 7.9 mm TS6H/M knob standing 10 mm proud. tests/test_support_geometry.py measures it
     against the drawing. Any other post radius falls back to the old proportional visual, which is
     NOT sourced. The foot underneath is still a visual stand-in for the base (stage 05b)."""
     sourced = abs(post_radius - POST_RADIUS) < 1e-9
@@ -785,13 +789,12 @@ def _post_holder(tag, x, y, board_top_z, post_radius, coll, grid):
     # clearance a Ø12.7 post has in it; the cutter runs 1 mm past the top so the mouth is clean.
     _bore(body, (x, y, top - depth * 0.5 + 0.5), bore_r, depth + 1.0, seg=64)
     _bevel(body, 0.6, 1)
-    # Side locking thumbscrew, radial in +X. Sourced: the axis station, the knob diameter and how far
-    # the knob stands proud. Not dimensioned on the drawing, so a visual choice: the 3 mm neck / 7 mm
-    # knob split of that 10 mm, and the neck radius.
+    # Side locking thumbscrew (TS6H/M), radial in +X: axis 12.7 mm below the top, a Ø14.5 x 7.9 mm knob
+    # whose far face stands 10 mm proud, and an M6 thread running from the knob in to the bore wall.
     if sourced:
         mw = Matrix.Translation((x, y, top - PH_SCREW_FROM_TOP))
-        knob_r, knob_len, neck_len = PH_KNOB_R, 7.0, PH_KNOB_PROUD - 7.0
-        _ocyl(BENCH_PREFIX + "Locks_" + tag, 2.5, hr - bore_r + neck_len,
+        knob_r, knob_len, neck_len = PH_KNOB_R, TS_KNOB_LEN, PH_KNOB_PROUD - TS_KNOB_LEN
+        _ocyl(BENCH_PREFIX + "Locks_" + tag, TS_THREAD_R, hr - bore_r + neck_len,
               mw, ((bore_r + hr + neck_len) * 0.5, 0.0, 0.0), coll, "steel", axis='X')
         _bevel(_ocyl(BENCH_PREFIX + "Lockh_" + tag, knob_r, knob_len,
                      mw, (hr + neck_len + knob_len * 0.5, 0.0, 0.0), coll, "steel", axis='X'), 0.45, 2)

@@ -46,15 +46,16 @@ not measured specifications. No vendor CAD or brand logos are copied. Visual det
 introduce collision geometry into the optical tracer or change tolerances.
 
 **The Ø12.7 mm post and its post holder are the exception.** Their critical dimensions follow
-Thorlabs drawings TR50/M 0331 rev J and PH50/M 23132 rev B (read 2026-09-22; see
+Thorlabs drawings TR50/M 0331 rev J, PH50/M 23132 rev B and TS6H/M 23136 rev B (read 2026-09-22/23; see
 [mechanics/product-evidence.md](mechanics/product-evidence.md)): a Ø25 × 50 mm holder with a closed wall
-and a Ø12.8 × 43.2 mm bore, the thumbscrew axis 12.7 mm below the top with a Ø14.5 mm knob standing
-10 mm proud, and the post's Ø3.2 mm cross-hole 10.2 mm below its top. `tests/test_support_geometry.py`
+and a Ø12.8 × 43.2 mm bore, the thumbscrew axis 12.7 mm below the top with a Ø14.5 × 7.9 mm knob standing
+10 mm proud and an M6 thread reaching in to the bore wall (TS6H/M, drawing 23136 rev B), and the
+post's Ø3.2 mm cross-hole 10.2 mm below its top. `tests/test_support_geometry.py`
 measures the shipped Dress Bench and render meshes against those drawing values at 0.05 mm — half
 the drawings' 0.1 mm resolution. The drawings are stamped *for information only* and state no
 tolerances, so this is agreement with a nominal, not a fit. The foot under the holder is still a
-visual stand-in for the base, and the thumbscrew's neck/knob split and neck radius are not
-dimensioned on the drawing.
+visual stand-in for the base, and the thumbscrew's ball plunger is not modelled: its diameter and
+spring force are not dimensioned.
 
 Reference material checked 2026-09-15:
 

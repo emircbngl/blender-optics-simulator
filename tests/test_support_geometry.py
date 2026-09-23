@@ -148,6 +148,26 @@ toward = (knob.matrix_world.translation.xy - axis).normalized()
 near("thumbscrew protrusion beyond the body wall",
      max((v.xy - axis).dot(toward) for v in knob_world) - h["outer"], "ph50m_dwg_thumbscrew_protrusion")
 
+knob_axis = [(v.xy - axis).dot(toward) for v in knob_world]
+near("thumbscrew knob length (TS6H/M)", max(knob_axis) - min(knob_axis), "ts6hm_dwg_knob_length")
+screw = scene.objects[optomech.BENCH_PREFIX + "Locks_" + tag]
+thread_end = min((v.xy - axis).dot(toward) for v in world_verts(screw))
+near("thumbscrew thread end, where TS6H/M's 16.1 mm reaches from the knob face",
+     thread_end, "ts6hm_dwg_length_to_thread_end",
+     expected=fact("ph50m_dwg_outer_diameter") / 2 + fact("ph50m_dwg_thumbscrew_protrusion")
+     - fact("ts6hm_dwg_length_to_thread_end"))
+
+print("[the drawings agree with each other]")
+# Two drawings, read separately: PH50/M's wall and knob, and TS6H/M's length to the thread end. If they
+# were read right, the thread end lands exactly on the bore wall.
+landing = (fact("ph50m_dwg_outer_diameter") / 2 + fact("ph50m_dwg_thumbscrew_protrusion")
+           - fact("ts6hm_dwg_length_to_thread_end"))
+check("TS6H/M's thread end lands on PH50/M's bore wall (%.2f mm from the axis)" % landing,
+      abs(landing - fact("ph50m_dwg_bore_diameter") / 2) <= THRESHOLD_MM,
+      "bore wall at %.2f mm" % (fact("ph50m_dwg_bore_diameter") / 2))
+check("both drawings give the same Ø14.5 mm knob",
+      fact("ts6hm_dwg_knob_diameter") == fact("ph50m_dwg_thumbscrew_head"))
+
 print("[Dress Bench: the TR50/M post in that holder]")
 post_verts = world_verts(post)
 post_r = max(radial(v) for v in post_verts)
