@@ -58,6 +58,14 @@ semantic versioning.
   thumbscrew's ball (under 12.7 mm, derived) or deeper than the 43.2 mm bore is refused, and a locked
   thumbscrew holds the post until it is walked back.
 
+- **Thread hand, from the standard rather than from habit.** No drawing in the support chain states a
+  thread hand, so stage 03 answered `unknown` for every screw joint. ISO 965-1 §5.4 requires left-hand
+  threads to carry "LH", so an unmarked designation is right-handed; the records now declare that,
+  citing both their own drawing and the standard's clause (quoted in the inventory, from the official
+  sample, SHA-256 pinned). The engine itself still never assumes a hand. With it, MB4560/M — the kit's
+  breadboard, now in `mechanical_library` with the kit's M6 × 16 mm table screw — matches the screw on
+  standard, hand, form, diameter and pitch; the one unknown left is the tap depth its drawing omits.
+
 ### Changed
 - **The post holder is now the PH50/M of its drawing, not a proportional guess** (stage 05a). Dress
   Bench built every holder as Ø22.9 mm with a Ø13.2 × 46 mm bore and a cut through its wall; the

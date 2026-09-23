@@ -71,6 +71,9 @@ def check():
             assert fact['verification'] == 'primary_published_nominal_not_mesh_verified', fact['id']
         assert fact['manufacturing_tolerance'] is None, \
             'no drawing here states a tolerance; do not infer one from decimal places'
+    # A standards rule is adopted only with its source and the clause quoted, never from memory.
+    for rule in data.get('standards_rules', []):
+        assert rule['source_id'] in sources and rule['quote'] and rule['rule'] and rule['adopted'], rule['id']
     blockers = data.get('support_blockers')
     if blockers is not None:
         assert blockers['missing'] and blockers['next_action']
