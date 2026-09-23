@@ -55,6 +55,16 @@ check("its screw is on a slot centreline, inside the slot's run, on a real hole"
       abs(abs(u) - 25.0) < 1e-9 and abs(v) <= 15.9 + 1e-9 and on_hole(one), (u, v, one['screw']))
 check("fastened with the kit's M6 x 16 + washer", one['fastener'] == 'M6 x 16 mm cap screw + M6 washer')
 
+# Every candidate, both orientations, every counterbore: the holder has to stand ON a counterbore.
+wrong = []
+for plan in sb._ba2_plans(250.0, 200.0, GRID):
+    hu, hv = sb.to_local(plan['centre'], math.radians(plan['angle_deg']), 250.0, 200.0)
+    if abs(hu) > 1e-9 or abs(hv - plan['holder_offset']) > 1e-9:
+        wrong.append((plan['angle_deg'], plan['holder_offset'], round(hu, 3), round(hv, 3)))
+check("in every BA2/M candidate the holder stands on the counterbore the plan names", not wrong, wrong)
+turned = [p for p in sb._ba2_plans(250.0, 200.0, GRID) if p['angle_deg'] == 90.0 and p['holder_offset'] != 0.0]
+check("including a base turned 90 degrees on an off-centre counterbore", len(turned) > 0, len(turned))
+
 print("[off the grid: BE1/M + CF125]")
 off = sb.choose({'a': (263.0, 208.0)}, GRID)['a']
 r = math.hypot(off['screw'][0] - 263.0, off['screw'][1] - 208.0)

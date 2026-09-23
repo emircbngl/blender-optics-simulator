@@ -85,48 +85,64 @@ def overlap(a, b, clearance=0.0):
     return True
 
 
+def to_world(centre, angle, u, v):
+    """Base-local (u along the length, v across it) to world, for a base turned by `angle` radians."""
+    c, s = math.cos(angle), math.sin(angle)
+    return (centre[0] + c * u - s * v, centre[1] + s * u + c * v)
+
+
+def to_local(centre, angle, x, y):
+    c, s = math.cos(angle), math.sin(angle)
+    dx, dy = x - centre[0], y - centre[1]
+    return (c * dx + s * dy, -s * dx + c * dy)
+
+
 def _ba2_plans(x, y, grid):
     x0, y0, _nx, _ny, pitch = grid
-    for angle, across, along, origin_across, origin_along in ((0.0, x, y, x0, y0), (math.pi / 2, y, x, y0, x0)):
-        if not on_line(across, origin_across, pitch):
-            continue
+    for angle in (0.0, math.pi / 2):
         for offset in BA2['counterbores']:
-            centre_along = along - offset                  # the holder sits `offset` along the slots
+            # The holder stands on the counterbore at local (0, offset); that fixes the base's centre.
+            ox, oy = to_world((0.0, 0.0), angle, 0.0, offset)
+            centre = (x - ox, y - oy)
             for side in (-1.0, 1.0):
-                slot_across = across + side * BA2['slot_u']
-                # holes on this slot's centreline whose position along it lies inside the slot
-                k0 = math.ceil((centre_along - BA2['slot_half'] - origin_along) / pitch - 1e-9)
-                k1 = math.floor((centre_along + BA2['slot_half'] - origin_along) / pitch + 1e-9)
-                hits = [origin_along + k * pitch for k in range(k0, k1 + 1)]
+                # The slot's centreline runs along v at u = side * 25, from v = -15.9 to +15.9.
+                a = to_world(centre, angle, side * BA2['slot_u'], -BA2['slot_half'])
+                b = to_world(centre, angle, side * BA2['slot_u'], BA2['slot_half'])
+                hits = [h for h in holes(grid)
+                        if _on_segment(h, a, b)]
                 if not hits:
                     continue
-                hit = min(hits, key=lambda h: (abs(h - centre_along), h))
-                if angle == 0.0:
-                    centre, screw = (x, centre_along), (slot_across, hit)
-                else:
-                    centre, screw = (centre_along, y), (hit, slot_across)
-                yield {'part': 'BA2/M', 'angle_deg': math.degrees(angle), 'centre': centre, 'screw': screw,
+                hit = min(hits, key=lambda h: (abs(to_local(centre, angle, *h)[1]), h))
+                yield {'part': 'BA2/M', 'angle_deg': math.degrees(angle), 'centre': centre, 'screw': hit,
                        'holder_offset': offset, 'seat': SEAT_SLOTTED, 'thickness': BA_THICKNESS,
                        'fastener': 'M6 x 16 mm cap screw + M6 washer',
                        'footprint': _rect(centre[0], centre[1], BA2['length'], BA2['width'], angle)}
 
 
+def _on_segment(p, a, b):
+    """Is grid hole `p` on the straight slot centreline from `a` to `b` (within ON_GRID_MM)? A slot's
+    width is not dimensioned, so only its centreline is credited."""
+    ax, ay = a; bx, by = b; px, py = p
+    lx, ly = bx - ax, by - ay
+    length = math.hypot(lx, ly)
+    t = ((px - ax) * lx + (py - ay) * ly) / (length * length)
+    if t < -1e-9 or t > 1.0 + 1e-9:
+        return False
+    return abs((px - ax) * ly - (py - ay) * lx) / length <= ON_GRID_MM
+
+
 def _ba1_plans(x, y, grid):
-    x0, y0, _nx, _ny, pitch = grid
-    for angle, across, along, origin_across, origin_along in ((0.0, y, x, y0, x0), (math.pi / 2, x, y, x0, y0)):
-        if not on_line(across, origin_across, pitch):
-            continue
+    for angle in (0.0, math.pi / 2):
+        centre = (x, y)                                  # the holder stands on BA1/M's centre hole
         hits = []
         for side in (-1.0, 1.0):
-            lo, hi = sorted((along + side * BA1['slot_in'], along + side * BA1['slot_out']))
-            k0 = math.ceil((lo - origin_along) / pitch - 1e-9)
-            k1 = math.floor((hi - origin_along) / pitch + 1e-9)
-            hits += [origin_along + k * pitch for k in range(k0, k1 + 1)]
+            a = to_world(centre, angle, side * BA1['slot_in'], 0.0)
+            b = to_world(centre, angle, side * BA1['slot_out'], 0.0)
+            hits += [h for h in holes(grid) if _on_segment(h, a, b)]
         if not hits:
             continue
-        hit = min(hits, key=lambda h: (abs(h - along), h))    # deepest in the slot: most washer support
-        screw = (hit, across) if angle == 0.0 else (across, hit)
-        yield {'part': 'BA1/M', 'angle_deg': math.degrees(angle), 'centre': (x, y), 'screw': screw,
+        hit = min(hits, key=lambda h: (abs(to_local(centre, angle, *h)[0]), h))   # deepest: most washer support
+        yield {'part': 'BA1/M', 'angle_deg': math.degrees(angle), 'centre': centre, 'screw': hit,
                'holder_offset': 0.0, 'seat': SEAT_SLOTTED, 'thickness': BA_THICKNESS,
                'fastener': 'M6 x 16 mm cap screw + M6 washer',
                'footprint': _rect(x, y, BA1['length'], BA1['width'], angle)}
