@@ -60,12 +60,24 @@ def value_at(record, path):
     return item["dimensions"][rest]["value"]
 
 
-drift = [(part, path, fact_id, value_at(records[part], path), FACTS[fact_id]["value"])
-         for part, path, fact_id in library.PROVENANCE
-         if abs(value_at(records[part], path) - float(FACTS[fact_id]["value"])) > 1e-9]
+def fact_value(ref):
+    # "fact_id" or "fact_id[i]" for one element of a list-valued fact (a size given as [x, y, z]).
+    if ref.endswith("]"):
+        fact_id, index = ref[:-1].split("[")
+        return float(FACTS[fact_id]["value"][int(index)])
+    return float(FACTS[ref]["value"])
+
+
+def fact_id_of(ref):
+    return ref.split("[")[0]
+
+
+drift = [(part, path, ref, value_at(records[part], path), fact_value(ref))
+         for part, path, ref in library.PROVENANCE
+         if abs(value_at(records[part], path) - fact_value(ref)) > 1e-9]
 check("all %d provenance entries match their inventory facts" % len(library.PROVENANCE), not drift, drift)
-derived = sorted({fact_id for _p, _path, fact_id in library.PROVENANCE
-                  if FACTS[fact_id]["verification"] == "derived_from_published_nominals"})
+derived = sorted({fact_id_of(ref) for _p, _path, ref in library.PROVENANCE
+                  if FACTS[fact_id_of(ref)]["verification"] == "derived_from_published_nominals"})
 check("the derived values are the ones the library says are derived",
       derived == ["ph50m_min_insertion_lower_bound", "ph_series_allowed_gap_lower_bound"], derived)
 check("nothing claims more than 'unverified'",
@@ -73,6 +85,21 @@ check("nothing claims more than 'unverified'",
 check("drawing sources pin the exact file that was read",
       all(len(s["sha256"] or "") == 64 for r in records.values() for sid, s in r["sources"].items()
           if sid.endswith("_drawing")))
+
+print("[1b. the thread hand, from ISO 965-1 and not from habit]")
+INVENTORY = json.loads((ROOT / "docs/mechanics/product-evidence.json").read_text())
+rule = next(r for r in INVENTORY["standards_rules"] if r["id"] == "iso965_unmarked_is_right_hand")
+check("the rule is adopted with its clause quoted, not from memory",
+      "LH shall be added" in rule["quote"] and rule["source_id"] == "iso965_1", rule["quote"])
+threads = [(part, i) for part, r in records.items() for i in r["interfaces"] if i["thread"]]
+check("every thread in the library is right-handed, citing the standard AND its own document",
+      threads and all(i["thread"]["hand"] == "right" and "iso965_1" in i["thread"]["evidence"]
+                      and any(e != "iso965_1" for e in i["thread"]["evidence"]) for _p, i in threads),
+      [(p, i["id"], i["thread"]["hand"], i["thread"]["evidence"]) for p, i in threads])
+designations = [f["value"] for f in INVENTORY["support_facts"]
+                if f["field"] in ("base_thread", "top_setscrew", "thread", "taps", "fastener", "table_fastener")]
+check("and none of the %d designations behind them carries LH" % len(designations),
+      len(designations) >= 6 and not any("LH" in str(v) for v in designations), designations)
 
 print("[2. stage 03 agrees with the vendor]")
 holder = catalog.normalized(records["PH50/M"])
@@ -95,6 +122,25 @@ check("a Ø25 mm RS2P/M pillar does not go in",
       [(r["rule"], r["detail"]) for r in rs["direct"]["rules"] if r["result"] == "incompatible"])
 check("each verdict cites the drawings behind it",
       {"ph50m_drawing", "tr50m_drawing"} <= set(tr["evidence"]), tr["evidence"])
+
+print("[2b. the table and its screw: known hand, unknown tap depth]")
+table = catalog.normalized(records["MB4560/M"])
+screw = catalog.normalized(records["M6x16 cap screw (EDU-SPEB2/M kit)"])
+pair = compat.check(table, "tap", screw, "thread")
+check("MB4560/M's tap and the kit's M6 x 16 screw agree on standard, hand, form, diameter and pitch",
+      all(r["result"] == "compatible" for r in pair["direct"]["rules"]
+          if r["rule"] in ("thread.gender", "thread.standard", "thread.hand", "thread.form",
+                           "thread.major_diameter", "thread.pitch")),
+      [(r["rule"], r["result"]) for r in pair["direct"]["rules"]])
+check("so the one thing left unknown is the tap depth the drawing does not give",
+      pair["verdict"] == "unknown" and pair["missing"] == ["thread.engagement"], pair["missing"])
+# The counterfactual: the same real pair with the hand stripped back to unstated.
+import copy
+stripped = copy.deepcopy(table)
+next(i for i in stripped["interfaces"] if i["id"] == "tap")["thread"]["hand"] = None
+before_rule = compat.check(stripped, "tap", screw, "thread")
+check("with the hand unstated, the same pair would also be unknown on hand -- which is what this fixed",
+      "thread.hand" in before_rule["missing"], before_rule["missing"])
 
 print("[3. seated where the frames say -- and where Dress Bench puts it]")
 scene = bpy.context.scene

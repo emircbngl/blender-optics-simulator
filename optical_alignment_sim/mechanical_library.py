@@ -38,6 +38,20 @@ SOURCES = {
                         checked_on='2026-09-23', sha256=None),
     'rs2pm_product': dict(url='https://www.thorlabs.com/thorproduct.cfm?partnumber=RS2P/M',
                           locator='product title', revision=None, checked_on='2026-09-23', sha256=None),
+    'mb4560m_drawing': dict(url='https://media.thorlabs.com/globalassets/items/m/mb/mb4/mb4560_m/6282-e0w.pdf',
+                            locator='Thorlabs drawing 6282, sheet 1', revision='B', checked_on='2026-09-23',
+                            sha256='c7cffde6a32966346b230c045122e7f7515655f5d005cbf5983af56eca1b507f'),
+    'edu_speb2m_manual': dict(url='https://media.thorlabs.com/globalassets/items/e/ed/edu/edu-speb2/mtn021357-d02.pdf',
+                              locator='MTN021357-D02 section 6.2 and the metric kit screw list',
+                              revision='Rev A, July 22, 2020', checked_on='2026-09-23',
+                              sha256='d2627eb6d83648f6c7d2de80fa54550f636cecf9149b1a01759aa09b582ddf6d'),
+    # The thread hand. ISO 965-1 5.4: "When left hand threads are specified the letters LH shall be added
+    # to the thread designation". No designation in this library carries LH, so each is right-handed --
+    # and each record says so by citing both its own designation and this clause.
+    'iso965_1': dict(url='https://cdn.standards.iteh.ai/samples/5393/bb7c10816efa4087b66e40d8375fb23b/ISO-965-1-1998.pdf',
+                     locator='ISO 965-1:1998 5.4 (12.4 in the 2013 edition)', revision='1998',
+                     checked_on='2026-09-23',
+                     sha256='ebbde6db362d145114f804724b8e8f6a027edb21195648da3325addc4e18fa2e'),
 }
 
 # (part, path into the record, inventory fact id). A path is interface.dimension, interface.thread.field,
@@ -60,6 +74,8 @@ PROVENANCE = [
     ('PH50/M', 'bore.frame.z', 'ph50m_dwg_length'),
     ('PH50/M', 'motion:height.minimum', 'ph50m_min_insertion_lower_bound'),    # derived
     ('PH50/M', 'motion:height.maximum', 'ph50m_dwg_bore_depth'),
+    ('MB4560/M', 'tap.frame.z', 'mb4560m_dwg_size[2]'),
+    ('M6x16 cap screw (EDU-SPEB2/M kit)', 'thread.engagement_max', 'kit_table_screw_length'),
 ]
 
 
@@ -74,9 +90,11 @@ def _frame(z, quaternion, evidence, x=0.0):
 
 def _thread(standard, gender, major, pitch, evidence):
     # "M6 X 1.0" states the form, the nominal major diameter and the pitch in its own words. The hand is
-    # not written on the drawing, so it stays unknown rather than assumed right-handed.
-    return {'standard': standard, 'gender': gender, 'hand': None, 'form': 'M', 'fit_class': None,
-            'major_diameter': _q(major, evidence), 'pitch': _q(pitch, evidence), 'evidence': list(evidence)}
+    # right because the designation carries no LH (ISO 965-1 5.4), so the labels cite the standard too;
+    # the numbers cite only the part's own document.
+    return {'standard': standard, 'gender': gender, 'hand': 'right', 'form': 'M', 'fit_class': None,
+            'major_diameter': _q(major, evidence), 'pitch': _q(pitch, evidence),
+            'evidence': list(evidence) + ['iso965_1']}
 
 
 def _interface(identifier, kind, frame, dimensions, evidence, thread=None):
@@ -98,7 +116,8 @@ def _record(definition_id, part_number, sources, interfaces, motions=(), revisio
 def _post(part_number, diameter, length, sid, extra=(), revision=None):
     shaft = _interface('shaft', 'shaft', _frame(0.0, DOWN, [sid]),
                        {'diameter': _q(diameter, [sid]), 'insertion_max': _q(length, [sid])}, [sid])
-    return _record('thorlabs:' + part_number, part_number, [sid], [shaft] + list(extra), revision=revision)
+    sources = [sid] + (['iso965_1'] if extra else [])
+    return _record('thorlabs:' + part_number, part_number, sources, [shaft] + list(extra), revision=revision)
 
 
 def _tr50m():
@@ -130,7 +149,35 @@ def _ph50m():
                           _thread('M6', 'internal', 6.0, 1.0, [d]))
     height = {'id': 'height', 'interface_id': 'bore', 'kind': 'translation',
               'minimum': _q(12.7, [d, t]), 'maximum': _q(43.2, [d]), 'evidence': [d, t]}
-    return _record('thorlabs:PH50/M', 'PH50/M', [d, t, f], [bore, base_tap], [height], revision='B')
+    return _record('thorlabs:PH50/M', 'PH50/M', [d, t, f, 'iso965_1'], [bore, base_tap], [height], revision='B')
+
+
+def _mb4560m():
+    # One grid tap, the one 12.5 mm in from a corner. The board has 432 of them on a 25 mm pitch; a joint
+    # takes one socket, and addressing the whole grid is not modelled yet. The origin is the centre of
+    # the bottom face, so that tap sits at (-287.5, -212.5) on the 12.7 mm top face.
+    d = 'mb4560m_drawing'
+    tap = _interface('tap', 'thread', {'origin': [-287.5, -212.5, 12.7], 'unit': 'mm',
+                                       'quaternion_wxyz': list(UP), 'evidence': [d]},
+                     # The drawing gives no tap depth and no THRU: the depth is known to exist, not its value.
+                     {'depth': _q(None, [])}, [d], _thread('M6', 'internal', 6.0, 1.0, [d]))
+    return _record('thorlabs:MB4560/M', 'MB4560/M', [d, 'iso965_1'], [tap], revision='B')
+
+
+def _kit_screw(length, locator_source='edu_speb2m_manual'):
+    # The kit manual gives the size, not a catalogue part number, so the identity says only that much.
+    # Its length under the head is an upper bound on engagement: what it actually engages is the length
+    # minus what it clamps, which schema v1 cannot express (a three-part stack; schema v2).
+    m = locator_source
+    thread = _interface('thread', 'thread', _frame(0.0, DOWN, [m]),
+                        {'engagement_max': _q(float(length), [m])}, [m], _thread('M6', 'external', 6.0, 1.0, [m]))
+    rec = _catalog.new_record('thorlabs:edu-speb2m:M6x%d' % length, manufacturer='Thorlabs', part_number=None,
+                              variant='M6 x %d mm socket head cap screw, supplied in EDU-SPEB2/M' % length,
+                              revision=None)
+    rec['sources'] = {sid: dict(SOURCES[sid]) for sid in (m, 'iso965_1')}
+    rec['interfaces'] = [thread]
+    rec['evidence_level'] = 'unverified'
+    return rec
 
 
 _BUILDERS = {
@@ -138,6 +185,8 @@ _BUILDERS = {
     'TR50/M-JP': lambda: _post('TR50/M-JP', 12.0, 50.0, 'post_family'),
     'RS2P/M': lambda: _post('RS2P/M', 25.0, 50.0, 'rs2pm_product'),
     'PH50/M': _ph50m,
+    'MB4560/M': _mb4560m,
+    'M6x16 cap screw (EDU-SPEB2/M kit)': lambda: _kit_screw(16),
 }
 
 

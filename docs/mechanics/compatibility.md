@@ -20,7 +20,7 @@ not visibly collide are not compatibility.
 
 | Interfaces | Rules |
 |---|---|
-| `thread` + `thread` | Opposite genders; identical standard, hand and form; major diameter and pitch equal within the parts' own declared `model_error_limit` (no default tolerance); the male side's reach against the female side's depth, so a screw that bottoms out is rejected. |
+| `thread` + `thread` | Opposite genders; identical standard, hand and form (an unstated hand is `unknown` — the engine never assumes one; a record may declare right-hand only by citing ISO 965-1 §5.4, see below); major diameter and pitch equal within the parts' own declared `model_error_limit` (no default tolerance); the male side's reach against the female side's depth, so a screw that bottoms out is rejected. |
 | `smooth_bore` + `shaft` | The shaft has to enter the bore; the gap has to be within the bore's stated `clearance` (without a stated clearance the fit is `unknown`, because a gap alone says nothing); the bore's `insertion_min` against what the shaft can offer. |
 | `optic_seat` + optic | The optic thickness you pass in against the seat's stated `optic_thickness_min` / `optic_thickness_max`. |
 | `hole_pattern` + `hole_pattern` | `rod_spacing` and hole `diameter` equal within the declared limits. |
@@ -31,6 +31,15 @@ Values are normalised to millimetres and degrees before comparison; the stored r
 units. A gap is compared with the stated clearance allowing `REPRESENTATION_MM` = 1e-9 mm: stated
 decimals live in binary floating point, and 12.8 − 12.0 is 0.8000000000000007, which used to reject a
 0.8 mm gap against a 0.8 mm clearance. That allowance is round-off only, not a tolerance.
+
+## Thread hand
+
+The engine does not assume a hand. Records do the reading instead, with a source: ISO 965-1:1998 §5.4
+(§12.4 in the 2013 edition) says *"When left hand threads are specified the letters LH shall be added to
+the thread designation"*, so a designation such as "M6X1.0" without LH is right-handed. A record that
+declares `hand: right` on that basis cites both its own drawing and `iso965_1`; the rule is recorded in
+the inventory's `standards_rules` with the clause quoted. Adopted by the owner on 2026-09-23, on the
+condition that it was sourced first.
 
 ## Adapters
 

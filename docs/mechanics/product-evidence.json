@@ -399,6 +399,17 @@
       "redistribution_permission": "unknown",
       "cad_file_acquired": true,
       "acquisition_note": "Opened and read for dimensions only, with the owner's approval. The file is not stored in this repository and is not redistributed. sha256 c7cffde6a32966346b230c045122e7f7515655f5d005cbf5983af56eca1b507f. Drawing is stamped FOR INFORMATION ONLY / NOT FOR MANUFACTURING PURPOSES and carries no tolerances; imperial values on it are marked as calculated and may contain round-off."
+    },
+    "iso965_1": {
+      "title": "ISO 965-1:1998 ISO general purpose metric screw threads -- Tolerances -- Part 1 (official sample)",
+      "url": "https://cdn.standards.iteh.ai/samples/5393/bb7c10816efa4087b66e40d8375fb23b/ISO-965-1-1998.pdf",
+      "locator": "5.4 Designation of the left hand threads; the 2013 edition keeps it as 12.4 (contents page of the ISO 965-1:2013 official sample)",
+      "access": "primary_standard_sample",
+      "checked_on": "2026-09-23",
+      "document_revision": "1998",
+      "redistribution_permission": "unknown",
+      "cad_file_acquired": false,
+      "acquisition_note": "The official ISO sample distributed by iTeh, read for one clause; not stored in this repository. sha256 ebbde6db362d145114f804724b8e8f6a027edb21195648da3325addc4e18fa2e"
     }
   },
   "products": [
@@ -6228,6 +6239,19 @@
       "note": null,
       "verification": "primary_published_nominal_not_mesh_verified",
       "manufacturing_tolerance": null
+    },
+    {
+      "id": "kit_table_screw_length",
+      "support_parts": [
+        "BA2/M"
+      ],
+      "field": "table_screw_length_mm",
+      "value": 16,
+      "source_id": "edu_speb2m_manual",
+      "locator": "6.2: 1/4\"-20 x 5/8\" (M6 x 16 mm) cap screw plus washer",
+      "note": "The screw's length under the head: an upper bound on how far it can engage. What it actually engages is 16 mm minus what it clamps (schema v2).",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
     }
   ],
   "support_blockers": {
@@ -6243,17 +6267,27 @@
       "BA2/M -> PH50/M fastener: an M6 x 10 mm cap screw, by the vendor's own kit procedure (MTN021357-D02 6.1.4/6.1.5)",
       "base -> table fastener: an M6 x 16 mm cap screw plus M6 washer (6.2)",
       "a sourced table candidate: MB4560/M, the kit's own breadboard (450 x 600 x 12.7 mm, M6)",
-      "the table: MB4560/M adopted by the owner (2026-09-23); drawing 6282 rev B read"
+      "the table: MB4560/M adopted by the owner (2026-09-23); drawing 6282 rev B read",
+      "thread hand: ISO 965-1 5.4 (LH is always designated), adopted per owner decision; records declare right-hand citing the drawing and the standard"
     ],
     "missing": [
       "manufacturing tolerances: only the bases' 0.05 mm parallelism is published; the drawings state none",
       "BA2/M counterbore depth: not dimensioned; the vendor procedure implies at least 3.2 mm under the head",
       "screw catalogue part numbers, head height and washer thickness: the kit gives sizes only",
       "schema v1 cannot express a three-part screw stack (head in the base, shank through its floor, thread in the holder), so the base joint's engagement cannot be rule-checked yet",
-      "MB4560/M tap depth: not dimensioned and not marked THRU, so the M6 x 16 mm table screw's engagement is unknown",
-      "thread hand: no drawing in this chain states it (no 'LH', but no 'RH' either); stage 03 therefore answers `unknown` for every thread pair until a sourced rule decides how an unmarked metric thread is read"
+      "MB4560/M tap depth: not dimensioned and not marked THRU, so the M6 x 16 mm table screw's engagement is unknown"
     ],
     "next_action": "Owner decisions: (1) how to read an unmarked thread hand; (2) a schema change for three-part screw stacks; (3) whether Dress Bench's visual foot becomes the real BA2/M/BA1/M.",
     "dependent_work_not_started": true
-  }
+  },
+  "standards_rules": [
+    {
+      "id": "iso965_unmarked_is_right_hand",
+      "rule": "An ISO metric thread designation without 'LH' is a right-hand thread.",
+      "source_id": "iso965_1",
+      "quote": "When left hand threads are specified the letters LH shall be added to the thread designation, separated by a dash.",
+      "applies_to": "the M4 x 0.7 and M6 x 1.0 designations on TR50/M 0331, PH50/M 23132, MB4560/M 6282 and the EDU-SPEB2/M kit's M6 cap screws, none of which carries LH",
+      "adopted": "owner decision 2026-09-23, on condition that the rule is sourced first"
+    }
+  ]
 }

@@ -225,6 +225,14 @@ bilinmiyor. **Diş yönü hiçbir çizimde yok**: "M6X1.0" yazıyor, "LH" yok am
 yönü iki tarafta da belirtilmemişse `unknown` döner; yani bugün bu zincirdeki **her** vida bağlantısı
 `unknown`. İşaretsiz metrik dişin nasıl okunacağı kaynaklı bir kural gerektiriyor.
 
+**Diş yönü — kural kaynağıyla benimsendi (sahip kararı, 23 Eylül 2026).** ISO 965-1:1998 §5.4 (2013
+baskısında §12.4): *"When left hand threads are specified the letters LH shall be added to the thread
+designation"*. Kaynak standardın resmi örneği (iTeh), SHA-256 envanterde. Yani "LH" taşımayan metrik
+gösterim sağ eldir; bu zincirdeki 8 gösterimin hiçbiri LH taşımıyor. Kural motora değil verilere girdi:
+kayıtlar `hand: right` der ve hem kendi çizimini hem `iso965_1`'i kaynak gösterir; aşama 03 hâlâ
+belirtilmemiş yönü `unknown` sayar. Sonuç: MB4560/M dişi ile kitin M6 × 16 vidası standart, yön, form,
+çap ve adımda uyuşuyor; bilinmeyen tek şey çizimin vermediği diş derinliği.
+
 **Şema sınırı:** taban bağlantısı üç parçalı bir yığın — baş tabanın havşasında, gövde havşa tabanından
 geçer, diş holder'da. Şema v1 bunu ifade edemiyor, bu yüzden taban bağlantısının kavraması kuralla
 denetlenemiyor. Bu bir şema değişikliği ve ayrıca karar gerektirir.
