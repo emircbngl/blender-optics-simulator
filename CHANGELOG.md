@@ -85,6 +85,9 @@ semantic versioning.
 - CI runs the mechanical schema test, the catalog inventory check, the compatibility engine, the
   assembly graph, the post/holder drawing check and the post/holder assembly.
 - CAPABILITIES said 36 element types; there are 35.
+- The render detail turns the post holder on a 128-segment lathe instead of copying Dress Bench's
+  24-sided body, whose facets showed at Ø25 mm in close-ups. Envelope, bore wall, bore floor and the
+  0.6 mm edges are read from the Dress Bench mesh, so the post meets the same bore (within 0.006 mm).
 
 ### Fixed
 - **Loosening a screw moved the part** (stage 04b). Stepping a joint back from `fastened` to `seated`

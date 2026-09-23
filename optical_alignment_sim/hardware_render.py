@@ -216,9 +216,21 @@ def _prepare(scene):
             shaft = bool(re.match(r'A\d[sb]_|Locks_|StageMic\d_|RailLocks_|CageRod_|TRFpivot_|GMpivot_[LR]_|VCbolt_[LR]_|Cmount_|CamStem_|PlatformStem_',name))
             ring = name.startswith('RSPring_')
             cell = bool(re.match(r'(RSPhousing|Cell|GMcell|GMyoke|TRFcell|XScell|StageCell|IrisCell|Tube|TubeRetainer|CageRetainer)_',name))
-            if knob or spring or post or ring or shaft or cell:
+            holder = name.startswith('Holder_')
+            if knob or spring or post or ring or shaft or cell or holder:
                 old = mesh
-                if ring or cell:
+                if holder:
+                    # A turned post holder with a blind bore from the top, keeping the Dress Bench
+                    # mesh's interfaces: its envelope, the bore wall (the widest bore vertex below the
+                    # mouth; the floor corner is chamfered inward) and the floor (the lowest bore
+                    # vertex). The 0.6 mm edge is optomech._post_holder's own bevel, on every edge.
+                    bore = [v for v in coords if v.xy.length < r - 1.0]
+                    inner = max(v.xy.length for v in bore if v.z < hi - 1.0)
+                    floor = min(v.z for v in bore)
+                    edge = .6
+                    mesh = _lathe(name,[(r-edge,lo),(r,lo+edge),(r,hi-edge),(r-edge,hi),(inner+edge,hi),
+                                        (inner,hi-edge),(inner,floor+edge),(inner-edge,floor)])
+                elif ring or cell:
                     inner = min(v.xy.length for v in coords)
                     mesh = _lathe(name,[(inner,lo),(r*.98,lo),(r,lo+.3),(r,hi-.3),(r*.98,hi),(inner,hi)],segments=256 if ring else 128,teeth=int(ring),caps=False)
                 elif spring:
@@ -228,7 +240,7 @@ def _prepare(scene):
                     mesh = _lathe(name,[(r*.94,lo),(r,lo+edge),(r,hi-edge),(r*.94,hi)],teeth=int(knob))
                 bpy.data.meshes.remove(old)
             ob = _child(coll,src,name,mesh)
-            ob['detail_features'] = 'spring' if spring else 'knurl' if knob or ring else 'turned_surface' if post or shaft or cell else 'machined_material'
+            ob['detail_features'] = 'spring' if spring else 'knurl' if knob or ring else 'turned_surface' if post or shaft or cell or holder else 'machined_material'
             kind = 'anodized'
             original = src.data.materials[0].name if src.data.materials else ''
             if original in ('OB_steel','OB_post'): kind = 'steel'
@@ -243,7 +255,7 @@ def _prepare(scene):
             mesh.materials.append(material(kind))
             # Smooth curved surfaces only; preserve machined planar faces and bores.
             for face in mesh.polygons:
-                face.use_smooth = spring or name.startswith('KMpivot_') or (len(face.vertices) == 4 and abs(face.normal.z) < .95 and (post or shaft or cell))
+                face.use_smooth = spring or name.startswith('KMpivot_') or (len(face.vertices) == 4 and abs(face.normal.z) < .95 and (post or shaft or cell or holder))
             if re.match(r'(KMback|CamBody|Carrier|VCbase|TRFbase|XSbase|StagePlate\d|PrismPlatform|RailFlange|CagePlate)_',name):
                 _fasteners(coll,src,coords,cage=name.startswith('CagePlate_'))
                 ob['detail_features'] += ',fasteners'
