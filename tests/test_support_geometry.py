@@ -183,9 +183,10 @@ hardware_render.prepare(scene)
 bpy.context.view_layer.update()
 render_holder = next(o for o in scene.objects if o.name == "OAR_HW_Holder_" + tag)
 r = measure_holder(render_holder, "render holder", knob.matrix_world.translation.z)
-# The render holder is a 128-gon lathe, not a copy: bore passages ~0.006 mm apart, floor centres ~2.5e-5 (float32).
+# Same bore radius R: a 128-gon lathe clears R*cos(pi/128) = 6.39807, the 64-gon cut R*cos(pi/64) = 6.39229; floors float32 (~2.5e-5).
+polygon_gap = fact("ph50m_dwg_bore_diameter") / 2 * (math.cos(math.pi / 128) - math.cos(math.pi / 64))
 check("render and Dress Bench holders meet the post at the same bore",
-      abs(r["bore_in"] - h["bore_in"]) <= THRESHOLD_MM and abs(r["floor"] - h["floor"]) <= THRESHOLD_MM,
+      abs(r["bore_in"] - h["bore_in"] - polygon_gap) < 1e-4 and abs(r["floor"] - h["floor"]) < 1e-4,
       (r["bore_in"], h["bore_in"]))
 render_post = next(o for o in scene.objects if o.name == "OAR_HW_Post_" + tag)
 rp = world_verts(render_post)
