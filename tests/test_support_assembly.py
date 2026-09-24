@@ -192,8 +192,18 @@ dress_post = scene.objects["BENCH_Post_" + tag]
 dress_seat = (min((dress_post.matrix_world @ v.co).z for v in dress_post.data.vertices)
               - min((dress_holder.matrix_world @ v.co).z for v in dress_holder.data.vertices))
 record_seat = post.translation.z - objects["PH"].matrix_world.translation.z
-check("the record-seated post and Dress Bench's post meet their holders at the same height",
-      abs(dress_seat - record_seat) < 1e-4, "Dress Bench %.4f mm, records %.4f mm" % (dress_seat, record_seat))
+# The records know the bore floor; the base knows what its tip adds above it (stage 05b's seat interval,
+# measured from the board). The post must stand inside that interval, and the interval must not start
+# below the floor the records seat on.
+dress_base = next(o for o in scene.objects if o.name in ("BENCH_Base_" + tag, "BENCH_BasePedestal_" + tag))
+lo, hi = dress_base["base_seat_range_mm"]
+board_top = max((scene.objects["BENCH_Breadboard"].matrix_world @ v.co).z
+                for v in scene.objects["BENCH_Breadboard"].data.vertices)
+holder_bottom = min((dress_holder.matrix_world @ v.co).z for v in dress_holder.data.vertices) - board_top
+check("Dress Bench's post stands in its base's seat interval, never below the floor the records seat on",
+      lo - 1e-4 <= holder_bottom + dress_seat <= hi + 1e-4 and holder_bottom + record_seat <= lo + 1e-4,
+      "post %.4f mm above the board, interval %.4f-%.4f, record floor %.4f"
+      % (holder_bottom + dress_seat, lo, hi, holder_bottom + record_seat))
 optomech.strip(scene)
 
 print("[4. the thumbscrew holds, and the parts come off in reverse]")

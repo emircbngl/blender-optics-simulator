@@ -27,7 +27,7 @@ def check():
         # source that did has to say so: a primary drawing, with a note recording that the file is
         # read for dimensions, kept out of the repository and not redistributed.
         if source['cad_file_acquired']:
-            assert source['access'] == 'primary_drawing', sid
+            assert source['access'] in ('primary_drawing', 'primary_cad_model'), sid
             note = source.get('acquisition_note') or ''
             assert 'not redistributed' in note and 'not stored in this repository' in note, sid
             assert source['document_revision'], sid
@@ -69,8 +69,9 @@ def check():
             assert fact['note'] and 'DERIVED' in fact['note'], fact['id']
         else:
             assert fact['verification'] == 'primary_published_nominal_not_mesh_verified', fact['id']
-        assert fact['manufacturing_tolerance'] is None, \
-            'no drawing here states a tolerance; do not infer one from decimal places'
+        # A tolerance is recorded only where the source states one, and then the locator quotes it.
+        assert fact['manufacturing_tolerance'] is None or '\u00b1' in fact['locator'], \
+            '%s: a tolerance must be quoted from its source, never inferred from decimal places' % fact['id']
     # A standards rule is adopted only with its source and the clause quoted, never from memory.
     for rule in data.get('standards_rules', []):
         assert rule['source_id'] in sources and rule['quote'] and rule['rule'] and rule['adopted'], rule['id']

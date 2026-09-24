@@ -739,14 +739,17 @@ def base_plan_inputs(scene):
     return {'holders': dict(inputs['holders']), 'grid': tuple(inputs['grid']),
             'obstacles': [list(p) for p in inputs['obstacles']]}
 
-# Visual only -- these features exist on the real parts but are not dimensioned on their drawings, so
-# nothing is decided from them: slot and clearance-hole widths (M6 clearance), cap-screw heads and
-# washers, CF125's undercut depth (it must clear BE1/M's 4.7 mm disc).
-_VIS_SLOT_W = 6.6
-_VIS_WASHER = (6.0, 1.6)            # radius, thickness
+# From the STEP models and the catalogue (docs/mechanics/product-evidence.json): slot width 6.731 mm on
+# BA2/M, BA1/M and CF125 (support_bases.SLOT_W); the kit's W25S050 washer, Ø12.7 x 1.575 mm; CF125's body
+# 11.176 mm thick (0.44 in, the drawing's 11.2), its slot counterbored 13.4874 mm wide and 7.874 mm deep so
+# the screw sits recessed, and its undercut ceiling 4.699 mm up, bearing on BE1/M's 4.7 mm disc.
+_WASHER = (12.7 * 0.5, 1.575)       # radius, thickness (W25S050)
+_CF125_T = 11.176
+_CF125_CBORE = (13.4874, 7.874)     # width, depth from the top
+_CF125_UNDERCUT = 4.699
+# Visual only -- Thorlabs dimensions a cap screw's shank, not its head (Figure G10.2), so nothing is
+# decided from these: the clearance holes' width (drawn at the slot width) and the socket head itself.
 _VIS_SCREW_HEAD = (5.0, 6.0)        # radius, height (a 5 mm hex socket)
-_VIS_UNDERCUT = 4.8
-_CF125_T = 11.2                     # drawing 6535 rev E: 11.2 mm body (12.2 mm overall is not modelled)
 
 
 def _stack_top(members):
@@ -792,26 +795,49 @@ def _board_obstacles(coll, board_top_z):
     return polys
 
 
-def _slot_cut(obj, plan, a, b, z, depth):
-    """Cut a straight slot of the visual width from base-local point a to b (a stadium: box + ends)."""
+def _slot_cut(obj, plan, a, b, z, depth, width=None):
+    """Cut a straight slot from base-local point a to b (one stadium prism), `width` wide (the
+    sourced 6.731 mm slot by default), `depth` tall centred at `z`."""
     from . import support_bases as sb
+    width = sb.SLOT_W if width is None else width
     ang = math.radians(plan['angle_deg'])
     wa = sb.to_world(plan['centre'], ang, *a)
     wb = sb.to_world(plan['centre'], ang, *b)
     length = math.hypot(wb[0] - wa[0], wb[1] - wa[1])
-    if length > 1e-6:
-        cut = eg._cube(BENCH_PREFIX + "_slotcut", Vector((length, _VIS_SLOT_W, depth)), bpy.context.scene.collection)
-        cut.location = ((wa[0] + wb[0]) * 0.5, (wa[1] + wb[1]) * 0.5, z)
-        cut.rotation_euler[2] = math.atan2(wb[1] - wa[1], wb[0] - wa[0])
-        _diff(obj, cut)
-    for w in (wa, wb):
-        _bore(obj, (w[0], w[1], z), _VIS_SLOT_W * 0.5, depth, seg=24)
+    if length <= 1e-6:
+        _bore(obj, (wa[0], wa[1], z), width * 0.5, depth, seg=24)
+        return
+    # One stadium prism, not a box plus two end cylinders: those cylinders are tangent to the box's
+    # walls, and the boolean's slivers there made the plate's bevel collapse on some placements.
+    import bmesh
+    r, h, seg = width * 0.5, length * 0.5, 12
+    outline = ([(h + r * math.cos(-math.pi / 2 + math.pi * i / seg), r * math.sin(-math.pi / 2 + math.pi * i / seg))
+                for i in range(seg + 1)] +
+               [(-h + r * math.cos(math.pi / 2 + math.pi * i / seg), r * math.sin(math.pi / 2 + math.pi * i / seg))
+                for i in range(seg + 1)])
+    bm = bmesh.new()
+    bottom = [bm.verts.new((px, py, -depth * 0.5)) for px, py in outline]
+    top = [bm.verts.new((px, py, depth * 0.5)) for px, py in outline]
+    bm.faces.new(bottom[::-1])
+    bm.faces.new(top)
+    for i in range(len(outline)):
+        j = (i + 1) % len(outline)
+        bm.faces.new((bottom[i], bottom[j], top[j], top[i]))
+    mesh = bpy.data.meshes.new(BENCH_PREFIX + "_slotcut")
+    bm.to_mesh(mesh)
+    bm.free()
+    cut = bpy.data.objects.new(BENCH_PREFIX + "_slotcut", mesh)
+    bpy.context.scene.collection.objects.link(cut)
+    cut.location = ((wa[0] + wb[0]) * 0.5, (wa[1] + wb[1]) * 0.5, z)
+    cut.rotation_euler[2] = math.atan2(wb[1] - wa[1], wb[0] - wa[0])
+    bpy.context.view_layer.update()
+    _diff(obj, cut)
 
 
 def _table_screw(tag, plan, top_z, coll):
     """The one table screw the kit manual uses per base, with its washer, at the planned grid hole."""
     sx, sy = plan['screw']
-    wr, wt = _VIS_WASHER
+    wr, wt = _WASHER
     hr, hh = _VIS_SCREW_HEAD
     _cyl(BENCH_PREFIX + "BaseWasher_" + tag, wr, wt, (sx, sy, top_z + wt * 0.5), coll, "steel")
     head = _cyl(BENCH_PREFIX + "BaseScrew_" + tag, hr, hh, (sx, sy, top_z + wt + hh * 0.5), coll, "steel")
@@ -839,12 +865,12 @@ def _build_base(tag, plan, x, y, board_top_z, coll):
                           (side * spec['slot_u'], spec['slot_half']), zc, cut)
             for v in spec['counterbores']:                  # clearance through each counterbore
                 w = sb.to_world(plan['centre'], ang, 0.0, v)
-                _bore(plate, (w[0], w[1], zc), _VIS_SLOT_W * 0.5, cut)
+                _bore(plate, (w[0], w[1], zc), sb.SLOT_W * 0.5, cut)
         else:
             for side in (-1.0, 1.0):                        # open at the ends: run the cut past them
                 _slot_cut(plate, plan, (side * spec['slot_in'], 0.0),
-                          (side * (spec['slot_out'] + _VIS_SLOT_W), 0.0), zc, cut)
-            _bore(plate, (cx, cy, zc), _VIS_SLOT_W * 0.5, cut)
+                          (side * (spec['slot_out'] + sb.SLOT_W), 0.0), zc, cut)
+            _bore(plate, (cx, cy, zc), sb.SLOT_W * 0.5, cut)
         _bevel(plate, 0.6, 1)
         carrier, top = plate, board_top_z + t
         n = 1
@@ -852,8 +878,8 @@ def _build_base(tag, plan, x, y, board_top_z, coll):
         disc = _cyl(BENCH_PREFIX + "BasePedestal_" + tag, sb.BE1['disc'] * 0.5, sb.BE1_DISC,
                     (x, y, board_top_z + sb.BE1_DISC * 0.5), coll, "steel")
         _bevel(disc, 0.3, 1)
-        # BE1/M's M6 stud is part of the same piece (drawing 6790: 12.3 mm overall, so 7.6 mm above
-        # the 4.7 mm disc). It threads up into the holder's floor; its tip is where the post stands.
+        # BE1/M's M6 stud is part of the same piece (7.62 mm above the 4.7 mm disc in the STEP model). It
+        # threads up into the holder's floor; the post rests on its tip, which sits in the post's countersink.
         import bmesh
         bm = bmesh.new()
         bm.from_mesh(disc.data)
@@ -876,16 +902,20 @@ def _build_base(tag, plan, x, y, board_top_z, coll):
         mouth.location = (x - math.cos(ang) * back, y - math.sin(ang) * back, zc)
         mouth.rotation_euler[2] = ang
         _diff(fork, mouth)                                            # the jaw opens at the tips
-        _bore(fork, (x, y, board_top_z + _VIS_UNDERCUT * 0.5), 16.25, _VIS_UNDERCUT, seg=64)  # Ø32.5 undercut
+        _bore(fork, (x, y, board_top_z + _CF125_UNDERCUT * 0.5), 16.25, _CF125_UNDERCUT, seg=64)  # Ø32.5 undercut
         lo, hi = spec['reach']
         _slot_cut(fork, dict(plan, centre=(x, y)), (lo, 0.0), (hi, 0.0), zc, cut)
+        cb_w, cb_d = _CF125_CBORE                      # the counterbore the screw and washer sit in
+        _slot_cut(fork, dict(plan, centre=(x, y)), (lo, 0.0), (hi, 0.0),
+                  board_top_z + _CF125_T - cb_d * 0.5 + 0.5, cb_d + 1.0, width=cb_w)
         _bevel(fork, 0.4, 1)
-        carrier, top = disc, board_top_z + _CF125_T
+        carrier, top = disc, board_top_z + _CF125_T - cb_d
         n = 2
     n += _table_screw(tag, plan, top, coll)
     carrier["base_part"] = plan['part']
     carrier["base_screw_xy"] = [float(plan['screw'][0]), float(plan['screw'][1])]
     carrier["base_seat_mm"] = float(plan['seat'])
+    carrier["base_seat_range_mm"] = [float(v) for v in plan['seat_range']]
     carrier["base_angle_deg"] = float(plan['angle_deg'])
     carrier["base_conflict"] = bool(plan['conflict'])
     return n, carrier

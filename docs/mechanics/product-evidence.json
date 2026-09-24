@@ -443,6 +443,91 @@
       "redistribution_permission": "unknown",
       "cad_file_acquired": true,
       "acquisition_note": "Opened and read for dimensions only, with the owner's approval. The file is not stored in this repository and is not redistributed. sha256 1146c94249a020e7ce1cc9f3865c285b86e68acdc647193086a72a1c8534e784. Drawing is stamped FOR INFORMATION ONLY / NOT FOR MANUFACTURING PURPOSES and carries no tolerances; imperial values on it are marked as calculated and may contain round-off."
+    },
+    "ba2m_step": {
+      "title": "Thorlabs BA2/M STEP model",
+      "url": "https://media.thorlabs.com/globalassets/items/b/ba/ba2/ba2_m/19227-E0W.step",
+      "locator": "19227-E0W.step (1,234,550 bytes), the 'Step' download on the BA2/M item page",
+      "access": "primary_cad_model",
+      "checked_on": "2026-09-23",
+      "document_revision": "E0W",
+      "redistribution_permission": "unknown",
+      "cad_file_acquired": true,
+      "acquisition_note": "Read in peer session 'Fix Dress Bench crash from stale board-grid cache' (2026-09-23), with the owner's approval given in that session; an AP214 SolidWorks export in millimetres, thickness axis Y. The file is not stored in this repository and is not redistributed. Entity ids are quoted in each fact."
+    },
+    "ba1m_step": {
+      "title": "Thorlabs BA1/M STEP model",
+      "url": "https://media.thorlabs.com/globalassets/items/b/ba/ba1/ba1_m/19225-E0W.step",
+      "locator": "19225-E0W.step (1,144,598 bytes)",
+      "access": "primary_cad_model",
+      "checked_on": "2026-09-23",
+      "document_revision": "E0W",
+      "redistribution_permission": "unknown",
+      "cad_file_acquired": true,
+      "acquisition_note": "Read in peer session 'Fix Dress Bench crash from stale board-grid cache' (2026-09-23), with the owner's approval given in that session; an AP214 SolidWorks export in millimetres, thickness axis Y. The file is not stored in this repository and is not redistributed. Entity ids are quoted in each fact."
+    },
+    "cf125_step": {
+      "title": "Thorlabs CF125 STEP model",
+      "url": "https://media.thorlabs.com/globalassets/items/c/cf/cf1/cf125/6535-E0W.step",
+      "locator": "6535-E0W.step (1,508,579 bytes)",
+      "access": "primary_cad_model",
+      "checked_on": "2026-09-23",
+      "document_revision": "E0W",
+      "redistribution_permission": "unknown",
+      "cad_file_acquired": true,
+      "acquisition_note": "Read in peer session 'Fix Dress Bench crash from stale board-grid cache' (2026-09-23), with the owner's approval given in that session; an AP214 SolidWorks export in millimetres, thickness axis Y. The file is not stored in this repository and is not redistributed. Entity ids are quoted in each fact."
+    },
+    "breadboard_family": {
+      "title": "Thorlabs Solid Aluminum Optical Breadboards family page",
+      "url": "https://www.thorlabs.com/solid-aluminum-optical-breadboards",
+      "locator": "Overview tab and spec table",
+      "access": "indexed_primary",
+      "checked_on": "2026-09-23",
+      "document_revision": null,
+      "redistribution_permission": "unknown",
+      "cad_file_acquired": false
+    },
+    "edu_speb2m_kit_page": {
+      "title": "Thorlabs EDU-SPEB2/M kit page, Kit Components tab",
+      "url": "https://www.thorlabs.com/spectrometer-educational-kits?pn=EDU-SPEB2/M",
+      "locator": "Table 5.3 'Metric Kit: Included Hardware and Screws' (after Table 5.1 'EDU-SPEB2(/M) Kit Components')",
+      "access": "indexed_primary",
+      "checked_on": "2026-09-23",
+      "document_revision": null,
+      "redistribution_permission": "unknown",
+      "cad_file_acquired": false
+    },
+    "cap_screw_family": {
+      "title": "Thorlabs socket head cap screws, nuts and washers (steel)",
+      "url": "https://www.thorlabs.com/socket-head-cap-screws-nuts-steel",
+      "locator": "Table G10.1 (metric cap screws) and the washer table; Figure G10.2 'Cap Screw Dimensions'",
+      "access": "indexed_primary",
+      "checked_on": "2026-09-23",
+      "document_revision": null,
+      "redistribution_permission": "unknown",
+      "cad_file_acquired": false
+    },
+    "tr50m_step": {
+      "title": "Thorlabs TR50/M STEP model",
+      "url": "https://media.thorlabs.com/globalassets/items/t/tr/tr5/tr50_m/0331-E0W.step",
+      "locator": "0331-E0W.step (282,070 bytes), SolidWorks 2014 AP214 export dated 2015-10-27; base end face at Y 0",
+      "access": "primary_cad_model",
+      "checked_on": "2026-09-24",
+      "document_revision": "E0W",
+      "redistribution_permission": "unknown",
+      "cad_file_acquired": true,
+      "acquisition_note": "Read in peer session '\u0130\u015f b\u00f6l\u00fc\u015f\u00fcm\u00fc talep etme' (2026-09-24), with the owner's approval given in that session; an AP214 SolidWorks export in millimetres, post/stud axis Y. The file is not stored in this repository and is not redistributed. Entity ids are quoted in each fact. sha256 0ea0ebb1bbf56580a014c8d4ed2490a371549397d61aa1bfee6eca921be505b3"
+    },
+    "be1m_step": {
+      "title": "Thorlabs BE1/M STEP model",
+      "url": "https://media.thorlabs.com/globalassets/items/b/be/be1/be1_m/6790-E0W.step",
+      "locator": "6790-E0W.step (1,582,576 bytes); disc top face at Y 0, stud along +Y",
+      "access": "primary_cad_model",
+      "checked_on": "2026-09-24",
+      "document_revision": "E0W",
+      "redistribution_permission": "unknown",
+      "cad_file_acquired": true,
+      "acquisition_note": "Read in peer session '\u0130\u015f b\u00f6l\u00fc\u015f\u00fcm\u00fc talep etme' (2026-09-24), with the owner's approval given in that session; an AP214 SolidWorks export in millimetres, post/stud axis Y. The file is not stored in this repository and is not redistributed. Entity ids are quoted in each fact. sha256 aa81964bc60a9f816812a5c5aeb239414b85e526b27e2ecee7f967a058351982"
     }
   },
   "products": [
@@ -5180,15 +5265,14 @@
       ]
     },
     {
-      "part_number": "EDU-SPEB2/M kit: M6 x 10 mm cap screw",
+      "part_number": "SH6MS10",
       "manufacturer": "Thorlabs",
       "role": "base_to_post_holder_screw",
       "variant": "metric",
-      "source_id": "edu_speb2m_manual",
+      "source_id": "edu_speb2m_kit_page",
       "compatibility": "unknown",
       "gaps": [
-        "catalogue part number: the kit manual gives the size, not a part number",
-        "head height",
+        "head diameter and height: Figure G10.2 dimensions only shank and thread length",
         "CAD rights"
       ]
     },
@@ -5241,6 +5325,37 @@
         "undercut depth",
         "CAD rights"
       ]
+    },
+    {
+      "part_number": "SH6MS12",
+      "manufacturer": "Thorlabs",
+      "role": "clamping_fork_table_screw",
+      "variant": "metric",
+      "source_id": "edu_speb2m_kit_page",
+      "compatibility": "unknown",
+      "gaps": [
+        "head diameter and height"
+      ]
+    },
+    {
+      "part_number": "SH6MS16",
+      "manufacturer": "Thorlabs",
+      "role": "base_table_screw",
+      "variant": "metric",
+      "source_id": "edu_speb2m_kit_page",
+      "compatibility": "unknown",
+      "gaps": [
+        "head diameter and height"
+      ]
+    },
+    {
+      "part_number": "W25S050",
+      "manufacturer": "Thorlabs",
+      "role": "m6_washer",
+      "variant": "metric",
+      "source_id": "edu_speb2m_kit_page",
+      "compatibility": "unknown",
+      "gaps": []
     }
   ],
   "evidence_facts": [
@@ -6145,7 +6260,7 @@
     {
       "id": "kit_base_holder_screw",
       "support_parts": [
-        "EDU-SPEB2/M kit: M6 x 10 mm cap screw"
+        "SH6MS10"
       ],
       "field": "fastener",
       "value": "M6 x 10 mm cap screw",
@@ -6220,7 +6335,7 @@
       "value": 3.2,
       "source_id": "edu_speb2m_manual",
       "locator": "Manual 6.1.4: BA1/M on PH50/M with an M6 x 10 mm cap screw; PH50/M's M6 tap runs through a 6.8 mm floor (drawing 23132)",
-      "note": "DERIVED from an ASSUMPTION. CORRECTED 2026-09-23 (peer review of #83). An ASSUMPTION, not a bound and not a proof: it holds only if the kit's own procedure keeps the screw out of the bore, so it can never be used to show that the screw stays out. It was first filed under BA2/M, but the kit pairs PH50/M with BA1/M (6.1.4); BA2/M goes on PH75/M (6.1.5), whose floor is not read, so nothing transfers to BA2/M. The real counterbore depth is still not dimensioned.",
+      "note": "REFUTED 2026-09-23 by the BA1/M STEP model (ba1m_step_material_under_head = 2.667 mm < 3.2). DERIVED from an ASSUMPTION. CORRECTED 2026-09-23 (peer review of #83). An ASSUMPTION, not a bound and not a proof: it holds only if the kit's own procedure keeps the screw out of the bore, so it can never be used to show that the screw stays out. It was first filed under BA2/M, but the kit pairs PH50/M with BA1/M (6.1.4); BA2/M goes on PH75/M (6.1.5), whose floor is not read, so nothing transfers to BA2/M. The real counterbore depth is still not dimensioned.",
       "verification": "derived_from_published_nominals",
       "manufacturing_tolerance": null,
       "derived_from": [
@@ -6612,6 +6727,363 @@
         "cf125_reach",
         "mb4560m_dwg_pitch"
       ]
+    },
+    {
+      "id": "mb4560m_taps_through",
+      "support_parts": [
+        "MB4560/M"
+      ],
+      "field": "tap_depth",
+      "value": "through the 12.7 mm plate",
+      "source_id": "breadboard_family",
+      "locator": "Overview: 'Grid of Through-Tapped 1/4\"-20 (M6) Mounting Holes'; 'The holes are threaded completely through these breadboards, allowing components to be mounted on both sides at once.'",
+      "note": "So no table screw bottoms out in the board; the M6 tap is 12.7 mm long.",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "ba2m_step_slot_width",
+      "support_parts": [
+        "BA2/M"
+      ],
+      "field": "slot_width_mm",
+      "value": 6.731,
+      "source_id": "ba2m_step",
+      "locator": "Slot-end CYLINDRICAL_SURFACE #1491/#1604/#9451/#9543, r = 3.3655; walls PLANE #1101 (Z -21.6377) to #1134 (Z -28.3687), 6.7310 apart; slot faces #83/#114/#848/#870 span the full thickness",
+      "note": "A plain through clearance slot, no counterbore. End centres 2 x 15.875 = 31.75 mm apart (the drawing's 31.8); edge to end centre 25 - 15.875 = 9.125 (the drawing's 9.1).",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "ba1m_step_slot_width",
+      "support_parts": [
+        "BA1/M"
+      ],
+      "field": "slot_width_mm",
+      "value": 6.731,
+      "source_id": "ba1m_step",
+      "locator": "Slot-end CYLINDRICAL_SURFACE #6895/#7052, r = 3.3655, at X = +-17.434; walls PLANE #6788/#7004 and #6881/#6934 at Z = -+3.3655",
+      "note": "Open to the base ends (planes X = +-37.5, #6557/#6480); 37.5 - 17.434 = 20.066 (the drawing's 20.1).",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "ba2m_step_counterbore_diameter",
+      "support_parts": [
+        "BA2/M"
+      ],
+      "field": "counterbore_diameter_mm",
+      "value": 10.3124,
+      "source_id": "ba2m_step",
+      "locator": "CYLINDRICAL_SURFACE #1689/#1782/#1818 (+ #9523/#9551/#9654), r = 5.1562, at X = -12.4968 / 0 / +12.4968",
+      "note": "Opens on the bottom; the screw goes in from below.",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "ba2m_step_material_under_head",
+      "support_parts": [
+        "BA2/M"
+      ],
+      "field": "material_under_screw_head_mm",
+      "value": 3.142,
+      "source_id": "ba2m_step",
+      "locator": "Top PLANE #8949 at Y 4.8095 minus counterbore floor PLANE #9491/#9578/#9821 at Y 1.6675",
+      "note": "The real number behind the 'assumed >= 3.2' -- and it is below it.",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "ba1m_step_material_under_head",
+      "support_parts": [
+        "BA1/M"
+      ],
+      "field": "material_under_screw_head_mm",
+      "value": 2.667,
+      "source_id": "ba1m_step",
+      "locator": "Top PLANE #7088 at Y 5.0 minus counterbore floor PLANE #7347 at Y 2.333; counterbore r = 5.1562 (#6266/#7121)",
+      "note": "Not the same as BA2/M's 3.142.",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "cf125_step_slot_width",
+      "support_parts": [
+        "CF125"
+      ],
+      "field": "slot_width_mm",
+      "value": 6.731,
+      "source_id": "cf125_step",
+      "locator": "Slot-end CYLINDRICAL_SURFACE #6989/#9453 and #12185, r = 3.3655; walls PLANE #2462 (X -11.6776) and #5934 (X -4.9466), 6.7310 apart",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "cf125_step_slot_ends",
+      "support_parts": [
+        "CF125"
+      ],
+      "field": "slot_end_centres_from_jaw_axis_mm",
+      "value": [
+        26.797,
+        58.293
+      ],
+      "source_id": "cf125_step",
+      "locator": "Slot-end axes at Z 16.8757 and 48.3717; jaw axis at Z -9.9213",
+      "note": "Confirms the corrected reach 26.8-58.3 read from drawing 6535 (cf125_reach) to the drawing's resolution.",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "cf125_step_slot_counterbore",
+      "support_parts": [
+        "CF125"
+      ],
+      "field": "slot_counterbore_width_depth_mm",
+      "value": [
+        13.4874,
+        7.874
+      ],
+      "source_id": "cf125_step",
+      "locator": "Counterbore r = 6.7437 on #3350/#4584/#6392, walls #7069 and #2874; floor PLANE #10034 at Y -29.4933, top PLANE #12685 at Y -21.6193",
+      "note": "The screw head and washer sit recessed in the fork, not on its top.",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "cf125_step_web_under_head",
+      "support_parts": [
+        "CF125"
+      ],
+      "field": "material_under_screw_head_mm",
+      "value": 2.667,
+      "source_id": "cf125_step",
+      "locator": "Counterbore floor PLANE #10034 at Y -29.4933 minus the slot relief ceiling PLANE #8348 at Y -32.1603",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "cf125_step_thickness",
+      "support_parts": [
+        "CF125"
+      ],
+      "field": "thickness_mm",
+      "value": [
+        11.176,
+        12.192
+      ],
+      "source_id": "cf125_step",
+      "locator": "Top Y -21.6193 to the main underside PLANE #3924 (Y -32.7953) and to the far-end pad PLANE #13851 (Y -33.8113)",
+      "note": "11.176 is 0.44 in exactly, the drawing's 11.2.",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "cf125_step_undercut_height",
+      "support_parts": [
+        "CF125"
+      ],
+      "field": "undercut_ceiling_above_underside_mm",
+      "value": 4.699,
+      "source_id": "cf125_step",
+      "locator": "Recessed undercut ceiling PLANE #10902/#12656 at Y -28.0963 above the main underside (Y -32.7953)",
+      "note": "Against BE1/M's 4.7 mm disc: the lip bears on the disc, which is how the fork clamps it. Which of the STEP's 32.512 / 32.258 mm walls the drawing's '32.5' labels is not decidable from the model.",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "kit_metric_hardware",
+      "support_parts": [
+        "SH6MS10"
+      ],
+      "field": "kit_contents",
+      "value": "SH4MS06 x1, SH6MS10 x10, SH6MS12 x4, SH6MS16 x6, W25S050 x10, BD-5ML x1",
+      "source_id": "edu_speb2m_kit_page",
+      "locator": "Table 5.3 'Metric Kit: Included Hardware and Screws'",
+      "note": "The kit manual gives only sizes; this table gives the part numbers.",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "sh6ms10_length",
+      "support_parts": [
+        "SH6MS10"
+      ],
+      "field": "shank_length_mm",
+      "value": 10,
+      "source_id": "cap_screw_family",
+      "locator": "Table G10.1: SH6MS10, total shank length = threaded length = 10 mm, 5 mm hex, 18-8 stainless",
+      "note": "Head diameter and height are not published (Figure G10.2 dimensions only the shank).",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "sh6ms12_length",
+      "support_parts": [
+        "SH6MS12"
+      ],
+      "field": "shank_length_mm",
+      "value": 12,
+      "source_id": "cap_screw_family",
+      "locator": "Table G10.1: SH6MS12, 12 mm",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "sh6ms16_length",
+      "support_parts": [
+        "SH6MS16"
+      ],
+      "field": "shank_length_mm",
+      "value": 16,
+      "source_id": "cap_screw_family",
+      "locator": "Table G10.1: SH6MS16, 16 mm",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "w25s050_thickness",
+      "support_parts": [
+        "W25S050"
+      ],
+      "field": "thickness_mm",
+      "value": 1.575,
+      "source_id": "cap_screw_family",
+      "locator": "Washer table: thickness 0.062\" \u00b1 0.010\" (1.575 \u00b1 0.254 mm)",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": {
+        "minus": 0.254,
+        "plus": 0.254,
+        "evidence": [
+          "cap_screw_family"
+        ]
+      }
+    },
+    {
+      "id": "w25s050_od",
+      "support_parts": [
+        "W25S050"
+      ],
+      "field": "outer_diameter_mm",
+      "value": 12.7,
+      "source_id": "cap_screw_family",
+      "locator": "Washer table: OD 0.500\" \u00b1 0.010\" (12.700 \u00b1 0.254 mm)",
+      "note": null,
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": {
+        "minus": 0.254,
+        "plus": 0.254,
+        "evidence": [
+          "cap_screw_family"
+        ]
+      }
+    },
+    {
+      "id": "sh6ms10_into_ph50m_on_ba1m",
+      "support_parts": [
+        "SH6MS10"
+      ],
+      "field": "tip_into_ph50m_bore_mm",
+      "value": 0.533,
+      "source_id": "ba1m_step",
+      "locator": "SH6MS10 10 mm - BA1/M's 2.667 mm under the head = 7.333 mm into PH50/M's 6.8 mm through-tapped floor",
+      "note": "DERIVED, not published: on the kit's own pairing (manual 6.1.4: BA1/M + PH50/M) the screw tip stands 0.533 mm into the bore, so a fully inserted post rests on the screw, as on BE1/M's stud. This refutes the assumption that the procedure keeps the screw out of the bore.",
+      "verification": "derived_from_published_nominals",
+      "manufacturing_tolerance": null,
+      "derived_from": [
+        "sh6ms10_length",
+        "ba1m_step_material_under_head",
+        "ph50m_dwg_length",
+        "ph50m_dwg_bore_depth"
+      ]
+    },
+    {
+      "id": "sh6ms10_into_ph50m_on_ba2m",
+      "support_parts": [
+        "SH6MS10"
+      ],
+      "field": "tip_into_ph50m_bore_mm",
+      "value": 0.058,
+      "source_id": "ba2m_step",
+      "locator": "SH6MS10 10 mm - BA2/M's 3.142 mm under the head = 6.858 mm into PH50/M's 6.8 mm through-tapped floor",
+      "note": "DERIVED, not published: a 0.058 mm intrusion on nominals with no stated tolerance -- within any real tolerance, so reported as a number, not as a verdict.",
+      "verification": "derived_from_published_nominals",
+      "manufacturing_tolerance": null,
+      "derived_from": [
+        "sh6ms10_length",
+        "ba2m_step_material_under_head",
+        "ph50m_dwg_length",
+        "ph50m_dwg_bore_depth"
+      ]
+    },
+    {
+      "id": "tr50m_step_base_countersink",
+      "support_parts": [
+        "TR50/M"
+      ],
+      "field": "base_hole_countersink_diameter_depth_mm",
+      "value": [
+        6.016,
+        0.508
+      ],
+      "source_id": "tr50m_step",
+      "locator": "CONICAL_SURFACE #1577 (=#1847): location Y 0.508, axis -Y, r 2.5, semi-angle 0.7854 rad (45 deg); radius at the end face 2.5 + 0.508 tan 45 = 3.008",
+      "note": "The M6 base hole opens in a 90 deg countersink, not on drawing 0331. The hole itself is CYLINDRICAL_SURFACE #456 (=#2560), r 2.5.",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "be1m_step_stud_proud",
+      "support_parts": [
+        "BE1/M"
+      ],
+      "field": "stud_height_above_disc_mm",
+      "value": 7.62,
+      "source_id": "be1m_step",
+      "locator": "Stud end face PLANE #6571 at Y 7.62; disc top face at Y 0",
+      "note": "Drawing 6790 gives 12.3 - 4.7 = 7.6; the model's 7.62 is the same stud to the drawing's resolution.",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "be1m_step_stud_end_chamfer",
+      "support_parts": [
+        "BE1/M"
+      ],
+      "field": "stud_end_radius_after_45deg_chamfer_mm",
+      "value": 2.7457,
+      "source_id": "be1m_step",
+      "locator": "Stud CYLINDRICAL_SURFACE #4165 (=#14371) r 2.9997; end chamfer CONICAL_SURFACE #6052 (=#11991) at Y 7.366, axis -Y, 45 deg; end radius 2.9997 - 0.254 = 2.7457, matching CYLINDRICAL_SURFACE #5751",
+      "note": "A 45 deg x 0.254 mm chamfer: the end face is 5.491 mm across.",
+      "verification": "primary_published_nominal_not_mesh_verified",
+      "manufacturing_tolerance": null
+    },
+    {
+      "id": "be1m_post_rest_above_ph50m_floor",
+      "support_parts": [
+        "BE1/M",
+        "TR50/M",
+        "PH50/M"
+      ],
+      "field": "post_bottom_above_ph50m_bore_floor_mm",
+      "value": 0.5577,
+      "source_id": "be1m_step",
+      "locator": "BE1/M stud end face PLANE #6571 at 7.62 above the disc top - PH50/M floor 6.8 (50 - 43.2) = 0.82 into the bore; the stud's 45 deg chamfer (BE1/M CONICAL_SURFACE #6052, end radius 2.7457) enters TR50/M's 45 deg countersink (TR50/M CONICAL_SURFACE #1577, radius 3.008 at the face) by 3.008 - 2.7457 = 0.2623; 0.82 - 0.2623 = 0.5577",
+      "note": "DERIVED, not published: both cones are 45 deg and coaxial, so a fully inserted TR50/M rests cone-on-cone on BE1/M's stud 0.5577 mm above PH50/M's bore floor, not on the floor. Datum: BE1/M's disc top face, on which PH50/M stands; the stud and its chamfer are the BE1/M model's, the countersink the TR50/M model's, the floor drawing 23132's. With drawing 6790's rounded 7.6 mm stud it would be 0.5377. Assumes coaxial parts (the 0.05 mm radial play moves it by less than 0.05 mm) and a post pushed onto the stud, not threaded onto it. Worked out in peer session '\u0130\u015f b\u00f6l\u00fc\u015f\u00fcm\u00fc talep etme'.",
+      "verification": "derived_from_published_nominals",
+      "manufacturing_tolerance": null,
+      "derived_from": [
+        "be1m_step_stud_proud",
+        "be1m_step_stud_end_chamfer",
+        "tr50m_step_base_countersink",
+        "ph50m_dwg_length",
+        "ph50m_dwg_bore_depth"
+      ]
     }
   ],
   "support_blockers": {
@@ -6628,14 +7100,18 @@
       "base -> table fastener: an M6 x 16 mm cap screw plus M6 washer (6.2)",
       "a sourced table candidate: MB4560/M, the kit's own breadboard (450 x 600 x 12.7 mm, M6)",
       "the table: MB4560/M adopted by the owner (2026-09-23); drawing 6282 rev B read",
-      "thread hand: ISO 965-1 5.4 (LH is always designated), adopted per owner decision; records declare right-hand citing the drawing and the standard"
+      "thread hand: ISO 965-1 5.4 (LH is always designated), adopted per owner decision; records declare right-hand citing the drawing and the standard",
+      "MB4560/M taps: THROUGH the 12.7 mm plate (breadboard family page)",
+      "slot width 6.731 mm on BA2/M, BA1/M and CF125 (STEP models)",
+      "material under the base screw's head: BA2/M 3.142 mm, BA1/M 2.667 mm (STEP) -- the kit's SH6MS10 stands 0.058 / 0.533 mm into PH50/M's bore",
+      "kit hardware part numbers SH6MS10/12/16 and W25S050 (kit page Table 5.3)",
+      "BE1/M seat: a fully inserted TR50/M rests 0.558 mm above PH50/M's floor, cone-on-cone on the stud (TR50/M and BE1/M STEP models)"
     ],
     "missing": [
       "manufacturing tolerances: only the bases' 0.05 mm parallelism is published; the drawings state none",
-      "BA1/M and BA2/M counterbore depth: not dimensioned; the kit procedure only implies >= 3.2 mm under BA1/M's screw head if the procedure is sound, which is an assumption, not a bound",
-      "screw catalogue part numbers, head height and washer thickness: the kit gives sizes only",
+      "cap-screw head diameter and height: Thorlabs dimensions only the shank (Figure G10.2)",
       "schema v1 cannot express a three-part screw stack (head in the base, shank through its floor, thread in the holder), so the base joint's engagement cannot be rule-checked yet",
-      "MB4560/M tap depth: not dimensioned and not marked THRU, so the M6 x 16 mm table screw's engagement is unknown"
+      "SH6MS10 tip form and length tolerance: the item page has no support documents, so the BA2/M and BA1/M seats are intervals on the nominal 10 mm. ISO 4762:2004 Table 1 would give 9.71-10.29 mm for l = 10, but no Thorlabs page states that SH6MS10 conforms to ISO 4762 or DIN 912 (checked 2026-09-24)"
     ],
     "next_action": "Owner decisions: (1) how to read an unmarked thread hand; (2) a schema change for three-part screw stacks; (3) whether Dress Bench's visual foot becomes the real BA2/M/BA1/M.",
     "dependent_work_not_started": true

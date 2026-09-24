@@ -174,9 +174,18 @@ post_r = max(radial(v) for v in post_verts)
 near("post diameter (envelope)", 2 * post_r, "tr50m_dwg_outer_diameter")
 check("the post passes the bore: envelope inside the clear passage", post_r < h["bore_in"],
       "post %.4f mm, bore %.4f mm (radius)" % (post_r, h["bore_in"]))
-seat = min(v.z for v in post_verts) - h["floor"]
-check("the post stands on the bore floor, not in it and not above it", abs(seat) <= THRESHOLD_MM,
-      "%.3f mm between post bottom and bore floor" % seat)
+# The post rests on or above the bore floor, within the interval its base records (stage 05b): the tip
+# the base pushes up through PH50/M's through-tapped floor can hold it up, never let it sink.
+base = next(o for o in scene.objects if o.name in (optomech.BENCH_PREFIX + "Base_" + tag,
+                                                   optomech.BENCH_PREFIX + "BasePedestal_" + tag))
+board = scene.objects[optomech.BENCH_PREFIX + "Breadboard"]
+board_top = max((board.matrix_world @ v.co).z for v in board.data.vertices)
+lo, hi = base["base_seat_range_mm"]
+post_bottom = min(v.z for v in post_verts) - board_top
+check("the post stands in its base's seat interval (%.3f-%.3f mm above the board), not below the bore floor" % (lo, hi),
+      lo - THRESHOLD_MM <= post_bottom <= hi + THRESHOLD_MM and
+      lo >= (h["floor"] - board_top) - THRESHOLD_MM,
+      "post bottom %.3f mm, bore floor %.3f mm" % (post_bottom, h["floor"] - board_top))
 
 print("[render detail: the same interfaces]")
 hardware_render.prepare(scene)

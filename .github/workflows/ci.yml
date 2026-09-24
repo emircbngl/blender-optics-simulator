@@ -123,6 +123,9 @@ jobs:
           xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_support_geometry.py
           xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_support_assembly.py
 
+      - name: Real bases under Dress Bench holders (BA2/M, BA1/M, BE1/M + CF125) from the sourced facts
+        run: xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_support_bases.py
+
       - name: Render hardware detail (render-only, restores the bench) and generic mount catalog
         run: |
           xvfb-run -a ~/blender/blender --background --factory-startup --python-exit-code 1 --python tests/test_hardware_render.py

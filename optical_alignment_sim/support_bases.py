@@ -24,14 +24,41 @@ and the plan says `conflict: True` rather than pretending.
 import math
 
 ON_GRID_MM = 0.05          # half the drawings' 0.1 mm resolution: "on a grid line" means within this
+# A slot credits a hole when an M6 shank (6.0 mm major) fits across it there. The slots are 6.731 mm wide
+# on BA2/M, BA1/M and CF125 alike (STEP models; ba2m_step_slot_width etc.), so the shank's centre may sit
+# (6.731 - 6.0) / 2 off the slot's centreline.
+SLOT_W = 6.731
+SLOT_REACH = (SLOT_W - 6.0) / 2.0
 
-# Seat = how far above the board the post's bottom ends up.
+# Seat = how far above the board the post's bottom ends up. Every base in this chain pushes a threaded
+# tip up through PH50/M's 6.8 mm through-tapped floor, into TR50/M's M6 base hole, which opens in a 90 deg
+# countersink (Ø6.016 at the face, TR50/M STEP model). On BE1/M the tip is known: its stud ends in a 45 deg
+# chamfer, the two cones meet, and the post rests at one decided height. The cap screws' tips are not
+# published, so on BA2/M and BA1/M the seat is an INTERVAL between the bore floor and the nominal tip;
+# Dress Bench draws the post at the upper bound and records the whole range.
 PH_FLOOR = 6.8             # PH50/M: 50 mm body, 43.2 mm bore (drawing 23132 rev B)
 BA_THICKNESS = 10.0        # BA2/M 19227 rev A, BA1/M 19225 rev A
 BE1_DISC = 4.7             # BE1/M 6790 rev C: Ø31.8 x 4.7 mm disc
-BE1_STUD = 7.6             # 12.3 overall - 4.7 disc; 0.8 mm longer than PH50/M's floor
-SEAT_SLOTTED = BA_THICKNESS + PH_FLOOR                 # 16.8: the post stands on the bore floor
-SEAT_PEDESTAL = BE1_DISC + BE1_STUD                    # 12.3: the post stands on the stud's tip
+BE1_STUD = 7.62            # BE1/M STEP: stud end face 7.62 above the disc (drawing: 12.3 - 4.7 = 7.6)
+BE1_STUD_END_R = 2.7457    # BE1/M STEP: 45 deg x 0.254 mm end chamfer on the r 2.9997 stud
+TR50_CSINK_R = 3.008       # TR50/M STEP: radius of the base hole's 90 deg countersink at the end face
+SH6MS10 = 10.0             # the kit's base-to-holder screw (kit page Table 5.3; Table G10.1: 10 mm shank)
+UNDER_HEAD = {'BA2/M': 3.142, 'BA1/M': 2.667}          # material under that screw's head (STEP models)
+
+
+def seat_range(part):
+    """(lowest, highest) height of a post's bottom above the board on this base."""
+    if part == 'BE1/M + CF125':
+        # Two coaxial 45 deg cones: the stud's end enters the countersink by the radial gap between them.
+        rest = BE1_DISC + BE1_STUD - (TR50_CSINK_R - BE1_STUD_END_R)          # 12.058 = floor + 0.558
+        return (rest, rest)
+    floor = BA_THICKNESS + PH_FLOOR                                              # 16.8
+    tip = (BA_THICKNESS - UNDER_HEAD[part]) + SH6MS10                            # head bears there, shank up
+    return (floor, max(floor, tip))                                              # BA2/M 16.858, BA1/M 17.333
+
+
+SEAT_SLOTTED = seat_range('BA2/M')[1]
+SEAT_PEDESTAL = seat_range('BE1/M + CF125')[1]
 
 BA2 = {'part': 'BA2/M', 'length': 75.0, 'width': 50.0, 'slot_u': 25.0, 'slot_half': 15.9,
        'counterbores': (0.0, -12.5, 12.5)}
@@ -136,21 +163,22 @@ def _ba2_plans(x, y, grid):
                     continue
                 hit = min(hits, key=lambda h: (abs(to_local(centre, angle, *h)[1]), h))
                 yield {'part': 'BA2/M', 'angle_deg': math.degrees(angle), 'centre': centre, 'screw': hit,
-                       'holder_offset': offset, 'seat': SEAT_SLOTTED, 'thickness': BA_THICKNESS,
+                       'holder_offset': offset, 'seat': seat_range('BA2/M')[1], 'seat_range': seat_range('BA2/M'),
+                       'thickness': BA_THICKNESS,
                        'fastener': 'M6 x 16 mm cap screw + M6 washer',
                        'footprint': _rect(centre[0], centre[1], BA2['length'], BA2['width'], angle)}
 
 
 def _on_segment(p, a, b):
-    """Is grid hole `p` on the straight slot centreline from `a` to `b` (within ON_GRID_MM)? A slot's
-    width is not dimensioned, so only its centreline is credited."""
+    """Can an M6 screw in the slot from `a` to `b` (its centreline) reach grid hole `p`? Along the slot,
+    anywhere between the end centres; across it, within the shank's play SLOT_REACH."""
     ax, ay = a; bx, by = b; px, py = p
     lx, ly = bx - ax, by - ay
     length = math.hypot(lx, ly)
     t = ((px - ax) * lx + (py - ay) * ly) / (length * length)
     if t < -1e-9 or t > 1.0 + 1e-9:
         return False
-    return abs((px - ax) * ly - (py - ay) * lx) / length <= ON_GRID_MM
+    return abs((px - ax) * ly - (py - ay) * lx) / length <= SLOT_REACH + 1e-9
 
 
 def _ba1_plans(x, y, grid):
@@ -165,7 +193,8 @@ def _ba1_plans(x, y, grid):
             continue
         hit = min(hits, key=lambda h: (abs(to_local(centre, angle, *h)[0]), h))   # deepest: most washer support
         yield {'part': 'BA1/M', 'angle_deg': math.degrees(angle), 'centre': centre, 'screw': hit,
-               'holder_offset': 0.0, 'seat': SEAT_SLOTTED, 'thickness': BA_THICKNESS,
+               'holder_offset': 0.0, 'seat': seat_range('BA1/M')[1], 'seat_range': seat_range('BA1/M'),
+               'thickness': BA_THICKNESS,
                'fastener': 'M6 x 16 mm cap screw + M6 washer',
                'footprint': _rect(x, y, BA1['length'], BA1['width'], angle)}
 
@@ -184,7 +213,8 @@ def _fork_plans(x, y, grid):
         cx, cy = x + math.cos(angle) * mid, y + math.sin(angle) * mid
         footprint = _rect(cx, cy, CF125['length'], CF125['width'], angle)
         yield {'part': 'BE1/M + CF125', 'angle_deg': math.degrees(angle), 'centre': (x, y), 'screw': (hx, hy),
-               'reach': r, 'holder_offset': 0.0, 'seat': SEAT_PEDESTAL, 'thickness': BE1_DISC,
+               'reach': r, 'holder_offset': 0.0, 'seat': SEAT_PEDESTAL,
+               'seat_range': seat_range('BE1/M + CF125'), 'thickness': BE1_DISC,
                'fastener': 'M6 x 12 mm cap screw + M6 washer', 'footprint': footprint,
                'disc': _disc(x, y, BE1['disc'])}
 

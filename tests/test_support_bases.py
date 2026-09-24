@@ -47,16 +47,38 @@ def on_hole(plan):
 print("[the numbers come from the drawings]")
 check("BA2/M slot run: (50 - 2 x 9.1) / 2 = 15.9 mm either side", abs(sb.BA2['slot_half'] - (50 - 2 * 9.1) / 2) < 1e-9)
 check("BA1/M slots open from 37.5 mm in to 75/2 - 20.1 = 17.4 mm", abs(sb.BA1['slot_in'] - (75 / 2 - 20.1)) < 1e-9)
-check("seat on a slotted base: 10 mm plate + 6.8 mm PH50/M floor", abs(sb.SEAT_SLOTTED - 16.8) < 1e-9)
-check("seat on a pedestal: 4.7 mm disc + 7.6 mm stud (the post rests on the stud)",
-      abs(sb.SEAT_PEDESTAL - 12.3) < 1e-9)
+def fv(fid, i=None):
+    v = FACTS[fid]["value"]
+    return float(v if i is None else v[i])
+
+
+floor_ph = fv("ph50m_dwg_length") - fv("ph50m_dwg_bore_depth")                  # 6.8
+want = {
+    'BA2/M': (fv("ba2m_dwg_footprint", 2) + floor_ph,
+              fv("ba2m_dwg_footprint", 2) - fv("ba2m_step_material_under_head") + fv("sh6ms10_length")),
+    'BA1/M': (fv("ba1m_dwg_footprint", 2) + floor_ph,
+              fv("ba1m_dwg_footprint", 2) - fv("ba1m_step_material_under_head") + fv("sh6ms10_length")),
+}
+# BE1/M: the stud's 45 deg end chamfer sits in TR50/M's 90 deg countersink, so the post rests at one height.
+rest = (fv("be1m_dwg_disc_thickness") + fv("be1m_step_stud_proud")
+        - (fv("tr50m_step_base_countersink", 0) / 2 - fv("be1m_step_stud_end_chamfer")))
+want['BE1/M + CF125'] = (rest, rest)
+for part, (lo, hi) in want.items():
+    got = sb.seat_range(part)
+    check("%s seat interval from the facts: %.3f to %.3f mm" % (part, lo, hi),
+          abs(got[0] - lo) < 1e-9 and abs(got[1] - hi) < 1e-9, got)
+check("BE1/M: the post rests %.3f mm above the bore floor, as the derived fact says" % (rest - fv("be1m_dwg_disc_thickness") - floor_ph),
+      abs(rest - fv("be1m_dwg_disc_thickness") - floor_ph - fv("be1m_post_rest_above_ph50m_floor")) < 1e-9)
+check("the slot's shank play comes from the STEP slot width: (6.731 - 6.0) / 2",
+      abs(sb.SLOT_REACH - (fv("ba2m_step_slot_width") - 6.0) / 2) < 1e-9 and
+      fv("ba2m_step_slot_width") == fv("ba1m_step_slot_width") == fv("cf125_step_slot_width"), sb.SLOT_REACH)
 
 print("[on a grid line: BA2/M, screwed down through a slot]")
 one = sb.choose({'a': (250.0, 212.5 - 12.5)}, GRID)['a']
 u, v = local(one)
 check("a holder on a grid column gets a BA2/M", one['part'] == 'BA2/M' and not one['conflict'], one['part'])
-check("its screw is on a slot centreline, inside the slot's run, on a real hole",
-      abs(abs(u) - 25.0) < 1e-9 and abs(v) <= 15.9 + 1e-9 and on_hole(one), (u, v, one['screw']))
+check("its screw is in a slot (within the shank's play of the centreline), inside its run, on a real hole",
+      abs(abs(u) - 25.0) <= sb.SLOT_REACH + 1e-9 and abs(v) <= 15.9 + 1e-9 and on_hole(one), (u, v, one['screw']))
 check("fastened with the kit's M6 x 16 + washer", one['fastener'] == 'M6 x 16 mm cap screw + M6 washer')
 
 # Every candidate, both orientations, every counterbore: the holder has to stand ON a counterbore.
@@ -95,8 +117,8 @@ kinds = sorted(p['part'] for p in plans.values())
 check("in a column of holders 37 mm apart, the narrow BA1/M is used", 'BA1/M' in kinds, kinds)
 ba1 = next(p for p in plans.values() if p['part'] == 'BA1/M')
 u, v = local(ba1)
-check("its screw is on the slot centreline, 17.4-37.5 mm from the centre, on a real hole",
-      abs(v) < 1e-9 and 17.4 - 1e-9 <= abs(u) <= 37.5 + 1e-9 and on_hole(ba1), (u, v))
+check("its screw is in the slot (within the shank's play), 17.4-37.5 mm from the centre, on a real hole",
+      abs(v) <= sb.SLOT_REACH + 1e-9 and 17.4 - 1e-9 <= abs(u) <= 37.5 + 1e-9 and on_hole(ba1), (u, v))
 check("no two chosen footprints overlap",
       not any(sb.overlap(plans[a]['footprint'], plans[b]['footprint'])
               for a in plans for b in plans if a < b))
