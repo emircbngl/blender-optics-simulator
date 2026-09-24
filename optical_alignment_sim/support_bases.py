@@ -47,7 +47,10 @@ UNDER_HEAD = {'BA2/M': 3.142, 'BA1/M': 2.667}          # material under that scr
 
 
 def seat_range(part):
-    """(lowest, highest) height of a post's bottom above the board on this base."""
+    """(floor, nominal tip): where a post's bottom rests above the board on this base, on nominal
+    dimensions. The upper end is not a bound: the cap screws' length tolerance is not published, so a
+    long screw can stand higher. BE1/M's single point assumes TR50/M's base-hole countersink (TR50/M
+    STEP model); other TR lengths are assumed to share it."""
     if part == 'BE1/M + CF125':
         # Two coaxial 45 deg cones: the stud's end enters the countersink by the radial gap between them.
         rest = BE1_DISC + BE1_STUD - (TR50_CSINK_R - BE1_STUD_END_R)          # 12.058 = floor + 0.558
@@ -219,23 +222,58 @@ def _fork_plans(x, y, grid):
                'disc': _disc(x, y, BE1['disc'])}
 
 
+SEARCH_BUDGET = 20000      # candidate trials before choose() stops looking for a conflict-free set
+
+
+def _shapes(plan):
+    return [plan['footprint']] + ([plan['disc']] if 'disc' in plan else [])
+
+
 def choose(holders, grid, obstacles=()):
     """holders: {tag: (x, y)}. obstacles: footprints already standing on the board (rails, periscope
     forks), as convex polygons. Returns {tag: plan}. Deterministic: tags in sorted order, candidates in
-    the kit's order of preference, the first whose footprint clears every obstacle, everything already
-    placed and every other holder's body."""
+    the kit's order of preference, each the first whose footprint clears every obstacle, every base
+    already chosen and every other holder's body. Where a holder finds no room, the earlier choices are
+    revisited (depth-first, same orders), so a holder is reported in conflict only when no set of bases
+    fits them all -- or SEARCH_BUDGET trials did not find one."""
     bodies = {tag: _disc(x, y, HOLDER_D) for tag, (x, y) in holders.items()}
-    placed, plans = [list(p) for p in obstacles if len(p) >= 3], {}
-    for tag in sorted(holders):
+    fixed = [list(p) for p in obstacles if len(p) >= 3]
+    tags = sorted(holders)
+    options = {}
+    for tag in tags:
         x, y = holders[tag]
-        others = [poly for t, poly in bodies.items() if t != tag]
-        chosen = None
-        for plan in list(_ba2_plans(x, y, grid)) + list(_ba1_plans(x, y, grid)) + list(_fork_plans(x, y, grid)):
-            shapes = [plan['footprint']] + ([plan['disc']] if 'disc' in plan else [])
-            if any(overlap(s, p) for s in shapes for p in placed + others):
+        blocked = fixed + [poly for t, poly in bodies.items() if t != tag]
+        options[tag] = [plan for plan in
+                        list(_ba2_plans(x, y, grid)) + list(_ba1_plans(x, y, grid)) + list(_fork_plans(x, y, grid))
+                        if not any(overlap(s, p) for s in _shapes(plan) for p in blocked)]
+    budget = [SEARCH_BUDGET]
+
+    def search(i, placed):
+        # Where the first choice fits, this walks straight down and gives the one-pass answer.
+        if i == len(tags):
+            return {}
+        for plan in options[tags[i]]:
+            if budget[0] <= 0:
+                return None
+            budget[0] -= 1
+            shapes = _shapes(plan)
+            if any(overlap(s, p) for s in shapes for p in placed):
                 continue
-            chosen = dict(plan, conflict=False)
-            break
+            rest = search(i + 1, placed + shapes)
+            if rest is not None:
+                rest[tags[i]] = dict(plan, conflict=False)
+                return rest
+        return None
+
+    found = search(0, [])
+    if found is not None:
+        return found
+    # No set fits: one pass, and a holder with no room says so rather than pretending.
+    placed, plans = list(fixed), {}
+    for tag in tags:
+        x, y = holders[tag]
+        chosen = next((dict(plan, conflict=False) for plan in options[tag]
+                       if not any(overlap(s, p) for s in _shapes(plan) for p in placed)), None)
         if chosen is None:
             first = next(iter(_fork_plans(x, y, grid)), None)
             chosen = dict(first, conflict=True) if first else {'part': None, 'conflict': True}

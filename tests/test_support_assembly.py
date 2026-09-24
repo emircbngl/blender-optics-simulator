@@ -77,7 +77,7 @@ drift = [(part, path, ref, value_at(records[part], path), fact_value(ref))
          if abs(value_at(records[part], path) - fact_value(ref)) > 1e-9]
 check("all %d provenance entries match their inventory facts" % len(library.PROVENANCE), not drift, drift)
 derived = sorted({fact_id_of(ref) for _p, _path, ref in library.PROVENANCE
-                  if FACTS[fact_id_of(ref)]["verification"] == "derived_from_published_nominals"})
+                  if FACTS[fact_id_of(ref)]["verification"].startswith("derived_from")})
 check("the derived values are the ones the library says are derived",
       derived == ["ph50m_min_insertion_lower_bound", "ph_series_allowed_gap_lower_bound"], derived)
 check("nothing claims more than 'unverified'",

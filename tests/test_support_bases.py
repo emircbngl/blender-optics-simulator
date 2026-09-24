@@ -129,6 +129,27 @@ tplans = sb.choose(tight, GRID)
 check("nine holders 9 mm apart cannot all get a real base, and the plan reports the conflict",
       any(p['conflict'] for p in tplans.values()), sum(p['conflict'] for p in tplans.values()))
 
+# newton_rings' seven holders on its 14 x 8 board: taken one at a time in tag order, 04 and 05 find no
+# room, yet a set of real bases fits them all. A conflict must mean "none fits", not "the first pass
+# boxed itself in".
+NEWTON = {'00': (0.0, 0.0), '01': (80.0, 80.0), '02': (120.0, 80.0), '03': (-110.0, 0.0),
+          '04': (80.0, 46.0), '05': (80.0, 0.0), '06': (0.0, 80.0)}
+NEWTON_GRID = (-150.0, -50.0, 14, 8, 25.0)
+nplans = sb.choose(NEWTON, NEWTON_GRID)
+shapes = {t: [p['footprint']] + ([p['disc']] if 'disc' in p else []) + [sb._disc(x, y, sb.HOLDER_D)]
+          for t, p in nplans.items() for x, y in [NEWTON[t]]}
+check("a crowded bench where one pass boxes itself in still gets a real base under every holder",
+      not any(p['conflict'] for p in nplans.values()), sorted(t for t, p in nplans.items() if p['conflict']))
+check("and none of those bases overlaps another base or another holder",
+      not any(sb.overlap(s, q) for a in shapes for b in shapes if a < b for s in shapes[a] for q in shapes[b]))
+saved = sb.SEARCH_BUDGET
+sb.SEARCH_BUDGET = 0
+fallback = sb.choose(NEWTON, NEWTON_GRID)
+sb.SEARCH_BUDGET = saved
+check("with no search budget it falls back to one pass and reports what that pass could not place",
+      sorted(t for t, p in fallback.items() if p['conflict']) == ['04', '05'],
+      sorted(t for t, p in fallback.items() if p['conflict']))
+
 print("[the overlap test itself]")
 sq = sb._rect(0, 0, 10, 10, 0)
 check("touching squares are not overlapping", not sb.overlap(sq, sb._rect(10, 0, 10, 10, 0)))

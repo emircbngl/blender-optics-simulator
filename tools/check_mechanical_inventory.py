@@ -58,17 +58,32 @@ def check():
     # Stage 05 acquisition: published facts about the support chain. They live apart from the preset
     # facts because a post or a holder is not a preset, and they are nominal until a drawing datum
     # and a mesh measurement agree.
-    fact_ids = {f['id'] for f in data.get('support_facts', [])}
+    by_id = {f['id']: f for f in data.get('support_facts', [])}
+    fact_ids = set(by_id)
+    derived_kinds = ('derived_from_published_nominals', 'derived_from_cad_and_published_nominals')
+
+    def on_cad(fid):
+        # A value read off a vendor CAD model is geometry, not a dimension anyone wrote down; the label
+        # has to say so wherever the fact is quoted, including through what is derived from it.
+        f = by_id[fid]
+        if f['verification'] in derived_kinds:
+            return any(on_cad(i) for i in f['derived_from'])
+        return sources[f['source_id']]['access'] == 'primary_cad_model'
+
     for fact in data.get('support_facts', []):
         assert fact['source_id'] in sources, fact['id']
         assert set(fact['support_parts']) <= support_numbers, fact['id']
         assert fact['locator'], fact['id']
         # A number nobody published is allowed, but only when it says so and names what it came from.
-        if fact['verification'] == 'derived_from_published_nominals':
+        if fact['verification'] in derived_kinds:
             assert fact.get('derived_from') and set(fact['derived_from']) <= fact_ids, fact['id']
             assert fact['note'] and 'DERIVED' in fact['note'], fact['id']
         else:
-            assert fact['verification'] == 'primary_published_nominal_not_mesh_verified', fact['id']
+            assert fact['verification'] in ('primary_published_nominal_not_mesh_verified',
+                                            'primary_cad_model_nominal_not_mesh_verified'), fact['id']
+        assert (fact['verification'] in ('primary_cad_model_nominal_not_mesh_verified',
+                                         'derived_from_cad_and_published_nominals')) == on_cad(fact['id']), \
+            '%s: its label must say whether it rests on a CAD model' % fact['id']
         # A tolerance is recorded only where the source states one, and then the locator quotes it.
         assert fact['manufacturing_tolerance'] is None or '\u00b1' in fact['locator'], \
             '%s: a tolerance must be quoted from its source, never inferred from decimal places' % fact['id']

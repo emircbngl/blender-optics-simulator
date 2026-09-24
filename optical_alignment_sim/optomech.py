@@ -742,7 +742,10 @@ def base_plan_inputs(scene):
 # From the STEP models and the catalogue (docs/mechanics/product-evidence.json): slot width 6.731 mm on
 # BA2/M, BA1/M and CF125 (support_bases.SLOT_W); the kit's W25S050 washer, Ø12.7 x 1.575 mm; CF125's body
 # 11.176 mm thick (0.44 in, the drawing's 11.2), its slot counterbored 13.4874 mm wide and 7.874 mm deep so
-# the screw sits recessed, and its undercut ceiling 4.699 mm up, bearing on BE1/M's 4.7 mm disc.
+# the screw sits recessed, and its undercut ceiling 4.699 mm up, bearing on BE1/M's 4.7 mm disc. Drawn
+# flat: the 1.016 mm pad under CF125's far end (12.192 mm there, cf125_step_thickness) is not modelled, so
+# the drawn counterbore floor is not the screw's real grip height, and the counterbore is cut over the
+# slot's own run (its end positions in the model were not recorded) -- both visual only.
 _WASHER = (12.7 * 0.5, 1.575)       # radius, thickness (W25S050)
 _CF125_T = 11.176
 _CF125_CBORE = (13.4874, 7.874)     # width, depth from the top
@@ -932,7 +935,7 @@ def _post_holder(tag, x, y, board_top_z, post_radius, coll, grid):
     mm, a Ø12.8 x 43.2 mm bore, a closed wall, and the thumbscrew 12.7 mm below the top with a Ø14.5 x
     7.9 mm TS6H/M knob standing 10 mm proud. tests/test_support_geometry.py and
     tests/test_support_bases.py measure both. Any other post radius falls back to the old proportional
-    holder, which is NOT sourced."""
+    holder, which is NOT sourced -- and its seat is the TR50/M one, inherited unverified."""
     from . import support_bases as sb
     sourced = abs(post_radius - POST_RADIUS) < 1e-9
     hr = PH_OUTER_R if sourced else post_radius * 1.8
