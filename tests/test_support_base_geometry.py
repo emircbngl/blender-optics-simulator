@@ -12,10 +12,12 @@ Written against the step-C contract BEFORE the geometry exists, so it cannot be 
 * Expected values come from docs/mechanics/product-evidence.json (BA2/M 19227 A, BA1/M 19225 A,
   BE1/M 6790 C, CF125 6535 E, PH50/M 23132 B) -- never from optomech or support_bases constants.
 * Threshold 0.05 mm, half the drawings' 0.1 mm resolution. Outer surfaces at the circumradius (vertex
-  extents). A slot is measured as a stadium: its along-extent minus its across-extent is the distance
-  between its end centres whatever its width, so no undimensioned width is ever assumed.
-* Not asserted, because no drawing dimensions it: slot widths, counterbore diameters and depths,
-  screw heads, washers, the CF125 undercut depth, and the fork's outline inside its 73.8 x 36.3 box.
+  extents). A slot is measured as a stadium at its wall (the z level where it is narrowest): its end
+  centres come from the arc vertices on their circle, so they never depend on the slot's width. The
+  width itself (6.731, STEP) is asserted separately.
+* Not asserted, because no source dimensions it: counterbore diameters and depths, screw heads,
+  washers, edge bevels, the CF125 undercut depth, the fork's outline inside its 73.8 x 36.3 box, and
+  where the drawn BE1/M stud overlaps the post (the post has no modelled tapped hole).
 
 Every example is built, traced, dressed and traced again: dressing must leave the trace byte-identical.
 
