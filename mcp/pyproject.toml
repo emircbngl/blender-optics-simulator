@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "blender-optics-mcp"
-version = "0.24.5"
+version = "0.24.6"
 description = "MCP server for the Blender Optics Simulator — build, inspect, align, and render a real optical bench in Blender over MCP."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -17,7 +17,10 @@ classifiers = [
   "Intended Audience :: Science/Research",
   "Topic :: Scientific/Engineering :: Physics",
 ]
-dependencies = ["mcp[cli]>=1.2"]
+# <2: mcp 2.0 renamed FastMCP to mcp.server.mcpserver.MCPServer, and mcp.server.fastmcp now raises
+# ModuleNotFoundError on import (#87). Lift the bound only together with that migration;
+# tools/check_release_consistency.py refuses a fastmcp import without it.
+dependencies = ["mcp[cli]>=1.2,<2"]
 
 [project.urls]
 Homepage = "https://github.com/emircbngl/blender-optics-simulator"
