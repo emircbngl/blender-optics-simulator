@@ -87,6 +87,13 @@ semantic versioning.
 - CAPABILITIES said 36 element types; there are 35.
 
 ### Fixed
+- **The MCP server stopped at start-up on a fresh install** ([#87](https://github.com/emircbngl/blender-optics-simulator/issues/87),
+  reported by @ondraulehla). `blender-optics-mcp` asked for `mcp[cli]>=1.2` with no upper bound, so
+  installers picked mcp 2.x, where `mcp.server.fastmcp` raises `ModuleNotFoundError`. The package
+  (0.24.6) now asks for `mcp[cli]>=1.2,<2`, and `tools/check_release_consistency.py` fails when the
+  server imports `fastmcp` under a requirement that admits 2.x. 0.24.6 also carries the bridge
+  capability token from 0.24.5, which never reached PyPI: the published 0.24.4 sends no token, so
+  the add-on's bridge refuses it.
 - **Loosening a screw moved the part** (stage 04b). Stepping a joint back from `fastened` to `seated`
   re-ran the seating placement at insertion 0: the part jumped back to its datum, or, on a bore with a
   stated minimum insertion, the screw could not be loosened at all. Only the forward step
