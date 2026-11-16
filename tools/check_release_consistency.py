@@ -15,6 +15,9 @@ Checks (repo-relative):
   7. mcp/pyproject.toml vs mcp/server.json        -- MCP package internally consistent
                                                      (its version tracks the addon LOOSELY,
                                                       so only internal agreement is checked)
+  8. mcp/optics_mcp_server.py vs its dependency    -- a `mcp.server.fastmcp` import needs an `mcp`
+                                                     requirement that excludes 2.x, where that
+                                                     module raises on import (#87)
 
 Post-release extras (--post): git tag vX exists; a "Version DOI for vX" identifier is in
 CITATION.cff. Pre-release these are informational only.
@@ -104,6 +107,55 @@ if mcp_py and srv_vs != {mcp_py}:
     errors.append("mcp version drift: pyproject %s vs server.json %s" % (mcp_py, sorted(srv_vs)))
 else:
     notes.append("mcp package: %s (internally consistent)" % mcp_py)
+
+
+# 8. The MCP server's import must exist in every `mcp` the package lets an installer pick.
+# mcp 2.0 renamed FastMCP to mcp.server.mcpserver.MCPServer and left mcp.server.fastmcp as a module
+# that raises ModuleNotFoundError, so an unbounded requirement installs a server that cannot start
+# (#87). Fail closed: a requirement we cannot read, or a bound we cannot parse, is a mismatch.
+def _ver(text):
+    parts = []
+    for p in text.strip().split("."):
+        if not p.isdigit():
+            return None
+        parts.append(int(p))
+    while len(parts) > 1 and parts[-1] == 0:             # 2.0 == 2, so "<2.0" reads as "<2"
+        parts.pop()
+    return tuple(parts) if parts else None
+
+
+def _excludes_major_2(spec):
+    """True when every version the specifier set allows is below 2.0."""
+    for clause in (c.strip() for c in spec.split(",") if c.strip()):
+        m = re.match(r'^(<=|<|~=|==)\s*([0-9][0-9.]*)(\.\*)?$', clause)
+        if not m:
+            continue
+        op, v = m.group(1), _ver(m.group(2))
+        if v is None:
+            continue
+        if op == "<" and v <= (2,):
+            return True
+        if op in ("<=", "==") and v < (2,):
+            return True
+        if op == "~=" and len(v) == 2 and v[0] < 2:      # ~=1.2 means >=1.2, <2
+            return True
+    return False
+
+
+server_src = _read("mcp/optics_mcp_server.py")
+if re.search(r'^\s*(from\s+mcp\.server\.fastmcp\s+import|import\s+mcp\.server\.fastmcp)\b',
+             server_src, re.M):
+    deps_line = _grab(r'^dependencies\s*=\s*\[(.*)\]\s*$', _read("mcp/pyproject.toml"),
+                      "mcp/pyproject.toml dependencies")
+    reqs = re.findall(r'"mcp(?:\[[^\]]*\])?\s*([^"]*)"', deps_line or "")
+    if len(reqs) != 1:
+        errors.append("mcp/pyproject.toml: expected exactly one `mcp` requirement, found %d" % len(reqs))
+    elif not _excludes_major_2(reqs[0]):
+        errors.append("mcp/pyproject.toml: `mcp%s` allows mcp 2.x, but optics_mcp_server.py imports "
+                      "mcp.server.fastmcp, which raises on import in 2.x (#87); add `<2` or migrate "
+                      "to mcp.server.mcpserver.MCPServer" % reqs[0])
+    else:
+        notes.append("mcp requirement `mcp%s` excludes 2.x (fastmcp import)" % reqs[0])
 
 # post-release: the tag must exist
 if POST:
